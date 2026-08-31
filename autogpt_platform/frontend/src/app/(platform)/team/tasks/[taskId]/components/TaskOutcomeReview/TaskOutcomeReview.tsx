@@ -12,8 +12,6 @@ interface Props {
   task: DelegatedTask;
 }
 
-const MAX_REVISIONS = 2;
-
 export function TaskOutcomeReview({ task }: Props) {
   const {
     isRequestingChanges,
@@ -40,19 +38,13 @@ export function TaskOutcomeReview({ task }: Props) {
     );
   }
 
-  if (task.acceptance === "REJECTED" && task.revision_count >= MAX_REVISIONS) {
+  // A rejection under the cap reopens the task (status leaves DONE), so a
+  // REJECTED verdict only survives here once the revision cap is hit.
+  if (task.acceptance === "REJECTED") {
     return (
       <Text variant="small" className="text-zinc-500">
         You have asked for changes twice — Autopilot escalated this to a chat so
         you can clarify what you need.
-      </Text>
-    );
-  }
-
-  if (task.acceptance === "REJECTED") {
-    return (
-      <Text variant="small" className="text-zinc-500">
-        Changes requested — a revision is on the way.
       </Text>
     );
   }

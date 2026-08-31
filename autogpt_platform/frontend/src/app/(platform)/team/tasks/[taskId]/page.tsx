@@ -1,13 +1,11 @@
 "use client";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
-import { TaskActivity } from "./components/TaskActivity";
-import { TaskOutcomeReview } from "./components/TaskOutcomeReview/TaskOutcomeReview";
+import { TaskActivity } from "./components/TaskActivity/TaskActivity";
 import { TaskProperties } from "./components/TaskProperties";
 import { TaskSpec } from "./components/TaskSpec";
 import { TaskSubtasks } from "./components/TaskSubtasks";
@@ -75,18 +73,6 @@ export default function TaskDetailPage() {
             </h1>
             <TaskSpec spec={task.spec} />
           </div>
-
-          {task.outcome_summary ? (
-            <section className="flex flex-col gap-2 rounded-2xl bg-zinc-50 p-4">
-              <Text variant="small" className="font-medium text-zinc-900">
-                Outcome
-              </Text>
-              <p className="whitespace-pre-line text-sm leading-6 text-zinc-600">
-                {task.outcome_summary}
-              </p>
-              <TaskOutcomeReview task={task} />
-            </section>
-          ) : null}
 
           <TaskSubtasks taskId={task.id} childTasks={children} />
           <TaskActivity task={task} />

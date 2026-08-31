@@ -19,8 +19,6 @@ from .errors import DelegatedTaskNotFoundError
 from .models import (
     MAX_TASK_REVISIONS,
     TASK_ANSWER_MAX_LENGTH,
-    TASK_SPEC_MAX_LENGTH,
-    TASK_TITLE_MAX_LENGTH,
     DelegatedTask,
     TaskAmendment,
     TaskAmendmentKind,
@@ -92,14 +90,16 @@ async def reject_delegated_task(
     task_id: str,
     *,
     note: str,
-) -> tuple[DelegatedTask, DelegatedTask | None]:
+) -> tuple[DelegatedTask, bool]:
     """Reject a finished task's outcome with what to change.
 
-    Under the cap this opens a revision subtask beneath the task (same
-    owner) and bumps ``revisionCount``; the caller then nudges the owner's
-    session to work it. At the cap no subtask is opened — the task is marked
-    REJECTED and the caller tells the user to clarify in chat instead of
-    looping a third time. Returns ``(task, revision_task | None)``.
+    Under the cap the task itself reopens (back to WORKING, acceptance
+    reset) and ``revisionCount`` bumps; the caller then nudges the owner's
+    session to revise and re-report the same task — no subtask is spawned,
+    and whether to delegate part of the fix stays the owner's call. At the
+    cap the task stays DONE and REJECTED and the caller tells the user to
+    clarify in chat instead of looping a third time.
+    Returns ``(task, reopened)``.
     """
     row = await _finished_task(user_id, task_id)
     revision_note = note[:TASK_ANSWER_MAX_LENGTH]
@@ -130,8 +130,11 @@ async def reject_delegated_task(
             raise TaskUpdateConflictError(
                 "The task changed while you were rejecting it. Try again."
             )
-        return await _reload(user_id, task_id), None
+        return await _reload(user_id, task_id), False
 
+    # Reopen rather than spawn a subtask: acceptance resets so the next
+    # report_task presents a fresh outcome for review, and the revision
+    # amendment above is the record of what was asked.
     updated = await prisma.models.DelegatedTask.prisma().update_many(
         where={
             "id": task_id,
@@ -140,7 +143,8 @@ async def reject_delegated_task(
             "revisionCount": row.revisionCount,
         },
         data={
-            "acceptance": prisma.enums.DelegatedTaskAcceptance.REJECTED,
+            "status": prisma.enums.DelegatedTaskStatus.WORKING,
+            "acceptance": prisma.enums.DelegatedTaskAcceptance.PENDING,
             "revisionCount": row.revisionCount + 1,
             "amendments": amendments,
         },
@@ -149,28 +153,7 @@ async def reject_delegated_task(
         raise TaskUpdateConflictError(
             "The task changed while you were rejecting it. Try again."
         )
-
-    # Deliberately NOT create_delegated_task: the revision keeps the same
-    # owner, which the delegation loop-check would refuse (the owner is on
-    # their own ancestor trail by construction).
-    revision_row = await prisma.models.DelegatedTask.prisma().create(
-        data={
-            "userId": user_id,
-            "ownerId": row.ownerId,
-            "originSessionId": row.originSessionId,
-            "createdByType": prisma.enums.TaskCreatedByType.USER,
-            "createdById": user_id,
-            "title": f"Revision {row.revisionCount + 1}: {row.title}"[
-                :TASK_TITLE_MAX_LENGTH
-            ],
-            "spec": _revision_spec(row, revision_note),
-            "status": prisma.enums.DelegatedTaskStatus.QUEUED,
-            "ancestorExpertIds": list(row.ancestorExpertIds),
-            "parentTaskId": row.id,
-            "rootTaskId": row.rootTaskId or row.id,
-        }
-    )
-    return await _reload(user_id, task_id), await _reload(user_id, revision_row.id)
+    return await _reload(user_id, task_id), True
 
 
 async def _finished_task(user_id: str, task_id: str) -> prisma.models.DelegatedTask:
@@ -184,12 +167,3 @@ async def _finished_task(user_id: str, task_id: str) -> prisma.models.DelegatedT
             "Only a finished task's outcome can be accepted or rejected."
         )
     return row
-
-
-def _revision_spec(row: prisma.models.DelegatedTask, note: str) -> str:
-    outcome = " ".join((row.outcomeSummary or "").split())
-    return (
-        f"Revise the outcome of task '{row.title}'.\n"
-        f"Previous outcome: {outcome or 'not recorded.'}\n"
-        f"User feedback: {note}"
-    )[:TASK_SPEC_MAX_LENGTH]

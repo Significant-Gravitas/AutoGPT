@@ -1,11 +1,16 @@
 """Unit tests for the overseer pass — no DB, frozen clock via ``now=``."""
 
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.features.tasks.models import DelegatedTask, TaskAmendment
+from backend.api.features.tasks.models import (
+    DelegatedTask,
+    TaskAmendment,
+    TaskExpertRef,
+)
 from backend.copilot.overseer.service import run_overseer_pass
 
 _MODULE = "backend.copilot.overseer.service"
@@ -21,6 +26,8 @@ def _task(
     amendments: list[TaskAmendment] | None = None,
     stale_at: datetime | None = None,
     origin_session_id: str | None = "sess-1",
+    owner: TaskExpertRef | None = None,
+    created_by_type: str = "USER",
 ) -> DelegatedTask:
     updated = _NOW - timedelta(minutes=updated_minutes_ago)
     return DelegatedTask(
@@ -29,9 +36,9 @@ def _task(
         spec="spec",
         status=status,  # type: ignore[arg-type]
         acceptance="PENDING",
-        created_by_type="USER",
+        created_by_type=created_by_type,  # type: ignore[arg-type]
         created_by_id="user-1",
-        owner=None,
+        owner=owner,
         parent_task_id=None,
         root_task_id=task_id,
         origin_session_id=origin_session_id,
@@ -72,26 +79,27 @@ def _client(
     return client
 
 
-def _run(client: MagicMock, *, flag: bool = True):
+@contextmanager
+def _patched(client: MagicMock, *, flag: bool = True):
+    """Every outbound edge of the pass stubbed; yields the two dispatch mocks
+    a nudge can land on."""
     queued = MagicMock(turn_in_flight=False)
-    patches = {
-        "get_database_manager_async_client": patch(
-            f"{_MODULE}.get_database_manager_async_client", return_value=client
-        ),
-        "flag": patch(f"{_MODULE}.is_feature_enabled", AsyncMock(return_value=flag)),
-        "queue": patch(f"{_MODULE}.queue_user_message", AsyncMock(return_value=queued)),
-        "schedule": patch(f"{_MODULE}.schedule_chat_turn", AsyncMock()),
-    }
-    return patches
+    with patch(
+        f"{_MODULE}.get_database_manager_async_client", return_value=client
+    ), patch(f"{_MODULE}.is_feature_enabled", AsyncMock(return_value=flag)), patch(
+        f"{_MODULE}.queue_user_message", AsyncMock(return_value=queued)
+    ), patch(
+        f"{_MODULE}.schedule_chat_turn", AsyncMock()
+    ) as schedule, patch(
+        f"{_MODULE}.start_task_in_new_session", AsyncMock(return_value="sess-new")
+    ) as kickoff:
+        yield {"schedule": schedule, "kickoff": kickoff}
 
 
 @pytest.mark.asyncio
 async def test_flag_off_does_nothing():
     client = _client([_task(updated_minutes_ago=60)])
-    patches = _run(client, flag=False)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client, flag=False):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary == {"retried": 0, "failed": 0, "stale": 0, "paused_experts": 0}
@@ -101,10 +109,7 @@ async def test_flag_off_does_nothing():
 @pytest.mark.asyncio
 async def test_first_stall_records_retry_and_nudges_the_session():
     client = _client([_task(updated_minutes_ago=20)], running={"task-1": False})
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"] as schedule:
+    with _patched(client) as mocks:
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["retried"] == 1
@@ -113,8 +118,71 @@ async def test_first_stall_records_retry_and_nudges_the_session():
     assert kwargs["by"] == "overseer"
     client.close_delegated_task.assert_not_awaited()
     # queue reported no turn in flight, so the nudge schedules a fresh turn.
-    schedule.assert_awaited_once()
-    assert schedule.call_args.kwargs["session_id"] == "sess-1"
+    mocks["schedule"].assert_awaited_once()
+    assert mocks["schedule"].call_args.kwargs["session_id"] == "sess-1"
+
+
+@pytest.mark.asyncio
+async def test_queued_task_with_no_session_gets_a_worker():
+    """An intro task from a hire lands QUEUED with nothing driving it. The
+    retry has no session to nudge, so it opens one for the owner instead."""
+    owner = TaskExpertRef(id="expert-1", name="Alex", avatar_url=None, role="Ops")
+    client = _client(
+        [
+            _task(
+                status="QUEUED",
+                updated_minutes_ago=20,
+                origin_session_id=None,
+                owner=owner,
+            )
+        ],
+        running={"task-1": False},
+    )
+    with _patched(client) as mocks:
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 1
+    mocks["kickoff"].assert_awaited_once_with(
+        "user-1",
+        task_id="task-1",
+        title="Draft the weekly report",
+        expert_id="expert-1",
+    )
+    mocks["schedule"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fresh_queued_task_is_left_to_start_on_its_own():
+    """A receipt opened seconds ago is mid-kickoff, not stalled."""
+    client = _client([_task(status="QUEUED", updated_minutes_ago=2)])
+    with _patched(client) as mocks:
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 0
+    mocks["kickoff"].assert_not_awaited()
+    client.has_running_executions.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queued_dream_proposal_is_never_auto_started():
+    """The dream pass parks sessionless proposals on purpose — starting one
+    here would do work the user never accepted."""
+    client = _client(
+        [
+            _task(
+                status="QUEUED",
+                updated_minutes_ago=6 * 60,
+                origin_session_id=None,
+                created_by_type="DREAM",
+            )
+        ]
+    )
+    with _patched(client) as mocks:
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 0
+    mocks["kickoff"].assert_not_awaited()
+    client.append_task_amendment.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -123,10 +191,7 @@ async def test_second_stall_fails_the_task():
         [_task(updated_minutes_ago=20, amendments=[_retry_amendment()])],
         running={"task-1": False},
     )
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["failed"] == 1
@@ -138,10 +203,7 @@ async def test_second_stall_fails_the_task():
 @pytest.mark.asyncio
 async def test_recently_updated_working_task_is_left_alone():
     client = _client([_task(updated_minutes_ago=5)])
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["retried"] == 0
@@ -151,10 +213,7 @@ async def test_recently_updated_working_task_is_left_alone():
 @pytest.mark.asyncio
 async def test_stalled_task_with_live_execution_is_not_retried():
     client = _client([_task(updated_minutes_ago=45)], running={"task-1": True})
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["retried"] == 0
@@ -165,10 +224,7 @@ async def test_stalled_task_with_live_execution_is_not_retried():
 @pytest.mark.asyncio
 async def test_week_old_waiting_task_is_stamped_stale():
     client = _client([_task(status="WAITING_USER", updated_minutes_ago=8 * 24 * 60)])
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["stale"] == 1
@@ -178,10 +234,7 @@ async def test_week_old_waiting_task_is_stamped_stale():
 @pytest.mark.asyncio
 async def test_day_old_waiting_task_is_not_stale_and_never_cancelled():
     client = _client([_task(status="WAITING_USER", updated_minutes_ago=25 * 60)])
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["stale"] == 0
@@ -200,10 +253,7 @@ async def test_already_stale_task_is_not_restamped():
             )
         ]
     )
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["stale"] == 0
@@ -213,10 +263,7 @@ async def test_already_stale_task_is_not_restamped():
 @pytest.mark.asyncio
 async def test_three_failures_in_a_week_pause_the_expert():
     client = _client([], failed_counts={"expert-1": 3, "expert-2": 2})
-    patches = _run(client)
-    with patches["get_database_manager_async_client"], patches["flag"], patches[
-        "queue"
-    ], patches["schedule"]:
+    with _patched(client):
         summary = await run_overseer_pass("user-1", now=_NOW)
 
     assert summary["paused_experts"] == 1

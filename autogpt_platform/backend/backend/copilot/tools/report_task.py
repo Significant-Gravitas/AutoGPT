@@ -57,8 +57,11 @@ class ReportTaskTool(BaseTool):
                 "outcome_summary": {
                     "type": "string",
                     "description": (
-                        "What was accomplished, written for the person who "
-                        "asked — the receipt the user sees on the task."
+                        "The receipt shown on the task's activity feed: 1-2 "
+                        "short sentences leading with the deliverable and "
+                        "where it lives (a name or link). Markdown allowed. "
+                        "No process narration — the user wants the result, "
+                        "not the journey."
                     ),
                 },
             },

@@ -101,11 +101,19 @@ beforeEach(() => {
   );
 });
 
+async function openIntegrationsTab() {
+  await userEvent.click(
+    await screen.findByRole("tab", { name: /integrations/i }),
+  );
+}
+
 describe("managing an expert's integrations", () => {
   it("lists what the expert can reach", async () => {
     server.use(getListExpertCredentialsMockHandler([linkedin]));
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Work LinkedIn")).toBeDefined();
@@ -116,6 +124,8 @@ describe("managing an expert's integrations", () => {
     server.use(getListExpertCredentialsMockHandler([]));
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
@@ -140,6 +150,8 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: "Remove Work LinkedIn" }),
     );
@@ -163,6 +175,8 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
@@ -182,6 +196,8 @@ describe("managing an expert's integrations", () => {
     );
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
@@ -253,6 +269,8 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
@@ -285,6 +303,8 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
@@ -309,6 +329,8 @@ describe("managing an expert's integrations", () => {
     );
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Sentry")).toBeDefined();

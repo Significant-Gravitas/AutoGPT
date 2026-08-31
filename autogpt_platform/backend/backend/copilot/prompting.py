@@ -715,6 +715,10 @@ def get_delegation_supplement(role: CopilotRole) -> str:
 - When a delegated task you own is finished, close it with `report_task`
   and a summary written for the person who asked. It is refused while
   subtasks are still open.
+- Everything these tools record — handoff notes, escalation questions,
+  outcome summaries — lands on the user's activity feed. Write each as
+  one or two short plain sentences that lead with the result or the
+  decision needed. Never narrate your process or restate the task.
 """
 
 

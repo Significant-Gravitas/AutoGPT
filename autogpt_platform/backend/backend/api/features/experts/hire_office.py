@@ -4,9 +4,13 @@ An OfficeTemplate's config lists expert templates plus an intro task per
 expert. Hiring the office reserves every expert copy AND opens every intro
 DelegatedTask inside ONE transaction — a failure on the Nth expert rolls
 the whole office back, so the user never ends up with half a team. Preload
-installs and scheduler registration stay outside the transaction: both are
-best-effort in the single-hire flow too, and the scheduler is an external
-service that must not hold a DB transaction open.
+installs, scheduler registration and the intro-task kickoff stay outside the
+transaction: they are best-effort, and neither the scheduler nor the copilot
+queue may be held open by a DB transaction.
+
+The kickoff is what makes a hired expert actually start: an intro task with
+no session behind it would sit QUEUED forever, since nothing in the spine
+drives a task that was not opened by a running turn.
 """
 
 import logging
@@ -22,6 +26,7 @@ from backend.api.features.tasks.models import (
     TASK_SPEC_MAX_LENGTH,
     TASK_TITLE_MAX_LENGTH,
 )
+from backend.copilot.task_kickoff import start_task_in_new_session
 from backend.data.db import transaction
 from backend.data.user import get_user_by_id
 from backend.util.exceptions import ExpertNotFoundError
@@ -132,6 +137,7 @@ async def hire_office(user_id: str, office_template_id: str) -> HireOfficeResult
     hired = []
     for entry, expert_row, state, task_id in reserved:
         await _finish_hire(user_id, expert_row, state, templates[entry.template_id])
+        await _start_intro_task(user_id, expert_row.id, task_id, entry)
         schedule_created = False
         if entry.schedule_cron:
             schedule_created = await _create_office_schedule(
@@ -194,7 +200,7 @@ async def _create_intro_task(
         data={
             "userId": user_id,
             "ownerId": expert_id,
-            "createdByType": prisma.enums.TaskCreatedByType.USER,
+            "createdByType": prisma.enums.TaskCreatedByType.HIRE,
             "createdById": user_id,
             "title": entry.intro_task_title[:TASK_TITLE_MAX_LENGTH],
             "spec": entry.intro_task_spec[:TASK_SPEC_MAX_LENGTH],
@@ -206,6 +212,28 @@ async def _create_intro_task(
         where={"id": row.id}, data={"rootTaskId": row.id}
     )
     return stamped or row
+
+
+async def _start_intro_task(
+    user_id: str, expert_id: str, task_id: str, entry: OfficeExpertEntry
+) -> None:
+    """Hand the expert their intro task and let them start on it.
+
+    Best-effort like the rest of the post-commit follow-ups: a kickoff that
+    cannot be dispatched leaves the task QUEUED and visible on the board,
+    which the user can still cancel, rather than failing the whole hire."""
+    try:
+        await start_task_in_new_session(
+            user_id,
+            task_id=task_id,
+            title=entry.intro_task_title,
+            expert_id=expert_id,
+        )
+    except Exception:
+        logger.exception(
+            f"Office hire: failed to start intro task #{task_id} for expert "
+            f"#{expert_id}"
+        )
 
 
 async def _finish_hire(

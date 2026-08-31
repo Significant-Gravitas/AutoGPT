@@ -14,12 +14,14 @@ import prisma.models
 import prisma.types
 
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
+from backend.data.model import is_credentials_field_name
 
 from .models import (
     DelegatedTask,
     TaskAcceptance,
     TaskAmendment,
     TaskCreatedBy,
+    TaskCredentialRef,
     TaskExpertRef,
     TaskRunRef,
     TaskStatus,
@@ -120,6 +122,36 @@ def _to_run_ref(
         ended_at=row.endedAt,
         link=run_link(library_agent_id, row.id),
     )
+
+
+def credentials_from_nodes(
+    nodes: list[prisma.models.AgentNode],
+) -> list[TaskCredentialRef]:
+    """Distinct credentials the run graphs' nodes are configured with.
+
+    ``constantInput`` is free Json, so every shape check here is boundary
+    validation — a hand-edited node must skip, not 500 the detail page.
+    """
+    creds: dict[str, TaskCredentialRef] = {}
+    for node in nodes:
+        constant_input = node.constantInput
+        if not isinstance(constant_input, dict):
+            continue
+        for field_name, value in constant_input.items():
+            if not is_credentials_field_name(field_name):
+                continue
+            if not isinstance(value, dict) or not value.get("id"):
+                continue
+            cred_id = str(value["id"])
+            creds.setdefault(
+                cred_id,
+                TaskCredentialRef(
+                    id=cred_id,
+                    provider=str(value.get("provider") or ""),
+                    title=value.get("title") or None,
+                ),
+            )
+    return list(creds.values())
 
 
 def to_amendments(value: object) -> list[TaskAmendment]:

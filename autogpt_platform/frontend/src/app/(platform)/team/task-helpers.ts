@@ -1,5 +1,6 @@
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { DelegatedTaskStatus } from "@/app/api/__generated__/models/delegatedTaskStatus";
+import { TaskAmendment } from "@/app/api/__generated__/models/taskAmendment";
 import {
   Alert02Icon,
   CancelCircleIcon,
@@ -24,7 +25,7 @@ const STATUS_LABELS: Record<DelegatedTaskStatus, string> = {
   QUEUED: "Queued",
   WORKING: "Working",
   WAITING_USER: "Needs you",
-  DONE: "Done",
+  DONE: "Completed",
   FAILED: "Failed",
   CANCELLED: "Cancelled",
 };
@@ -75,7 +76,7 @@ export const TASK_TABLE_FILTERS = [
   { key: "waiting", label: "Needs you", icon: Alert02Icon, dot: "#f59e0b" },
   {
     key: "done",
-    label: "Done",
+    label: "Completed",
     icon: CheckmarkCircle02Icon,
     dot: "#10b981",
   },
@@ -212,14 +213,37 @@ export function getTimelineEvents(task: DelegatedTask) {
   );
 }
 
-export function getTimelineLabel(kind: string | undefined): string {
-  if (kind === "handoff") return "Handed off";
-  if (kind === "escalation") return "Asked you";
-  if (kind === "answer") return "You answered";
-  if (kind === "note") return "User note";
-  if (kind === "retry") return "Overseer retried";
-  if (kind === "revision") return "Revision requested";
-  return "Note";
+/** Verb phrase completing "<actor> …" in an activity entry's header. */
+export function getTimelineVerb(event: TaskAmendment): string {
+  const kind = event.kind ?? "note";
+  if (kind === "handoff") return "handed this off";
+  if (kind === "escalation")
+    return event.target === "manager" ? "asked their manager" : "asked you";
+  if (kind === "answer") return "answered";
+  if (kind === "retry") return "retried this after a stall";
+  if (kind === "revision") return "requested changes";
+  return "left a note";
+}
+
+/** Answers and change requests come from the user, retries from the
+ *  overseer — attributing every event to the owner would put the expert's
+ *  face on words they never said. */
+export function getTimelineActor(
+  event: TaskAmendment,
+  owner: DelegatedTask["owner"],
+): TaskActor {
+  const kind = event.kind ?? "note";
+  if (kind === "answer" || kind === "revision") return { kind: "user" };
+  if (kind === "retry") return { kind: "autopilot" };
+  return owner
+    ? { kind: "expert", name: owner.name, avatarUrl: owner.avatar_url }
+    : { kind: "autopilot" };
+}
+
+export function getActorName(actor: TaskActor): string {
+  if (actor.kind === "expert") return actor.name;
+  if (actor.kind === "autopilot") return "Autopilot";
+  return "You";
 }
 
 /** Who an activity row is *about* — drives the row's avatar. */
@@ -266,6 +290,17 @@ export function getTaskOriginEntries(task: DelegatedTask): TaskOriginEntry[] {
         label: owner
           ? `An expert delegated to ${owner.name}`
           : "An expert handed this to Autopilot",
+      },
+    ];
+  }
+
+  if (task.created_by_type === "HIRE") {
+    return [
+      {
+        actor: expertActor,
+        label: owner
+          ? `You hired ${owner.name} — this came with them`
+          : "This came with a new hire",
       },
     ];
   }

@@ -542,6 +542,7 @@ class DatabaseManager(AppService):
     # chat turn starts a run, and the graph executor can close it.
     create_delegated_task = _(tasks_db.create_delegated_task)
     mark_delegated_task_working = _(tasks_db.mark_delegated_task_working)
+    claim_task_for_session = _(tasks_db.claim_task_for_session)
     close_delegated_task = _(tasks_db.close_delegated_task)
     # Phase 2: the copilot task tools (handoff / escalate / report) and the
     # task lookup they validate against.
@@ -959,6 +960,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Task Spine ============ #
     create_delegated_task = d.create_delegated_task
     mark_delegated_task_working = d.mark_delegated_task_working
+    claim_task_for_session = d.claim_task_for_session
     close_delegated_task = d.close_delegated_task
     get_delegated_task = d.get_delegated_task
     handoff_delegated_task = d.handoff_delegated_task

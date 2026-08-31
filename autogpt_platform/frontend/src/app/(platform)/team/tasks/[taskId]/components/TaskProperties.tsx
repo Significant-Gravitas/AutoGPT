@@ -6,7 +6,6 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import {
@@ -28,6 +27,9 @@ import {
   isOpenTask,
 } from "../../../task-helpers";
 import { TaskStatusChip } from "../../../components/TaskStatusChip/TaskStatusChip";
+import { TaskCard } from "./TaskCard";
+import { TaskCredentialsCard } from "./TaskCredentialsCard";
+import { TaskFilesCard } from "./TaskFilesCard";
 
 interface Props {
   task: DelegatedTask;
@@ -40,7 +42,7 @@ export function TaskProperties({ task, onCancel, isCancelling }: Props) {
 
   return (
     <aside className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
-      <Card title="Properties">
+      <TaskCard title="Properties">
         <Row label="Status" icon={Progress02Icon}>
           <span className="inline-flex items-center gap-1.5">
             <TaskStatusChip
@@ -66,10 +68,10 @@ export function TaskProperties({ task, onCancel, isCancelling }: Props) {
         <Row label="When" icon={Clock01Icon}>
           <span className="text-zinc-700">{formatElapsed(task)}</span>
         </Row>
-      </Card>
+      </TaskCard>
 
       {runs.length > 0 ? (
-        <Card title="Linked runs">
+        <TaskCard title="Runs">
           <ul className="flex flex-col gap-2" aria-label="Linked runs">
             {runs.map((run) => (
               <li key={run.execution_id}>
@@ -77,8 +79,11 @@ export function TaskProperties({ task, onCancel, isCancelling }: Props) {
               </li>
             ))}
           </ul>
-        </Card>
+        </TaskCard>
       ) : null}
+
+      <TaskFilesCard sessionId={task.origin_session_id} />
+      <TaskCredentialsCard credentials={task.credentials ?? []} />
 
       {isOpenTask(task) ? (
         <Button
@@ -92,23 +97,6 @@ export function TaskProperties({ task, onCancel, isCancelling }: Props) {
         </Button>
       ) : null}
     </aside>
-  );
-}
-
-function Card({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-3 rounded-2xl bg-white p-4 ring-[0.5px] ring-zinc-200">
-      <Text variant="small" className="font-medium text-zinc-900">
-        {title}
-      </Text>
-      {children}
-    </section>
   );
 }
 

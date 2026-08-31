@@ -87,25 +87,31 @@ async def test_accept_refuses_an_open_task(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_reject_opens_a_revision_subtask_with_the_same_owner(
+async def test_reject_reopens_the_task_for_the_same_owner(
     server: SpinTestServer,
 ):
     user = await _create_seed_user()
     expert = await _seed_expert(user.id)
     row = await _seed_task(user.id, owner_id=expert.id)
 
-    task, revision = await task_review.reject_delegated_task(
+    task, reopened = await task_review.reject_delegated_task(
         user.id, row.id, note="Wrong quarter — use Q3 numbers."
     )
 
-    assert task.acceptance == "REJECTED"
+    assert reopened is True
+    # The task itself goes back to work — acceptance resets so the next
+    # report_task presents a fresh outcome for review.
+    assert task.status == "WORKING"
+    assert task.acceptance == "PENDING"
     assert task.revision_count == 1
     assert task.amendments[-1].kind == "revision"
-    assert revision is not None
-    assert revision.parent_task_id == row.id
-    assert revision.owner is not None and revision.owner.id == expert.id
-    assert revision.status == "QUEUED"
-    assert "Q3" in revision.spec
+    assert "Q3" in task.amendments[-1].note
+
+    # No revision subtask is spawned anymore.
+    children = await prisma.models.DelegatedTask.prisma().find_many(
+        where={"parentTaskId": row.id}
+    )
+    assert children == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -115,11 +121,12 @@ async def test_reject_at_the_cap_escalates_instead_of_looping(
     user = await _create_seed_user()
     row = await _seed_task(user.id, revision_count=2)
 
-    task, revision = await task_review.reject_delegated_task(
+    task, reopened = await task_review.reject_delegated_task(
         user.id, row.id, note="Still wrong."
     )
 
-    assert revision is None
+    assert reopened is False
+    assert task.status == "DONE"
     assert task.acceptance == "REJECTED"
     assert task.revision_count == 2
     children = await prisma.models.DelegatedTask.prisma().find_many(

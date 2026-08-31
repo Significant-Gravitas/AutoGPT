@@ -30,6 +30,9 @@ import { useDelegatedTasksBoard } from "./useDelegatedTasksBoard";
 
 interface Props {
   enabled: boolean;
+  /** Scope to one expert: filters the query and drops the redundant
+   *  owner column, since every row would repeat the same face. */
+  expertId?: string;
 }
 
 const COLUMNS = [
@@ -58,9 +61,9 @@ const COLUMNS = [
 /** The task-spine version of the team board: every DelegatedTask receipt
  *  across the whole team — including Autopilot work, which the run-based
  *  board can't see because it only fans out per hired expert. */
-export function DelegatedTasksBoard({ enabled }: Props) {
+export function DelegatedTasksBoard({ enabled, expertId }: Props) {
   const { tasks, isLoading, isError, refetch, isRefreshing } =
-    useDelegatedTasksBoard({ enabled });
+    useDelegatedTasksBoard({ enabled, expertId });
 
   if (isLoading) {
     return (
@@ -74,8 +77,12 @@ export function DelegatedTasksBoard({ enabled }: Props) {
   if (isError) {
     return (
       <ErrorCard
-        context="your team's tasks"
-        hint="We could not load what your team has been asked to do."
+        context={expertId ? "this expert's tasks" : "your team's tasks"}
+        hint={
+          expertId
+            ? "We could not load what this expert has been asked to do."
+            : "We could not load what your team has been asked to do."
+        }
         onRetry={refetch}
       />
     );
@@ -85,12 +92,20 @@ export function DelegatedTasksBoard({ enabled }: Props) {
     <section aria-label="All tasks">
       <FilterTable
         ariaLabel="Delegated tasks"
-        columns={COLUMNS}
+        columns={
+          expertId
+            ? COLUMNS.filter((column) => column.key !== "owner")
+            : COLUMNS
+        }
         filters={TASK_TABLE_FILTERS}
         allIcon={TASK_FILTER_ALL_ICON}
         maxVisibleFilters={3}
         emptyIcon={TaskDone01Icon}
-        emptyText="Nothing delegated yet. Ask an expert (or Autopilot) to do something and it will show up here."
+        emptyText={
+          expertId
+            ? "Nothing delegated yet. Ask this expert to do something and it will show up here."
+            : "Nothing delegated yet. Ask an expert (or Autopilot) to do something and it will show up here."
+        }
         actions={
           <RefreshButton onRefresh={refetch} isRefreshing={isRefreshing} />
         }

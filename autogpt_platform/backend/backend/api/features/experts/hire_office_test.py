@@ -8,7 +8,7 @@ must leave no Expert copies and no DelegatedTasks behind.
 """
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.models
@@ -55,6 +55,16 @@ def _entry(template_id: str, *, cron: str | None = None) -> dict:
     }
 
 
+@pytest.fixture
+def kickoff():
+    """The intro-task kickoff reaches the copilot queue, which these DB-level
+    tests do not run — stub it and assert on the call instead."""
+    with patch.object(
+        hire_office, "start_task_in_new_session", AsyncMock(return_value="session-1")
+    ) as mock:
+        yield mock
+
+
 async def _seed_office(entries: list[dict]) -> prisma.models.OfficeTemplate:
     return await prisma.models.OfficeTemplate.prisma().create(
         data={
@@ -66,7 +76,7 @@ async def _seed_office(entries: list[dict]) -> prisma.models.OfficeTemplate:
 
 
 async def test_hire_office_hires_experts_and_opens_intro_tasks(
-    server: SpinTestServer,
+    server: SpinTestServer, kickoff
 ):
     user = await _create_seed_user()
     templates = [await _seed_template("Marketing"), await _seed_template("Sales")]
@@ -88,11 +98,49 @@ async def test_hire_office_hires_experts_and_opens_intro_tasks(
         assert task.userId == user.id
         assert task.ownerId == hired.expert.id
         assert task.status == prisma.enums.DelegatedTaskStatus.QUEUED
-        assert task.createdByType == prisma.enums.TaskCreatedByType.USER
+        assert task.createdByType == prisma.enums.TaskCreatedByType.HIRE
         assert task.createdById == user.id
         assert task.rootTaskId == task.id
         assert task.originSessionId is None
         assert task.title == hired.intro_task_title
+
+
+async def test_hire_office_starts_every_intro_task(server: SpinTestServer, kickoff):
+    """The whole point of the intro task: the expert starts on it. Without a
+    kickoff it would sit QUEUED with nothing driving it."""
+    user = await _create_seed_user()
+    templates = [await _seed_template("Marketing"), await _seed_template("Sales")]
+    office = await _seed_office([_entry(t.id) for t in templates])
+
+    result = await hire_office.hire_office(user.id, office.id)
+
+    started = {
+        (call.kwargs["task_id"], call.kwargs["expert_id"], call.kwargs["title"])
+        for call in kickoff.call_args_list
+    }
+    assert started == {
+        (hired.intro_task_id, hired.expert.id, hired.intro_task_title)
+        for hired in result.hired
+    }
+    assert all(call.args == (user.id,) for call in kickoff.call_args_list)
+
+
+async def test_hire_office_survives_a_failed_kickoff(server: SpinTestServer, kickoff):
+    """A kickoff that cannot reach the queue must not fail the hire — the
+    team is already committed, and the overseer retries the stalled task."""
+    user = await _create_seed_user()
+    template = await _seed_template("Ops")
+    office = await _seed_office([_entry(template.id)])
+    kickoff.side_effect = RuntimeError("queue is down")
+
+    result = await hire_office.hire_office(user.id, office.id)
+
+    assert len(result.hired) == 1
+    task = await prisma.models.DelegatedTask.prisma().find_unique(
+        where={"id": result.hired[0].intro_task_id}
+    )
+    assert task is not None
+    assert task.status == prisma.enums.DelegatedTaskStatus.QUEUED
 
 
 async def test_hire_office_rolls_back_all_writes_on_failure(

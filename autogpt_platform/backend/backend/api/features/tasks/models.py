@@ -14,7 +14,7 @@ TaskStatus = Literal[
 
 TaskAcceptance = Literal["PENDING", "ACCEPTED", "REJECTED"]
 
-TaskCreatedBy = Literal["USER", "EXPERT", "SCHEDULE", "DREAM"]
+TaskCreatedBy = Literal["USER", "EXPERT", "SCHEDULE", "DREAM", "HIRE"]
 
 # A task is "open" while it can still change on its own. Cancel cascades to
 # exactly these, and the Tasks tab splits active-vs-history on them.
@@ -69,6 +69,15 @@ class TaskRunRef(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
+
+
+class TaskCredentialRef(BaseModel):
+    """One credential a task's runs were wired to use — pulled from the run
+    graphs' node inputs, so it reflects configuration, not per-call secrets."""
+
+    id: str
+    provider: str
+    title: str | None
 
 
 TaskAmendmentKind = Literal[
@@ -128,6 +137,9 @@ class DelegatedTask(BaseModel):
     created_at: datetime
     updated_at: datetime
     runs: list[TaskRunRef] = []
+    # Filled only on the detail endpoint — the list view never pays the
+    # node scan behind it.
+    credentials: list[TaskCredentialRef] = []
 
 
 class TaskEvent(BaseModel):

@@ -16,7 +16,6 @@ import {
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowLeft02Icon,
-  Briefcase01Icon,
   Calendar03Icon,
   CheckListIcon,
   PlugSocketIcon,
@@ -27,6 +26,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
+import { DelegatedTasksBoard } from "../components/AllTasksSection/components/DelegatedTasksBoard";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import { getLastRunLabel } from "../helpers";
@@ -36,8 +36,6 @@ import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSectio
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
-import { ExpertTasksSection } from "./components/ExpertTasksSection/ExpertTasksSection";
-import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
@@ -47,7 +45,6 @@ const MAIN_CLASS =
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
   { value: "tasks", label: "Tasks", icon: CheckListIcon },
-  { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
   { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
@@ -165,14 +162,7 @@ export default function ExpertDetailPage() {
         </TabsLineContent>
 
         <TabsLineContent value="tasks">
-          <ExpertTasksSection
-            expertId={expert.id}
-            enabled={Boolean(enabled) && ready}
-          />
-        </TabsLineContent>
-
-        <TabsLineContent value="work">
-          <ExpertWorkSection
+          <DelegatedTasksBoard
             expertId={expert.id}
             enabled={Boolean(enabled) && ready}
           />

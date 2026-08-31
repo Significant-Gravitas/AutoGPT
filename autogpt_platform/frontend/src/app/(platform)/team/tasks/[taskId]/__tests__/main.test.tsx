@@ -1,7 +1,9 @@
 import {
+  getAnswerTaskMockHandler,
   getCancelTaskMockHandler,
   getGetTaskMockHandler,
 } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
+import { getListWorkspaceFilesMockHandler } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { server } from "@/mocks/mock-server";
 import {
@@ -80,6 +82,7 @@ function makeTask(overrides: Partial<DelegatedTask> = {}): DelegatedTask {
 
 beforeEach(() => {
   expertsFlag.enabled = true;
+  server.use(getListWorkspaceFilesMockHandler({ files: [] }));
 });
 
 afterEach(() => {
@@ -112,8 +115,14 @@ describe("task detail page", () => {
       await screen.findByRole("heading", { name: "Draft the weekly report" }),
     ).toBeDefined();
     expect(screen.getByText(/Run Weekly Report with:/)).toBeDefined();
+    // The outcome reads as the activity chain's last stop, not a panel of
+    // its own — the review controls ride along with it.
+    const activity = screen.getByRole("list", { name: "Activity" });
     expect(
-      screen.getByText("Posted to the blog and shared the link."),
+      within(activity).getByText("Posted to the blog and shared the link."),
+    ).toBeDefined();
+    expect(
+      within(activity).getByRole("button", { name: "Accept" }),
     ).toBeDefined();
     expect(screen.getByText("Blog Publisher")).toBeDefined();
     expect(
@@ -177,7 +186,9 @@ describe("task detail page", () => {
     expect(grandchildLink.style.paddingLeft).toBe("32px");
 
     const activity = screen.getByRole("list", { name: "Activity" });
-    expect(within(activity).getByText("Handed off")).toBeDefined();
+    // Feed-style entry: "<who> <did what>" header, quoted note beneath.
+    expect(within(activity).getByText("handed this off")).toBeDefined();
+    expect(within(activity).getByText("Maria")).toBeDefined();
     expect(
       within(activity).getByText("Needs Leo's integrations."),
     ).toBeDefined();
@@ -200,6 +211,157 @@ describe("task detail page", () => {
         name: /Autopilot delegated to Maria/,
       }),
     ).toBeDefined();
+  });
+
+  test("a hire's first task is not attributed to an Autopilot chat", async () => {
+    server.use(
+      getGetTaskMockHandler({
+        task: makeTask({ created_by_type: "HIRE" }),
+        children: [],
+      }),
+    );
+
+    render(<TaskDetailPage />);
+
+    const activity = await screen.findByRole("list", { name: "Activity" });
+    expect(
+      within(activity).getByText(/You hired Maria — this came with them/),
+    ).toBeDefined();
+    expect(within(activity).queryByText(/You asked Autopilot/)).toBeNull();
+    expect(screen.getByText("First task")).toBeDefined();
+  });
+
+  test("a change request reads below the outcome it rejected", async () => {
+    server.use(
+      getGetTaskMockHandler({
+        task: makeTask({
+          status: "WORKING",
+          outcome_summary: "Drafted the case study outline.",
+          amendments: [
+            {
+              at: new Date("2026-08-30T11:00:00Z"),
+              by: "user",
+              note: "I want instagram also",
+              kind: "revision",
+            },
+          ],
+        }),
+        children: [],
+      }),
+    );
+
+    render(<TaskDetailPage />);
+
+    const activity = await screen.findByRole("list", { name: "Activity" });
+    const rows = within(activity).getAllByRole("listitem");
+    const outcomeRow = rows.findIndex((row) =>
+      row.textContent?.includes("completed this task"),
+    );
+    const revisionRow = rows.findIndex((row) =>
+      row.textContent?.includes("requested changes"),
+    );
+    expect(outcomeRow).toBeGreaterThan(-1);
+    expect(revisionRow).toBeGreaterThan(-1);
+    expect(outcomeRow).toBeLessThan(revisionRow);
+  });
+
+  test("answers an escalation inline from the activity feed", async () => {
+    const answerSpy = vi.fn(() => makeTask({ status: "WORKING" }));
+    server.use(
+      getGetTaskMockHandler({
+        task: makeTask({
+          status: "WAITING_USER",
+          amendments: [
+            {
+              at: new Date("2026-08-30T10:00:00Z"),
+              by: "expert-maria",
+              note: "",
+              kind: "escalation",
+              question: "Where do your client accounts live?",
+              options: ["Google Sheet", "HubSpot"],
+              session_id: "session-2",
+              target: "user",
+            },
+          ],
+        }),
+        children: [],
+      }),
+      getAnswerTaskMockHandler(answerSpy),
+    );
+
+    render(<TaskDetailPage />);
+
+    const activity = await screen.findByRole("list", { name: "Activity" });
+    expect(
+      within(activity).getByText("Where do your client accounts live?"),
+    ).toBeDefined();
+
+    // One-click option answers without leaving the page.
+    await userEvent.click(screen.getByRole("button", { name: "Google Sheet" }));
+    await waitFor(() => expect(answerSpy).toHaveBeenCalled());
+  });
+
+  test("clamps a long activity quote behind Read more", async () => {
+    server.use(
+      getGetTaskMockHandler({
+        task: makeTask({
+          status: "DONE",
+          outcome_summary: "All the process detail nobody asked for. ".repeat(
+            12,
+          ),
+        }),
+        children: [],
+      }),
+    );
+
+    render(<TaskDetailPage />);
+
+    const readMore = await screen.findByRole("button", { name: "Read more" });
+    await userEvent.click(readMore);
+    expect(screen.getByRole("button", { name: "Show less" })).toBeDefined();
+  });
+
+  test("shows the session's files and the runs' credentials as cards", async () => {
+    server.use(
+      getGetTaskMockHandler({
+        task: makeTask({
+          credentials: [
+            {
+              id: "cred-1",
+              provider: "openai",
+              title: "My OpenAI key",
+            },
+          ],
+        }),
+        children: [],
+      }),
+      getListWorkspaceFilesMockHandler({
+        files: [
+          {
+            id: "file-1",
+            name: "q3-recap.md",
+            path: "/sessions/session-1/q3-recap.md",
+            mime_type: "text/markdown",
+            size_bytes: 2048,
+            origin: "generated",
+            created_at: "2026-08-30T09:05:00Z",
+          },
+        ],
+      }),
+    );
+
+    render(<TaskDetailPage />);
+
+    const files = await screen.findByRole("list", { name: "Task files" });
+    const fileLink = within(files).getByRole("link", { name: /q3-recap.md/ });
+    expect(fileLink.getAttribute("href")).toBe(
+      "/api/proxy/api/workspace/files/file-1/download",
+    );
+    expect(within(files).getByText(/Generated · 2.0 KB/)).toBeDefined();
+
+    const creds = screen.getByRole("list", { name: "Credentials used" });
+    expect(within(creds).getByText("My OpenAI key")).toBeDefined();
+    expect(within(creds).getByText("openai")).toBeDefined();
   });
 
   test("cancels an open task", async () => {

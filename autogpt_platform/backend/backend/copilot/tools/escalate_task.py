@@ -65,8 +65,9 @@ class EscalateTaskTool(BaseTool):
                 "question": {
                     "type": "string",
                     "description": (
-                        "The single decision you need, with enough context "
-                        "to answer without opening the task."
+                        "The single decision you need, as one short direct "
+                        "question answerable without opening the task — it "
+                        "is shown verbatim on the user's activity feed."
                     ),
                 },
                 "options": {

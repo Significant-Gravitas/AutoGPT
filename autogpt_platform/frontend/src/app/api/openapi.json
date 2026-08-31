@@ -14687,7 +14687,7 @@
       "post": {
         "tags": ["v2", "tasks", "tasks", "private"],
         "summary": "Reject Task",
-        "description": "Reject a finished task's outcome. Under the revision cap this opens a\nrevision subtask for the same owner and nudges their session; at the cap\nit asks the user to clarify in chat instead of looping again.",
+        "description": "Reject a finished task's outcome. Under the revision cap the task\nreopens for its owner, whose session is nudged to revise it in place;\nat the cap it asks the user to clarify in chat instead of looping.",
         "operationId": "reject_task",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -18788,7 +18788,7 @@
           },
           "created_by_type": {
             "type": "string",
-            "enum": ["USER", "EXPERT", "SCHEDULE", "DREAM"],
+            "enum": ["USER", "EXPERT", "SCHEDULE", "DREAM", "HIRE"],
             "title": "Created By Type"
           },
           "created_by_id": {
@@ -18851,6 +18851,12 @@
             "items": { "$ref": "#/components/schemas/TaskRunRef" },
             "type": "array",
             "title": "Runs",
+            "default": []
+          },
+          "credentials": {
+            "items": { "$ref": "#/components/schemas/TaskCredentialRef" },
+            "type": "array",
+            "title": "Credentials",
             "default": []
           }
         },
@@ -27552,6 +27558,20 @@
         "required": ["at", "by", "note"],
         "title": "TaskAmendment",
         "description": "An event recorded against a live task: a scope note, a handoff\nbetween experts, an escalation to the user, the user's answer, an\noverseer stall retry, or a revision request on a rejected outcome.\nStored in the append-only ``amendments`` Json column, so new kinds land\nwithout a migration; ``kind`` defaults to ``note`` for phase-1 rows."
+      },
+      "TaskCredentialRef": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": ["id", "provider", "title"],
+        "title": "TaskCredentialRef",
+        "description": "One credential a task's runs were wired to use — pulled from the run\ngraphs' node inputs, so it reflects configuration, not per-call secrets."
       },
       "TaskDecompositionResponse": {
         "properties": {

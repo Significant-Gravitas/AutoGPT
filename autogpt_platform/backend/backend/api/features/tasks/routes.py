@@ -187,11 +187,11 @@ async def reject_task(
     request: RejectTaskRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> TaskReviewResult:
-    """Reject a finished task's outcome. Under the revision cap this opens a
-    revision subtask for the same owner and nudges their session; at the cap
-    it asks the user to clarify in chat instead of looping again."""
+    """Reject a finished task's outcome. Under the revision cap the task
+    reopens for its owner, whose session is nudged to revise it in place;
+    at the cap it asks the user to clarify in chat instead of looping."""
     try:
-        task, revision = await task_review.reject_delegated_task(
+        task, reopened = await task_review.reject_delegated_task(
             user_id, task_id, note=request.note
         )
     except DelegatedTaskNotFoundError:
@@ -199,7 +199,7 @@ async def reject_task(
     except (TaskDelegationRefusedError, TaskUpdateConflictError) as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e))
 
-    if revision is None:
+    if not reopened:
         return TaskReviewResult(
             task=task,
             escalated=True,
@@ -209,11 +209,10 @@ async def reject_task(
             ),
         )
 
-    await _deliver_revision(user_id=user_id, task=task, revision=revision)
+    await _deliver_revision(user_id=user_id, task=task, note=request.note)
     return TaskReviewResult(
         task=task,
-        revision_task=revision,
-        message=f"Revision requested — {_owner_name(task)} is on it.",
+        message=f"Changes sent — {_owner_name(task)} is revising this task.",
     )
 
 
@@ -221,30 +220,33 @@ def _owner_name(task: DelegatedTask) -> str:
     return task.owner.name if task.owner else "Autopilot"
 
 
-async def _deliver_revision(
-    *, user_id: str, task: DelegatedTask, revision: DelegatedTask
-) -> None:
+async def _deliver_revision(*, user_id: str, task: DelegatedTask, note: str) -> None:
     """Nudge the owner's working session with the revision ask. Best-effort,
-    mirroring ``_deliver_answer`` — the revision subtask already exists, so a
-    failed delivery degrades to the owner finding it next turn."""
-    if revision.origin_session_id is None:
+    mirroring ``_deliver_answer`` — the reopened task already carries the
+    revision amendment, so a failed delivery degrades to the owner finding
+    it next turn."""
+    if task.origin_session_id is None:
         return
+    previous = " ".join((task.outcome_summary or "").split())
     message = (
         f"[Revision requested on task '{task.title}' (task_id: {task.id})]\n\n"
-        f"The user rejected the outcome and asked for changes:\n"
-        f"{revision.spec}\n\n"
-        f"Do the revision, then report the revision task done with "
-        f"report_task (task_id: {revision.id})."
+        f"The user reviewed your outcome and asked for changes:\n{note}\n\n"
+        f"Previous outcome: {previous or 'not recorded.'}\n\n"
+        f"The task is reopened. Revise it yourself in this session and "
+        f"close it again with report_task (task_id: {task.id}). Only if "
+        f"part of the fix is genuinely another teammate's work, delegate "
+        f"that piece with delegate_to_expert or move the task with "
+        f"handoff_task."
     )
     try:
         queued = await queue_user_message(
-            session_id=revision.origin_session_id,
+            session_id=task.origin_session_id,
             message=message,
             require_turn_in_flight=True,
         )
         if not queued.turn_in_flight:
             await schedule_chat_turn(
-                session_id=revision.origin_session_id,
+                session_id=task.origin_session_id,
                 user_id=user_id,
                 message=message,
             )
@@ -252,7 +254,7 @@ async def _deliver_revision(
         logger.warning(
             "Failed to deliver revision ask for task #%s to session #%s",
             task.id,
-            revision.origin_session_id,
+            task.origin_session_id,
             exc_info=True,
         )
 

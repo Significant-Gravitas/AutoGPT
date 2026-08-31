@@ -1165,12 +1165,14 @@ model OfficeTemplate {
 
 // Who asked for the work. USER = a person typed it into a chat, EXPERT =
 // another expert delegated it, SCHEDULE = a cron/trigger fired it, DREAM =
-// the dream pass proposed it.
+// the dream pass proposed it, HIRE = it shipped with the expert as their
+// intro task when the user hired them.
 enum TaskCreatedByType {
   USER
   EXPERT
   SCHEDULE
   DREAM
+  HIRE
 }
 
 enum DelegatedTaskStatus {

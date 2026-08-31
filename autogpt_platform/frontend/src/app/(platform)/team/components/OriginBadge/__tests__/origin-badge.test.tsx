@@ -7,6 +7,7 @@ test.each([
   ["SCHEDULE", "Schedule"],
   ["DREAM", "Proactive"],
   ["EXPERT", "Expert"],
+  ["HIRE", "First task"],
 ])("renders %s as %s", (type, label) => {
   render(<OriginBadge createdByType={type} />);
   expect(screen.getByText(label)).toBeTruthy();

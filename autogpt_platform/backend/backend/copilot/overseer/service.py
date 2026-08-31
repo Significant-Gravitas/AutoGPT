@@ -3,10 +3,12 @@
 Runs in the scheduler process (Prisma-less), so every read and write goes
 through the DatabaseManager RPC. Three checks per pass:
 
-* **Stall** — a WORKING task with no live execution and no update for 15
-  minutes gets one retry (a nudge into its working session); a task that
-  stalls again after the retry is closed FAILED, which Home's attention
-  list then surfaces.
+* **Stall** — an open task with no live execution and no update for 15
+  minutes gets one retry (a nudge into its working session, or a fresh
+  worker session when it never had one); a task that stalls again after the
+  retry is closed FAILED, which Home's attention list then surfaces.
+  QUEUED counts as stalled too: a receipt opened outside a conversation has
+  nothing driving it, so silence there is the failure, not the wait.
 * **Staleness** — a WAITING_USER task unanswered for 7 days gets ``staleAt``
   stamped. Never auto-cancelled; Home nags instead.
 * **Expert health** — an expert with 3+ FAILED tasks inside 7 days is
@@ -25,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from backend.api.features.tasks.models import DelegatedTask
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.pending_message_helpers import queue_user_message
+from backend.copilot.task_kickoff import start_task_in_new_session
 from backend.util.clients import get_database_manager_async_client
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -101,7 +104,7 @@ async def _find_stalled(
     candidates = [
         task
         for task in tasks
-        if task.status == "WORKING" and task.updated_at < now - STALL_AFTER
+        if task.updated_at < now - STALL_AFTER and _can_stall(task)
     ]
     if not candidates:
         return []
@@ -111,15 +114,39 @@ async def _find_stalled(
     return [task for task in candidates if not running.get(task.id)]
 
 
+def _can_stall(task: DelegatedTask) -> bool:
+    """Whether silence on this task means something went wrong.
+
+    A QUEUED task normally has a turn starting behind it, so silence means
+    its kickoff never landed. The exception is the dream pass, which opens
+    sessionless tasks on purpose — a proposal sitting untouched is it
+    waiting for the user, not a stall, and starting it here would do work
+    nobody approved.
+    """
+    if task.status == "WORKING":
+        return True
+    return task.status == "QUEUED" and task.created_by_type != "DREAM"
+
+
 async def _retry_task(client, user_id: str, task: DelegatedTask) -> None:
     """First stall: record the retry on the timeline, then nudge the working
     session back into motion. The amendment write bumps ``updatedAt``, so
     the next stall check measures from the retry — a second silent window
-    is what fails the task."""
+    is what fails the task.
+
+    A task with no session never got a worker at all (its kickoff failed, or
+    it was opened outside a conversation), so the retry opens one instead of
+    nudging."""
     await client.append_task_amendment(
         user_id, task.id, note=_RETRY_NOTE, by="overseer", kind="retry"
     )
     if task.origin_session_id is None:
+        await start_task_in_new_session(
+            user_id,
+            task_id=task.id,
+            title=task.title,
+            expert_id=task.owner.id if task.owner else None,
+        )
         return
     message = (
         f"[Overseer] Task '{task.title}' (task_id: {task.id}) has stalled — "

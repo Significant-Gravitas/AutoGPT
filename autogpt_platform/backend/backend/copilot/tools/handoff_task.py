@@ -62,8 +62,9 @@ class HandoffTaskTool(BaseTool):
                 "note": {
                     "type": "string",
                     "description": (
-                        "Why the task is changing hands and where the work "
-                        "stands — recorded on the task's timeline."
+                        "One short sentence for the user's activity feed: "
+                        "why the task is changing hands and where the work "
+                        "stands. Plain language, no filler."
                     ),
                 },
             },

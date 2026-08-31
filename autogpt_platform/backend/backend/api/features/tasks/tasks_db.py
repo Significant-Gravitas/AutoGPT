@@ -19,6 +19,7 @@ from backend.util.exceptions import TaskDelegationRefusedError
 from .errors import DelegatedTaskNotFoundError
 from .mapping import RUNNING_EXECUTION_STATUSES as _RUNNING_EXECUTION_STATUSES
 from .mapping import TASK_INCLUDE as _TASK_INCLUDE
+from .mapping import credentials_from_nodes
 from .mapping import library_agents_by_graph as _library_agents_by_graph
 from .mapping import to_model as _to_model
 from .models import (
@@ -32,6 +33,7 @@ from .models import (
     DelegatedTask,
     DelegatedTaskDetail,
     TaskCreatedBy,
+    TaskCredentialRef,
     TaskEvent,
     TaskStatus,
 )
@@ -127,10 +129,39 @@ async def get_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
 
     children = await _descendants(user_id, task_id)
     library_agents = await _library_agents_by_graph(user_id, [row, *children])
+    task = _to_model(row, library_agents).model_copy(
+        update={"credentials": await _credentials_used([row, *children])}
+    )
     return DelegatedTaskDetail(
-        task=_to_model(row, library_agents),
+        task=task,
         children=[_to_model(child, library_agents) for child in children],
     )
+
+
+async def _credentials_used(
+    rows: list[prisma.models.DelegatedTask],
+) -> list[TaskCredentialRef]:
+    """Credentials wired into the graphs this task (and its subtasks) ran.
+
+    Detail-only on purpose: it scans every node of every run's graph, which
+    the list endpoint must never pay per row.
+    """
+    graph_keys = {
+        (execution.agentGraphId, execution.agentGraphVersion)
+        for row in rows
+        for execution in row.Executions or []
+    }
+    if not graph_keys:
+        return []
+    nodes = await prisma.models.AgentNode.prisma().find_many(
+        where={
+            "OR": [
+                {"agentGraphId": graph_id, "agentGraphVersion": version}
+                for graph_id, version in graph_keys
+            ]
+        }
+    )
+    return credentials_from_nodes(nodes)
 
 
 async def get_delegated_task(user_id: str, task_id: str) -> DelegatedTaskDetail | None:
@@ -283,6 +314,29 @@ async def mark_delegated_task_working(user_id: str, task_id: str) -> bool:
             "status": prisma.enums.DelegatedTaskStatus.QUEUED,
         },
         data={"status": prisma.enums.DelegatedTaskStatus.WORKING},
+    )
+    return updated > 0
+
+
+async def claim_task_for_session(user_id: str, task_id: str, session_id: str) -> bool:
+    """Bind a freshly opened worker session to a QUEUED task and start it.
+
+    The one write that turns a receipt nobody is working into live work:
+    without an ``originSessionId`` a task has no thread to be nudged in, so
+    the overseer's stall retry cannot reach it and it sits QUEUED forever.
+    Only claims a QUEUED task, so two kickoffs racing the same task (a hire
+    retry and the overseer sweep) produce exactly one worker.
+    """
+    updated = await prisma.models.DelegatedTask.prisma().update_many(
+        where={
+            "id": task_id,
+            "userId": user_id,
+            "status": prisma.enums.DelegatedTaskStatus.QUEUED,
+        },
+        data={
+            "status": prisma.enums.DelegatedTaskStatus.WORKING,
+            "originSessionId": session_id,
+        },
     )
     return updated > 0
 

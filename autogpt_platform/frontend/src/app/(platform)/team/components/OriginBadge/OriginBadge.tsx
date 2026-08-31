@@ -14,6 +14,10 @@ const ORIGIN_STYLES: Record<string, { label: string; className: string }> = {
     label: "Expert",
     className: "bg-teal-50 text-teal-700 ring-teal-200",
   },
+  HIRE: {
+    label: "First task",
+    className: "bg-amber-50 text-amber-700 ring-amber-200",
+  },
 };
 
 interface Props {

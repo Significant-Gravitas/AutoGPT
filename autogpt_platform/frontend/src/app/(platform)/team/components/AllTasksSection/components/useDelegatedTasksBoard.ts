@@ -4,12 +4,17 @@ import { okData } from "@/app/api/helpers";
 
 interface Args {
   enabled: boolean;
+  /** Scope the board to one expert's tasks (the expert detail page). */
+  expertId?: string;
 }
 
-export function useDelegatedTasksBoard({ enabled }: Args) {
-  const tasksQuery = useListTasks(undefined, {
-    query: { select: (res) => okData(res) ?? null, enabled },
-  });
+export function useDelegatedTasksBoard({ enabled, expertId }: Args) {
+  const tasksQuery = useListTasks(
+    expertId ? { expert_id: expertId } : undefined,
+    {
+      query: { select: (res) => okData(res) ?? null, enabled },
+    },
+  );
 
   const tasks: DelegatedTask[] = tasksQuery.data ?? [];
 

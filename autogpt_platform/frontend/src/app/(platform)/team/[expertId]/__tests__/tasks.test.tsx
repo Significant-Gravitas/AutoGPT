@@ -1,7 +1,4 @@
-import {
-  getGetExpertMockHandler,
-  getListExpertRunsMockHandler,
-} from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetExpertMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
@@ -28,6 +25,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
       flag === "hire-experts"
         ? { enabled: expertsFlag.enabled, ready: true }
         : actual.useFlagStatus(flag as never),
+    useGetFlag: () => true,
   };
 });
 
@@ -104,18 +102,6 @@ const doneTask = makeTask({
   status: "DONE",
   spend_total: 40,
   outcome_summary: "Posted to the blog and shared the link.",
-  runs: [
-    {
-      execution_id: "run-1",
-      graph_id: "graph-1",
-      library_agent_id: "lib-1",
-      agent_name: "Blog Publisher",
-      status: "COMPLETED",
-      started_at: null,
-      ended_at: null,
-      link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
-    },
-  ],
 });
 
 beforeEach(() => {
@@ -123,7 +109,6 @@ beforeEach(() => {
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-    getListExpertRunsMockHandler([]),
   );
 });
 
@@ -136,23 +121,31 @@ async function openTasksTab() {
 }
 
 describe("Expert Tasks tab", () => {
-  test("splits tasks into active and history", async () => {
+  test("shows the expert's tasks in the same table as the team board", async () => {
     server.use(getListTasksMockHandler([activeTask, doneTask]));
 
     render(<ExpertDetailPage />);
     await openTasksTab();
 
-    const active = within(
-      await screen.findByRole("list", { name: "Active tasks" }),
-    );
-    expect(active.getByText("Draft the weekly report")).toBeDefined();
-    expect(active.getByText("Working")).toBeDefined();
-    expect(active.getByText("$2.50")).toBeDefined();
+    const table = await screen.findByRole("table", {
+      name: "Delegated tasks",
+    });
+    expect(within(table).getByText("Draft the weekly report")).toBeDefined();
+    expect(within(table).getByText("Working")).toBeDefined();
+    expect(within(table).getByText("$2.50")).toBeDefined();
+    expect(within(table).getByText("Published the Q3 recap")).toBeDefined();
+    expect(within(table).getByText("Completed")).toBeDefined();
+    expect(within(table).getByText("$0.40")).toBeDefined();
+  });
 
-    const history = within(screen.getByRole("list", { name: "History tasks" }));
-    expect(history.getByText("Published the Q3 recap")).toBeDefined();
-    expect(history.getByText("Done")).toBeDefined();
-    expect(history.getByText("$0.40")).toBeDefined();
+  test("drops the owner column — every row would repeat the same expert", async () => {
+    server.use(getListTasksMockHandler([activeTask]));
+
+    render(<ExpertDetailPage />);
+    await openTasksTab();
+
+    await screen.findByRole("table", { name: "Delegated tasks" });
+    expect(screen.queryByRole("columnheader", { name: /owner/i })).toBeNull();
   });
 
   test("shows an empty state when the expert has never been delegated to", async () => {
@@ -184,23 +177,19 @@ describe("Expert Tasks tab", () => {
     expect(requested).toContain("expert-maria");
   });
 
-  test("each task opens its own detail page", async () => {
+  test("each task row links to its detail page", async () => {
     server.use(getListTasksMockHandler([activeTask, doneTask]));
 
     render(<ExpertDetailPage />);
     await openTasksTab();
 
-    const history = within(
-      await screen.findByRole("list", { name: "History tasks" }),
-    );
-    expect(
-      history.getByRole("link", { name: "Open" }).getAttribute("href"),
-    ).toBe("/team/tasks/task-done");
-
-    const active = within(screen.getByRole("list", { name: "Active tasks" }));
-    expect(
-      active.getByRole("link", { name: "Open" }).getAttribute("href"),
-    ).toBe("/team/tasks/task-active");
+    const table = await screen.findByRole("table", {
+      name: "Delegated tasks",
+    });
+    const rows = within(table).getAllByRole("row");
+    const hrefs = rows.map((row) => row.getAttribute("href")).filter(Boolean);
+    expect(hrefs).toContain("/team/tasks/task-active");
+    expect(hrefs).toContain("/team/tasks/task-done");
   });
 
   test("the whole page, tab included, is gone when the experts flag is off", () => {
