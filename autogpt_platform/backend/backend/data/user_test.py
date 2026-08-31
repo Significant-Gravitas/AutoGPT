@@ -9,7 +9,7 @@ import pytest
 
 from backend.data import user as user_module
 from backend.data.user import update_user_timezone
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 
 def _application_user(user_id: str, email: str) -> user_module.User:
@@ -644,3 +644,48 @@ class TestGetUserDefaultChatRoute:
             route = await user_module.get_user_default_chat_route("user-1")
 
         assert route == (None, None)
+
+
+class TestSetUserDefaultChatRoute:
+    @pytest.mark.asyncio
+    async def test_missing_user_is_reported_as_not_found(self):
+        with patch.object(user_module, "PrismaUser") as mock_prisma_user:
+            prisma_user = mock_prisma_user.prisma.return_value
+            prisma_user.find_unique = AsyncMock(return_value=None)
+            prisma_user.update_many = AsyncMock()
+
+            with pytest.raises(NotFoundError, match="User user-1 not found"):
+                await user_module.set_user_default_chat_route(
+                    "user-1", "platform", None
+                )
+
+        prisma_user.update_many.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_clearing_provider_also_clears_stale_credential_id(self):
+        prisma_user = MagicMock(id="user-1", email="user@example.com")
+
+        with (
+            patch.object(user_module, "PrismaUser") as mock_prisma_user,
+            patch.object(user_module.get_user_by_id, "cache_delete") as by_id_del,
+            patch.object(user_module.get_user_by_email, "cache_delete") as by_email_del,
+            patch.object(user_module.get_or_create_user, "cache_clear") as goc_clear,
+        ):
+            prisma = mock_prisma_user.prisma.return_value
+            prisma.find_unique = AsyncMock(return_value=prisma_user)
+            prisma.update_many = AsyncMock(return_value=1)
+
+            await user_module.set_user_default_chat_route(
+                "user-1", None, "stale-credential"
+            )
+
+        prisma.update_many.assert_awaited_once_with(
+            where={"id": "user-1"},
+            data={
+                "defaultChatAuthProvider": None,
+                "defaultChatCredentialId": None,
+            },
+        )
+        by_id_del.assert_called_once_with("user-1")
+        by_email_del.assert_called_once_with("user@example.com")
+        goc_clear.assert_called_once_with()

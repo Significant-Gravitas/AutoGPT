@@ -1400,6 +1400,30 @@ def test_set_default_transport_rejects_an_unknown_account() -> None:
     chat_transports.set_user_default_chat_route.assert_not_awaited()
 
 
+def test_set_default_transport_reports_a_missing_user_profile() -> None:
+    chat_transports.set_user_default_chat_route.side_effect = NotFoundError(
+        "User user-1 not found"
+    )
+
+    response = client.put(
+        "/transports/default",
+        json={"auth_provider": "platform"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User user-1 not found"
+
+
+def test_set_default_transport_documents_not_found_responses() -> None:
+    operation = client.get("/openapi.json").json()["paths"]["/transports/default"][
+        "put"
+    ]
+
+    assert operation["responses"]["404"]["description"] == (
+        "The credential or user profile was not found"
+    )
+
+
 def test_set_default_transport_rejects_unknown_fields() -> None:
     response = client.put(
         "/transports/default",

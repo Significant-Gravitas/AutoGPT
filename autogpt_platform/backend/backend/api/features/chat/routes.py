@@ -571,6 +571,9 @@ class SetDefaultTransportRequest(BaseModel):
 @router.put(
     "/transports/default",
     dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "The credential or user profile was not found"},
+    },
 )
 async def set_default_chat_transport(
     user_id: Annotated[str, Security(auth.get_user_id)],
