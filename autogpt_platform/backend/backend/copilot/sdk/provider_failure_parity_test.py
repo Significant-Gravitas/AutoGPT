@@ -12,8 +12,8 @@ from backend.copilot.markers import provider_failure_of
 from backend.copilot.model import ChatSession
 from backend.copilot.provider_failure import ProviderFailureKind, classify
 from backend.copilot.sdk.service import (
-    _InterruptedAttempt,
     _append_error_marker,
+    _InterruptedAttempt,
     _provider_failure_for,
 )
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
