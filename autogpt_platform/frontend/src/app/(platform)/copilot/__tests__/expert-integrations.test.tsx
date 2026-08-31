@@ -39,11 +39,7 @@ function credential(provider: string): ExpertCredentialRef {
 
 function renderHeader() {
   return render(
-    <ThreadHeader
-      expertIdentity={mariaIdentity}
-      readOnly={false}
-      areFilesOpen={false}
-    />,
+    <ThreadHeader expertIdentity={mariaIdentity} readOnly={false} />,
   );
 }
 
