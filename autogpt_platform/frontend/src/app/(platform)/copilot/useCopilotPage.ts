@@ -122,6 +122,8 @@ export function useCopilotPage() {
   const {
     sessionId,
     setSessionId,
+    sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -179,6 +181,8 @@ export function useCopilotPage() {
     sessionId,
     hydratedMessages,
     rawSessionMessages,
+    sessionAuthProvider: sessionLlmAuthProvider,
+    sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
     hasActiveStream,
     refetchSession,

@@ -359,6 +359,10 @@ export function useChatSession({
         ? "codex"
         : "platform"
       : null;
+  const sessionLlmCredentialId =
+    sessionId && sessionQuery.data?.status === 200
+      ? (sessionQuery.data.data.metadata?.llm_credential_id ?? null)
+      : null;
 
   // The expert this session actually belongs to, straight off the session
   // response rather than the URL — the ?expertId= param only describes what
@@ -374,6 +378,7 @@ export function useChatSession({
     sessionId,
     setSessionId,
     sessionLlmAuthProvider,
+    sessionLlmCredentialId,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,

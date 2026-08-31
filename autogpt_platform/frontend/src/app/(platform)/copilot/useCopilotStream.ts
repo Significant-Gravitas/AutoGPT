@@ -37,6 +37,7 @@ import { getLatestAssistantStatusMessage } from "./messageParts";
 import {
   latestProviderFailure,
   parseProviderFailurePart,
+  providerFailureFingerprint,
   type ProviderFailure,
 } from "./providerFailure";
 import { useCopilotUIStore } from "./store";
@@ -84,6 +85,10 @@ interface UseCopilotStreamArgs {
    * before that happens.
    */
   rawSessionMessages?: unknown[];
+  /** The route currently persisted for this session. Historical provider
+   * failures from a route the chat already left are resolved, not live. */
+  sessionAuthProvider?: string | null;
+  sessionCredentialId?: string | null;
   /** Id of the first hydrated message of the turn the backend is still
    *  running — the point the GET-resume replay starts from. */
   activeTurnStartMessageId?: string | null;
@@ -98,6 +103,8 @@ export function useCopilotStream({
   sessionId,
   hydratedMessages,
   rawSessionMessages,
+  sessionAuthProvider = null,
+  sessionCredentialId = null,
   activeTurnStartMessageId = null,
   hasActiveStream,
   refetchSession,
@@ -111,6 +118,10 @@ export function useCopilotStream({
   const [providerLimit, setProviderLimit] = useState<ProviderFailure | null>(
     null,
   );
+  const dismissedProviderFailureRef = useRef<{
+    sessionId: string;
+    fingerprint: string;
+  } | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
@@ -298,6 +309,9 @@ export function useCopilotStream({
           // gateway had rate-limited it. That is a claim about an account we
           // do not bill, offering a plan that would not help.
           if (limitFailure) {
+            // A later turn can fail in exactly the same way as an earlier one
+            // the user dismissed. Live stream evidence is a new occurrence.
+            dismissedProviderFailureRef.current = null;
             setProviderLimit(limitFailure);
           } else {
             setRateLimitMessage(message);
@@ -526,12 +540,32 @@ export function useCopilotStream({
   // offered a way out -- leaving the chat latched to the connection that had
   // just refused it, with no way to say "continue on the other one".
   useEffect(() => {
+    setProviderLimit(null);
+    dismissedProviderFailureRef.current = null;
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!sessionId || !rawSessionMessages?.length) return;
-    // A live failure is the fresher truth; never let history overwrite it.
-    setProviderLimit((current) =>
-      current ? current : latestProviderFailure(rawSessionMessages),
+    const historical = latestProviderFailure(
+      rawSessionMessages,
+      sessionAuthProvider
+        ? {
+            authProvider: sessionAuthProvider,
+            credentialId: sessionCredentialId,
+          }
+        : null,
     );
-  }, [rawSessionMessages, sessionId]);
+    const dismissed = dismissedProviderFailureRef.current;
+    if (
+      historical &&
+      dismissed?.sessionId === sessionId &&
+      dismissed.fingerprint === providerFailureFingerprint(historical)
+    ) {
+      return;
+    }
+    // A live failure is the fresher truth; never let history overwrite it.
+    setProviderLimit((current) => current ?? historical);
+  }, [rawSessionMessages, sessionAuthProvider, sessionCredentialId, sessionId]);
 
   useEffect(() => {
     if (!sessionId || !hydratedMessages) return;
@@ -807,7 +841,15 @@ export function useCopilotStream({
     isUserStopping,
     rateLimitMessage,
     providerLimit,
-    dismissProviderLimit: () => setProviderLimit(null),
+    dismissProviderLimit: () => {
+      if (sessionId && providerLimit) {
+        dismissedProviderFailureRef.current = {
+          sessionId,
+          fingerprint: providerFailureFingerprint(providerLimit),
+        };
+      }
+      setProviderLimit(null);
+    },
     dismissRateLimit,
   };
 }

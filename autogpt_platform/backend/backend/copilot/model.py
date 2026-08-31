@@ -990,13 +990,11 @@ async def upsert_chat_session(
 
         # Ordinary upserts keep best-effort cache-on-DB-error behavior;
         # tenancy changes return above after eviction instead.
-        # Title (update_session_title), pin state (update_session_pinned) and
-        # the connection route (update_session_llm_route) are mutated *outside*
-        # this lock — they only touch their own fields, not messages — so a
-        # concurrent rename, auto-title, pin/unpin or connection switch may
-        # have written a newer value to Redis while this upsert was in
-        # progress. Always prefer the cached value to avoid reverting it with
-        # the stale in-memory copy.
+        # Title and pin state are mutated outside this lock. Connection route
+        # updates use this same lock, but a route update that completed before
+        # this upsert acquired it may still be newer than this turn's in-memory
+        # session. Prefer those cached fields so the stale turn cannot revert
+        # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
             if existing_cached:
@@ -1716,25 +1714,34 @@ async def update_session_llm_route(
     cached session would send the next turn back to the connection the user
     just moved off.
     """
-    updated = await chat_db().update_chat_session_llm_route(
-        session_id, user_id, llm_auth_provider, llm_credential_id
-    )
-    if not updated:
-        return False
+    # This is a read-modify-write of the cached session. Serialize it with
+    # full-session upserts so a route change cannot write an older cache
+    # snapshot over messages that a turn just persisted (or vice versa).
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize route update for session {session_id}"
+            )
 
-    # Cache refresh is best-effort -- the DB write already succeeded.
-    try:
-        cached = await _get_session_from_cache(session_id)
-        if cached:
-            cached.metadata.llm_auth_provider = llm_auth_provider
-            cached.metadata.llm_credential_id = llm_credential_id
-            await cache_chat_session(cached)
-    except Exception as e:
-        logger.warning(
-            f"Cache route update failed for session {session_id} "
-            f"(non-critical): {e}"
+        updated = await chat_db().update_chat_session_llm_route(
+            session_id, user_id, llm_auth_provider, llm_credential_id
         )
-    return True
+        if not updated:
+            return False
+
+        # Cache refresh is best-effort -- the DB write already succeeded.
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.llm_auth_provider = llm_auth_provider
+                cached.metadata.llm_credential_id = llm_credential_id
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
 
 
 async def update_session_pinned(

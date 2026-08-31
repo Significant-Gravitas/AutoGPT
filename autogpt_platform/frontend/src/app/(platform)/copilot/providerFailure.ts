@@ -32,6 +32,11 @@ export interface ProviderFailure {
   reconnectFixesIt: boolean;
 }
 
+export interface ProviderRoute {
+  authProvider: string;
+  credentialId: string | null;
+}
+
 const KINDS = new Set<string>([
   "auth_expired",
   "invalid_credential",
@@ -103,6 +108,7 @@ function isErrorMarker(row: { role?: unknown; content?: unknown }): boolean {
  */
 export function latestProviderFailure(
   messages: readonly unknown[],
+  activeRoute: ProviderRoute | null = null,
 ): ProviderFailure | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const row = messages[i];
@@ -117,7 +123,14 @@ export function latestProviderFailure(
       const meta = typed.metadata;
       if (!meta || typeof meta !== "object") return null;
       const raw = (meta as Record<string, unknown>)[PROVIDER_FAILURE_KEY];
-      return raw === undefined ? null : parseProviderFailure(raw);
+      const failure = raw === undefined ? null : parseProviderFailure(raw);
+      if (!failure || !activeRoute || failure.authProvider === null) {
+        return failure;
+      }
+      return failure.authProvider === activeRoute.authProvider &&
+        failure.credentialId === activeRoute.credentialId
+        ? failure
+        : null;
     }
 
     // A real turn after the failure means the chat recovered.
@@ -127,6 +140,16 @@ export function latestProviderFailure(
     }
   }
   return null;
+}
+
+export function providerFailureFingerprint(failure: ProviderFailure): string {
+  return JSON.stringify([
+    failure.kind,
+    failure.message,
+    failure.authProvider,
+    failure.credentialId,
+    failure.resetsAt,
+  ]);
 }
 
 interface FailureCopy {

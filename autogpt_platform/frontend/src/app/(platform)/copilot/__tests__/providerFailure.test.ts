@@ -5,6 +5,7 @@ import {
   latestProviderFailure,
   parseProviderFailurePart,
   PROVIDER_FAILURE_KEY,
+  providerFailureFingerprint,
   type ProviderFailure,
 } from "../providerFailure";
 
@@ -175,6 +176,36 @@ describe("latestProviderFailure", () => {
     ).toBeNull();
   });
 
+  it("does not resurrect a failure after the chat switched connections", () => {
+    expect(
+      latestProviderFailure(
+        [
+          {
+            role: "assistant",
+            content: "[__COPILOT_ERROR_f7a1__] out of turns",
+            metadata: { [PROVIDER_FAILURE_KEY]: envelope },
+          },
+        ],
+        { authProvider: "platform", credentialId: null },
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a failure when the chat is still on that connection", () => {
+    expect(
+      latestProviderFailure(
+        [
+          {
+            role: "assistant",
+            content: "[__COPILOT_ERROR_f7a1__] out of turns",
+            metadata: { [PROVIDER_FAILURE_KEY]: envelope },
+          },
+        ],
+        { authProvider: "codex", credentialId: "cred-1" },
+      )?.kind,
+    ).toBe("usage_limit");
+  });
+
   it("is null for a chat that never failed", () => {
     expect(
       latestProviderFailure([
@@ -186,5 +217,16 @@ describe("latestProviderFailure", () => {
         },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("providerFailureFingerprint", () => {
+  it("changes when a new connection or reset window fails", () => {
+    expect(providerFailureFingerprint(failure())).not.toBe(
+      providerFailureFingerprint(failure({ credentialId: "cred-2" })),
+    );
+    expect(providerFailureFingerprint(failure())).not.toBe(
+      providerFailureFingerprint(failure({ resetsAt: 123 })),
+    );
   });
 });

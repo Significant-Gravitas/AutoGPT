@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
+  getGetV2GetSessionQueryKey,
   getGetV2ListChatConnectionsQueryKey,
   useGetV2ListChatConnections,
   usePutV2ChangeTheConnectionAnExistingChatRunsOn,
@@ -47,13 +48,18 @@ export function useProviderLimitDialog({
   const { mutateAsync: changeConnection, isPending: isSwitching } =
     usePutV2ChangeTheConnectionAnExistingChatRunsOn({
       mutation: {
-        onSuccess: () => {
+        onSuccess: async () => {
           // The composer already holds the message the provider refused, so
           // the user resends when they are ready. Never automatic: the whole
           // point is that moving the bill is their call.
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListChatConnectionsQueryKey(),
-          });
+          await Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: getGetV2ListChatConnectionsQueryKey(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getGetV2GetSessionQueryKey(sessionId ?? undefined),
+            }),
+          ]);
           onDismiss();
         },
         onError: () => {
