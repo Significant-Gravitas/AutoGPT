@@ -9,7 +9,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { File02Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { ClockIcon, File02Icon, PlayIcon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../../store";
 import type { ExpertIdentity } from "../../../useExpertMap";
 import { useSessionFiles } from "../../ContextPanel/components/FilesTab/useSessionFiles";
@@ -55,10 +55,11 @@ export function ThreadHeader({
     (s) => s.toggleContextPanelTab,
   );
   const activitySessionId = isInteractive ? sessionId : null;
-  const { runs } = useSessionActivity(activitySessionId);
+  const { runs, schedules } = useSessionActivity(activitySessionId);
   const { uploaded, generated } = useSessionFiles(activitySessionId);
   const fileCount = uploaded.length + generated.length;
   const runCount = runs.length;
+  const scheduleCount = schedules.length;
 
   const chipContent = (
     <>
@@ -81,6 +82,12 @@ export function ThreadHeader({
         <span className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500">
           <Icon icon={PlayIcon} className="size-3.5" />
           {runCount}
+        </span>
+      )}
+      {isInteractive && scheduleCount > 0 && (
+        <span className="flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums text-zinc-500">
+          <Icon icon={ClockIcon} className="size-3.5" />
+          {scheduleCount}
         </span>
       )}
     </>
