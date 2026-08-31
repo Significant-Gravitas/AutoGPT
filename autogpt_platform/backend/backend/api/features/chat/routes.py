@@ -425,6 +425,8 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    organization_id: str | None = None
+    team_id: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -544,6 +546,8 @@ async def list_sessions(
                 source_platform=session.metadata.source_platform,
                 is_pinned=session.is_pinned,
                 expert_id=session.expert_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
             for session in sessions
         ],
