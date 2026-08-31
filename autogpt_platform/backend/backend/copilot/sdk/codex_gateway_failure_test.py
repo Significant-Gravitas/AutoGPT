@@ -1,7 +1,14 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from backend.copilot.provider_failure import ProviderFailureKind
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway, _Failed
+from backend.copilot.sdk.codex_compat_gateway import (
+    CodexAnthropicGateway,
+    _Conversation,
+    _Failed,
+    _TextDelta,
+)
 from backend.integrations.codex.transport import (
     CodexCredentialIntegrityError,
     CodexTransportError,
@@ -55,3 +62,20 @@ class TestTheGatewayNamesItsFailures:
         gw._failure_response(_Failed(error=CodexCredentialIntegrityError("bad")))
         assert gw.last_failure is not None
         assert gw.last_failure.auth_provider == "codex"
+
+    @pytest.mark.asyncio
+    async def test_a_midstream_failure_is_classified_for_the_service(self) -> None:
+        gw = _gateway()
+        conversation = _Conversation(id="conversation-1")
+        await conversation.queue.put(
+            _Failed(error=CodexCredentialIntegrityError("expired credential"))
+        )
+        response = MagicMock()
+        response.write = AsyncMock()
+
+        await gw._write_boundary(response, conversation, _TextDelta(text="partial"))
+
+        assert gw.last_failure is not None
+        assert gw.last_failure.kind is ProviderFailureKind.INVALID_CREDENTIAL
+        wire = b"".join(call.args[0] for call in response.write.await_args_list)
+        assert b'"type":"invalid_credential"' in wire

@@ -651,6 +651,28 @@ class CodexAnthropicGateway:
                 )
                 await _write_message_end(response, "end_turn", output_tokens)
                 return
+            elif isinstance(event, _Failed):
+                # The HTTP status can no longer change once streaming starts,
+                # but classification is still required: the service reads
+                # ``last_failure`` after the gateway closes to persist the
+                # provider-specific reason on the turn.
+                self._failure_response(event)
+                failure = self.last_failure
+                await _write_sse(
+                    response,
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": failure.kind.value if failure else "api_error",
+                            "message": (
+                                failure.message
+                                if failure
+                                else "Codex model transport failed"
+                            ),
+                        },
+                    },
+                )
+                return
             else:
                 await _write_sse(
                     response,
