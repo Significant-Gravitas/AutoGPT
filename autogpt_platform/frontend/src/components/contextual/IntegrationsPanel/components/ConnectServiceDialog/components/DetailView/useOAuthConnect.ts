@@ -15,7 +15,6 @@ import {
   openOAuthPopup,
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
-import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 import { getOAuthErrorMessage } from "./helpers";
 
