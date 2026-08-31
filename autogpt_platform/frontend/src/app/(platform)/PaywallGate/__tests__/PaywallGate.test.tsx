@@ -27,8 +27,12 @@ let mockSubscriptionResult: {
   data: MockSubscription | null | undefined;
   isLoading: boolean;
 } = { data: null, isLoading: false };
+let subscriptionQueryEnabled: boolean | undefined;
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  useGetSubscriptionStatus: () => mockSubscriptionResult,
+  useGetSubscriptionStatus: (options: { query?: { enabled?: boolean } }) => {
+    subscriptionQueryEnabled = options.query?.enabled;
+    return mockSubscriptionResult;
+  },
 }));
 
 // Mock environment — default to cloud so the gate logic is exercised; flip to
@@ -54,6 +58,7 @@ describe("PaywallGate", () => {
     mockIsLoggedIn = true;
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
+    subscriptionQueryEnabled = undefined;
     mockIsLocal = false;
   });
 
@@ -92,6 +97,7 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(subscriptionQueryEnabled).toBe(false);
   });
 
   it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
