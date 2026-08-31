@@ -88,12 +88,11 @@ ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-_GRANTABLE = sorted(DESCENT_DENIED_TOOLS | ISOLATE_DENIED_TOOLS)
+# Kept short on purpose: it rides three tool schemas, and the whole registry
+# shares a char budget (``tool_schema_test``). A refusal names the missing tool.
 GRANT_TOOLS_DESCRIPTION = (
-    "Tools to grant a spawned turn beyond its default. You can only grant what "
-    "you hold yourself. Leave empty unless the task needs one of: "
-    + ", ".join(_GRANTABLE)
-    + "."
+    "Extra tools to grant this spawned turn beyond its default (e.g. "
+    "post_to_chat_platform). Only tools you hold yourself."
 )
 
 _LEDGER_KEY_PREFIX = "copilot:tree:"

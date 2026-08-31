@@ -245,11 +245,18 @@ behaves today).
 
 `delegated_by_session_id` is written by **all three** spawn tools (today
 `run_sub_session` omits it — that omission is the unguarded lateral edge in
-§11.1 finding 4). It is the *creator capability*: resuming, polling or
-cancelling a child requires the caller's session id to match it. A session
-cannot resume itself (its provenance names its parent, not itself) and
-siblings cannot resume each other, which also removes the self- and
-mutual-deadlock the roast found (finding 11).
+§11.1 finding 4). It is the *creator capability*, and it is enforced on the
+**resume** path — where a caller supplies a prompt to run inside an existing
+session, which is the step that actually carries authority. A session cannot
+resume itself (its provenance names its parent, not itself) and siblings
+cannot resume each other, which removes the self- and mutual-deadlock the
+roast found (finding 11). Reading is deliberately *not* narrowed the same
+way: a same-scope sub is the caller's own assistant and the receiving expert
+must be able to read a task handed to it, so `_in_caller_scope` keeps its
+existing scope-equality rule. Restricting reads as well was tried and
+reverted — it broke two shipped behaviours (a same-scope sub reporting
+progress, and a handed-off expert reading its own task) for no authority
+gain, since a same-scope reader is the same identity under the same user.
 
 `origin` stays what it is today. The first draft made every child
 `automation`; that would have stamped handed-off threads the human types in
@@ -1100,7 +1107,7 @@ on the queued path.
   resumes never queue; a busy target is refused (§2.3).
 - *F4 CRITICAL — `run_sub_session` resume is an unguarded lateral edge, and
   "origin = automation always" would have widened it.* → `run_sub_session`
-  writes provenance; resume/poll/cancel require the creator capability;
+  writes provenance; resume requires the creator capability;
   the origin change is dropped — taint is its own field (§2.3c).
 - *F5 HIGH — the baseline engine only hides tools; `execute_tool` never
   checks permissions.* → Enforcement moves into `BaseTool.execute`, one

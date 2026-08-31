@@ -271,18 +271,19 @@ def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
     ownership for good (the caller gets no result back), so it grants no
     such capability: only the receiving expert's own scope can read it.
 
-    Every sub opened since provenance became universal carries that id, so
-    the creator rule applies to same-scope subs too — a sibling must not be
-    able to cancel a sub it did not open. Scope equality remains only for
-    legacy subs that predate the provenance write.
+    ``run_sub_session`` now records provenance too, but scope equality stays
+    the first test: a same-scope sub is the caller's own assistant, and the
+    receiving expert must be able to read a task handed to it. The creator
+    restriction that stops a session steering a sub it did not open lives on
+    the resume path in ``run_sub_session``, where the prompt is written.
     """
-    if sub.metadata.delegated_by_session_id is not None:
-        return (
-            sub.metadata.handed_off_from_expert_id is None
-            and session.session_id is not None
-            and sub.metadata.delegated_by_session_id == session.session_id
-        )
-    return sub.expert_id == session.expert_id
+    if sub.expert_id == session.expert_id:
+        return True
+    return (
+        sub.metadata.handed_off_from_expert_id is None
+        and session.session_id is not None
+        and sub.metadata.delegated_by_session_id == session.session_id
+    )
 
 
 def _is_borrowed_thread(sub: ChatSession, session: ChatSession) -> bool:
