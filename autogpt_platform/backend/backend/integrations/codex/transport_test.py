@@ -10,8 +10,15 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.codex import transport as transport_module
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.credential_codec import credentials_from_bundle
+from backend.integrations.codex.models import (
+    CodexInvocationRequest,
+    CodexInvocationResult,
+    CodexModelInfo,
+    CodexRateLimitsSnapshot,
+)
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
+    CodexCredentialLease,
     CodexTransport,
 )
 
@@ -146,3 +153,64 @@ async def test_legacy_runtime_credential_is_migrated_before_use() -> None:
     assert checkpointed.refresh_strategy == "oauth_handler"
     legacy_lease.release.assert_awaited_once()
     assert lease.credentials.refresh_strategy == "oauth_handler"
+
+
+def _invocation_result() -> CodexInvocationResult:
+    return CodexInvocationResult(
+        response_id="response-1",
+        final_response="done",
+        status="completed",
+    )
+
+
+def _session_with_rate_limits() -> MagicMock:
+    session = MagicMock()
+    session.credential_id = "cred-id"
+    session.rate_limits = CodexRateLimitsSnapshot(plan_type="pro")
+    session.invoke = AsyncMock(return_value=_invocation_result())
+    return session
+
+
+@pytest.mark.asyncio
+async def test_direct_invoke_records_the_latest_rate_limits() -> None:
+    credentials = _credentials()
+    session = _session_with_rate_limits()
+    transport = CodexTransport()
+    lease = CodexCredentialLease(credentials, session)
+    model = CodexModelInfo(
+        model="gpt-5.6-sol",
+        display_name="GPT-5.6 Sol",
+        is_default=True,
+        hidden=False,
+        default_reasoning_effort="medium",
+        supported_reasoning_efforts=["medium"],
+    )
+
+    with (
+        patch.object(transport, "_session_for", return_value=session),
+        patch(
+            "backend.integrations.codex.transport.fetch_models",
+            new=AsyncMock(return_value=[model]),
+        ),
+    ):
+        await transport.invoke(lease, CodexInvocationRequest(prompt="hello"))
+
+    assert (await transport.rate_limits(lease)).plan_type == "pro"
+
+
+@pytest.mark.asyncio
+async def test_direct_agent_invoke_records_the_latest_rate_limits() -> None:
+    credentials = _credentials()
+    session = _session_with_rate_limits()
+    transport = CodexTransport()
+    lease = CodexCredentialLease(credentials, session)
+
+    with patch.object(transport, "_session_for", return_value=session):
+        await transport.invoke_agent(
+            lease,
+            CodexInvocationRequest(prompt="hello"),
+            [],
+            AsyncMock(),
+        )
+
+    assert (await transport.rate_limits(lease)).plan_type == "pro"

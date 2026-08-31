@@ -318,10 +318,13 @@ class CodexTransport:
         session = self._session_for(
             credentials, turn_timeout=self._invocation_timeout_seconds
         )
-        result = await session.invoke(
-            request.model_copy(update={"model": resolved_model}), [], _no_tools
-        )
-        return result.model_copy(update={"resolved_model": resolved_model})
+        try:
+            result = await session.invoke(
+                request.model_copy(update={"model": resolved_model}), [], _no_tools
+            )
+            return result.model_copy(update={"resolved_model": resolved_model})
+        finally:
+            self._record_rate_limits(session)
 
     async def invoke_agent(
         self,
@@ -332,7 +335,12 @@ class CodexTransport:
         event_handler: EventHandler = None,
     ) -> CodexInvocationResult:
         session = self._session_for(codex_credentials(lease))
-        return await session.invoke(request, dynamic_tools, tool_handler, event_handler)
+        try:
+            return await session.invoke(
+                request, dynamic_tools, tool_handler, event_handler
+            )
+        finally:
+            self._record_rate_limits(session)
 
     @asynccontextmanager
     async def agent_session(
