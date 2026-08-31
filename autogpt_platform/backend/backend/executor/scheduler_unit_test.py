@@ -301,6 +301,8 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         team_id="team-sched",
         expert_id=None,
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
@@ -342,6 +344,8 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         team_id="team-sched",
         expert_id="expert-1",
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
 
@@ -562,6 +566,8 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
         team_id=None,
         expert_id=None,
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-legacy-session"
     mock_self_delete.assert_not_awaited()

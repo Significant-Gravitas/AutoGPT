@@ -1463,9 +1463,7 @@ async def append_plain_session_message(
         created = await create_chat_session(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            metadata=await _default_route_metadata(
-                user_id, origin="interactive"
-            ),
+            metadata=await _default_route_metadata(user_id, origin="interactive"),
         )
         session_id = created.session_id
 

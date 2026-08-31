@@ -4604,6 +4604,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": {
+            "description": "The credential or user profile was not found"
+          },
           "422": {
             "description": "Validation Error",
             "content": {

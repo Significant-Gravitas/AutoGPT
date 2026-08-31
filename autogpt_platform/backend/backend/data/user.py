@@ -36,7 +36,7 @@ from backend.data.notifications import NotificationPreference, NotificationPrefe
 from backend.data.org_migration import ensure_personal_org
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
@@ -1043,15 +1043,22 @@ async def set_user_default_chat_route(
 ) -> None:
     """Save (or, with ``auth_provider=None``, clear) the default chat transport."""
     try:
-        user = await PrismaUser.prisma().update(
+        prisma_user = PrismaUser.prisma()
+        user = await prisma_user.find_unique(where={"id": user_id})
+        if user is None:
+            raise NotFoundError(f"User {user_id} not found")
+
+        updated_count = await prisma_user.update_many(
             where={"id": user_id},
             data={
                 "defaultChatAuthProvider": auth_provider,
-                "defaultChatCredentialId": credential_id,
+                "defaultChatCredentialId": (
+                    credential_id if auth_provider is not None else None
+                ),
             },
         )
-        if not user:
-            raise ValueError(f"User not found with ID: {user_id}")
+        if updated_count == 0:
+            raise NotFoundError(f"User {user_id} not found")
 
         # Same cache invalidation as update_user_timezone — the route is read
         # through the cached full-user lookup on every unrouted session create.
@@ -1059,6 +1066,8 @@ async def set_user_default_chat_route(
         if user.email:
             get_user_by_email.cache_delete(user.email)
         get_or_create_user.cache_clear()
+    except NotFoundError:
+        raise
     except Exception as e:
         raise DatabaseError(
             f"Failed to update default chat route for user {user_id}: {e}"
