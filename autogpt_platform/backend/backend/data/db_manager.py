@@ -53,6 +53,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
     get_briefing_alert_conditions,
@@ -452,6 +453,9 @@ class DatabaseManager(AppService):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = _(log_platform_cost)
 
+    # ============ Activity Events ============ #
+    create_activity_event = _(create_activity_event)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -650,6 +654,9 @@ class DatabaseManagerClient(AppServiceClient):
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
+    # Activity events (executor completion hook)
+    create_activity_event = _(d.create_activity_event)
+
     # Morning briefing (scheduler cron; runs Prisma-less)
     append_plain_session_message = _(d.append_plain_session_message)
     create_briefing = _(d.create_briefing)
@@ -840,6 +847,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = d.log_platform_cost
+
+    # ============ Activity Events ============ #
+    create_activity_event = d.create_activity_event
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions

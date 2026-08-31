@@ -183,6 +183,19 @@ def platform_cost_db():
     return platform_cost_db
 
 
+def activity_event_db():
+    if db.is_connected():
+        from backend.data import activity_event as _activity_event_db
+
+        activity_event_db = _activity_event_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        activity_event_db = get_database_manager_async_client()
+
+    return activity_event_db
+
+
 def orgs_db():
     if db.is_connected():
         from backend.api.features.orgs import db as _orgs_db

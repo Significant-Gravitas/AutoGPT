@@ -141,6 +141,7 @@ model User {
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   UserBriefings        UserBriefing[]
+  ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -316,6 +317,46 @@ model UserBriefing {
   // Every read is by user + date (latest-first or exact date), so the unique
   // index above serves them all — no secondary index to pay for on write.
   @@unique([userId, briefingDate])
+}
+
+enum ActivityEventCategory {
+  FILE
+  INTEGRATION
+  RUN
+  SCHEDULE
+}
+
+// Append-only audit log of work agents performed on the user's behalf:
+// side-effecting copilot tool calls, credentialed block executions, and
+// run completions. Powers the Home "Recent work" feed.
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  // Soft references on purpose: events must outlive the expert, session or
+  // schedule that produced them, so attribution falls back to `data`.
+  expertId    String?
+  sessionId   String?
+  graphExecId String?
+  nodeExecId  String?
+  scheduleId  String?
+
+  category  ActivityEventCategory
+  eventType String
+  provider  String?
+  objectId  String?
+  title     String
+  data      Json                  @default("{}")
+
+  @@index([userId, createdAt])
+  @@index([userId, category, createdAt])
+  @@index([sessionId])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
