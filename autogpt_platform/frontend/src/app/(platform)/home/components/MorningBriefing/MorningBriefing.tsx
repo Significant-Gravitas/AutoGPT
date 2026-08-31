@@ -79,6 +79,12 @@ export function MorningBriefing({ dashboard, className }: Props) {
         </Text>
       }
     >
+      {briefing.narrative ? (
+        <Text variant="large" className="text-zinc-700">
+          {briefing.narrative}
+        </Text>
+      ) : null}
+
       {briefing.outcomes.length === 0 ? (
         <HomeTileEmpty
           icon={InboxIcon}

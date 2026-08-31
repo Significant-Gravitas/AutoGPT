@@ -1,21 +1,12 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { render, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelAutoOpen } from "../ContextPanelAutoOpen";
-import { useSessionFiles } from "../components/FilesTab/useSessionFiles";
 
 const SESSION = "session-1";
-
-// The auto-open hook renders nothing, so a "the panel stays closed" assertion
-// would pass trivially before the file request resolves. This probe gives the
-// test something to await that proves the files actually arrived.
-function LoadedFilesProbe({ sessionId }: { sessionId: string }) {
-  const { generated } = useSessionFiles(sessionId);
-  return <div data-testid="generated-count">{generated.length}</div>;
-}
 
 function withFiles(): ListFilesResponse {
   return {
@@ -36,68 +27,6 @@ function withFiles(): ListFilesResponse {
   };
 }
 
-// One entry per branch of `isInternalToolOutput`, each newer than the real
-// deliverable so a missing filter would surface it instead.
-function withToolOutputAndRealFile(): ListFilesResponse {
-  const response = withFiles();
-  response.files.push(
-    {
-      id: "bbbbbbbb-0000-0000-0000-000000000002",
-      name: "toolu_01ABCdef.json",
-      path: "/sessions/session-1/tool-outputs/toolu_01ABCdef.json",
-      mime_type: "application/json",
-      size_bytes: 512,
-      metadata: {},
-      origin: "generated",
-      created_at: "2026-05-20T12:00:00Z",
-    },
-    {
-      id: "cccccccc-0000-0000-0000-000000000003",
-      name: "mcp_a1b2-c3d4.json",
-      path: "/sessions/session-1/tool-outputs/mcp_a1b2-c3d4.json",
-      mime_type: "application/json",
-      size_bytes: 256,
-      metadata: {},
-      origin: "generated",
-      created_at: "2026-05-20T13:00:00Z",
-    },
-    {
-      id: "dddddddd-0000-0000-0000-000000000004",
-      name: "toolu_02ZYXwvu.json",
-      path: "/sessions/session-1/tool-results/toolu_02ZYXwvu.json",
-      mime_type: "application/json",
-      size_bytes: 128,
-      metadata: {},
-      origin: "generated",
-      created_at: "2026-05-20T14:00:00Z",
-    },
-  );
-  return response;
-}
-
-// A real deliverable whose name alone looks like an SDK id — the filter must
-// not swallow it, since it never lands in a tool-output directory.
-function withSdkLookalikeDeliverable(): ListFilesResponse {
-  const response = withFiles();
-  response.files.push({
-    id: "eeeeeeee-0000-0000-0000-000000000005",
-    name: "mcp_config.json",
-    path: "/sessions/session-1/mcp_config.json",
-    mime_type: "application/json",
-    size_bytes: 64,
-    metadata: {},
-    origin: "generated",
-    created_at: "2026-05-20T15:00:00Z",
-  });
-  return response;
-}
-
-function withOnlyToolOutput(): ListFilesResponse {
-  const response = withToolOutputAndRealFile();
-  response.files = response.files.filter((file) => file.name !== "result.csv");
-  return response;
-}
-
 describe("ContextPanelAutoOpen", () => {
   beforeEach(() => {
     useCopilotUIStore.getState().resetAutoOpenState?.();
@@ -110,57 +39,38 @@ describe("ContextPanelAutoOpen", () => {
     }));
   });
 
-  test("opens the last generated file in the artifact panel when the session has files", async () => {
+  test("forgets the previous chat's artifact on session entry", async () => {
+    server.use(getListWorkspaceFilesMockHandler200(withFiles()));
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: true,
+        lastArtifact: {
+          id: "previous-chat-file",
+          title: "old.md",
+          mimeType: "text/markdown",
+          sourceUrl: "/api/proxy/api/workspace/files/prev-file/download",
+          origin: "agent",
+        },
+      },
+    }));
+    render(<ContextPanelAutoOpen sessionId={SESSION} />);
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.lastArtifact,
+      ).toBeNull(),
+    );
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.activeArtifact).toBeNull();
+    expect(panel.isOpen).toBe(false);
+  });
+
+  test("does not auto-open the artifact panel when the session has files", async () => {
     server.use(getListWorkspaceFilesMockHandler200(withFiles()));
     render(<ContextPanelAutoOpen sessionId={SESSION} />);
-    await waitFor(() =>
-      expect(
-        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
-      ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
-    );
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  test("skips newer internal tool outputs and opens the real generated file", async () => {
-    server.use(
-      getListWorkspaceFilesMockHandler200(withToolOutputAndRealFile()),
-    );
-    render(<ContextPanelAutoOpen sessionId={SESSION} />);
-    await waitFor(() =>
-      expect(
-        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
-      ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
-    );
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  test("still opens a deliverable whose name looks like an SDK tool id", async () => {
-    server.use(
-      getListWorkspaceFilesMockHandler200(withSdkLookalikeDeliverable()),
-    );
-    render(<ContextPanelAutoOpen sessionId={SESSION} />);
-    await waitFor(() =>
-      expect(
-        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
-      ).toBe("eeeeeeee-0000-0000-0000-000000000005"),
-    );
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-  });
-
-  test("leaves the panel closed when every generated file is an internal tool output", async () => {
-    server.use(getListWorkspaceFilesMockHandler200(withOnlyToolOutput()));
-    render(
-      <>
-        <ContextPanelAutoOpen sessionId={SESSION} />
-        <LoadedFilesProbe sessionId={SESSION} />
-      </>,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("generated-count").textContent).toBe("3"),
-    );
-    expect(
-      useCopilotUIStore.getState().artifactPanel.activeArtifact,
-    ).toBeNull();
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(false);
+    expect(panel.activeArtifact).toBeNull();
   });
 });

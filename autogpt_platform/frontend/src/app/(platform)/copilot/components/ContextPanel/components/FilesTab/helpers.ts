@@ -18,7 +18,7 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
 // the backend classifier requires (`_SDK_TOOL_RESULT_RE` in
 // backend/copilot/context.py). Demanding both keeps a deliverable merely named
 // `mcp_config.json`, or one written under a user's own `tool-outputs/` folder,
-// eligible for auto-open.
+// eligible to stand as the session's latest document.
 const SDK_TOOL_RESULT_PATH =
   /(?:^|\/)tool-(?:results|outputs)\/(?:toolu|mcp)_[\w-]+\.json$/i;
 

@@ -9,13 +9,14 @@ import {
   getGetV1ListCredentialsQueryKey,
   postV1CreateCredentials,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import { apiKeyConnectSchema, type ApiKeyConnectFormValues } from "./schema";
 
 interface Args {
   provider: string;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 function toUnixSeconds(value: string | undefined): number | undefined {
@@ -42,7 +43,7 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
       // Trust HTTP semantics rather than pinning to a specific 2xx code —
       // proxies / future backend changes can swap 201 ↔ 200 without this
       // breaking and silently failing in production.
-      await postV1CreateCredentials(provider, {
+      const created = await postV1CreateCredentials(provider, {
         provider,
         type: "api_key",
         title: values.title,
@@ -54,7 +55,10 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListCredentialsQueryKey(),
       });
-      onSuccess();
+      // Narrow by shape rather than by status code: the comment above keeps
+      // this flow indifferent to a 201 ↔ 200 swap, and only the success
+      // payload carries an id.
+      onSuccess("id" in created.data ? created.data : undefined);
     } catch (error) {
       toast({
         title: "Couldn't save API key",

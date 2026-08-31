@@ -597,7 +597,7 @@ Choose `codex_app_server` to use a connected ChatGPT plan. This path requires ma
 |-------|-------------|------|----------|
 | prompt | Primary coding request passed to the Codex model. | str | Yes |
 | system_prompt | Optional instructions passed to the selected Codex transport. | str | No |
-| transport | Use an OpenAI API key or your connected ChatGPT plan through Codex App Server. | "openai_api" \| "codex_app_server" | No |
+| transport | Use an OpenAI API key, or your connected ChatGPT subscription through Codex App Server if supported by your plan. | "openai_api" \| "codex_app_server" | No |
 | model | OpenAI API transport only. Codex App Server selects the current subscription model from its live model catalog. | "gpt-5.6-sol" \| "gpt-5.6-terra" \| "gpt-5.6-luna" \| "gpt-5.3-codex" \| "gpt-5.1-codex" | No |
 | reasoning_effort | Controls the selected transport's reasoning effort. OpenAI API does not support 'ultra'; select 'none' to omit reasoning config. | "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
 | max_output_tokens | OpenAI API transport only: upper bound for generated tokens (hard limit 128,000). Codex App Server uses its model and plan limits. | int | No |
@@ -714,7 +714,9 @@ Uses AI to intelligently decide what tool to use.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. It can execute connected tools and feed their results back to the model, creating autonomous reasoning loops.
+
+In the default `built_in` execution mode, configure `agent_mode_max_iterations` to control loop behavior: `0` makes one decision and yields tool calls for external execution, `-1` loops until finished, and a positive number caps the iterations. The block outputs tool calls or a finished message. The `extended_thinking` mode manages its own loop and ignores this iteration setting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -746,7 +748,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Autonomous Agents**: Build agents that can independently decide which tools to use for a task.
+
+**Dynamic Workflows**: Create workflows that adapt their execution path based on model decisions.
+
+**Multi-Tool Orchestration**: Let a model coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---

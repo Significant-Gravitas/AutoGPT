@@ -7,6 +7,20 @@ set -Eeuo pipefail
 
 readonly PUBLIC_URL=http://localhost:3300
 readonly EXPECTED_CODEX_TEMP_ROOT=/dev/shm/autogpt-codex
+# Unraid ships Docker's stock stop timeout and operators must not have to
+# raise it host-wide to run the appliance, so shutdown has to finish inside
+# it. Stopping with a generous timeout would pass here while a default host
+# SIGKILLs the container at 10s (exit 137) with the data stores still up.
+readonly STOCK_DOCKER_STOP_TIMEOUT=10
+# Exit code alone is a cliff: it only changes at the timeout, so a shutdown
+# drifting from 6s to 9.9s passes identically to a fast one until it tips over
+# to 137 on a slower host. Gate on the margin too, so erosion is caught here
+# rather than by an operator. This is the same ceiling the unit test applies --
+# DOCKER_STOP_TIMEOUT_SECONDS minus SHUTDOWN_MARGIN_SECONDS in
+# single-container/tests/test_supervisor_config.py -- derived here rather than
+# written down twice with different values.
+readonly SHUTDOWN_MARGIN_SECONDS=1
+readonly MAX_CLEAN_STOP_SECONDS=$((STOCK_DOCKER_STOP_TIMEOUT - SHUTDOWN_MARGIN_SECONDS))
 readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
@@ -36,7 +50,7 @@ cleanup() {
   fi
   for container in "${CONTAINER_NAME}" "${NEGATIVE_CONTAINER_NAME}"; do
     if docker container inspect "${container}" >/dev/null 2>&1; then
-      docker stop --timeout 360 "${container}" >/dev/null 2>&1 || true
+      docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${container}" >/dev/null 2>&1 || true
       docker rm --force --volumes "${container}" >/dev/null 2>&1 || true
     fi
   done
@@ -45,6 +59,28 @@ cleanup() {
   fi
   rm -f "${HEADERS_FILE}" "${AUTH_COOKIE_FILE}"
   exit "${result}"
+}
+
+assert_clean_stop() {
+  local reason="$1"
+  local started elapsed exit_code
+  # Integer SECONDS truncates at both ends, so a real 8.9s stop reads as 8.
+  started="${EPOCHREALTIME}"
+  docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${CONTAINER_NAME}" >/dev/null
+  elapsed="$(awk -v a="${started}" -v b="${EPOCHREALTIME}" 'BEGIN { printf "%.2f", b - a }')"
+  exit_code="$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
+  [[ "${exit_code}" == 0 ]] || {
+    echo "container did not exit cleanly ${reason}: exit ${exit_code} after" \
+      "${elapsed}s against the stock ${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2
+    return 1
+  }
+  awk -v e="${elapsed}" -v m="${MAX_CLEAN_STOP_SECONDS}" 'BEGIN { exit !(e <= m) }' || {
+    echo "container exited cleanly ${reason} but took ${elapsed}s, over the" \
+      "${MAX_CLEAN_STOP_SECONDS}s budget, close to the stock" \
+      "${STOCK_DOCKER_STOP_TIMEOUT}s timeout" >&2
+    return 1
+  }
+  echo "clean stop ${reason} in ${elapsed}s"
 }
 
 trap cleanup EXIT
@@ -175,7 +211,7 @@ assert_pinned_topology_environment() {
   local process_env
   pid="$(
     docker exec "${CONTAINER_NAME}" \
-      supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf pid rest
+      supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf pid runtime:rest
   )"
   [[ "${pid}" =~ ^[0-9]+$ ]]
   # Docker Desktop can deny cross-UID /proc reads even to container root.
@@ -209,17 +245,17 @@ assert_frontend_database_isolation() {
   next_pid="$(
     docker exec "${CONTAINER_NAME}" \
       supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-      pid next
+      pid runtime:next
   )"
   rest_pid="$(
     docker exec "${CONTAINER_NAME}" \
       supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-      pid rest
+      pid runtime:rest
   )"
   nginx_pid="$(
     docker exec "${CONTAINER_NAME}" \
       supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-      pid nginx
+      pid runtime:nginx
   )"
   [[ "${next_pid}" =~ ^[0-9]+$ && "${rest_pid}" =~ ^[0-9]+$ && \
     "${nginx_pid}" =~ ^[0-9]+$ ]]
@@ -518,7 +554,7 @@ assert_codex_runtime_contract() {
     return 1
   }
 
-  for process_name in rest executor copilot-executor; do
+  for process_name in runtime:rest runtime:executor runtime:copilot-executor; do
     process_id="$(
       docker exec "${CONTAINER_NAME}" \
         supervisorctl \
@@ -756,7 +792,7 @@ wait_for_falkordb_restart() {
     current_pid="$(
       docker exec "${CONTAINER_NAME}" \
         supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-        pid falkordb 2>/dev/null || true
+        pid state:falkordb 2>/dev/null || true
     )"
     if [[ "${current_pid}" =~ ^[0-9]+$ ]] &&
       [[ "${current_pid}" != "${previous_pid}" ]] &&
@@ -868,11 +904,7 @@ first_hash="$(runtime_config_hash)"
 assert_runtime_config_mode
 assert_frontend_database_isolation
 
-docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null
-[[ "$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")" == 0 ]] || {
-  echo "container did not exit cleanly after docker stop" >&2
-  exit 1
-}
+assert_clean_stop "after docker stop"
 docker rm "${CONTAINER_NAME}" >/dev/null
 
 # A persistent user config must not be able to move internal listeners or bind
@@ -914,7 +946,7 @@ assert_request_tokens_absent_from_logs
 falkordb_pid="$(
   docker exec "${CONTAINER_NAME}" \
     supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-    pid falkordb
+    pid state:falkordb
 )"
 [[ "${falkordb_pid}" =~ ^[0-9]+$ ]]
 falkordb_restart_count="$(
@@ -934,7 +966,7 @@ restart_count="$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}"
 docker exec "${CONTAINER_NAME}" \
   supervisorctl \
   -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-  stop nginx >/dev/null
+  stop runtime:nginx >/dev/null
 wait_for_automatic_restart "$((restart_count + 1))"
 [[ "$(runtime_config_hash)" == "${first_hash}" ]] || {
   echo "runtime config changed across automatic Docker restart" >&2
@@ -946,11 +978,7 @@ assert_redirect "${PUBLIC_URL}/copilot" --resolve localhost:3300:127.0.0.1
 assert_falkordb_binary_contract
 assert_memory_contract cleanup
 
-docker stop --timeout 360 "${CONTAINER_NAME}" >/dev/null
-[[ "$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")" == 0 ]] || {
-  echo "container did not exit cleanly after the restart test" >&2
-  exit 1
-}
+assert_clean_stop "after the restart test"
 docker rm "${CONTAINER_NAME}" >/dev/null
 
 echo "single-container smoke test passed for ${SMOKE_PLATFORM}"

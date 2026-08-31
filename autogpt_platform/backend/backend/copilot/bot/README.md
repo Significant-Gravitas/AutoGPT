@@ -1,6 +1,7 @@
 # CoPilot Bot
 
-Multi-platform chat bot that bridges AutoGPT to Discord, Slack, and Telegram (Teams/WhatsApp next).
+Multi-platform chat bot that bridges AutoGPT to Discord, Slack, Telegram, and
+Microsoft Teams (WhatsApp next).
 
 ## Running
 
@@ -39,6 +40,7 @@ See `backend/.env.default` for the full list with documentation. Minimum setup:
 | `AUTOPILOT_BOT_DISCORD_TOKEN` | Discord bot token — enables the Discord (socket) adapter |
 | `AUTOPILOT_BOT_SLACK_TOKEN` + `AUTOPILOT_BOT_SLACK_SIGNING_SECRET` | Slack bot token + signing secret — set **both** to mount the Slack (webhook / Events API) adapter on the main backend API |
 | `AUTOPILOT_BOT_TELEGRAM_TOKEN` + `AUTOPILOT_BOT_TELEGRAM_WEBHOOK_SECRET` | Telegram BotFather token + webhook secret — set **both** to mount the Telegram (webhook / Bot API) adapter, then register the webhook once with `setWebhook` (see `.env.default`). Also disable group privacy mode via BotFather `/setprivacy` or the bot can't see @mentions in groups |
+| `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET` + `MICROSOFT_TENANT_ID` | Azure Bot registration — set **all three** to mount the Teams (webhook / Bot Connector) adapter, and point the bot's messaging endpoint at `/api/copilot-webhooks/teams/messages`. The tenant id is mandatory: new registrations are single-tenant only since 2025-07-31 |
 | `FRONTEND_BASE_URL` | Frontend base URL for link confirmation pages (shared with the rest of the backend) |
 | `REDIS_HOST` / `REDIS_PORT` | Session + thread subscription state + copilot stream subscription (inherited from the shared backend config) |
 | `PLATFORMLINKINGMANAGER_HOST` | DNS name of the `PlatformLinkingManager` service pod (cluster-internal RPC) |
@@ -72,13 +74,84 @@ bot/
     │   ├── signing.py       # HMAC-SHA256 request signature verification
     │   ├── text.py          # CommonMark → Slack mrkdwn
     │   └── app-manifest.yaml # Importable Slack app definition (scopes, events, commands)
-    └── telegram/       # WebhookAdapter — Telegram Bot API
-        ├── adapter.py       # Inbound updates route, sends, chat-model mapping
-        ├── api_client.py    # Thin httpx Bot API client (JSON + multipart + getFile)
+    ├── telegram/       # WebhookAdapter — Telegram Bot API
+    │   ├── adapter.py       # Inbound updates route, sends, chat-model mapping
+    │   ├── api_client.py    # Thin httpx Bot API client (JSON + multipart + getFile)
+    │   ├── commands.py      # Bot commands (/setup, /help, /unlink)
+    │   ├── config.py        # BotFather token + webhook secret + platform limits
+    │   └── text.py          # CommonMark → Telegram HTML
+    └── teams/          # WebhookAdapter — Bot Framework Connector
+        ├── adapter.py       # Inbound activities route, sends, conversation mapping
+        ├── api_client.py    # Bot Connector REST client (per-activity serviceUrl)
+        ├── auth.py          # Inbound JWT validation + outbound token minting
         ├── commands.py      # Bot commands (/setup, /help, /unlink)
-        ├── config.py        # BotFather token + webhook secret + platform limits
-        └── text.py          # CommonMark → Telegram HTML
+        ├── config.py        # App id + password + tenant id + platform limits
+        └── text.py          # CommonMark → Teams-flavoured markdown
 ```
+
+### Microsoft Teams notes
+
+Teams differs from the other platforms in ways worth knowing before debugging:
+
+- **Auth is a signed JWT, not an HMAC of the body.** The Connector's token
+  authenticates the *sender*, not the payload, so a valid token could be
+  replayed with any body. The `serviceUrl` claim binding in `auth.py` is what
+  closes that — note the wire claim is lowercase `serviceurl`.
+- **Replies go to the activity's `serviceUrl`**, not a fixed base URL, because
+  Microsoft routes each tenant/region to its own Connector host. That makes it
+  attacker-influenced input we attach a bearer token to, hence the host
+  allowlist.
+- **Single-tenant only.** Microsoft stopped issuing multi-tenant registrations
+  after 2025-07-31, so `MICROSOFT_TENANT_ID` is mandatory.
+- **No native slash commands.** In a channel the bot only receives messages
+  that @mention it — commands included, e.g. `@AutoGPT /setup`. A bare
+  `/setup` in a channel never reaches us.
+- **Group chats are not supported.** A `groupChat` carries no team identity to
+  bill against, so those activities are accepted and ignored (with a log line
+  saying so). Only `personal` chats and `channel` messages are handled.
+- **Delivery is at-most-once.** The route ACKs 200 and dispatches in a
+  background task, and the activity id is claimed in Redis before processing.
+  A dispatch failure or a replica recycle mid-turn therefore loses that turn,
+  and the Connector's own redelivery is deduped away by the claim. This trades
+  the Connector's retry for never double-answering a user; releasing the claim
+  on failure is the change to make if the balance should tip the other way.
+- **The learned `serviceUrl` map is per process.** The adapter rides the
+  N-replica API, so another replica handling the same conversation falls back
+  to the default public-cloud host. Fine while replies are reactive (the host
+  comes off the inbound activity) and DMs use the default; a proactive channel
+  send from a cold replica would 404 for a tenant Microsoft routes elsewhere,
+  so persist the mapping in Redis before enabling that.
+- **Mention matching is prefix-insensitive.** Teams spells a participant id
+  `28:<app-id>` in some places and bare in others; `_bot_identities` accepts
+  either, and also matches the activity's own `recipient.id`.
+
+#### Local testing without a tenant
+
+The [M365 Agents Playground](https://learn.microsoft.com/microsoftteams/platform/)
+simulates Teams on `localhost:56150` with no tenant, tunnel, or app
+registration — useful because sideloading a real app needs an M365 licence.
+It sends **no** Bot Framework JWT, so set `APP_ENV=local` and
+`AUTOPILOT_BOT_TEAMS_ALLOW_UNVERIFIED=true` to accept unsigned activities.
+Both gates are required; neither works on a deployed environment.
+
+When the backend runs in Docker, the Playground's loopback `serviceUrl` is
+rewritten to `host.docker.internal` so replies can reach it on the host
+(`auth.rewrite_loopback_for_container`) — also local-mode only.
+
+#### App package
+
+`adapters/teams/` holds the sideloadable app package: `manifest.json` plus
+`color.png` (192×192) and `outline.png` (32×32, transparent, monochrome).
+Replace both `<AZURE_BOT_APP_ID>` placeholders with the Azure Bot's app id,
+then zip the three files **flat** (no containing folder):
+
+```bash
+cd backend/copilot/bot/adapters/teams
+zip ../../../../../AutoGPT-teams.zip manifest.json color.png outline.png
+```
+
+Upload via Teams → Apps → Manage your apps → Upload an app. Sideloading needs
+an M365 licence and the tenant's app-upload policy enabled.
 
 **Connector taxonomy.** `PlatformAdapter` is the outbound contract the core
 handler speaks through. Concrete adapters extend one of two subtypes by how

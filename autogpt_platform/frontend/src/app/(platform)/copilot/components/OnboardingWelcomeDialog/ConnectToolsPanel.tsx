@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { ConnectMethodView } from "./ConnectMethodView";
+import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
 import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -101,6 +101,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                 onSelectMethod={setSelectedMethod}
                 apiKeyForm={apiKeyForm}
                 onApiKeySubmit={handleApiKeySubmit}
+                // Without this, approving on the phone drops the user back on
+                // the initial "Connect <provider>" screen, which reads as a
+                // failure. OAuth and API key both return to the list.
+                onDeviceAuthSuccess={handleBackToList}
               />
             </motion.div>
           ) : (

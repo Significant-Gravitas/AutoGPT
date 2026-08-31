@@ -2,9 +2,26 @@
 
 from unittest.mock import patch
 
-from backend.api.features.platform_linking.registry import enabled_platforms
+import pytest
+
+from backend.api.features.platform_linking.registry import (
+    enabled_platforms,
+    server_noun_for,
+)
 
 _REG = "backend.api.features.platform_linking.registry"
+
+
+@pytest.fixture(autouse=True)
+def _teams_off():
+    """Hide Teams unless a test opts in.
+
+    Teams is the one platform whose gate isn't purely credential-based: the
+    local Playground bypass enables it, so a developer running with
+    APP_ENV=local would otherwise see it leak into every assertion here.
+    """
+    with patch(f"{_REG}.teams_config.is_configured", return_value=False):
+        yield
 
 
 def _slack_off():
@@ -174,4 +191,31 @@ def test_telegram_hidden_without_webhook_secret():
         patch(f"{_REG}.telegram_config.get_bot_token", return_value="123:abc"),
         patch(f"{_REG}.telegram_config.get_webhook_secret", return_value=""),
     ):
+        assert enabled_platforms() == []
+
+
+def test_teams_appears_without_add_bot_url_when_configured():
+    # Teams is installed by sideloading an app package, so there is no invite
+    # URL to build — the card renders without a button.
+    with (
+        _discord_off(),
+        _slack_off(),
+        _telegram_off(),
+        patch(f"{_REG}.teams_config.is_configured", return_value=True),
+    ):
+        platforms = enabled_platforms()
+
+    assert [p.platform for p in platforms] == ["TEAMS"]
+    teams = platforms[0]
+    assert teams.display_name == "Microsoft Teams"
+    assert teams.icon == "teams.png"
+    assert teams.add_bot_url is None
+    # Teams calls a server a team, and the bot's own copy already says so
+    # (adapters/teams/commands.py) — the API surface has to agree.
+    assert teams.server_noun == "team"
+    assert server_noun_for("TEAMS") == "team"
+
+
+def test_teams_hidden_when_not_configured():
+    with _discord_off(), _slack_off(), _telegram_off():
         assert enabled_platforms() == []

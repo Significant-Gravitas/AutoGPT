@@ -9,6 +9,7 @@ from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import (
     APIKeyCredentials,
+    CredentialsFieldInfo,
     CredentialsMetaInput,
     NodeExecutionStats,
     OAuth2Credentials,
@@ -155,6 +156,128 @@ async def test_reference_only_credential_is_validated_without_outer_lease():
     assert "credential_leases" not in captured
 
 
+def _discriminated_reference_block(
+    captured: dict[str, object],
+    *,
+    required: bool = False,
+) -> MagicMock:
+    block = _block_with_credentials(
+        {"codex_credentials": CodexCredentialsInput},
+        captured,
+        reference_only_fields={"codex_credentials"},
+    )
+    block.input_schema.get_credentials_fields_info.return_value = {
+        "codex_credentials": CredentialsFieldInfo(
+            credentials_provider=frozenset({ProviderName.CODEX}),
+            credentials_types=frozenset({"oauth2"}),
+            credential_reference_only=True,
+            discriminator="transport",
+            discriminator_mapping={"codex_app_server": ProviderName.CODEX},
+        )
+    }
+    block.input_schema.get_required_fields.return_value = (
+        {"codex_credentials"} if required else set()
+    )
+    return block
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport_in_defaults", [False, True])
+async def test_platform_transport_ignores_attached_codex_credential(
+    transport_in_defaults: bool,
+):
+    manager = MagicMock()
+    manager.get = AsyncMock()
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, Any] = {}
+    block = _discriminated_reference_block(captured)
+    gate = AsyncMock()
+    node = _node(block)
+    inputs: dict[str, object] = {"codex_credentials": _credential_metadata("cred-1")}
+    if transport_in_defaults:
+        node.input_default = {"transport": "platform"}
+    else:
+        inputs["transport"] = "platform"
+
+    validation = MagicMock(side_effect=lambda _node, inputs, **_kwargs: (inputs, None))
+    with (
+        patch("backend.executor.manager.enforce_codex_access", new=gate),
+        patch("backend.executor.manager.validate_exec", new=validation),
+    ):
+        outputs = [
+            item
+            async for item in execute_node(
+                node,
+                _entry(inputs),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    assert validation.call_args.args[1]["codex_credentials"] is None
+    manager.get.assert_not_awaited()
+    manager.acquire_lease.assert_not_awaited()
+    gate.assert_not_awaited()
+    assert captured["input_data"]["codex_credentials"] is None
+    assert "codex_credentials" not in captured
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", [None, "codex_app_server"])
+async def test_legacy_and_codex_transports_resolve_attached_codex_credential(
+    transport: str | None,
+):
+    credentials = _codex_credentials("cred-1")
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=credentials)
+    manager.acquire_lease = AsyncMock()
+    captured: dict[str, Any] = {}
+    block = _discriminated_reference_block(captured)
+    gate = AsyncMock()
+    inputs: dict[str, object] = {"codex_credentials": _credential_metadata("cred-1")}
+    if transport is not None:
+        inputs["transport"] = transport
+
+    with patch("backend.executor.manager.enforce_codex_access", new=gate):
+        outputs = [
+            item
+            async for item in execute_node(
+                _node(block),
+                _entry(inputs),
+                SimpleNamespace(creds_manager=manager),
+            )
+        ]
+
+    assert outputs == [("response", "ok")]
+    manager.get.assert_awaited_once_with("user-1", "cred-1")
+    gate.assert_awaited_once_with("user-1")
+    assert captured["input_data"]["codex_credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_required_unmapped_credential_still_fails_closed():
+    manager = MagicMock()
+    manager.get = AsyncMock(return_value=None)
+    manager.acquire_lease = AsyncMock()
+    block = _discriminated_reference_block({}, required=True)
+
+    with pytest.raises(ValueError, match="Credentials #cred-1 .* not found"):
+        await anext(
+            execute_node(
+                _node(block),
+                _entry(
+                    {
+                        "transport": "platform",
+                        "codex_credentials": _credential_metadata("cred-1"),
+                    }
+                ),
+                SimpleNamespace(creds_manager=manager),
+            )
+        )
+
+    manager.get.assert_awaited_once_with("user-1", "cred-1")
+
+
 @pytest.mark.asyncio
 async def test_codex_credential_is_rejected_and_released_without_entitlement():
     credentials = _codex_credentials("cred-1")
@@ -225,9 +348,15 @@ def _block_with_credentials(
     reference_only_fields = reference_only_fields or set()
     input_schema = MagicMock()
     input_schema.get_credentials_fields.return_value = credential_fields
+    # A real `CredentialsFieldInfo`, not a stand-in carrying only the one
+    # attribute the test happens to need: `execute_node` reads whatever the
+    # field declares, so a partial fake fails with an AttributeError the moment
+    # the executor consults another one.
     input_schema.get_credentials_fields_info.return_value = {
-        field_name: SimpleNamespace(
-            credential_reference_only=field_name in reference_only_fields
+        field_name: CredentialsFieldInfo(
+            credentials_provider=frozenset({ProviderName.CODEX}),
+            credentials_types=frozenset({"oauth2"}),
+            credential_reference_only=field_name in reference_only_fields,
         )
         for field_name in credential_fields
     }
@@ -251,6 +380,7 @@ def _block_with_credentials(
 def _node(block: MagicMock) -> MagicMock:
     node = MagicMock()
     node.block = block
+    node.input_default = {}
     return node
 
 

@@ -1,8 +1,9 @@
 "use client";
 
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { FlashIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { workflowNeedsSetup } from "../../helpers";
@@ -61,13 +62,13 @@ export function ExpertWorkflowsSection({
                 ) : null}
               </div>
               {workflowNeedsSetup(workflow) ? (
-                <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
+                <Badge variant="warning" size="small" className="shrink-0">
                   Needs setup
-                </span>
+                </Badge>
               ) : workflow.schedule_cron ? (
-                <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">
-                  {humanizeCronExpression(workflow.schedule_cron)}
-                </span>
+                <Badge variant="info" size="small" className="shrink-0">
+                  {safeHumanizeCronExpression(workflow.schedule_cron)}
+                </Badge>
               ) : null}
             </div>
           ))}

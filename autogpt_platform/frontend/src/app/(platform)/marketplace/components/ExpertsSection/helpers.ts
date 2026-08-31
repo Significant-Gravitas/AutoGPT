@@ -5,6 +5,8 @@ import {
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
+import { cn } from "@/lib/utils";
 
 export interface ExpertAccent {
   wash: string;
@@ -63,4 +65,25 @@ export function getExpertAccent(role: string): ExpertAccent {
     if (pattern.test(role)) return ACCENTS[key];
   }
   return ACCENTS.zinc;
+}
+
+/** An expert raised through /raise carries the color its owner picked, which
+ *  outranks the role guess. Marketplace templates have no color, so they keep
+ *  falling back to the role accent. The role icon is never colour-derived. */
+export function getRaisedExpertAccent(
+  role: string,
+  color: string | null | undefined,
+): ExpertAccent {
+  const roleAccent = getExpertAccent(role);
+  const option = findColorOption(color ?? null);
+  if (!option) return roleAccent;
+
+  const wash = cn("bg-gradient-to-b to-transparent", option.washFromClassName);
+  return {
+    ...roleAccent,
+    wash,
+    washWide: wash,
+    pill: cn("border", option.bubbleClassName, option.textClassName),
+    icon: option.textClassName,
+  };
 }

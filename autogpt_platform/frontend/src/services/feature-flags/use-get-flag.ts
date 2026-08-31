@@ -170,12 +170,23 @@ const ARRAY_TYPED_FLAGS: ReadonlySet<Flag> = new Set([
   Flag.COPILOT_BOT_PLATFORMS,
 ]);
 
+// Master local-dev switch: ``NEXT_PUBLIC_FORCE_ALL_FLAGS=true`` turns every
+// boolean flag on without listing them individually. A per-flag
+// ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` still wins, so one flag can be excluded
+// with ``=false`` while the rest stay forced. Array/JSON-typed flags keep
+// their LaunchDarkly / default values.
+const isForceAllFlags = ["1", "true", "yes", "on"].includes(
+  (process.env.NEXT_PUBLIC_FORCE_ALL_FLAGS ?? "").trim().toLowerCase(),
+);
+
 export function envFlagOverride<T extends Flag>(
   flag: T,
 ): FlagValues[T] | undefined {
   if (ARRAY_TYPED_FLAGS.has(flag)) return undefined;
   const raw = readEnvOverride(flag);
-  if (raw === undefined) return undefined;
+  if (raw === undefined) {
+    return isForceAllFlags ? (true as FlagValues[T]) : undefined;
+  }
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {
     return true as FlagValues[T];
@@ -183,7 +194,7 @@ export function envFlagOverride<T extends Flag>(
   if (["0", "false", "no", "off"].includes(normalized)) {
     return false as FlagValues[T];
   }
-  return undefined;
+  return isForceAllFlags ? (true as FlagValues[T]) : undefined;
 }
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {

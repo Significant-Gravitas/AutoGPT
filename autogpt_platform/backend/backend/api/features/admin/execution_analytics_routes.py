@@ -25,10 +25,8 @@ from backend.executor.activity_status_generator import (
     generate_activity_status_for_execution,
 )
 from backend.executor.manager import get_db_async_client
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 
 class ExecutionAnalyticsRequest(BaseModel):
@@ -217,9 +215,9 @@ async def generate_execution_analytics(
     Generate activity summaries and correctness scores for graph executions.
 
     This endpoint:
-    1. Fetches all completed executions matching the criteria
-    2. Identifies executions missing activity_status or correctness_score
-    3. Generates missing data using AI in batches
+    1. Fetches all terminal executions matching the criteria
+    2. Identifies executions missing a complete activity analysis
+    3. Generates missing data in batches, using deterministic results where available
     4. Updates the database with new stats
     5. Returns a detailed report of the analytics operation
     """
@@ -251,7 +249,6 @@ async def generate_execution_analytics(
         # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
-            # Skip if we should skip existing analytics and both activity_status and correctness_score exist
             if (
                 request.skip_existing
                 and execution.stats
@@ -271,6 +268,7 @@ async def generate_execution_analytics(
         results = []
         successful_count = 0
         failed_count = 0
+        skipped_count = 0
 
         # Process executions that need analytics generation
         if executions_to_process:
@@ -294,6 +292,8 @@ async def generate_execution_analytics(
                         successful_count += 1
                     elif result.status == "failed":
                         failed_count += 1
+                    elif result.status == "skipped":
+                        skipped_count += 1
 
                 # Small delay between batches to avoid overwhelming the LLM API
                 if batch_idx < total_batches - 1:  # Don't delay after the last batch
@@ -323,13 +323,14 @@ async def generate_execution_analytics(
                     ended_at=execution.ended_at,
                 )
             )
+            skipped_count += 1
 
         response = ExecutionAnalyticsResponse(
             total_executions=len(executions),
             processed_executions=len(executions_to_process),
             successful_analytics=successful_count,
             failed_analytics=failed_count,
-            skipped_executions=len(executions) - len(executions_to_process),
+            skipped_executions=skipped_count,
             results=results,
         )
 
@@ -349,9 +350,6 @@ async def _process_batch(
     executions, request: ExecutionAnalyticsRequest, db_client
 ) -> list[ExecutionAnalyticsResult]:
     """Process a batch of executions concurrently."""
-
-    if not settings.secrets.openai_internal_api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
     async def process_single_execution(execution) -> ExecutionAnalyticsResult:
         try:

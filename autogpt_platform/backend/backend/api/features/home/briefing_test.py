@@ -578,3 +578,40 @@ def test_the_job_and_home_describe_the_same_run_identically() -> None:
     )
 
     assert home.outcomes == anchored.outcomes
+
+
+def test_persisted_briefing_carries_the_stored_narrative() -> None:
+    stored = _stored(_stored_item("stored-run")).model_copy(
+        update={"narrative": "I cleared your inbox and found one thing to decide."}
+    )
+
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+        persisted=stored,
+    )
+
+    assert briefing.narrative == ("I cleared your inbox and found one thing to decide.")
+
+
+def test_live_briefing_has_no_narrative() -> None:
+    """Nothing generated it — home never makes the call itself."""
+    briefing = compose_briefing(
+        now=NOW,
+        executions=[],
+        expert_by_id={},
+        agent_by_graph=TRIAGE,
+    )
+
+    assert briefing.narrative is None
+
+
+def test_without_summaries_drops_the_narrative() -> None:
+    """The narrative is written from the summaries, so the same gate hides it."""
+    stored = _stored(_stored_item("stored-run")).model_copy(
+        update={"narrative": "I read all 12 of your emails."}
+    )
+
+    assert without_summaries(stored).narrative is None
