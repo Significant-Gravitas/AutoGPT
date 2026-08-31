@@ -4405,6 +4405,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
+    # Strip any user-injected <user_context> tags on every turn.
+    # Only the server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Cleared ahead of identity guards so user answers resolve pending questions
+    # regardless of subsequent identity build/organization validation.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
+
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,
@@ -4452,17 +4463,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # row(s) below _stamp_turn_messages' start_index — unstamped — exactly
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
-
-    # Strip any user-injected <user_context> tags on every turn.
-    # Only the server-injected prefix on the first message is trusted.
-    if message:
-        message = strip_user_context_tags(message)
-
-    # A reply is the only thing that clears a Home "Needs You" question.
-    # Unconditional on the append result: the HTTP path pre-saves the user
-    # message, so the append is a no-op dedup there.
-    if is_user_message and message and message.strip():
-        await clear_pending_question(session)
 
     _user_message_appended = maybe_append_user_message(
         session, message, is_user_message

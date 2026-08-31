@@ -420,3 +420,30 @@ async def test_clearing_a_session_with_no_question_touches_nothing(
         await clear_pending_question(session)
 
     db.clear_session_pending_question.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_clearing_pending_question_clears_metadata_and_persists(
+    tool: AskQuestionTool, session: ChatSession
+):
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock()
+    db.clear_session_pending_question = AsyncMock()
+    with (
+        patch("backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)),
+        patch("backend.copilot.model.chat_db", MagicMock(return_value=db)),
+    ):
+        await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[{"question": "Confirm choice?"}],
+        )
+        assert session.metadata.pending_question is not None
+
+        # Replying in the thread invokes clear_pending_question
+        await clear_pending_question(session)
+        assert session.metadata.pending_question is None
+        db.clear_session_pending_question.assert_awaited_once_with(
+            session.session_id, session.user_id
+        )
+
