@@ -62,19 +62,43 @@ export function useExpertIntegrationsSection(expertId: string) {
     },
   });
 
+  function openAdd() {
+    setIsAdding(true);
+  }
+
+  function closeAdd() {
+    setIsAdding(false);
+  }
+
+  function addIntegration(credentialId: string) {
+    grant({ expertId, data: { credential_ids: [credentialId] } });
+  }
+
+  function removeIntegration(credentialId: string) {
+    revoke({ expertId, credentialId });
+  }
+
+  async function refetch() {
+    await Promise.all([grantedQuery.refetch(), connectedQuery.refetch()]);
+  }
+
   return {
     granted,
     grantable,
+    // Both queries are reported separately: a failed connected-credentials read
+    // must not claim the expert has no access, and a failed granted read must
+    // not claim there is nothing left to add. Collapsing either into an empty
+    // array would render a confident lie.
     isLoading: grantedQuery.isLoading,
     isError: grantedQuery.isError,
-    refetch: grantedQuery.refetch,
+    isGrantableLoading: connectedQuery.isLoading,
+    isGrantableError: connectedQuery.isError,
+    refetch,
     isAdding,
-    openAdd: () => setIsAdding(true),
-    closeAdd: () => setIsAdding(false),
-    addIntegration: (credentialId: string) =>
-      grant({ expertId, data: { credential_ids: [credentialId] } }),
-    removeIntegration: (credentialId: string) =>
-      revoke({ expertId, credentialId }),
+    openAdd,
+    closeAdd,
+    addIntegration,
+    removeIntegration,
     isGranting,
     isRevoking,
   };

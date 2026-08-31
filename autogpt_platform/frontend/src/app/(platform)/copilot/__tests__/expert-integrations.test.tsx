@@ -1,7 +1,12 @@
 import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
 import { server } from "@/mocks/mock-server";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadHeader } from "../components/ChatMessagesContainer/components/ThreadHeader";
@@ -93,6 +98,22 @@ describe("expert integrations in the thread header", () => {
     expect(screen.getByText("linkedin account")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /Manage what Maria can access/ }),
+    ).toBeDefined();
+  });
+
+  it("keeps the integration's name when its logo fails to load", async () => {
+    server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
+
+    renderHeader();
+
+    const cluster = await screen.findByTestId("expert-integrations");
+    const logo = within(cluster).getByRole("img", { name: "Linkedin" });
+    fireEvent.error(logo);
+
+    // The PNG is missing for plenty of providers, so the fallback glyph must
+    // still announce which integration it stands for.
+    expect(
+      within(cluster).getByRole("img", { name: "Linkedin" }),
     ).toBeDefined();
   });
 

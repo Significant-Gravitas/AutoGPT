@@ -50,18 +50,20 @@ async def _user_credentials(user_id: str) -> list[Credentials]:
 
 async def _derive_from_workflows(
     user_id: str, expert: prisma.models.Expert
-) -> dict[str, str]:
+) -> tuple[dict[str, str], bool]:
     """Credential id → provider for everything this expert's workflows resolve to.
 
-    Best-effort per workflow: a graph that fails to load contributes nothing
-    rather than sinking the whole seed, because the alternative is an expert
-    seeded with an empty allow-list — which enforcement would read as "reaches
-    nothing" and quietly break every run it has.
+    Returns ``(derived, is_complete)``. ``is_complete`` is False when any
+    workflow failed to resolve, which keeps the seed pending: a transient
+    graph-load failure must not be frozen in as "this expert reaches nothing",
+    because enforcement would then block every run it has until the user
+    noticed and re-granted by hand.
     """
     from backend.copilot.tools.utils import match_user_credentials_to_graph
     from backend.data.graph import get_graph
 
     derived: dict[str, str] = {}
+    is_complete = True
     for workflow in expert.Workflows or []:
         library_agent = workflow.LibraryAgent
         if library_agent is None:
@@ -73,26 +75,36 @@ async def _derive_from_workflows(
                 user_id,
                 include_subgraphs=True,
             )
+            # A workflow whose graph is gone resolves to nothing and always
+            # will; that is a complete answer, not a failure to retry.
             if graph is None:
                 continue
             matched, _ = await match_user_credentials_to_graph(user_id, graph)
         except Exception:
             logger.warning(
                 f"Could not derive credentials for workflow #{workflow.id} on "
-                f"expert #{expert.id}; skipping it",
+                f"expert #{expert.id}; leaving the seed pending",
                 exc_info=True,
             )
+            is_complete = False
             continue
         for meta in matched.values():
             if not is_system_credential(meta.id):
                 derived[meta.id] = str(meta.provider)
-    return derived
+    return derived, is_complete
 
 
 async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
+    """Seed the allow-list from the expert's workflows, once.
+
+    An incomplete derivation writes what it found but leaves the expert
+    unstamped, so the next read retries the workflows that failed. Re-deriving
+    is safe because it only ever adds grants — see ``_stamp_seeded`` for the one
+    case where that is not good enough.
+    """
     if expert.credentialsSeededAt is not None:
         return
-    derived = await _derive_from_workflows(user_id, expert)
+    derived, is_complete = await _derive_from_workflows(user_id, expert)
     if derived:
         await prisma.models.ExpertCredential.prisma().create_many(
             data=[
@@ -105,11 +117,25 @@ async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
             ],
             skip_duplicates=True,
         )
+    if not is_complete:
+        return
     # Stamped even when nothing was derived: an expert with no workflows has
     # legitimately been offered nothing, and re-deriving on every read would
     # pay for a graph load per workflow on every header render.
+    await _stamp_seeded(expert.id)
+
+
+async def _stamp_seeded(expert_id: str) -> None:
+    """Mark the allow-list as curated, so seeding never runs again.
+
+    Re-seeding is additive, so a pending seed can never undo a *grant* — but it
+    can undo a *revoke* by re-deriving the credential the user just removed.
+    Revoking therefore finalizes the seed even if derivation never completed:
+    an expert missing a grant is a visible, fixable problem, while one that
+    silently regains access the user revoked is a broken promise.
+    """
     await prisma.models.Expert.prisma().update_many(
-        where={"id": expert.id, "credentialsSeededAt": None},
+        where={"id": expert_id, "credentialsSeededAt": None},
         data={"credentialsSeededAt": datetime.now(timezone.utc)},
     )
 
@@ -204,6 +230,9 @@ async def revoke_expert_credential(
     await prisma.models.ExpertCredential.prisma().delete_many(
         where={"expertId": expert_id, "credentialId": credential_id}
     )
+    # Finalize even if the seed was left pending by a failed derivation, or the
+    # next read would re-derive exactly the credential just revoked.
+    await _stamp_seeded(expert_id)
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
 
 

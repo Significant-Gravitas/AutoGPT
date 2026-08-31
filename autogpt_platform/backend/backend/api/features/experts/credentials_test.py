@@ -1,5 +1,6 @@
 """Tests for per-expert credential grants and the enforcement they drive."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,6 +8,7 @@ import pytest_mock
 from pydantic import SecretStr
 
 from backend.api.features.experts.credentials import (
+    _derive_from_workflows,
     _to_refs,
     filter_credentials_for_expert,
 )
@@ -83,6 +85,66 @@ def test_filter_with_no_grants_keeps_nothing_user_owned():
     credential = _api_key_credential("cred-1", "linkedin")
 
     assert filter_credentials_for_expert([credential], set()) == []
+
+
+@pytest.mark.asyncio
+async def test_derivation_reports_incomplete_when_a_workflow_fails(
+    mocker: pytest_mock.MockFixture,
+):
+    """A transient graph-load failure must leave the seed pending.
+
+    Stamping here would freeze an under-seeded allow-list in place, and
+    enforcement reads that as "reaches nothing" — blocking every run the
+    expert has until someone re-granted by hand.
+    """
+    mocker.patch("backend.data.graph.get_graph", side_effect=RuntimeError("db is down"))
+    expert = SimpleNamespace(
+        id="expert-1",
+        Workflows=[
+            SimpleNamespace(
+                id="wf-1",
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=1),
+            )
+        ],
+    )
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {}
+    assert is_complete is False
+
+
+@pytest.mark.asyncio
+async def test_a_workflow_whose_graph_is_gone_still_counts_as_complete(
+    mocker: pytest_mock.MockFixture,
+):
+    """A missing graph resolves to nothing and always will — retrying it every
+    read would cost a graph load per header render forever."""
+    mocker.patch("backend.data.graph.get_graph", return_value=None)
+    expert = SimpleNamespace(
+        id="expert-1",
+        Workflows=[
+            SimpleNamespace(
+                id="wf-1",
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=1),
+            )
+        ],
+    )
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {}
+    assert is_complete is True
+
+
+@pytest.mark.asyncio
+async def test_an_expert_with_no_workflows_seeds_completely():
+    expert = SimpleNamespace(id="expert-1", Workflows=[])
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {}
+    assert is_complete is True
 
 
 @pytest.mark.asyncio

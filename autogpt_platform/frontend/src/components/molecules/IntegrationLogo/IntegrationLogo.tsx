@@ -29,11 +29,16 @@ export function IntegrationLogo({
   const [failed, setFailed] = useState(false);
   const src = integrationIconSrc(provider);
 
+  // The fallback keeps the caller's label: a provider whose PNG is missing is
+  // still a named integration, and dropping the label would make it invisible
+  // to anyone reading the page with a screen reader.
   if (!src || failed) {
     return (
       <Icon
         icon={PuzzleIcon}
         size={size}
+        role="img"
+        aria-label={alt ?? provider}
         className={cn("text-zinc-400", className)}
       />
     );

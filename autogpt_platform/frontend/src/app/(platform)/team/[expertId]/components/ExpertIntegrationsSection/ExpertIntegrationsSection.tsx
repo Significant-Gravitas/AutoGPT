@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
@@ -26,7 +28,13 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
     closeAdd,
     addIntegration,
     removeIntegration,
+    isGranting,
     isRevoking,
+    isLoading,
+    isError,
+    isGrantableLoading,
+    isGrantableError,
+    refetch,
   } = useExpertIntegrationsSection(expertId);
 
   return (
@@ -49,7 +57,16 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
-            {grantable.length === 0 ? (
+            {isGrantableLoading ? (
+              <div className="flex flex-col gap-2 p-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : isGrantableError ? (
+              <p className="px-2 py-3 text-sm text-zinc-500">
+                We could not load your integrations.
+              </p>
+            ) : grantable.length === 0 ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
                 Nothing left to add. Connect a new integration in Settings
                 first.
@@ -60,7 +77,8 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                   <li key={credential.id}>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-zinc-50"
+                      disabled={isGranting}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-zinc-50 disabled:opacity-50"
                       onClick={() => addIntegration(credential.id)}
                     >
                       <IntegrationLogo provider={credential.provider} />
@@ -77,7 +95,15 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
         </Popover>
       </div>
 
-      {granted.length === 0 ? (
+      {isLoading ? (
+        <Skeleton className="h-24 w-full rounded-xl" />
+      ) : isError ? (
+        <ErrorCard
+          context="this expert's integrations"
+          hint="We could not load what this expert can reach."
+          onRetry={refetch}
+        />
+      ) : granted.length === 0 ? (
         <p className="text-sm text-zinc-500">
           {expertName} cannot reach any of your integrations yet. Add one to let
           them work on your behalf.
