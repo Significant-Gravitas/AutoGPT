@@ -120,7 +120,7 @@ describe("managing an expert's integrations", () => {
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
       await within(section).findByText(
-        /Maria cannot reach any of your integrations/,
+        /Nothing connected yet\. Add a tool and Maria can use it/,
       ),
     ).toBeDefined();
   });
@@ -186,9 +186,7 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
-    expect(
-      await screen.findByText("You haven't connected any services yet."),
-    ).toBeDefined();
+    expect(await screen.findByText("Nothing connected yet.")).toBeDefined();
 
     await userEvent.click(
       screen.getByRole("button", { name: /Connect a new service/ }),
@@ -243,5 +241,25 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() => expect(granted).toEqual(["cred-slack"]));
+  });
+
+  it("names an MCP credential after the service behind it", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.sentry.dev",
+          type: "host_scoped",
+        },
+      ]),
+    );
+
+    render(<ExpertDetailPage />);
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    expect(await within(section).findByText("Sentry")).toBeDefined();
+    expect(within(section).getByText("MCP server")).toBeDefined();
+    expect(within(section).getByText("Ready")).toBeDefined();
   });
 });

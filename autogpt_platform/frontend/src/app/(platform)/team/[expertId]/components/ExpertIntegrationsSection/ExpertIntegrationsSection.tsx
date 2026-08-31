@@ -1,11 +1,16 @@
 "use client";
 
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import {
+  formatCredentialName,
+  formatCredentialSource,
+  formatProviderName,
+} from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import {
   Popover,
@@ -68,13 +73,13 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
               </div>
             ) : isGrantableError ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
-                We could not load your integrations.
+                Couldn&apos;t load your services.
               </p>
             ) : grantable.length === 0 ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
                 {granted.length === 0
-                  ? "You haven't connected any services yet."
-                  : "Everything you've connected is already here."}
+                  ? "Nothing connected yet."
+                  : `${expertName} can already use everything you've connected.`}
               </p>
             ) : (
               <ul className="max-h-72 overflow-y-auto">
@@ -88,8 +93,12 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                     >
                       <IntegrationLogo provider={credential.provider} />
                       <span className="min-w-0 flex-1 truncate text-sm text-zinc-700">
-                        {credential.title ??
-                          formatProviderName(credential.provider)}
+                        {credential.title
+                          ? formatCredentialName(
+                              credential.title,
+                              credential.provider,
+                            )
+                          : formatProviderName(credential.provider)}
                       </span>
                     </button>
                   </li>
@@ -124,38 +133,47 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
         />
       ) : granted.length === 0 ? (
         <p className="text-sm text-zinc-500">
-          {expertName} cannot reach any of your integrations yet. Add one to let
-          them work on your behalf.
+          Nothing connected yet. Add a tool and {expertName} can use it on your
+          behalf.
         </p>
       ) : (
         <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-200/80 bg-white">
-          {granted.map((integration) => (
-            <div
-              key={integration.credential_id}
-              className="flex items-center gap-3 px-4 py-3"
-              data-testid="expert-integration-row"
-            >
-              <IntegrationLogo provider={integration.provider} size={18} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-medium text-zinc-800">
-                  {integration.title}
-                </div>
-                <div className="text-[13px] text-zinc-500">
-                  {formatProviderName(integration.provider)}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={isRevoking}
-                aria-label={`Remove ${integration.title}`}
-                leftIcon={<Icon icon={Delete02Icon} size={16} />}
-                onClick={() => removeIntegration(integration.credential_id)}
+          {granted.map((integration) => {
+            const name = formatCredentialName(
+              integration.title,
+              integration.provider,
+            );
+            return (
+              <div
+                key={integration.credential_id}
+                className="flex items-center gap-3 px-4 py-3"
+                data-testid="expert-integration-row"
               >
-                Remove
-              </Button>
-            </div>
-          ))}
+                <IntegrationLogo provider={integration.provider} size={18} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[15px] font-medium text-zinc-800">
+                    {name}
+                  </div>
+                  <div className="text-[13px] text-zinc-500">
+                    {formatCredentialSource(integration.provider)}
+                  </div>
+                </div>
+                <Badge variant="success" size="small">
+                  Ready
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  disabled={isRevoking}
+                  aria-label={`Remove ${name}`}
+                  leftIcon={<Icon icon={Delete02Icon} size={16} />}
+                  onClick={() => removeIntegration(integration.credential_id)}
+                >
+                  Remove
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -107,13 +107,13 @@ describe("expert integrations in the thread header", () => {
     renderHeader();
 
     const cluster = await screen.findByTestId("expert-integrations");
-    const logo = within(cluster).getByRole("img", { name: "Linkedin" });
+    const logo = within(cluster).getByRole("img", { name: "LinkedIn" });
     fireEvent.error(logo);
 
     // The PNG is missing for plenty of providers, so the fallback glyph must
     // still announce which integration it stands for.
     expect(
-      within(cluster).getByRole("img", { name: "Linkedin" }),
+      within(cluster).getByRole("img", { name: "LinkedIn" }),
     ).toBeDefined();
   });
 
