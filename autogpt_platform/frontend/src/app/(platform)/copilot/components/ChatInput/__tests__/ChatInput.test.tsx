@@ -192,6 +192,13 @@ vi.mock("@/components/ui/input-group", () => ({
     children: React.ReactNode;
     className?: string;
   }) => <div className={className}>{children}</div>,
+  InputGroupAddon: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <div className={className}>{children}</div>,
 }));
 
 vi.mock("../components/ComposerPlusMenu", () => ({
