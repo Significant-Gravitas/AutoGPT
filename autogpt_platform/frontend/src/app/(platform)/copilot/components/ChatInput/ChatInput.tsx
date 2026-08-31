@@ -80,6 +80,11 @@ interface Props {
   recipientPicker?: ReactNode;
 }
 
+// One text row is ~48px (24px line + 24px vertical padding); anything taller
+// means the text wrapped and the composer stacks GPT-style: textarea full
+// width on top, controls on their own row below.
+const SINGLE_ROW_MAX_HEIGHT_PX = 56;
+
 export function ChatInput({
   onSend,
   disabled = false,
@@ -111,6 +116,7 @@ export function ChatInput({
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   function handleToggleMode() {
     if (copilotModePinned) {
@@ -340,8 +346,11 @@ export function ChatInput({
           onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
         />
-        <div className="flex w-full items-end">
-          <InputGroupAddon align="inline-start" className="gap-1 py-1 pl-1.5">
+        <div className="flex w-full flex-wrap items-end">
+          <InputGroupAddon
+            align="inline-start"
+            className="order-none gap-1 py-1 pl-1.5"
+          >
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
@@ -351,7 +360,12 @@ export function ChatInput({
             {recipientPicker}
             {!hasSession && <LLMRouteSelector />}
           </InputGroupAddon>
-          <PromptInputBody className="relative block min-w-0 flex-1">
+          <PromptInputBody
+            className={cn(
+              "relative block",
+              isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+            )}
+          >
             <PromptInputTextarea
               id={inputId}
               aria-label="Chat message input"
@@ -362,6 +376,9 @@ export function ChatInput({
               onBlur={mentions.close}
               disabled={isInputDisabled}
               placeholder={resolvedPlaceholder}
+              onHeightChange={(height) =>
+                setIsMultiline(height > SINGLE_ROW_MAX_HEIGHT_PX)
+              }
             />
             {isRecording && !value && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -372,7 +389,10 @@ export function ChatInput({
               </div>
             )}
           </PromptInputBody>
-          <InputGroupAddon align="inline-end" className="gap-1 py-1 pr-1.5">
+          <InputGroupAddon
+            align="inline-end"
+            className="order-none ml-auto gap-1 py-1 pr-1.5"
+          >
             {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
               <>
                 <ModeToggleButton

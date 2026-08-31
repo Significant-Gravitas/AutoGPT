@@ -101,7 +101,11 @@ export function PromptInputBody({ className, ...props }: PromptInputBodyProps) {
 
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
->;
+> & {
+  /** Reports the auto-resized scrollHeight (px) after every resize, so a
+   *  host can switch between single-row and stacked composer layouts. */
+  onHeightChange?: (height: number) => void;
+};
 
 export function PromptInputTextarea({
   onKeyDown,
@@ -109,14 +113,20 @@ export function PromptInputTextarea({
   className,
   placeholder = "Type your message...",
   value,
+  onHeightChange,
   ...props
 }: PromptInputTextareaProps) {
   const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Ref keeps autoResize stable inside the memoized change handler while
+  // still reaching the latest callback.
+  const onHeightChangeRef = useRef(onHeightChange);
+  onHeightChangeRef.current = onHeightChange;
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    onHeightChangeRef.current?.(el.scrollHeight);
   }
 
   // Resize when value changes externally (e.g. cleared after send)
