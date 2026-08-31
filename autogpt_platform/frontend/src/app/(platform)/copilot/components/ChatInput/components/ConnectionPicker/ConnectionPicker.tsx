@@ -81,12 +81,14 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     offers.length === 1 && Boolean(offers[0]?.lock_reason);
   if (
     !showTiers &&
-    (connectionLocked || (offers.length === 1 && !onlyOfferIsLocked))
+    !onlyOfferIsLocked &&
+    (connectionLocked || offers.length === 1)
   ) {
     return null;
   }
 
-  const label = connectionLocked
+  const showsTier = connectionLocked && Boolean(active);
+  const label = showsTier
     ? tierName(active, tier)
     : (active?.display_name ?? "Choose connection");
 
@@ -96,7 +98,7 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
         <button
           type="button"
           aria-label={
-            connectionLocked
+            showsTier
               ? `Model tier ${label} — change`
               : `Runs on ${label} — change`
           }
@@ -109,7 +111,7 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-80 p-0">
-        {!connectionLocked && (
+        {(!connectionLocked || onlyOfferIsLocked) && (
           <>
             <SectionLabel>Runs on</SectionLabel>
             <div role="radiogroup" aria-label="Connection this chat runs on">
