@@ -175,22 +175,9 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/input-group", () => ({
-  InputGroup: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => <div className={className}>{children}</div>,
-  InputGroupAddon: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => <div className={className}>{children}</div>,
-}));
+// InputGroup/InputGroupAddon render as-is: they are plain presentational
+// wrappers, and stubbing them hid the addon contract (role, data-align,
+// click-to-focus) that the composer relies on.
 
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: ({
@@ -261,6 +248,34 @@ afterEach(() => {
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+});
+
+describe("ChatInput composer row", () => {
+  it("keeps the leading and trailing addons on their declared sides", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    const aligns = Array.from(
+      document.querySelectorAll("[data-slot=input-group-addon]"),
+    ).map((addon) => addon.getAttribute("data-align"));
+
+    expect(aligns).toEqual(["inline-start", "inline-end"]);
+  });
+
+  it("focuses the message box when the addon gutter is clicked", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    // The composer autofocuses on mount, so blur first — otherwise the
+    // assertion below would pass without the addon doing anything.
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    textarea.blur();
+    expect(document.activeElement).not.toBe(textarea);
+
+    fireEvent.click(
+      document.querySelector("[data-slot=input-group-addon]") as Element,
+    );
+
+    expect(document.activeElement).toBe(textarea);
+  });
 });
 
 describe("ChatInput token devtool badge", () => {
