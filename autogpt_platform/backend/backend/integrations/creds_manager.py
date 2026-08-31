@@ -286,9 +286,14 @@ class IntegrationCredentialsManager:
             # waited for the refresh mutex. Re-read before deciding, otherwise
             # rotating providers can receive the same old refresh token twice.
             current = await self.store.get_creds_by_id(user_id, credentials.id)
-            if current is None or current.type != "oauth2":
+            if current is None:
                 raise ValueError(
                     f"Credentials #{credentials.id} for user #{user_id} not found"
+                )
+            if current.type != "oauth2":
+                raise TypeError(
+                    f"Credentials #{credentials.id} for user #{user_id} changed "
+                    f"type to {current.type!r} during OAuth refresh"
                 )
             if current.provider != credentials.provider:
                 raise RuntimeError("Credential provider changed during refresh")

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import OAuth2Credentials
+from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
@@ -154,6 +154,29 @@ async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker
     handler.needs_refresh.assert_called_once_with(fresh)
     handler.refresh_tokens.assert_not_awaited()
     acquire_lock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_locked_refresh_reports_a_credential_type_change(mocker):
+    manager = IntegrationCredentialsManager()
+    stale = _provider_runtime_credentials().model_copy(
+        update={"refresh_strategy": "oauth_handler"}
+    )
+    changed = APIKeyCredentials(
+        id=stale.id,
+        provider=stale.provider,
+        title=stale.title,
+        api_key=SecretStr("replacement"),
+    )
+    mocker.patch.object(manager, "_locked", return_value=_noop_lock_context())
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=changed),
+    )
+
+    with pytest.raises(TypeError, match="changed type to 'api_key'"):
+        await manager._refresh_locked("user-a", stale)
 
 
 @pytest.mark.asyncio
