@@ -33,8 +33,9 @@ export function AIConnectionsSection() {
   if (isError) return null;
 
   // One connection is not a choice. The rows still say what powers a chat,
-  // they just stop presenting a decision that doesn't exist.
-  const hasChoice = connections.length > 1;
+  // they just stop presenting a decision that doesn't exist. A locked upsell
+  // row is visible context, not a route the user can select.
+  const hasChoice = connections.filter(isSelectable).length > 1;
 
   return (
     <section aria-labelledby="ai-connections-heading" className="pb-8 pl-4">
@@ -68,7 +69,7 @@ export function AIConnectionsSection() {
               key={connection.offer_id}
               connection={connection}
               account={accountFor(connection)}
-              selectable={hasChoice}
+              selectable={hasChoice && isSelectable(connection)}
               isSelected={connection.offer_id === selectedKey}
               isSaving={isSaving}
               onSelect={() => chooseDefault(connection)}

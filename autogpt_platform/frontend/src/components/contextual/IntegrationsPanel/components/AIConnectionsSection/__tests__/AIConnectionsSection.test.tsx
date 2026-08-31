@@ -345,5 +345,7 @@ describe("AIConnectionsSection", () => {
         "A Max plan or higher is required to use ChatGPT.",
       ),
     ).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 });

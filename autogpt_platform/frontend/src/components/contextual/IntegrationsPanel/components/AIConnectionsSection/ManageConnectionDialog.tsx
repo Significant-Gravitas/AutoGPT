@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 
-import { getGetV2ListChatConnectionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useGetV1CodexAccount } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { Button } from "@/components/atoms/Button/Button";
@@ -31,7 +29,6 @@ export function ManageConnectionDialog({
   account,
   onOpenChange,
 }: Props) {
-  const queryClient = useQueryClient();
   const credentialId = connection?.credential_id ?? null;
   const [forceMessage, setForceMessage] = useState<string | null>(null);
 
@@ -63,12 +60,7 @@ export function ManageConnectionDialog({
 
   const { connect, isPending: isReconnecting } = useOAuthConnect({
     provider: "codex",
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListChatConnectionsQueryKey(),
-      });
-      setManageOpen(false);
-    },
+    onSuccess: () => setManageOpen(false),
   });
 
   const { remove, isPending: isDisconnecting } = useDeleteIntegration();
@@ -89,9 +81,6 @@ export function ManageConnectionDialog({
     if (result.succeeded.length === 0) return;
 
     setForceMessage(null);
-    await queryClient.invalidateQueries({
-      queryKey: getGetV2ListChatConnectionsQueryKey(),
-    });
     setManageOpen(false);
   }
 
