@@ -14,6 +14,7 @@ def _graph(*, graph_id="g1", version=3, user_id="owner-1"):
     graph.id = graph_id
     graph.version = version
     graph.userId = user_id
+    graph.Nodes = []
     return graph
 
 
@@ -108,6 +109,105 @@ class TestUpsertGrant:
             **_upsert_kwargs(
                 created_by_user_id="someone-else", sharer_is_org_admin=True
             ),
+        )
+
+        assert result.id == "grant-1"
+
+    @pytest.mark.asyncio
+    async def test_org_admin_cannot_create_owner_grant_on_others_graph(
+        self, mock_prisma
+    ):
+        # An admin sharing someone else's graph must not be able to expose that
+        # owner's credentials via OWNER mode. 400 (ValueError), not a silent share.
+        with pytest.raises(ValueError, match="only be created by the graph's owner"):
+            await grant_db.upsert_grant(
+                "org-1",
+                "g1",
+                **_upsert_kwargs(
+                    credential_mode="OWNER",
+                    created_by_user_id="someone-else",
+                    sharer_is_org_admin=True,
+                ),
+            )
+        mock_prisma.agentgraphgrant.upsert.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_owner_can_create_owner_grant(self, mock_prisma):
+        # The graph owner (default created_by_user_id="owner-1") may consent.
+        result = await grant_db.upsert_grant(
+            "org-1", "g1", **_upsert_kwargs(credential_mode="OWNER")
+        )
+
+        assert result.id == "grant-1"
+        upsert_data = mock_prisma.agentgraphgrant.upsert.call_args.kwargs["data"]
+        assert upsert_data["create"]["credentialMode"] == "OWNER"
+        assert upsert_data["update"]["createdByUserId"] == "owner-1"
+
+    @pytest.mark.asyncio
+    async def test_owner_reference_only_credential_rejected(self, mock_prisma, mocker):
+        graph = _graph()
+        node = MagicMock(
+            id="node-codex",
+            agentBlockId="codex-block",
+            constantInput={
+                "codex_credentials": {
+                    "id": "codex-credential",
+                    "provider": "codex",
+                    "type": "oauth2",
+                }
+            },
+        )
+        graph.Nodes = [node]
+        mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        field_info = MagicMock(
+            credential_reference_only=True,
+            discriminator=None,
+        )
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "codex_credentials": field_info
+        }
+        mocker.patch("backend.api.features.orgs.grant_db.get_block", return_value=block)
+
+        with pytest.raises(ValueError, match="runtime-managed"):
+            await grant_db.upsert_grant(
+                "org-1", "g1", **_upsert_kwargs(credential_mode="OWNER")
+            )
+
+        mock_prisma.agentgraphgrant.upsert.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_platform_reference_only_transport_allows_owner_grant(
+        self, mock_prisma, mocker
+    ):
+        graph = _graph()
+        node = MagicMock(
+            id="node-codex",
+            agentBlockId="codex-block",
+            constantInput={
+                "transport": "platform",
+                "codex_credentials": {
+                    "id": "codex-credential",
+                    "provider": "codex",
+                    "type": "oauth2",
+                },
+            },
+        )
+        graph.Nodes = [node]
+        mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph)
+        field_info = MagicMock(
+            credential_reference_only=True,
+            discriminator="transport",
+        )
+        field_info.requires_credentials.return_value = False
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "codex_credentials": field_info
+        }
+        mocker.patch("backend.api.features.orgs.grant_db.get_block", return_value=block)
+
+        result = await grant_db.upsert_grant(
+            "org-1", "g1", **_upsert_kwargs(credential_mode="OWNER")
         )
 
         assert result.id == "grant-1"
