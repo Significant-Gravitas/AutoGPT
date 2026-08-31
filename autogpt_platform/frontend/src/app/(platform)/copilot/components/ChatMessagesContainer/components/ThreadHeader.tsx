@@ -40,7 +40,7 @@ export function ThreadHeader({
     <div data-testid="expert-thread-header" className="relative z-20 h-0">
       <div
         className={cn(
-          "ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-none absolute inset-x-0 top-3 flex justify-center px-4 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+          "ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-none absolute inset-x-0 top-3 mx-auto flex w-full max-w-3xl justify-start px-6 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
           areFilesOpen && "xl:-translate-x-40",
           hasFloatingControls && "max-md:pl-28 md:max-lg:pl-20",
         )}
