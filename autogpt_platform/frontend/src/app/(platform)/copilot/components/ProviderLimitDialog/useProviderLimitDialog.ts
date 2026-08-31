@@ -38,7 +38,10 @@ export function useProviderLimitDialog({
   // it anyway tells a user with a perfectly good second connection that they
   // have none, at the moment they most need it.
   const isLoadingOffers = connectionsQuery.isLoading;
-  const failedToLoadOffers = connectionsQuery.isError;
+  const failedToLoadOffers =
+    connectionsQuery.isError ||
+    (connectionsQuery.data !== undefined &&
+      connectionsQuery.data.status !== 200);
   const alternative = alternativeConnection(offers, failure);
 
   const { mutateAsync: changeConnection, isPending: isSwitching } =
@@ -66,13 +69,19 @@ export function useProviderLimitDialog({
 
   async function continueHere() {
     if (!sessionId || !alternative) return;
-    await changeConnection({
-      sessionId,
-      data: {
-        llm_auth_provider: alternative.auth_provider,
-        llm_credential_id: alternative.credential_id,
-      },
-    });
+    try {
+      await changeConnection({
+        sessionId,
+        data: {
+          llm_auth_provider: alternative.auth_provider,
+          llm_credential_id: alternative.credential_id,
+        },
+      });
+    } catch {
+      // React Query's onError handler above owns the user-facing failure.
+      // Consume mutateAsync's rejection so a button click does not become an
+      // unhandled promise rejection as well.
+    }
   }
 
   return {

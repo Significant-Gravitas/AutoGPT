@@ -509,10 +509,9 @@ async def update_chat_session_llm_route(
 ) -> bool:
     """Point an existing session at a different connection, from now on.
 
-    Reads the stored metadata and writes back only the two route keys, rather
-    than replacing the blob: everything else in there -- the builder binding,
-    the session kind, the dry-run flag -- belongs to other features and must
-    survive a connection change.
+    Atomically merges only the two route keys into stored metadata: everything
+    else in there -- including a pending question written concurrently --
+    belongs to other features and must survive a connection change.
 
     Always filters by (session_id, user_id) so callers cannot re-route another
     user's chat even knowing the id. Past turns keep the stamps they were
@@ -520,18 +519,18 @@ async def update_chat_session_llm_route(
 
     Returns True if a row was updated, False otherwise (not found, wrong user).
     """
-    where: ChatSessionWhereInput = {"id": session_id, "userId": user_id}
-    existing = await PrismaChatSession.prisma().find_first(where=where)
-    if existing is None:
-        return False
-
-    metadata = dict(existing.metadata or {})
-    metadata["llm_auth_provider"] = llm_auth_provider
-    metadata["llm_credential_id"] = llm_credential_id
-
-    result = await PrismaChatSession.prisma().update_many(
-        where=where,
-        data={"metadata": SafeJson(metadata)},
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object("
+        "'llm_auth_provider', $3::text, "
+        "'llm_credential_id', $4::text"
+        '), "updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        llm_auth_provider,
+        llm_credential_id,
     )
     return result > 0
 
