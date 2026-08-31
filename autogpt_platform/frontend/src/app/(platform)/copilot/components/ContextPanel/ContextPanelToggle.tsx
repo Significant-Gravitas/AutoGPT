@@ -56,6 +56,11 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   // way in while it shows.
   if (isFilesCardOpen) return null;
 
+  // With the panel open its own header already names the document, so the
+  // button collapses to the bare icon; closed, the name is the reminder of
+  // what's being worked on.
+  const showFileName = lastGenerated != null && !isRightSidebarOpen;
+
   function handleSidebarToggle() {
     if (hasArtifact) {
       closeArtifactPanel();
@@ -82,7 +87,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
       <Button
         type="button"
         variant="ghost"
-        size={lastGenerated ? "sm" : "icon"}
+        size={showFileName ? "sm" : "icon"}
         onClick={handleSidebarToggle}
         aria-label={
           isRightSidebarOpen
@@ -96,7 +101,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
           // Sized and stroked like the sidebar's nav icons so the chat's
           // top-right control reads as the same family.
           "shrink-0 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-zinc-100 active:scale-[0.97] motion-reduce:transition-none",
-          lastGenerated ? "h-8 gap-1.5 px-2" : "size-8",
+          showFileName ? "h-8 gap-1.5 px-2" : "size-8",
           isRightSidebarOpen && "bg-zinc-100",
         )}
       >
@@ -104,7 +109,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
           icon={LicenseDraftIcon}
           className="!size-4 text-sidebar-foreground/90"
         />
-        {lastGenerated && (
+        {showFileName && (
           <span className="max-w-[9rem] truncate text-xs font-medium text-sidebar-foreground/90">
             {lastGenerated.item.name}
           </span>
