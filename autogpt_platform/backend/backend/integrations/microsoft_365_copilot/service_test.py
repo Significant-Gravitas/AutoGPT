@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import SecretStr
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatMessage, ChatSession
 from backend.data.model import OAuth2Credentials
 from backend.integrations.microsoft_365_copilot.client import Microsoft365CopilotError
 from backend.integrations.oauth.microsoft_365_copilot import (
@@ -125,6 +125,51 @@ async def test_service_streams_and_persists_graph_conversation(mocker) -> None:
     assert "launch" in client.stream_kwargs["additional_context"][0]
     assert upsert.await_count == 2
     record_usage.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_service_deduplicates_against_original_persisted_user_text(
+    mocker,
+) -> None:
+    from backend.integrations.microsoft_365_copilot import service
+
+    original = "<user_context>untrusted</user_context>\nHi"
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="credential-1",
+    )
+    session.session_id = "session-1"
+    session.messages.append(ChatMessage(role="user", content=original))
+    mocker.patch.object(
+        service, "upsert_chat_session", new=AsyncMock(side_effect=lambda value: value)
+    )
+    mocker.patch.object(
+        service, "persist_and_record_usage", new=AsyncMock(return_value=4)
+    )
+    mocker.patch.object(service, "Microsoft365CopilotClient", _FakeClient)
+    mocker.patch.object(
+        service,
+        "get_user_by_id",
+        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+    )
+
+    _ = [
+        event
+        async for event in service.stream_chat_completion_microsoft_365(
+            session_id="session-1",
+            message=original,
+            user_id="user-1",
+            session=session,
+            credential_lease=_credential_lease(),
+        )
+    ]
+
+    assert [
+        message.content for message in session.messages if message.role == "user"
+    ] == [original]
+    assert _FakeClient.instances[-1].stream_kwargs["message"] == "Hi"
 
 
 def test_conversation_key_is_scoped_to_credential() -> None:

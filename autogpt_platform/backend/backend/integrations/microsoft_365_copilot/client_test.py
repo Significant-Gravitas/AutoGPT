@@ -26,6 +26,10 @@ async def _split_utf8_chunks() -> AsyncIterator[bytes]:
     yield payload[emoji_start + 1 :]
 
 
+async def _invalid_json_chunks() -> AsyncIterator[bytes]:
+    yield b"data: {not-json}\n\n"
+
+
 @pytest.mark.asyncio
 async def test_stream_parser_emits_only_new_text_from_full_snapshots() -> None:
     from backend.integrations.microsoft_365_copilot.client import (
@@ -46,6 +50,18 @@ async def test_stream_parser_handles_utf8_characters_split_between_chunks() -> N
     deltas = [delta async for delta in iter_copilot_text_deltas(_split_utf8_chunks())]
 
     assert deltas == ["Hello 👋"]
+
+
+@pytest.mark.asyncio
+async def test_stream_parser_normalizes_invalid_json() -> None:
+    from backend.integrations.microsoft_365_copilot.client import (
+        Microsoft365CopilotError,
+        iter_copilot_text_deltas,
+    )
+
+    with pytest.raises(Microsoft365CopilotError, match="invalid stream response"):
+        async for _ in iter_copilot_text_deltas(_invalid_json_chunks()):
+            pass
 
 
 def test_chat_request_includes_timezone_context_and_web_grounding() -> None:

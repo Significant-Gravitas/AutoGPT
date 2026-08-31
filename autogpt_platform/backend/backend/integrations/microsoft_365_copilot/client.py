@@ -51,7 +51,12 @@ async def _iter_sse_json(chunks: AsyncIterator[bytes]) -> AsyncIterator[dict[str
         payload = "\n".join(data_lines)
         if not payload or payload == "[DONE]":
             return None
-        parsed = json.loads(payload)
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as error:
+            raise Microsoft365CopilotError(
+                "Microsoft 365 Copilot returned an invalid stream response"
+            ) from error
         return parsed if isinstance(parsed, dict) else None
 
     async for chunk in chunks:

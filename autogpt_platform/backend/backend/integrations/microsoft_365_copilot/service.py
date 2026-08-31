@@ -152,7 +152,10 @@ async def stream_chat_completion_microsoft_365(
             code="microsoft_365_copilot_message_required",
         )
         return
-    maybe_append_user_message(session, sanitized_message, is_user_message)
+    # The route persists the original text before enqueueing. Deduplicate
+    # against that exact value; sanitization is only for what leaves our trust
+    # boundary and must not create a second user row in chat history.
+    maybe_append_user_message(session, message, is_user_message)
 
     message_id = str(uuid4())
     text_id = f"{message_id}-text"
