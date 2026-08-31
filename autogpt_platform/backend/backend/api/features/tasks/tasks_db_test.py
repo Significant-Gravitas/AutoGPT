@@ -496,6 +496,57 @@ async def test_escalate_then_answer_round_trip(server: SpinTestServer):
     assert task.amendments[-1].note == "Staging"
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_manager_escalation_does_not_park_on_the_user(server: SpinTestServer):
+    """target="manager" records the question for the delegator without
+    changing status — WAITING_USER is reserved for the user."""
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    root = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+    child = await tasks_db.create_delegated_task(
+        owner.id, title="Child", spec="spec", owner_id=bob.id, parent_task_id=root.id
+    )
+
+    escalated = await task_actions.escalate_delegated_task(
+        owner.id,
+        child.id,
+        question="Which repo does this belong in?",
+        session_id="worker-session-2",
+        target="manager",
+    )
+
+    assert escalated.status == "QUEUED"
+    entry = escalated.amendments[-1]
+    assert entry.kind == "escalation"
+    assert entry.target == "manager"
+    assert entry.session_id == "worker-session-2"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_manager_escalation_is_refused_on_a_root_task(server: SpinTestServer):
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    root = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    with pytest.raises(TaskDelegationRefusedError, match="no delegator"):
+        await task_actions.escalate_delegated_task(
+            owner.id,
+            root.id,
+            question="Who decides?",
+            target="manager",
+        )
+
+    row = await prisma.models.DelegatedTask.prisma().find_unique(where={"id": root.id})
+    assert row is not None
+    assert row.status == prisma.enums.DelegatedTaskStatus.QUEUED
+    assert row.amendments in (None, [])
+
+
 # ─── events feed ───────────────────────────────────────────────────────
 
 

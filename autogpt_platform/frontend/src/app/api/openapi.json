@@ -27539,6 +27539,13 @@
           "session_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Id"
+          },
+          "target": {
+            "anyOf": [
+              { "type": "string", "enum": ["user", "manager"] },
+              { "type": "null" }
+            ],
+            "title": "Target"
           }
         },
         "type": "object",

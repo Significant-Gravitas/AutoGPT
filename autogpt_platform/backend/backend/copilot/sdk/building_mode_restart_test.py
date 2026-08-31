@@ -77,6 +77,7 @@ class TestApplyBuildingModeRestart:
         prior_emitted: bool = False,
         thinking_reprompted: bool = False,
         delegation_supplement: str = "",
+        role_charter: str = "",
     ):
         from backend.copilot.sdk.service import (
             _BUILDING_MODE_CONTINUATION,
@@ -99,6 +100,7 @@ class TestApplyBuildingModeRestart:
             base_system_prompt="BASE",
             delegation_supplement=delegation_supplement,
             graphiti_supplement="",
+            role_charter=role_charter,
             use_e2b=False,
             session_id="sess-1",
             message_id="msg-1",
@@ -186,6 +188,7 @@ class TestApplyBuildingModeRestart:
                 base_system_prompt="BASE",
                 delegation_supplement="",
                 graphiti_supplement="",
+                role_charter="",
                 use_e2b=False,
                 session_id="sess-1",
                 message_id="msg-1",

@@ -30,6 +30,7 @@ from .models import (
     TASK_QUESTION_MAX_LENGTH,
     DelegatedTask,
     TaskAmendment,
+    TaskEscalationTarget,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,10 +102,23 @@ async def escalate_delegated_task(
     question: str,
     options: list[str] | None = None,
     session_id: str | None = None,
+    target: TaskEscalationTarget = "user",
 ) -> DelegatedTask:
-    """Park the task on the user: WAITING_USER plus an escalation entry
-    carrying the question and the session the answer should resume."""
+    """Route a blocked task's question up.
+
+    ``target="user"`` parks the task WAITING_USER; Home surfaces the
+    question and the answer resumes the recorded session.
+    ``target="manager"`` keeps the task WORKING and only records the
+    escalation entry — the caller delivers the question into the
+    delegator's session. Refused on a root task: there is no delegator
+    above it, so the user is the only way up.
+    """
     row = await _open_task(user_id, task_id)
+    if target == "manager" and row.parentTaskId is None:
+        raise TaskDelegationRefusedError(
+            "This task has no delegator above it — nobody is managing it "
+            'but the user. Escalate with target="user" instead.'
+        )
     amendments = _appended(
         row,
         TaskAmendment(
@@ -119,14 +133,15 @@ async def escalate_delegated_task(
                 if option.strip()
             ],
             session_id=session_id,
+            target=target,
         ),
     )
+    data: prisma.types.DelegatedTaskUpdateManyMutationInput = {"amendments": amendments}
+    if target == "user":
+        data["status"] = prisma.enums.DelegatedTaskStatus.WAITING_USER
     updated = await prisma.models.DelegatedTask.prisma().update_many(
         where={"id": task_id, "userId": user_id, "status": {"in": _OPEN_STATUSES}},
-        data={
-            "status": prisma.enums.DelegatedTaskStatus.WAITING_USER,
-            "amendments": amendments,
-        },
+        data=data,
     )
     if updated == 0:
         raise TaskUpdateConflictError(

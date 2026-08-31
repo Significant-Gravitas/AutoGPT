@@ -76,8 +76,11 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
+    assemble_system_prompt,
+    copilot_role,
     get_delegation_supplement,
     get_graphiti_supplement,
+    get_role_charter,
 )
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
@@ -1834,7 +1837,8 @@ async def stream_chat_completion_baseline(
     # Append tool documentation, technical notes, and Graphiti memory instructions
     graphiti_enabled = await is_enabled_for_user(user_id)
 
-    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    role = copilot_role(session.expert_id)
+    graphiti_supplement = get_graphiti_supplement(role) if graphiti_enabled else ""
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the
     # tool-filtering site below so the delegation rules can be gated on the
@@ -1843,20 +1847,22 @@ async def stream_chat_completion_baseline(
     experts_enabled = bool(user_id) and await is_feature_enabled(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
-    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    delegation_supplement = get_delegation_supplement(role) if experts_enabled else ""
+    role_charter = get_role_charter(role) if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    system_prompt = (
-        base_system_prompt
-        + SHARED_TOOL_NOTES
-        + delegation_supplement
-        + graphiti_supplement
-        + builder_session_suffix
-        + expert_session_suffix
+    system_prompt = assemble_system_prompt(
+        base_system_prompt,
+        engine_supplement=SHARED_TOOL_NOTES,
+        delegation_supplement=delegation_supplement,
+        graphiti_supplement=graphiti_supplement,
+        role_charter=role_charter,
+        builder_session_suffix=builder_session_suffix,
+        expert_session_suffix=expert_session_suffix,
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.

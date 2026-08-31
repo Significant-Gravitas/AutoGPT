@@ -75,6 +75,11 @@ TaskAmendmentKind = Literal[
     "note", "handoff", "escalation", "answer", "retry", "revision"
 ]
 
+# Where a blocked task's question goes: up to the user (parks the task
+# WAITING_USER + Home card) or to whoever delegated it (delivered into the
+# delegator's session; the task keeps WORKING).
+TaskEscalationTarget = Literal["user", "manager"]
+
 
 class TaskAmendment(BaseModel):
     """An event recorded against a live task: a scope note, a handoff
@@ -94,6 +99,9 @@ class TaskAmendment(BaseModel):
     # The session the escalating expert was working in — where the user's
     # answer is delivered to resume the task.
     session_id: str | None = None
+    # Escalation entries only: who the question went to. None = "user"
+    # (pre-target rows).
+    target: TaskEscalationTarget | None = None
 
 
 class DelegatedTask(BaseModel):

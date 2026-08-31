@@ -352,9 +352,7 @@ async def test_asking_parks_the_question_on_the_session(
 ):
     db = MagicMock()
     db.set_session_pending_question = AsyncMock()
-    with patch(
-        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
-    ):
+    with patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)):
         await tool._execute(
             user_id=None,
             session=session,
@@ -374,9 +372,7 @@ async def test_a_failed_write_never_costs_the_user_the_question(
 ):
     db = MagicMock()
     db.set_session_pending_question = AsyncMock(side_effect=RuntimeError("down"))
-    with patch(
-        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
-    ):
+    with patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)):
         result = await tool._execute(
             user_id=None,
             session=session,
@@ -394,7 +390,7 @@ async def test_replying_clears_the_pending_question(
     db.set_session_pending_question = AsyncMock()
     db.clear_session_pending_question = AsyncMock()
     with (
-        patch("backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)),
+        patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)),
         patch("backend.copilot.model.chat_db", MagicMock(return_value=db)),
     ):
         await tool._execute(
