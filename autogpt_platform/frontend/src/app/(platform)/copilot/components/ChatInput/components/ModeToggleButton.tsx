@@ -64,7 +64,9 @@ export function ModeToggleButton({
             aria-label={ariaLabel}
           >
             {getIcon()}
-            {pinned || isExtended ? "Thinking" : "Fast"}
+            <span className="hidden sm:inline">
+              {pinned || isExtended ? "Thinking" : "Fast"}
+            </span>
           </button>
         </TooltipTrigger>
         <TooltipContent>{tooltipText}</TooltipContent>

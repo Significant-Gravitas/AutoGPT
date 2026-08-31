@@ -1,14 +1,12 @@
 import {
   PromptInputBody,
   PromptInputButton,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { InputGroup } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import {
   Tooltip,
   TooltipContent,
@@ -327,9 +325,12 @@ export function ChatInput({
           onHighlight={mentions.setHighlightedIndex}
         />
       )}
+      {/* GPT-style composer: a single pill row — plus on the left, textarea
+          in the middle, quiet toggles + mic + send on the right. items-end
+          keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
@@ -339,34 +340,8 @@ export function ChatInput({
           onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
         />
-        <PromptInputBody className="relative block w-full">
-          <PromptInputTextarea
-            id={inputId}
-            aria-label="Chat message input"
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onBlur={mentions.close}
-            disabled={isInputDisabled}
-            placeholder={resolvedPlaceholder}
-          />
-          {isRecording && !value && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <RecordingIndicator
-                elapsedTime={elapsedTime}
-                audioStream={audioStream}
-              />
-            </div>
-          )}
-        </PromptInputBody>
-
-        <span id={`${inputId}-hint`} className="sr-only">
-          Press Enter to send, Shift+Enter for new line, Space to record voice
-        </span>
-
-        <PromptInputFooter>
-          <PromptInputTools>
+        <div className="flex w-full items-end">
+          <InputGroupAddon align="inline-start" className="gap-1 py-1 pl-1.5">
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
@@ -375,6 +350,29 @@ export function ChatInput({
             />
             {recipientPicker}
             {!hasSession && <LLMRouteSelector />}
+          </InputGroupAddon>
+          <PromptInputBody className="relative block min-w-0 flex-1">
+            <PromptInputTextarea
+              id={inputId}
+              aria-label="Chat message input"
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onBlur={mentions.close}
+              disabled={isInputDisabled}
+              placeholder={resolvedPlaceholder}
+            />
+            {isRecording && !value && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <RecordingIndicator
+                  elapsedTime={elapsedTime}
+                  audioStream={audioStream}
+                />
+              </div>
+            )}
+          </PromptInputBody>
+          <InputGroupAddon align="inline-end" className="gap-1 py-1 pr-1.5">
             {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
               <>
                 <ModeToggleButton
@@ -400,14 +398,8 @@ export function ChatInput({
             {/* ComposerTray renders only under the brain-dump flag, so the
                 badge is duplicated here to stay reachable in both layouts. */}
             {!isBrainDumpEnabled && devtoolSessionId && (
-              <TokenDevtoolBadge
-                sessionId={devtoolSessionId}
-                className="ml-auto"
-              />
+              <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
-          </PromptInputTools>
-
-          <div className="flex items-center gap-2">
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -455,8 +447,12 @@ export function ChatInput({
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit disabled={!canSend} />
             )}
-          </div>
-        </PromptInputFooter>
+          </InputGroupAddon>
+        </div>
+
+        <span id={`${inputId}-hint`} className="sr-only">
+          Press Enter to send, Shift+Enter for new line, Space to record voice
+        </span>
       </InputGroup>
 
       {/* Mode and model are per-message settings sent with each stream request,
