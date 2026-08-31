@@ -6362,7 +6362,7 @@ def _same_model(a: str, b: str | None) -> bool:
 
 
 def _sdk_serving_segment(
-    credential_lease: CredentialLease | PooledCodexRuntimeLease | None,
+    credential_lease: CredentialLease | CodexCredentialLease | None,
 ) -> Segment:
     """The immutable route that actually serves this SDK turn."""
     if credential_lease is None:
