@@ -197,7 +197,6 @@ interface CopilotUIState {
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
-  autoOpenArtifact: (ref: ArtifactRef) => void;
   showFilesTab: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
@@ -471,21 +470,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }));
   },
 
-  // Auto-open path for sessions that already have generated files: surfaces the
-  // last generated file directly in the Artifact panel. Respects the user's
-  // explicit close, mirroring openContextPanelForFiles' guard.
-  autoOpenArtifact: (ref) => {
-    if (_autoOpenUserClosed) return;
-    if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeArtifact: ref,
-        history: [],
-      },
-    }));
-  },
   // Explicit user action (the artifact panel's files button): drops the open
   // preview and hands the region to the floating files card.
   showFilesTab: () => {

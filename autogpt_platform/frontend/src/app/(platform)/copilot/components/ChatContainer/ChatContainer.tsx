@@ -257,7 +257,7 @@ export const ChatContainer = ({
                 {isArtifactsEnabled && (
                   <>
                     <div className="absolute right-0 top-0 z-30">
-                      <ContextPanelToggle />
+                      <ContextPanelToggle sessionId={sessionId} />
                     </div>
                     <WorkspaceFileCards sessionId={sessionId} />
                   </>
