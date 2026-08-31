@@ -9,6 +9,7 @@ import pytest
 from prisma.enums import SubmissionStatus
 from pytest_snapshot.plugin import Snapshot
 
+import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
@@ -406,12 +407,13 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         categories=[],
     )
 
-    # First we check the graph an not be accessed by a different user
+    # First we check the graph can not be accessed by a different user
+    other_user = await create_test_user(alt_user=True)
     with pytest.raises(fastapi.exceptions.HTTPException) as exc_info:
         await server.agent_server.test_get_graph(
             created_graph.id,
             created_graph.version,
-            "3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+            other_user.id,
         )
     assert exc_info.value.status_code == 404
     assert "Graph" in str(exc_info.value.detail)
@@ -432,19 +434,30 @@ async def test_access_store_listing_graph(server: SpinTestServer):
 
     assert slv_id is not None
 
-    admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
         store.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
             is_approved=True,
             comments="Test comments",
         ),
-        user_id=admin_user.id,
+        user_id=other_user.id,
     )
 
-    # Now we check the graph can be accessed by a user that does not own the graph
+    # An approved listing on its own grants nothing: without a library entry
+    # the non-owner still can't read the graph.
+    with pytest.raises(fastapi.exceptions.HTTPException) as exc_info:
+        await server.agent_server.test_get_graph(
+            created_graph.id, created_graph.version, other_user.id
+        )
+    assert exc_info.value.status_code == 404
+
+    # Adding it to their library is what unlocks it — and the install itself
+    # has to work without prior access to the graph.
+    await library_db.add_store_agent_to_library(
+        store_listing_version_id=slv_id, user_id=other_user.id
+    )
     got_graph = await server.agent_server.test_get_graph(
-        created_graph.id, created_graph.version, "3e53486c-cf57-477e-ba2a-cb02dc828e1b"
+        created_graph.id, created_graph.version, other_user.id
     )
     assert got_graph is not None
 
