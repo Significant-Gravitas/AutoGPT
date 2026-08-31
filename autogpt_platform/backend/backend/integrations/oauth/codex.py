@@ -14,6 +14,7 @@ import logging
 from typing import ClassVar
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.chatgpt_auth import (
     CodexAuthError,
     bundle_from_tokens,
@@ -90,10 +91,11 @@ class CodexDeviceAuthHandler(BaseDeviceAuthHandler):
         tokens = await exchange_authorization_code(
             result.authorization_code, result.code_verifier
         )
-        return DeviceAuthPollResult(
-            status="approved",
-            credentials=credentials_from_bundle(bundle_from_tokens(tokens)),
-        )
+        try:
+            credentials = credentials_from_bundle(bundle_from_tokens(tokens))
+        except CodexAuthBundleError as exc:
+            raise CodexAuthError("ChatGPT returned invalid token data") from exc
+        return DeviceAuthPollResult(status="approved", credentials=credentials)
 
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials
@@ -103,9 +105,11 @@ class CodexDeviceAuthHandler(BaseDeviceAuthHandler):
         tokens = await refresh_access_token(credentials.refresh_token)
         # Refresh in place so the credential keeps its id, title and any other
         # caller-owned fields; only the token material is replaced.
-        return checkpoint_credentials_from_bundle(
-            credentials, bundle_from_tokens(tokens)
-        )
+        try:
+            bundle = bundle_from_tokens(tokens)
+        except CodexAuthBundleError as exc:
+            raise CodexAuthError("ChatGPT returned invalid token data") from exc
+        return checkpoint_credentials_from_bundle(credentials, bundle)
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         # OpenAI publishes no revocation endpoint for this client. Returning

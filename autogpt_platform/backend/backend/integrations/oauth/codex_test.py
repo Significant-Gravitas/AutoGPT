@@ -1,7 +1,10 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
+from backend.data.model import OAuth2Credentials
+from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.chatgpt_auth import (
     ChatGPTDeviceCode,
     ChatGPTPollResult,
@@ -91,6 +94,57 @@ async def test_a_pending_poll_does_not_attempt_the_token_exchange() -> None:
     assert result.status == "pending"
     assert result.credentials is None
     exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_malformed_approved_tokens_become_a_normal_auth_error() -> None:
+    with (
+        patch(
+            "backend.integrations.oauth.codex.poll_device_code",
+            new=AsyncMock(
+                return_value=ChatGPTPollResult(
+                    status="approved",
+                    authorization_code="auth-code",
+                    code_verifier="verifier",
+                )
+            ),
+        ),
+        patch(
+            "backend.integrations.oauth.codex.exchange_authorization_code",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "backend.integrations.oauth.codex.bundle_from_tokens",
+            side_effect=CodexAuthBundleError("invalid jwt"),
+        ),
+    ):
+        with pytest.raises(CodexAuthError, match="invalid token data"):
+            await CodexDeviceAuthHandler().poll_for_tokens(
+                _pack_poll_key("deviceauth_abc", "FWK1-91A0I")
+            )
+
+
+@pytest.mark.asyncio
+async def test_malformed_refresh_tokens_become_a_normal_auth_error() -> None:
+    credentials = OAuth2Credentials(
+        provider="codex",
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=[],
+        refresh_strategy="oauth_handler",
+    )
+    with (
+        patch(
+            "backend.integrations.oauth.codex.refresh_access_token",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "backend.integrations.oauth.codex.bundle_from_tokens",
+            side_effect=CodexAuthBundleError("invalid jwt"),
+        ),
+    ):
+        with pytest.raises(CodexAuthError, match="invalid token data"):
+            await CodexDeviceAuthHandler()._refresh_tokens(credentials)
 
 
 @pytest.mark.asyncio

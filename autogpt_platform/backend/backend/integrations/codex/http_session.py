@@ -157,6 +157,12 @@ class CodexHttpSession:
             # can usually recover by trying something else.
             output = f"Tool {call.name!r} timed out."
             logger.warning("Codex tool %s timed out", call.name)
+        except Exception:
+            # Tool failures are model-visible results, not transport failures:
+            # the model can explain, retry, or choose another path. Do not
+            # include exception text because tool errors may contain secrets.
+            output = f"Tool {call.name!r} failed."
+            logger.exception("Codex tool %s failed", call.name)
 
         return {
             "type": "function_call_output",

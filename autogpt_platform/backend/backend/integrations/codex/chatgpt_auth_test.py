@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
@@ -11,6 +11,7 @@ from backend.integrations.codex.chatgpt_auth import (
     exchange_authorization_code,
     poll_device_code,
     refresh_access_token,
+    request_device_code,
 )
 
 
@@ -145,6 +146,53 @@ async def test_a_non_json_body_is_a_failure_not_a_pending_state() -> None:
     with _patch_post(_FakeResponse(502, None)):
         with pytest.raises(CodexAuthError):
             await poll_device_code("deviceauth_x", "AAAA-BBBBB")
+
+
+@pytest.mark.asyncio
+async def test_every_auth_http_call_has_a_finite_retry_budget() -> None:
+    cases = [
+        (
+            request_device_code,
+            (),
+            _FakeResponse(
+                200,
+                {"device_auth_id": "deviceauth_x", "user_code": "AAAA-BBBBB"},
+            ),
+            {"retry_max_attempts": 3},
+        ),
+        (
+            poll_device_code,
+            ("deviceauth_x", "AAAA-BBBBB"),
+            _FakeResponse(403, _error("deviceauth_authorization_pending")),
+            {"raise_for_status": False, "retry_max_attempts": 1},
+        ),
+        (
+            exchange_authorization_code,
+            ("auth-code", "verifier"),
+            _FakeResponse(
+                200,
+                {"id_token": "id", "access_token": "at", "refresh_token": "rt"},
+            ),
+            {"raise_for_status": False, "retry_max_attempts": 3},
+        ),
+        (
+            refresh_access_token,
+            (SecretStr("old-refresh"),),
+            _FakeResponse(
+                200,
+                {"id_token": "id", "access_token": "at", "refresh_token": "rt"},
+            ),
+            {"raise_for_status": False, "retry_max_attempts": 3},
+        ),
+    ]
+
+    for operation, args, response, expected_kwargs in cases:
+        requests = AsyncMock()
+        requests.post = AsyncMock(return_value=response)
+        factory = MagicMock(return_value=requests)
+        with patch.object(chatgpt_auth, "Requests", factory):
+            await operation(*args)
+        factory.assert_called_once_with(**expected_kwargs)
 
 
 # --------------------------------------------------------------------------- #

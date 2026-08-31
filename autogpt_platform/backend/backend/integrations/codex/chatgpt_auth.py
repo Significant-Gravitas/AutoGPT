@@ -53,6 +53,7 @@ RUNTIME_VERSION = "http"
 
 _DEFAULT_POLL_INTERVAL = 5
 _MAX_POLL_INTERVAL = 60
+_AUTH_RETRY_ATTEMPTS = 3
 
 # Classify on the machine-readable ``code``, never the HTTP status: a pending
 # authorization answers 403 and an unknown or expired one answers 404, so
@@ -139,7 +140,7 @@ def _error_code(payload: object) -> str | None:
 
 async def request_device_code() -> ChatGPTDeviceCode:
     """Start a sign-in and return the code the user enters at the verify URL."""
-    response = await Requests().post(
+    response = await Requests(retry_max_attempts=_AUTH_RETRY_ATTEMPTS).post(
         DEVICE_CODE_URL, headers=_headers(), json={"client_id": CLIENT_ID}
     )
     return ChatGPTDeviceCode.model_validate(response.json())
@@ -147,7 +148,10 @@ async def request_device_code() -> ChatGPTDeviceCode:
 
 async def poll_device_code(device_auth_id: str, user_code: str) -> ChatGPTPollResult:
     """Poll once. The caller owns the loop, the sleeping, and the deadline."""
-    response = await Requests(raise_for_status=False).post(
+    # This function is already one iteration of the caller-owned polling
+    # loop. Return a provider 429/5xx promptly so that loop can apply the
+    # advertised interval instead of nesting another retry loop inside it.
+    response = await Requests(raise_for_status=False, retry_max_attempts=1).post(
         DEVICE_TOKEN_URL,
         headers=_headers(),
         json={
@@ -198,7 +202,9 @@ async def poll_device_code(device_auth_id: str, user_code: str) -> ChatGPTPollRe
 async def exchange_authorization_code(
     authorization_code: str, code_verifier: str
 ) -> ChatGPTTokens:
-    response = await Requests(raise_for_status=False).post(
+    response = await Requests(
+        raise_for_status=False, retry_max_attempts=_AUTH_RETRY_ATTEMPTS
+    ).post(
         OAUTH_TOKEN_URL,
         headers=_headers(content_type="application/x-www-form-urlencoded"),
         data={
@@ -223,7 +229,9 @@ async def exchange_authorization_code(
 
 async def refresh_access_token(refresh_token: SecretStr) -> ChatGPTTokens:
     """Exchange a refresh token. OpenAI rotates it, so persist what comes back."""
-    response = await Requests(raise_for_status=False).post(
+    response = await Requests(
+        raise_for_status=False, retry_max_attempts=_AUTH_RETRY_ATTEMPTS
+    ).post(
         OAUTH_TOKEN_URL,
         headers=_headers(content_type="application/x-www-form-urlencoded"),
         data={

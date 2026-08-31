@@ -11,13 +11,19 @@ one chat at a time because a single subprocess owned the credential. Over HTTP
 the same credential serves as many concurrent turns as the account allows.
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import cast
 
-from backend.data.model import OAuth2Credentials
-from backend.integrations.codex.credential_codec import bundle_from_credentials
+from backend.data.model import Credentials, OAuth2Credentials
+from backend.integrations.codex.credential_codec import (
+    bundle_from_credentials,
+    checkpoint_credentials_from_bundle,
+)
 from backend.integrations.codex.device_login import (
     CodexHttpDeviceLogin,
     start_http_device_login,
@@ -39,6 +45,7 @@ from backend.integrations.codex.models import (
     CodexStreamEvent,
 )
 from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -80,8 +87,7 @@ __all__ = [
 ]
 
 
-def codex_credentials(lease: CredentialLease) -> OAuth2Credentials:
-    credentials = lease.credentials
+def _validated_codex_credentials(credentials: Credentials) -> OAuth2Credentials:
     if credentials.type != "oauth2":
         raise CodexTransportError("Codex transport requires OAuth credentials")
     oauth_credentials = cast(OAuth2Credentials, credentials)
@@ -89,6 +95,12 @@ def codex_credentials(lease: CredentialLease) -> OAuth2Credentials:
     # used for anything that costs the user money.
     bundle_from_credentials(oauth_credentials)
     return oauth_credentials
+
+
+def codex_credentials(
+    lease: CredentialLease | CodexCredentialLease,
+) -> OAuth2Credentials:
+    return _validated_codex_credentials(lease.credentials)
 
 
 def resolve_invocation_model(
@@ -152,19 +164,24 @@ class CodexAgentSession:
 
 
 class CodexCredentialLease:
-    """A leased Codex credential plus the session that spends it.
+    """An immutable Codex credential snapshot plus the session that spends it.
 
     Mirrors the surface the copilot executor and gateway already use, so
-    swapping the process out did not change their call sites.
+    swapping the process out did not change their call sites. HTTP turns do
+    not hold the credentials-manager lock: refresh is serialized before this
+    snapshot is created, then concurrent turns can safely share the resulting
+    access token.
     """
 
-    def __init__(self, lease: CredentialLease, session: CodexAgentSession) -> None:
-        self._lease = lease
+    def __init__(
+        self, credentials: OAuth2Credentials, session: CodexAgentSession
+    ) -> None:
+        self._credentials = credentials
         self._session = session
 
     @property
-    def credentials(self):
-        return self._lease.credentials
+    def credentials(self) -> OAuth2Credentials:
+        return self._credentials
 
     async def models(self) -> list[CodexModelInfo]:
         return await self._session.models()
@@ -181,7 +198,9 @@ class CodexCredentialLease:
         )
 
     async def release(self) -> None:
-        await self._lease.release()
+        # Kept for the executor's common lease lifecycle. No lock survives
+        # acquire_runtime_lease(), so concurrent HTTP turns never serialize.
+        return None
 
 
 class CodexTransport:
@@ -208,13 +227,59 @@ class CodexTransport:
     async def acquire_runtime_lease(
         self, user_id: str, credential_id: str, *, lock_timeout_seconds: float
     ) -> CodexCredentialLease:
-        from backend.integrations.creds_manager import IntegrationCredentialsManager
+        manager = IntegrationCredentialsManager()
 
-        lease = await IntegrationCredentialsManager().acquire_lease(
-            user_id, credential_id
+        async def load() -> Credentials | None:
+            try:
+                return await asyncio.wait_for(
+                    manager.get(user_id, credential_id),
+                    timeout=lock_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                raise CodexCredentialBusyError("codex_credential_busy") from None
+
+        credentials = await load()
+        if credentials is None:
+            raise CodexTransportError("Codex credential not found")
+        oauth_credentials = _validated_codex_credentials(credentials)
+
+        if oauth_credentials.refresh_strategy == "provider_runtime":
+            # One-time migration from the removed CLI runtime. Hold the legacy
+            # lease only long enough to rewrite refresh ownership; never for
+            # the inference turn itself.
+            try:
+                legacy_lease = await asyncio.wait_for(
+                    manager.acquire_lease(user_id, credential_id),
+                    timeout=lock_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                raise CodexCredentialBusyError("codex_credential_busy") from None
+            try:
+                current = _validated_codex_credentials(legacy_lease.credentials)
+                if current.refresh_strategy == "provider_runtime":
+                    migrated = checkpoint_credentials_from_bundle(
+                        current, bundle_from_credentials(current)
+                    )
+                    try:
+                        await asyncio.wait_for(
+                            legacy_lease.checkpoint(migrated),
+                            timeout=lock_timeout_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        raise CodexCredentialBusyError(
+                            "codex_credential_busy"
+                        ) from None
+            finally:
+                await legacy_lease.release()
+
+            credentials = await load()
+            if credentials is None:
+                raise CodexTransportError("Codex credential not found")
+            oauth_credentials = _validated_codex_credentials(credentials)
+
+        return CodexCredentialLease(
+            oauth_credentials, self._session_for(oauth_credentials)
         )
-        credentials = codex_credentials(lease)
-        return CodexCredentialLease(lease, self._session_for(credentials))
 
     async def close_runtime_pool(self) -> None:
         """Nothing is pooled; kept so shutdown call sites stay unchanged."""

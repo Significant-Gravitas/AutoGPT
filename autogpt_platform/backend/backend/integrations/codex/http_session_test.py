@@ -217,6 +217,27 @@ async def test_a_tool_timeout_is_reported_to_the_model_not_raised() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_tool_failure_is_returned_to_the_model_without_leaking_details() -> (
+    None
+):
+    session, client = _session([_tool_turn("lookup", "{}"), _text_turn("recovered")])
+
+    async def broken(_call: CodexDynamicToolCall) -> CodexDynamicToolResult:
+        raise RuntimeError("secret provider detail")
+
+    result = await session.invoke(_request(), [TOOL], broken)
+
+    assert result.final_response == "recovered"
+    output = [
+        item
+        for item in client.responses.requests[1]["input"]
+        if item.get("type") == "function_call_output"
+    ][0]["output"]
+    assert output == "Tool 'lookup' failed."
+    assert "secret provider detail" not in output
+
+
+@pytest.mark.asyncio
 async def test_a_loop_that_never_converges_stops_instead_of_spending_quota() -> None:
     turns = [_tool_turn("lookup", "{}") for _ in range(MAX_TOOL_ITERATIONS + 2)]
     session, _ = _session(turns)
