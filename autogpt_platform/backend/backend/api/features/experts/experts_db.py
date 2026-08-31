@@ -11,6 +11,12 @@ from prisma.enums import ResourceVisibility
 from pydantic import JsonValue, ValidationError
 
 from backend.api.features.experts import raise_attachments, scheduling
+
+# Re-exported so `db_accessors.experts_db()` resolves the same attribute name
+# on both branches: the module here, and the RPC client stub in db_manager.
+from backend.api.features.experts.credentials import (
+    expert_allowed_credential_ids as expert_allowed_credential_ids,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,

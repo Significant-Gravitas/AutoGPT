@@ -2354,9 +2354,10 @@ def _build_system_prompt_value(
     the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
-    returned.  Note this causes the CLI to REPLACE its built-in prompt via
-    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
-    which loses Claude Code's default prompt and its cache markers entirely.
+    returned.  This intentionally replaces the CLI's built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset).
+    Per-session prompt caching remains available; only the shared Claude Code
+    preset prefix and its cross-user cache reuse are removed.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
@@ -4872,9 +4873,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sid,
                 )
 
-        # Use SystemPromptPreset with exclude_dynamic_sections=True on
-        # every turn — including resumed ones — so all turns share the
-        # same static prefix and hit the cross-user prompt cache.
+        # When cross-user caching is enabled, use SystemPromptPreset with
+        # exclude_dynamic_sections=True on every turn — including resumed
+        # ones — so all turns share the same static prefix.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
         # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
@@ -5370,8 +5371,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_retry.resume = None
                     sdk_options_retry.session_id = session_id
-                # Recompute system_prompt for retry — the preset is safe on
-                # every turn (requires CLI ≥ 2.1.98, bundled in
+                # Recompute system_prompt for retry. When enabled, the preset
+                # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
                 sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,

@@ -4,9 +4,10 @@
  * Adapted from AI SDK Elements `prompt-input` component.
  * @see https://elements.ai-sdk.dev/components/prompt-input
  *
- * Stripped down to only the sub-components used by the copilot ChatInput:
- * PromptInput, PromptInputBody, PromptInputTextarea, PromptInputFooter,
- * PromptInputTools, PromptInputButton, PromptInputSubmit.
+ * Stripped down to the sub-components the copilot ChatInput builds on:
+ * PromptInput, PromptInputTextarea, PromptInputButton, PromptInputSubmit.
+ * The composer lays out its own rows, so the Body/Footer/Tools wrappers no
+ * longer live here.
  */
 
 import type { ChatStatus } from "ai";
@@ -21,7 +22,6 @@ import type {
 
 import {
   InputGroup,
-  InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
@@ -32,7 +32,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Children, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Children,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
@@ -86,22 +92,32 @@ export function PromptInput({
 }
 
 // ============================================================================
-// PromptInputBody — content wrapper
-// ============================================================================
-
-export type PromptInputBodyProps = HTMLAttributes<HTMLDivElement>;
-
-export function PromptInputBody({ className, ...props }: PromptInputBodyProps) {
-  return <div className={cn("contents", className)} {...props} />;
-}
-
-// ============================================================================
 // PromptInputTextarea — auto-resize textarea with Enter-to-submit
 // ============================================================================
 
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
->;
+> & {
+  /** Reports whether the content now spans more than one line, so a host can
+   *  switch between single-row and stacked composer layouts. Derived from the
+   *  box's own line-height rather than a shared pixel constant, which cannot
+   *  survive hosts that restyle the textarea. */
+  onMultilineChange?: (isMultiline: boolean) => void;
+};
+
+/** True once the content needs a second line. Compared against this box's own
+ *  computed line-height + padding, so a host's font or padding can change
+ *  without silently re-tuning the threshold. */
+function isWrapped(el: HTMLTextAreaElement, contentHeight: number): boolean {
+  const style = getComputedStyle(el);
+  const lineHeight = parseFloat(style.lineHeight);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return false;
+  const padding =
+    (parseFloat(style.paddingTop) || 0) +
+    (parseFloat(style.paddingBottom) || 0);
+  // One pixel of slack absorbs sub-pixel rounding.
+  return contentHeight > lineHeight + padding + 1;
+}
 
 export function PromptInputTextarea({
   onKeyDown,
@@ -109,20 +125,55 @@ export function PromptInputTextarea({
   className,
   placeholder = "Type your message...",
   value,
+  onMultilineChange,
   ...props
 }: PromptInputTextareaProps) {
   const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Ref keeps autoResize stable inside the memoized change handler while
+  // still reaching the latest callback.
+  const onMultilineChangeRef = useRef(onMultilineChange);
+  onMultilineChangeRef.current = onMultilineChange;
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    // A host min-height floors scrollHeight (the hero composer sets 4.5rem),
+    // so an empty box would report its minimum and read as already wrapped.
+    // Measure the content with the floor lifted, then hand the box back.
+    const ownMinHeight = el.style.minHeight;
+    el.style.minHeight = "0";
+    const contentHeight = el.scrollHeight;
+    el.style.minHeight = ownMinHeight;
+    el.style.height = `${contentHeight}px`;
+    onMultilineChangeRef.current?.(isWrapped(el, contentHeight));
   }
 
-  // Resize when value changes externally (e.g. cleared after send)
-  useEffect(() => {
+  // Resize when value changes externally (e.g. a guided prompt dropped in,
+  // or cleared after send). Runs before paint: typing resizes synchronously
+  // in handleChange, but a value set from outside would otherwise paint one
+  // frame at the old height — visible as a jump when the host restyles
+  // itself around a now-multiline box.
+  useLayoutEffect(() => {
     if (textareaRef.current) autoResize(textareaRef.current);
   }, [value]);
+
+  // Width changes rewrap the same text — a narrowing viewport, or a panel
+  // opening beside the composer — so the box must re-measure without the
+  // value moving. Only width is acted on: autoResize sets the height itself,
+  // so reacting to height would loop.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    let lastWidth = -1;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      autoResize(el);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -168,46 +219,6 @@ export function PromptInputTextarea({
       onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
-      {...props}
-    />
-  );
-}
-
-// ============================================================================
-// PromptInputFooter — bottom bar
-// ============================================================================
-
-export type PromptInputFooterProps = Omit<
-  ComponentProps<typeof InputGroupAddon>,
-  "align"
->;
-
-export function PromptInputFooter({
-  className,
-  ...props
-}: PromptInputFooterProps) {
-  return (
-    <InputGroupAddon
-      align="block-end"
-      className={cn("justify-between gap-1", className)}
-      {...props}
-    />
-  );
-}
-
-// ============================================================================
-// PromptInputTools — left-side button group
-// ============================================================================
-
-export type PromptInputToolsProps = HTMLAttributes<HTMLDivElement>;
-
-export function PromptInputTools({
-  className,
-  ...props
-}: PromptInputToolsProps) {
-  return (
-    <div
-      className={cn("flex min-w-0 items-center gap-1", className)}
       {...props}
     />
   );

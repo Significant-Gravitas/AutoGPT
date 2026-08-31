@@ -12,7 +12,6 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -99,8 +98,11 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** The host's floating workspace-files card is open, so the header and
-   *  the column slide aside for it. Only the copilot chat mounts that card;
+  /** Set by the host that mounts the session activity card, so the thread
+   *  chip only becomes clickable where that card exists. */
+  canOpenActivity?: boolean;
+  /** The host's floating workspace-files card is open, so the column
+   *  slides aside for it. Only the copilot chat mounts that card;
    *  every other host (share viewer, memory and builder panels) leaves this
    *  off, whatever the persisted panel state says. */
   areFilesOpen?: boolean;
@@ -303,14 +305,13 @@ export function ChatMessagesContainer({
   fileUrlBuilder,
   expertIdentity,
   hasFloatingControls = false,
+  canOpenActivity = false,
   areFilesOpen = false,
 }: Props) {
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
     [allMessages],
   );
-  // Bubble restyle ships with the brain-dump experience.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
   const [settled, setSettled] = useState(false);
@@ -463,8 +464,9 @@ export function ChatMessagesContainer({
       <ThreadHeader
         expertIdentity={expertIdentity}
         readOnly={readOnly}
-        areFilesOpen={areFilesOpen}
+        sessionId={sessionID}
         hasFloatingControls={hasFloatingControls}
+        canOpenActivity={canOpenActivity}
       />
       <ChatMinimap messages={messages} />
       <Conversation
@@ -479,7 +481,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-4 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
             areFilesOpen && "xl:-translate-x-40",
           )}
           style={
@@ -603,9 +605,7 @@ export function ChatMessagesContainer({
                 <MessageContent
                   className={
                     "text-[1rem] leading-relaxed " +
-                    (isBrainDumpEnabled
-                      ? "group-[.is-user]:rounded-3xl group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-[#f3edff] group-[.is-user]:to-[#e4d4ff] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-[#3b1e75] group-[.is-user]:[border-bottom-right-radius:0.5rem] "
-                      : "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] ") +
+                    "group-[.is-user]:rounded-3xl group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900 " +
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
@@ -675,7 +675,7 @@ export function ChatMessagesContainer({
                     );
                   })()}
                 {message.role === "user" && textParts.length > 0 && (
-                  <MessageActions className="mt-1 items-center justify-end gap-2">
+                  <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     {(() => {
                       const createdAt = turnStats?.get(message.id)?.createdAt;
                       if (!createdAt) return null;
@@ -708,10 +708,20 @@ export function ChatMessagesContainer({
                   <AssistantMessageActions
                     message={message}
                     sessionID={sessionID ?? null}
+                    className={cn(
+                      !isLastAssistant &&
+                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                    )}
                   />
                 )}
                 {readOnly && showActions && (
-                  <MessageActions className="mt-1 items-center justify-start gap-2">
+                  <MessageActions
+                    className={cn(
+                      "mt-1 items-center justify-start gap-2",
+                      !isLastAssistant &&
+                        "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+                    )}
+                  >
                     <CopyButton
                       text={textParts.map((p) => p.text).join("\n")}
                     />
@@ -761,13 +771,7 @@ export function ChatMessagesContainer({
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">
-                <MessageContent
-                  className={
-                    isBrainDumpEnabled
-                      ? "flex flex-col gap-1 rounded-3xl border border-dashed border-[#b18aff] bg-gradient-to-br from-[#f3edff] to-[#e4d4ff] px-4 py-3 text-[1rem] leading-relaxed text-[#3b1e75] opacity-60 [border-bottom-right-radius:0.5rem]"
-                      : "flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]"
-                  }
-                >
+                <MessageContent className="flex flex-col gap-1 rounded-3xl border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-[1rem] leading-relaxed text-zinc-900 opacity-60">
                   <span>{msg}</span>
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Icon icon={Clock01Icon} className="size-3" />
