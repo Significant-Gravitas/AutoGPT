@@ -40,7 +40,15 @@ export function ManageConnectionDialog({
   // means what is shown was true a moment ago rather than whenever the
   // connection was last used.
   const accountQuery = useGetV1CodexAccount(credentialId ?? "", {
-    query: { enabled: credentialId !== null, staleTime: 0, retry: false },
+    query: {
+      enabled: credentialId !== null,
+      staleTime: 0,
+      retry: false,
+      // A window-focus refetch would lease another provider runtime while
+      // the same snapshot is already visible. Reopening Manage is the user's
+      // explicit refresh boundary.
+      refetchOnWindowFocus: false,
+    },
   });
   const accountResponse =
     accountQuery.data?.status === 200 ? accountQuery.data.data : undefined;
