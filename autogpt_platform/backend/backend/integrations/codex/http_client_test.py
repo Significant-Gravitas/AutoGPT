@@ -1,4 +1,58 @@
-from backend.integrations.codex.http_client import _parse_model, parse_rate_limits
+import base64
+import json
+
+from pydantic import SecretStr
+
+from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
+from backend.integrations.codex.credential_codec import credentials_from_bundle
+from backend.integrations.codex.http_client import (
+    _parse_model,
+    account_id_for,
+    account_snapshot,
+    parse_rate_limits,
+)
+
+
+def _jwt(payload: dict[str, object]) -> str:
+    encoded = (
+        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    )
+    return f"header.{encoded}.signature"
+
+
+def _credentials_with_identity_only_in_id_token():
+    id_token = _jwt(
+        {
+            "email": "person@example.com",
+            "https://api.openai.com/auth": {
+                "chatgpt_plan_type": "pro",
+                "chatgpt_account_id": "account-from-id-token",
+            },
+        }
+    )
+    access_token = _jwt({"exp": 2_000_000_000})
+    bundle = CodexAuthBundleV1(
+        tokens=CodexAuthTokensV1(
+            id_token=SecretStr(id_token),
+            access_token=SecretStr(access_token),
+            refresh_token=SecretStr("refresh-token"),
+        ),
+        codex_runtime_version="http",
+    )
+    return credentials_from_bundle(bundle)
+
+
+def test_account_identity_comes_from_the_id_token() -> None:
+    credentials = _credentials_with_identity_only_in_id_token()
+
+    assert account_id_for(credentials) == "account-from-id-token"
+    assert account_snapshot(credentials).model_dump() == {
+        "connected": True,
+        "requires_openai_auth": False,
+        "account_type": "chatgpt",
+        "email": "person@example.com",
+        "plan_type": "pro",
+    }
 
 
 def _model(**over: object) -> dict[str, object]:

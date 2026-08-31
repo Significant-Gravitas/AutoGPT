@@ -18,6 +18,7 @@ from openai import AsyncOpenAI
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import decode_jwt_claims
 from backend.integrations.codex.chatgpt_auth import ORIGINATOR, USER_AGENT
+from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.codex.models import (
     CodexAccountSnapshot,
     CodexModelInfo,
@@ -71,7 +72,8 @@ def _inference_headers(credentials: OAuth2Credentials) -> dict[str, str]:
 
 def account_id_for(credentials: OAuth2Credentials) -> str | None:
     try:
-        return decode_jwt_claims(credentials.access_token).chatgpt_account_id
+        bundle = bundle_from_credentials(credentials)
+        return decode_jwt_claims(bundle.tokens.id_token).chatgpt_account_id
     except Exception:
         logger.warning("Could not read the account id from a ChatGPT token")
         return None
@@ -80,7 +82,8 @@ def account_id_for(credentials: OAuth2Credentials) -> str | None:
 def account_snapshot(credentials: OAuth2Credentials) -> CodexAccountSnapshot:
     """Derive account identity from the token itself; there is no account API."""
     try:
-        claims = decode_jwt_claims(credentials.access_token)
+        bundle = bundle_from_credentials(credentials)
+        claims = decode_jwt_claims(bundle.tokens.id_token)
     except Exception:
         return CodexAccountSnapshot(connected=False, requires_openai_auth=True)
     return CodexAccountSnapshot(
