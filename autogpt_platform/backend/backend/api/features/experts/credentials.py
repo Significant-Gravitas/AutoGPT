@@ -236,7 +236,7 @@ async def revoke_expert_credential(
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
 
 
-async def allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:
+async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:
     """The credential ids *expert_id* may use. Enforcement's source of truth.
 
     Raises ``ExpertNotFoundError`` for an expert the user does not own, so a

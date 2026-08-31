@@ -517,7 +517,7 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
-    expert_allowed_credential_ids = _(expert_credentials.allowed_credential_ids)
+    expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
