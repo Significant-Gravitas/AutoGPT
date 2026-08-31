@@ -108,7 +108,7 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
 
     const section = await screen.findByTestId("expert-integrations-section");
-    expect(within(section).getByText("Work LinkedIn")).toBeDefined();
+    expect(await within(section).findByText("Work LinkedIn")).toBeDefined();
     expect(within(section).getByText("LinkedIn")).toBeDefined();
   });
 
@@ -119,7 +119,9 @@ describe("managing an expert's integrations", () => {
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
-      within(section).getByText(/Maria cannot reach any of your integrations/),
+      await within(section).findByText(
+        /Maria cannot reach any of your integrations/,
+      ),
     ).toBeDefined();
   });
 
@@ -170,5 +172,76 @@ describe("managing an expert's integrations", () => {
 
     await userEvent.click(screen.getByText("Team Notion"));
     await waitFor(() => expect(granted).toEqual(["cred-notion"]));
+  });
+
+  it("offers connecting a new service when there is nothing left to grant", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () => HttpResponse.json([])),
+      http.get("*/api/integrations/credentials", () => HttpResponse.json([])),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    expect(
+      await screen.findByText("You haven't connected any services yet."),
+    ).toBeDefined();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Connect a new service/ }),
+    );
+
+    expect(await screen.findByLabelText("Search services")).toBeDefined();
+  });
+
+  it("grants a credential connected from inside the dialog", async () => {
+    const workLinkedin = {
+      id: "cred-linkedin",
+      provider: "linkedin",
+      type: "oauth2",
+      title: "Work LinkedIn",
+    };
+    const teamSlack = {
+      id: "cred-slack",
+      provider: "slack",
+      type: "oauth2",
+      title: "Team Slack",
+    };
+    let connected = [workLinkedin];
+    let granted: string[] = [];
+
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/providers", () => HttpResponse.json([])),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(connected),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = body.credential_ids;
+          return HttpResponse.json([linkedin]);
+        },
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Connect a new service/ }),
+    );
+    await screen.findByLabelText("Search services");
+
+    connected = [workLinkedin, teamSlack];
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(granted).toEqual(["cred-slack"]));
   });
 });

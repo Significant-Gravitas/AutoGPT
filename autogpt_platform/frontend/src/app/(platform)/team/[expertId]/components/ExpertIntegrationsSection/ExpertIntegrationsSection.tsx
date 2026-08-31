@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import {
@@ -26,6 +27,9 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
     isAdding,
     openAdd,
     closeAdd,
+    isConnecting,
+    openConnect,
+    closeConnect,
     addIntegration,
     removeIntegration,
     isGranting,
@@ -68,8 +72,9 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
               </p>
             ) : grantable.length === 0 ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
-                Nothing left to add. Connect a new integration in Settings
-                first.
+                {granted.length === 0
+                  ? "You haven't connected any services yet."
+                  : "Everything you've connected is already here."}
               </p>
             ) : (
               <ul className="max-h-72 overflow-y-auto">
@@ -91,6 +96,20 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                 ))}
               </ul>
             )}
+
+            <div className="mt-1 border-t border-zinc-100 pt-1">
+              <button
+                type="button"
+                disabled={isGranting}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                onClick={openConnect}
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500">
+                  <Icon icon={PlusSignIcon} size={14} />
+                </span>
+                Connect a new service…
+              </button>
+            </div>
           </PopoverContent>
         </Popover>
       </div>
@@ -139,6 +158,13 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           ))}
         </div>
       )}
+
+      <ConnectServiceDialog
+        open={isConnecting}
+        onOpenChange={(open) => {
+          if (!open) closeConnect();
+        }}
+      />
     </section>
   );
 }

@@ -44,6 +44,7 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   d_id: "D-ID",
   ideogram: "Ideogram",
   jina: "Jina",
+  linkedin: "LinkedIn",
   mcp: "MCP",
   twitter: "X",
   zerobounce: "ZeroBounce",

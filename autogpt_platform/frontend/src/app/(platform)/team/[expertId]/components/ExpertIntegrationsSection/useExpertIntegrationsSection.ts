@@ -9,12 +9,18 @@ import { okData } from "@/app/api/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export function useExpertIntegrationsSection(expertId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isAdding, setIsAdding] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  // Credentials already on the account when the connect dialog opened. Null
+  // means we could not read them, so a freshly created credential cannot be
+  // told apart from a pre-existing one and auto-granting would hand the expert
+  // access the user never picked.
+  const connectedBefore = useRef<Set<string> | null>(null);
 
   const grantedQuery = useListExpertCredentials(expertId, {
     query: { select: (response) => okData(response) ?? [] },
@@ -70,6 +76,36 @@ export function useExpertIntegrationsSection(expertId: string) {
     setIsAdding(false);
   }
 
+  function openConnect() {
+    setIsAdding(false);
+    connectedBefore.current = connectedQuery.isSuccess
+      ? new Set((connectedQuery.data ?? []).map((c) => c.id))
+      : null;
+    setIsConnecting(true);
+  }
+
+  async function closeConnect() {
+    setIsConnecting(false);
+    const before = connectedBefore.current;
+    connectedBefore.current = null;
+
+    // Every connect method — OAuth, API key, device code, MCP — lands in the
+    // same credentials list, so diffing it picks up whatever was just created
+    // without threading a new id back out of each individual flow.
+    const { data } = await connectedQuery.refetch();
+    const created = before
+      ? (data ?? []).filter((c) => !before.has(c.id)).map((c) => c.id)
+      : [];
+
+    // Nothing was connected (or we cannot tell): drop the user back where they
+    // were instead of silently swallowing the click.
+    if (created.length === 0) {
+      setIsAdding(true);
+      return;
+    }
+    grant({ expertId, data: { credential_ids: created } });
+  }
+
   function addIntegration(credentialId: string) {
     grant({ expertId, data: { credential_ids: [credentialId] } });
   }
@@ -97,6 +133,9 @@ export function useExpertIntegrationsSection(expertId: string) {
     isAdding,
     openAdd,
     closeAdd,
+    isConnecting,
+    openConnect,
+    closeConnect,
     addIntegration,
     removeIntegration,
     isGranting,
