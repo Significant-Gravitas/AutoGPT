@@ -709,6 +709,29 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
+
+  it("keeps the passive chip keyboard-reachable, since the role only exists in its tooltip", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    const chip = within(header).getByLabelText("Maria — Marketing Strategist");
+
+    // A tooltip opens on focus as well as hover; an unfocusable trigger
+    // hides the role from keyboard users entirely.
+    expect(chip.getAttribute("tabindex")).toBe("0");
+  });
 });
 
 function RecipientPickerHarness() {

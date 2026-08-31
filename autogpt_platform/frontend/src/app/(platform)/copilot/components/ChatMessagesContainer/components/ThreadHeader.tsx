@@ -120,7 +120,15 @@ export function ThreadHeader({
                     {chipContent}
                   </button>
                 ) : (
-                  <div className="flex min-w-0 items-center gap-2">
+                  // The role lives only in the tooltip, and a tooltip opens
+                  // on focus as well as hover — so even this passive chip has
+                  // to be reachable by keyboard, or read-only viewers never
+                  // get the role at all.
+                  <div
+                    tabIndex={0}
+                    aria-label={`${name} — ${role}`}
+                    className="flex min-w-0 items-center gap-2 rounded-full"
+                  >
                     {chipContent}
                   </div>
                 )}
