@@ -509,6 +509,11 @@ class GithubUnassignPRReviewerBlock(Block):
             yield "error", str(e)
 
 
+# A PR accumulates one review event per comment round, so scan well past the
+# reviewer count to be sure the latest state of each reviewer is seen.
+MAX_REVIEWS_SCANNED = 500
+
+
 class GithubListPRReviewersBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -616,13 +621,15 @@ class GithubListPRReviewersBlock(Block):
             return reviewers
 
         reviews_url = prepare_pr_api_url(pr_url=pr_url, path="reviews")
-        response = await api.get(reviews_url)
+        reviews = await get_paginated(api, reviews_url, limit=MAX_REVIEWS_SCANNED)
         reviewers_by_username = {r["username"]: r for r in reviewers}
-        for review in response.json():
+        for review in reviews:
             # PENDING reviews are drafts that haven't been submitted yet
             if review["state"] == "PENDING":
                 continue
-            user = review["user"]
+            # Reviews by deleted accounts come back with a null user
+            if not (user := review.get("user")):
+                continue
             if user["login"] not in reviewers_by_username:
                 reviewer: GithubListPRReviewersBlock.Output.ReviewerItem = {
                     "username": user["login"],

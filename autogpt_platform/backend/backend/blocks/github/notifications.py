@@ -1,5 +1,3 @@
-import logging
-
 from typing_extensions import TypedDict
 
 from backend.blocks._base import (
@@ -20,7 +18,10 @@ from ._auth import (
     GithubCredentialsInput,
 )
 
-logger = logging.getLogger(__name__)
+GITHUB_WEB_URL = "https://github.com"
+
+# API path segments whose github.com equivalent is spelled differently
+_WEB_PATH_BY_API_PATH = {"pulls": "pull", "commits": "commit"}
 
 
 class NotificationItem(TypedDict):
@@ -124,11 +125,7 @@ class GithubListNotificationsBlock(Block):
         credentials: GithubCredentials, input_data: Input
     ) -> list[NotificationItem]:
         api = get_api(credentials, convert_urls=False)
-        url = (
-            f"{GITHUB_API_URL}/repos/{input_data.repo}/notifications"
-            if input_data.repo
-            else f"{GITHUB_API_URL}/notifications"
-        )
+        url = _notifications_url(input_data.repo)
         params: dict[str, str] = {}
         if input_data.include_read:
             params["all"] = "true"
@@ -191,6 +188,9 @@ class GithubGetNotificationThreadBlock(Block):
         repository: str = SchemaField(
             description="Full name of the repository (owner/repo)"
         )
+        updated_at: str = SchemaField(
+            description="ISO 8601 timestamp of the last update to the thread"
+        )
         error: str = SchemaField(
             description="Error message if fetching the notification thread failed"
         )
@@ -215,6 +215,7 @@ class GithubGetNotificationThreadBlock(Block):
                 ("subject_type", TEST_NOTIFICATION_ITEM["subject_type"]),
                 ("subject_url", TEST_NOTIFICATION_ITEM["subject_url"]),
                 ("repository", TEST_NOTIFICATION_ITEM["repository"]),
+                ("updated_at", TEST_NOTIFICATION_ITEM["updated_at"]),
             ],
             test_mock={
                 "get_thread": lambda *args, **kwargs: TEST_NOTIFICATION_ITEM,
@@ -244,6 +245,7 @@ class GithubGetNotificationThreadBlock(Block):
         yield "subject_type", notification["subject_type"]
         yield "subject_url", notification["subject_url"]
         yield "repository", notification["repository"]
+        yield "updated_at", notification["updated_at"]
 
 
 class GithubMarkNotificationsAsReadBlock(Block):
@@ -293,11 +295,7 @@ class GithubMarkNotificationsAsReadBlock(Block):
         credentials: GithubCredentials, repo: str, last_read_at: str
     ) -> bool:
         api = get_api(credentials, convert_urls=False)
-        url = (
-            f"{GITHUB_API_URL}/repos/{repo}/notifications"
-            if repo
-            else f"{GITHUB_API_URL}/notifications"
-        )
+        url = _notifications_url(repo)
         data: dict[str, str] = {}
         if last_read_at:
             data["last_read_at"] = last_read_at
@@ -477,6 +475,14 @@ class GithubUnsubscribeNotificationThreadBlock(Block):
         )
 
 
+def _notifications_url(repo: str) -> str:
+    return (
+        f"{GITHUB_API_URL}/repos/{repo}/notifications"
+        if repo
+        else f"{GITHUB_API_URL}/notifications"
+    )
+
+
 def _to_notification_item(thread: dict) -> NotificationItem:
     subject = thread.get("subject") or {}
     return {
@@ -487,14 +493,25 @@ def _to_notification_item(thread: dict) -> NotificationItem:
         "title": subject.get("title", ""),
         "subject_type": subject.get("type", ""),
         "subject_url": _subject_html_url(subject.get("url") or ""),
-        "repository": thread["repository"]["full_name"],
+        "repository": (thread.get("repository") or {}).get("full_name", ""),
     }
 
 
 def _subject_html_url(api_url: str) -> str:
-    """Best-effort conversion of a subject API URL to its github.com equivalent."""
-    if not api_url:
-        return ""
-    return api_url.replace(
-        "https://api.github.com/repos/", "https://github.com/"
-    ).replace("/pulls/", "/pull/")
+    """
+    Best-effort conversion of a subject API URL to its github.com equivalent.
+    Anything that isn't a repo-scoped API URL is passed through unchanged.
+    """
+    prefix = f"{GITHUB_API_URL}/repos/"
+    if not api_url.startswith(prefix):
+        return api_url
+
+    parts = api_url[len(prefix) :].split("/")
+    if len(parts) > 2:
+        # Releases are addressed by tag on the web, and the subject URL only
+        # carries the numeric id, so drop it and link to the release index.
+        if parts[2] == "releases":
+            del parts[3:]
+        else:
+            parts[2] = _WEB_PATH_BY_API_PATH.get(parts[2], parts[2])
+    return "/".join([GITHUB_WEB_URL, *parts])

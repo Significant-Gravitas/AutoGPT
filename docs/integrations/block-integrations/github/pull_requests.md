@@ -43,7 +43,7 @@ The reviewer must have access to the repository. Organization members can typica
 ## Github List PR Reviewers
 
 ### What it is
-This block lists all reviewers for a specified GitHub pull request.
+This block lists the requested reviewers for a specified GitHub pull request, optionally including users who have already submitted a review.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -57,14 +57,15 @@ This includes both pending review requests and users who have already submitted 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | pr_url | URL of the GitHub pull request | str | Yes |
+| include_past_reviewers | Also include users who have already submitted a review, in addition to users whose review request is pending | bool | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if listing reviewers failed | str |
-| reviewer | Reviewers with their username and profile URL | Reviewer |
-| reviewers | List of reviewers with their username and profile URL | List[ReviewerItem] |
+| reviewer | Reviewers with their username, profile URL, and review status. | Reviewer |
+| reviewers | List of reviewers with their username, profile URL, and review status | List[ReviewerItem] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -94,6 +95,12 @@ The block returns open pull requests by default, allowing you to monitor pending
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| state | Only include pull requests in this state | "open" \| "closed" \| "all" | No |
+| base | Only include pull requests targeting this base branch | str | No |
+| limit | Maximum number of pull requests to fetch | int | No |
+| head | Only include pull requests from this head branch. Format: 'user:branch' or 'org:branch'. | str | No |
+| sort | What to sort the pull requests by | "created" \| "updated" \| "popularity" \| "long-running" | No |
+| direction | Sort direction | "asc" \| "desc" | No |
 
 ### Outputs
 
