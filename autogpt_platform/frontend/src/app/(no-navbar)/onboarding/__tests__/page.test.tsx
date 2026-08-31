@@ -7,6 +7,10 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
 import { http, HttpResponse } from "msw";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
@@ -130,13 +134,18 @@ beforeEach(() => {
   mockRefreshSession.mockClear();
   mockCompletedSteps = [];
   routerReplace.mockClear();
-  completeOnboardingStep.mockClear();
+  completeOnboardingStep.mockReset();
+  completeOnboardingStep.mockResolvedValue({ status: 200 });
   useOnboardingWizardStore.getState().reset();
   window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
 
 afterEach(() => {
   cleanup();
+  // Not at the end of each test body: an assertion that throws above would
+  // leak the shim and NEXT_PUBLIC_GOOGLE_ADS_ID into every later test here.
+  removeGtagShim();
+  vi.unstubAllEnvs();
 });
 
 describe("OnboardingPage — flag-gated SubscriptionStep", () => {
@@ -363,6 +372,55 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     });
     expect(window.sessionStorage.getItem(STEP_STORAGE_KEY)).toBeNull();
   });
+
+  it("reports onboarding_complete to Google Ads when Preparing finishes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith("/copilot");
+    });
+
+    expect(gtagCalls).toContainEqual([
+      "event",
+      "conversion",
+      { send_to: "AW-123/OC" },
+    ]);
+  });
+
+  it("reports no onboarding_complete when the API never confirms", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv(
+      "NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS",
+      "onboarding_complete=OC",
+    );
+    const gtagCalls = installGtagShim();
+    // All three attempts fail: the user still lands on the copilot, but the
+    // backend never recorded the milestone, so nothing converted.
+    completeOnboardingStep.mockRejectedValue(new Error("500"));
+    mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-preparing"));
+    await waitFor(
+      () => {
+        expect(routerReplace).toHaveBeenCalledWith("/copilot");
+      },
+      { timeout: 5000 },
+    );
+
+    expect(completeOnboardingStep).toHaveBeenCalledTimes(3);
+    expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+  }, 10000);
 
   it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
     // Regression test for the 422 caused by init's old `reset()` wiping

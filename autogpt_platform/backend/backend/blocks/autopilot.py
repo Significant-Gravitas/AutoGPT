@@ -5,7 +5,8 @@ import contextvars
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import field_validator
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
@@ -28,7 +29,8 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     validate_block_identifiers,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
@@ -88,6 +90,30 @@ class TokenUsage(TypedDict):
     total_tokens: int
 
 
+CodexAutoPilotCredentials = CredentialsMetaInput[
+    Literal[ProviderName.CODEX],
+    Literal["oauth2"],
+]
+
+
+class AutoPilotTransport(str, Enum):
+    """Which account pays for the model calls this block makes.
+
+    `platform` spends AutoGPT credits; `codex_app_server` spends the user's own
+    ChatGPT subscription. Because the two bill differently, the choice is
+    explicit rather than inferred from whether a credential happens to be set.
+    """
+
+    PLATFORM = "platform"
+    CODEX_APP_SERVER = "codex_app_server"
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        json_schema["enumNames"] = ["AutoGPT Platform", "ChatGPT"]
+        return json_schema
+
+
 class AutoPilotBlock(Block):
     """Execute tasks using AutoGPT AutoPilot with full access to platform tools.
 
@@ -124,6 +150,35 @@ class AutoPilotBlock(Block):
             ),
             default="",
             advanced=True,
+        )
+
+        transport: AutoPilotTransport | None = SchemaField(
+            title="Transport",
+            default=None,
+            placeholder="Select a transport",
+            description=(
+                "Run on platform credits, or on your connected ChatGPT "
+                "subscription if supported by your plan."
+            ),
+            advanced=False,
+        )
+
+        codex_credentials: CodexAutoPilotCredentials = CredentialsField(
+            title="ChatGPT / Codex connection",
+            description="Connected ChatGPT subscription used by the Codex transport.",
+            default=None,
+            credential_reference_only=True,
+            discriminator="transport",
+            # `platform` is deliberately absent: it needs no credential at all,
+            # and an unmapped discriminator value makes the credential input
+            # hide itself rather than asking for something that does not exist.
+            discriminator_mapping={
+                AutoPilotTransport.CODEX_APP_SERVER.value: ProviderName.CODEX,
+            },
+            json_schema_extra={
+                "secret": True,
+                "advanced": False,
+            },
         )
 
         session_id: str = SchemaField(
@@ -306,6 +361,8 @@ class AutoPilotBlock(Block):
         dry_run: bool,
         organization_id: str | None = None,
         team_id: str | None = None,
+        llm_auth_provider: Literal["platform", "codex"] = "platform",
+        llm_credential_id: str | None = None,
     ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
@@ -315,6 +372,12 @@ class AutoPilotBlock(Block):
             dry_run=dry_run,
             organization_id=organization_id,
             team_id=team_id,
+            # The prompt of a graph run is machine-authored and may quote
+            # untrusted upstream data, so this session must not reach the
+            # tools that restaff the user's team.
+            origin="automation",
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
         )
         return session.session_id
 
@@ -475,6 +538,38 @@ class AutoPilotBlock(Block):
 
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
+        codex_connection = input_data.codex_credentials
+        # `transport` is optional precisely so "never chosen" stays
+        # distinguishable from "deliberately platform". A filled-in default
+        # cannot express that difference, and reading one as a real choice
+        # would silently move legacy agents onto platform credits.
+        if input_data.transport is None:
+            # Saved before the field existed: the connection *is* the choice.
+            use_codex = codex_connection is not None
+            if use_codex:
+                logger.warning(
+                    "AutoPilot node has a ChatGPT connection but no transport "
+                    "set — billing to the connection. Run "
+                    "`python -m backend.data.autopilot_migrate --apply`."
+                )
+        elif input_data.transport == AutoPilotTransport.CODEX_APP_SERVER:
+            if codex_connection is None:
+                # Falling back to platform here would bill a different account
+                # than the one the user asked for, without saying so.
+                yield "error", (
+                    "The ChatGPT transport needs a connected ChatGPT account. "
+                    "Connect one, or switch this step to platform credits."
+                )
+                return
+            use_codex = True
+        elif input_data.transport == AutoPilotTransport.PLATFORM:
+            # Explicit platform: honour it even if a connection is still
+            # attached, otherwise the user cannot move a step back onto
+            # platform credits once codex has been configured.
+            use_codex = False
+        else:
+            yield "error", f"Unsupported AutoPilot transport: {input_data.transport}"
+            return
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
@@ -482,7 +577,60 @@ class AutoPilotBlock(Block):
                 dry_run=input_data.dry_run or execution_context.dry_run,
                 organization_id=execution_context.organization_id,
                 team_id=execution_context.team_id,
+                llm_auth_provider=("codex" if use_codex else "platform"),
+                llm_credential_id=(codex_connection.id if use_codex else None),
             )
+        else:
+            # Validate on every resume, not just codex ones. Gating this on
+            # `use_codex` let an explicit `platform` node resume a session that
+            # was created against codex, which then billed the ChatGPT
+            # subscription the user had just opted out of.
+            from backend.copilot.model import get_chat_session_metadata
+
+            existing_session = await get_chat_session_metadata(
+                sid,
+                execution_context.user_id,
+            )
+            if existing_session is None:
+                yield "session_id", sid
+                yield "error", (
+                    "The AutoPilot session was not found. Start a new session "
+                    "or check that the session ID belongs to this account."
+                )
+                return
+
+            # `create_session` stamps origin="automation" so this block's
+            # machine-authored prompt can never reach the staffing tools.
+            # Resuming has to hold the same line: without this check a graph
+            # could pass the user's own interactive session_id and run its
+            # prompt under an origin that `autopilot_session_guard` accepts.
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and every
+            # graph that stores a session_id and re-feeds it on the next run
+            # holds one of those. Refusing those would break live automations
+            # to close a hole they never opened — the staffing guard is where
+            # an unknown origin fails closed instead.
+            if existing_session.metadata.origin == "interactive":
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session was started by a person, not by an "
+                    "automation. Start a new session for this graph run."
+                )
+                return
+
+            expected_provider = "codex" if use_codex else "platform"
+            expected_credential = codex_connection.id if use_codex else None
+            if (
+                existing_session.metadata.llm_auth_provider != expected_provider
+                or existing_session.metadata.llm_credential_id != expected_credential
+            ):
+                yield "session_id", sid
+                yield "error", (
+                    "The AutoPilot session uses a different transport or connection. "
+                    "Start a new session for this selection."
+                )
+                return
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own
         # heartbeat-based timeouts internally.  Wrapping with asyncio.timeout
@@ -697,6 +845,15 @@ async def _enqueue_for_recovery(
         from backend.copilot.executor.utils import (  # avoid circular import
             enqueue_copilot_turn,
         )
+        from backend.copilot.model import get_chat_session
+
+        session = await get_chat_session(session_id, user_id)
+        if session is None:
+            logger.warning(
+                "AutoPilot session %s: copilot_session_not_found",
+                session_id[:12],
+            )
+            return
 
         await asyncio.wait_for(
             enqueue_copilot_turn(
@@ -704,6 +861,8 @@ async def _enqueue_for_recovery(
                 user_id=user_id,
                 message=message,
                 turn_id=str(uuid.uuid4()),
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
             ),
             timeout=10,
         )

@@ -4,6 +4,7 @@ from prisma.enums import ReviewStatus
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .attention import compose_attention_items
@@ -278,3 +279,130 @@ def test_review_without_expert_details_has_no_expert() -> None:
     )
 
     assert items[0].expert is None
+
+
+def _asking_session(
+    *,
+    session_id: str = "sess-1",
+    expert_id: str | None = None,
+    text: str | None = "Which?",
+    asked_at: datetime | None = None,
+) -> ChatSessionInfo:
+    """A chat waiting on the user. ``text=None`` is a session whose question
+    was already answered, which clears ``pending_question``."""
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id="user",
+        usage=[],
+        started_at=NOW,
+        updated_at=NOW,
+        expert_id=expert_id,
+        metadata=ChatSessionMetadata(
+            pending_question=(
+                PendingQuestion(text=text, asked_at=asked_at or NOW)
+                if text is not None
+                else None
+            )
+        ),
+    )
+
+
+def test_pending_question_becomes_an_item_linking_back_to_the_chat() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text="Monday or Friday?")],
+    )
+
+    assert [item.kind for item in items] == ["question"]
+    assert items[0].id == "question-sess-1"
+    assert items[0].title == "Autopilot has a question"
+    assert items[0].description == "Monday or Friday?"
+    assert items[0].primary_action.href == "/copilot?sessionId=sess-1"
+
+
+def test_answered_question_leaves_nothing_behind() -> None:
+    """Answering clears ``pending_question``. The session is still a recent
+    chat and can still be handed to the composer, but it must no longer
+    raise a "has a question" card."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(text=None)],
+    )
+
+    assert items == []
+
+
+def test_expert_question_is_titled_and_avatared_by_its_expert() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert()],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="expert")],
+    )
+
+    assert items[0].title == "Ada has a question"
+    assert items[0].expert is not None and items[0].expert.name == "Ada"
+
+
+def test_question_from_an_archived_expert_is_dropped() -> None:
+    """The expert map only holds *active* experts, so a missing entry means
+    the asker was archived. Its thread now refuses every turn before the
+    reply clears ``pending_question``, so a card here could never be answered
+    away — and the item carries no dismiss action."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[_asking_session(expert_id="archived-expert")],
+    )
+
+    assert items == []
+
+
+def test_archived_askers_question_does_not_hide_an_answerable_one() -> None:
+    """Dropping the dead card must not cost the user a live one."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[_expert()],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[
+            _asking_session(session_id="dead", expert_id="archived-expert"),
+            _asking_session(session_id="live", expert_id="expert"),
+        ],
+    )
+
+    assert [item.id for item in items] == ["question-live"]
+
+
+def test_one_session_asking_twice_yields_one_item() -> None:
+    """A session holds one pending question, latest wins. Even handed the
+    same session twice, the composer must emit a single card — two would
+    collide on the ``question-<session_id>`` item id."""
+    earlier = _asking_session(text="first question", asked_at=NOW - timedelta(hours=2))
+    latest = _asking_session(text="latest question only", asked_at=NOW)
+
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=None,
+        questions=[earlier, latest],
+    )
+
+    assert len(items) == 1
+    assert items[0].description == "latest question only"

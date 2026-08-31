@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
-from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
+from backend.copilot.graphiti.client import derive_memory_group_id, get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import ChatSession
 
@@ -66,7 +66,7 @@ def _delete_error_reason(exc: Exception) -> str:
 
 
 class MemoryForgetSearchTool(BaseTool):
-    """Search for memories to forget — returns candidates for user confirmation."""
+    """Search the current assistant's memories for deletion candidates."""
 
     @property
     def name(self) -> str:
@@ -75,8 +75,8 @@ class MemoryForgetSearchTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for stored memories matching a description so the user can "
-            "choose which to delete. Returns candidate facts with UUIDs. "
+            "Search the current assistant's stored memories for a description so "
+            "the user can choose which to delete. Returns candidate facts with UUIDs. "
             "Use memory_forget_confirm with the UUIDs to actually delete them."
         )
 
@@ -124,7 +124,7 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         try:
-            group_id = derive_group_id(user_id)
+            group_id = derive_memory_group_id(user_id, session.expert_id)
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",
@@ -178,7 +178,7 @@ class MemoryForgetSearchTool(BaseTool):
 
 
 class MemoryForgetConfirmTool(BaseTool):
-    """Delete specific memory edges by UUID after user confirmation.
+    """Delete edges from the current assistant's memory after confirmation.
 
     Supports both soft delete (temporal invalidation — reversible) and
     hard delete (remove from graph — irreversible, for GDPR).
@@ -191,8 +191,9 @@ class MemoryForgetConfirmTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delete specific memories by UUID. Use after memory_forget_search "
-            "returns candidates and the user confirms which to delete. "
+            "Delete specific memories from the current assistant by UUID. Use after "
+            "memory_forget_search returns candidates and the user confirms which to "
+            "delete. "
             "Default is soft delete (marks as expired but keeps history). "
             "Set hard_delete=true for permanent removal (GDPR)."
         )
@@ -248,7 +249,7 @@ class MemoryForgetConfirmTool(BaseTool):
             )
 
         try:
-            group_id = derive_group_id(user_id)
+            group_id = derive_memory_group_id(user_id, session.expert_id)
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",

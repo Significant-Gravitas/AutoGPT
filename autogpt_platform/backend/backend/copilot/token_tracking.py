@@ -122,6 +122,7 @@ async def persist_and_record_usage(
     block_name_override: str | None = None,
     extra_metadata: dict | None = None,
     graph_exec_id_override: str | None = None,
+    credential_id_override: str | None = None,
     skip_daily: bool = False,
     execution_path: str = "sync",
 ) -> int:
@@ -278,7 +279,7 @@ async def persist_and_record_usage(
                     else _copilot_block_name(log_prefix)
                 ),
                 provider=provider,
-                credential_id=COPILOT_CREDENTIAL_ID,
+                credential_id=credential_id_override or COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,

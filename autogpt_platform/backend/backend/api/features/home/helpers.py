@@ -1,16 +1,13 @@
-from datetime import datetime, timezone
-from urllib.parse import quote
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
+from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, as_utc
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .models import HomeExpert
-
-# Longest a summary's first sentence may run before it is clipped into a title.
-_TITLE_MAX = 120
 
 
 def to_home_expert(expert: Expert) -> HomeExpert:
@@ -69,7 +66,7 @@ class AgentRef(BaseModel):
     library_agent_id: str | None
 
 
-UNKNOWN_AGENT = AgentRef(name="Agent task", library_agent_id=None)
+UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
 
 
 def agent_refs_by_graph(
@@ -100,41 +97,9 @@ def setup_count(expert: Expert) -> int:
     )
 
 
-def as_utc(value: datetime) -> datetime:
-    """Stored timestamps can come back naive; comparing those to an aware `now`
-    raises, so pin anything naive to UTC before it reaches arithmetic or sorting.
-    """
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-
-def as_utc_or_none(value: datetime | None) -> datetime | None:
-    return as_utc(value) if value else None
-
-
 def parse_datetime(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
     return as_utc(parsed)
-
-
-def run_link(library_id: str | None, execution_id: str) -> str | None:
-    if not library_id:
-        return None
-    return (
-        f"/library/agents/{quote(library_id)}"
-        f"?activeTab=runs&activeItem={quote(execution_id)}"
-    )
-
-
-def split_summary(
-    value: str | None, *, fallback_title: str, fallback_detail: str
-) -> tuple[str, str]:
-    compact = " ".join(value.split()) if value else ""
-    if not compact:
-        return fallback_title, fallback_detail
-    if ". " not in compact:
-        return compact[:_TITLE_MAX], fallback_detail
-    title, detail = compact.split(". ", 1)
-    return f"{title}.", detail

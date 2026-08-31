@@ -1,14 +1,30 @@
 #!/usr/bin/env python3
 """Tests for the block documentation generator."""
+
 import pytest
 
 from scripts.generate_block_docs import (
     class_name_to_display_name,
     extract_manual_content,
+    file_path_to_title,
     generate_anchor,
     generate_overview_table,
     type_to_readable,
 )
+
+
+class TestFilePathToTitle:
+    @pytest.mark.parametrize(
+        ("file_path", "expected"),
+        [
+            ("dataforb2b/enrich.md", "DataForB2B Enrich"),
+            ("allquiet/on_call.md", "All Quiet On Call"),
+            ("stripe_link/mpp.md", "Stripe Link MPP"),
+            ("stripe/triggers.md", "Stripe Triggers"),
+        ],
+    )
+    def test_integration_title(self, file_path: str, expected: str):
+        assert file_path_to_title(file_path) == expected
 
 
 class TestClassNameToDisplayName:

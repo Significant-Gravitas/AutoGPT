@@ -5,6 +5,7 @@ import base64
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,24 +16,95 @@ from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
+from .codex_compat_gateway import CodexAnthropicGateway
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
+    _close_codex_gateway_for_finally,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
+    _raise_deferred_codex_cleanup_error,
+    _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
+
+
+class TestCliStderrRedaction:
+    def test_redacts_capability_even_without_header_label(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"gateway request failed for {capability}", secrets=(capability,)
+        )
+
+        assert capability not in result
+        assert result == "gateway request failed for [REDACTED]"
+
+    def test_redacts_labeled_capability_once(self):
+        capability = "private-loopback-capability"
+
+        result = _redact_cli_stderr(
+            f"Authorization: Bearer {capability}", secrets=(capability,)
+        )
+
+        assert result == "Authorization: [REDACTED]"
+
+    @pytest.mark.parametrize(
+        ("line", "secret"),
+        [
+            ("Authorization: Bearer secret-one", "secret-one"),
+            ('{"Authorization":"Bearer secret-two"}', "secret-two"),
+            ("proxy-authorization=Basic secret-three", "secret-three"),
+            ("ANTHROPIC_AUTH_TOKEN=secret-four", "secret-four"),
+            ("x-api-key: secret-five", "secret-five"),
+        ],
+    )
+    def test_redacts_authorization_shaped_values(self, line, secret):
+        result = _redact_cli_stderr(line)
+
+        assert secret not in result
+        assert "[REDACTED]" in result
+
+    def test_preserves_unrelated_stderr(self):
+        line = "fallback model activated after an overload"
+
+        assert _redact_cli_stderr(line) == line
+
+
+class TestCodexGatewayCleanup:
+    @pytest.mark.asyncio
+    async def test_returns_checkpoint_failure_for_deferred_raise(self):
+        failure = RuntimeError("credential checkpoint failed")
+        gateway = cast(
+            CodexAnthropicGateway,
+            SimpleNamespace(close=AsyncMock(side_effect=failure)),
+        )
+
+        result = await _close_codex_gateway_for_finally(gateway, "[test]")
+
+        assert result is failure
+        gateway.close.assert_awaited_once()
+
+    def test_deferred_failure_propagates_with_turn_error_as_cause(self):
+        turn_error = ValueError("turn failed")
+        cleanup_error = RuntimeError("credential checkpoint failed")
+
+        with pytest.raises(RuntimeError, match="checkpoint failed") as raised:
+            _raise_deferred_codex_cleanup_error(cleanup_error, turn_error)
+
+        assert raised.value is cleanup_error
+        assert raised.value.__cause__ is turn_error
 
 
 @dataclass
@@ -933,8 +1005,23 @@ class TestSystemPromptPreset:
         assert isinstance(fresh, dict)
         assert fresh.get("exclude_dynamic_sections") is True
 
-    def test_default_config_is_enabled(self, _clean_config_env):
-        """The default value for claude_agent_cross_user_prompt_cache is True."""
+    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
+        """The default config passes only AutoGPT's Copilot system prompt."""
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -945,20 +1032,6 @@ class TestSystemPromptPreset:
             aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
-
-    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
 class TestStreamErrorCodePrefix:
@@ -1031,7 +1104,7 @@ class TestRetryStateObservedModel:
         return _RetryState(
             options=options,
             query_message="",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -1473,7 +1546,7 @@ class TestConsumeSdkUntilDone:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -1513,7 +1586,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
             yield ResultMessage(
                 subtype="success",
@@ -1558,7 +1631,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield None  # heartbeat
             yield ResultMessage(
                 subtype="success",
@@ -1607,7 +1680,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield AssistantMessage(
                 content=[
                     ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
@@ -1676,7 +1749,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield SystemMessage(subtype="init", data={})
             yield AssistantMessage(
                 content=[
@@ -1738,7 +1811,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield ResultMessage(
                 subtype="error",
                 duration_ms=1,
@@ -1777,7 +1850,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             yield SystemMessage(subtype="task_progress", data={"step": 1})
             yield ResultMessage(
                 subtype="success",
@@ -1816,7 +1889,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None):
             # Two consecutive AssistantMessages with empty tool args —
             # the breaker counter should advance but not yet trip.
             for i in range(2):
@@ -2027,7 +2100,7 @@ class TestStreamEndedWithoutResultMessage:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -2057,7 +2130,7 @@ class TestStreamEndedWithoutResultMessage:
         ctx = self._ctx()
         state = self._state()
 
-        async def empty_iter(_client):
+        async def empty_iter(_client, wake=None):
             # Drain immediately — no ResultMessage ever arrives. Mirrors
             # the CLI exiting on per-query ``max_budget_usd`` exhaustion
             # mid-tool-call.

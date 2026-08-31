@@ -2,6 +2,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import { useOAuthConnect } from "./useOAuthConnect";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -9,12 +11,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   provider: string;
   providerName: string;
-  onSuccess: () => void;
+  buttonLabel?: string;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function OAuthConnectButton({
   provider,
   providerName,
+  buttonLabel,
   onSuccess,
 }: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
@@ -33,7 +37,7 @@ export function OAuthConnectButton({
         loading={isPending}
         rightIcon={<Icon icon={LinkSquare01Icon} size={18} />}
       >
-        Continue with {providerName}
+        {buttonLabel ?? `Continue with ${providerName}`}
       </Button>
     </div>
   );

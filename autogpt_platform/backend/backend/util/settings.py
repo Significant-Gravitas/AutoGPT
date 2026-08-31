@@ -100,6 +100,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost:11434",
         description="Default Ollama host; exempted from SSRF checks.",
     )
+    codex_temp_root: str = Field(
+        default="",
+        description="Optional tmpfs root for isolated Codex runtime homes.",
+    )
+    codex_max_active_processes: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Maximum Codex App Server children per backend process.",
+    )
+    codex_capacity_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="Maximum wait for a free Codex App Server process slot.",
+    )
+    codex_startup_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Hard timeout for starting and initializing Codex App Server.",
+    )
+    codex_control_timeout_seconds: int = Field(
+        default=60,
+        ge=5,
+        le=300,
+        description="Hard timeout for Codex account and credential operations.",
+    )
+    codex_auth_checkpoint_interval_seconds: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=5,
+        description="Interval for checkpointing Codex-managed credential rotation.",
+    )
+    codex_invocation_timeout_seconds: int = Field(
+        default=180,
+        ge=10,
+        le=3600,
+        description="Hard timeout for one native Codex invocation.",
+    )
+    codex_copilot_turn_timeout_seconds: int = Field(
+        default=21600,
+        ge=60,
+        le=21600,
+        description="Hard timeout for one native Codex AutoPilot turn.",
+    )
+    codex_copilot_tool_timeout_seconds: int = Field(
+        default=900,
+        ge=10,
+        le=3600,
+        description="Maximum wait for one AutoPilot dynamic tool callback.",
+    )
+    codex_login_timeout_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=3600,
+        description="Lifetime of one ChatGPT device-code login attempt.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -424,6 +482,62 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Separated so each kind carries its own reputation. Marketing mail goes
+    # from MailerLite as hello@news.agpt.co and has no sender here.
+    billing_sender_email: str = Field(
+        default="AutoGPT <billing@agpt.co>",
+        description="Sender for subscription and account service messages",
+    )
+    product_sender_email: str = Field(
+        default="AutoGPT <notify@agpt.co>",
+        description="Sender for the Briefing, Alert and Verdict families",
+    )
+    ops_sender_email: str = Field(
+        default="AutoGPT Platform <platform@agpt.co>",
+        description="Sender for internal ops mail to the refunds team",
+    )
+    postmark_transactional_stream: str = Field(
+        default="outbound",
+        description=(
+            "Postmark message stream for Alerts, Briefings and account mail. "
+            "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    email_asset_base_url: str = Field(
+        default="https://platform.agpt.co/email",
+        description=(
+            "Base URL the email hero art and logo are served from. Outlook "
+            "does not render inline SVG and Gmail does not display data-URI "
+            "images, so these must be hosted files."
+        ),
+    )
+    docs_base_url: str = Field(
+        default="https://docs.agpt.co",
+        description="Documentation site linked from emails",
+    )
+    discord_invite_url: str = Field(
+        default="https://discord.gg/autogpt",
+        description="Discord invite linked from email footers",
+    )
+    admin_panel_base_url: str = Field(
+        default="https://admin.agpt.co",
+        description="Admin panel base URL, deep-linked from internal ops mail",
+    )
+
+    # MailerLite owns the onboarding tour and the monthly changelog. The
+    # backend's only job is managing who is in each audience.
+    mailerlite_onboarding_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group whose membership triggers the six-email "
+            "'Subscription Onboarding — White Glove Tour' automation"
+        ),
+    )
+    mailerlite_changelog_group_id: str = Field(
+        default="",
+        description="MailerLite group that receives the monthly changelog campaign",
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
@@ -573,6 +687,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    autopilot_bot_teams_allow_unverified: bool = Field(
+        default=False,
+        description="Local dev only: accept Teams activities that carry no Bot "
+        "Connector token, so the Microsoft 365 Agents Playground can drive the "
+        "bot without a Teams tenant. Ignored unless app_env is 'local' — it "
+        "disables inbound authentication and must never take effect on a "
+        "deployed environment.",
+    )
+
     execution_event_bus_name: str = Field(
         default="execution_event",
         description="Name of the event bus",
@@ -715,6 +838,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The token to use for the Postmark webhook",
     )
 
+    mailerlite_api_token: str = Field(
+        default="",
+        description="MailerLite API token used to manage tour and changelog audiences",
+    )
+
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
@@ -836,6 +964,23 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="The bot's public @username (without the @) — used to "
         "build the t.me add-to-group link on the Bots settings page.",
+    )
+    microsoft_client_id: str = Field(
+        default="",
+        description="Entra application (client) ID, shared by Microsoft "
+        "integrations. Set together with the client secret and tenant ID to "
+        "mount the Teams bot adapter on the main API.",
+    )
+    microsoft_client_secret: str = Field(
+        default="",
+        description="Entra client secret for the shared Microsoft app, used "
+        "by the Teams bot to mint outbound Bot Connector tokens.",
+    )
+    microsoft_tenant_id: str = Field(
+        default="",
+        description="Tenant the Entra app belongs to. Required for the Teams "
+        "bot: single-tenant bots mint tokens against their own tenant "
+        "authority, and new registrations can no longer be multi-tenant.",
     )
 
     smtp_server: str = Field(default="", description="SMTP server IP")

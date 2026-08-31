@@ -6,7 +6,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AutopilotCard() {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5">
+    <div className="flex flex-col gap-3 rounded-[1.75rem] border border-zinc-200 bg-white p-5">
       <div className="flex items-center gap-3">
         <Avatar className="h-12 w-12">
           <AvatarFallback>
