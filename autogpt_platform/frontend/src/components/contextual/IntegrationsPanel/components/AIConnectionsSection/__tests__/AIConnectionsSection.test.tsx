@@ -2,7 +2,12 @@ import {
   getGetV2ListChatTransportsMockHandler200,
   getPutV2SetDefaultChatTransportMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
-import { getGetV1ListCredentialsMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import {
+  getDeleteV1DeleteCredentialsMockHandler200,
+  getDeleteV1DeleteCredentialsMockHandler401,
+  getGetV1CodexAccountMockHandler200,
+  getGetV1ListCredentialsMockHandler200,
+} from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -73,6 +78,89 @@ describe("AIConnectionsSection", () => {
     render(<AIConnectionsSection />);
 
     expect(await screen.findByText("nick@example.com")).toBeDefined();
+  });
+
+  it("treats a disconnected account snapshot as requiring reconnect", async () => {
+    mockTransports(
+      [platform(false), chatgpt(true)],
+      [{ id: "cred-1", username: "stored@example.com" }],
+    );
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: false,
+        requires_openai_auth: true,
+        email: "stale@example.com",
+        plan_type: "Plus",
+      }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+
+    expect(
+      await screen.findByText(/connection needs to be reconnected/i),
+    ).toBeDefined();
+    expect(screen.getAllByText("stored@example.com")).toHaveLength(2);
+    expect(screen.queryByText("stale@example.com")).toBeNull();
+    expect(screen.queryByText("Plus plan")).toBeNull();
+  });
+
+  it("keeps the manage dialog open when disconnect fails", async () => {
+    mockTransports([platform(false), chatgpt(true)]);
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: true,
+        requires_openai_auth: false,
+      }),
+      getDeleteV1DeleteCredentialsMockHandler401({ detail: "Not authorized" }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined(),
+    );
+  });
+
+  it("asks before force-removing an in-use connection", async () => {
+    mockTransports([platform(false), chatgpt(true)]);
+    server.use(
+      getGetV1CodexAccountMockHandler200({
+        connected: true,
+        requires_openai_auth: false,
+      }),
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("force") === "true"
+          ? { deleted: true, revoked: true }
+          : {
+              deleted: false,
+              need_confirmation: true,
+              message: "Used by an active schedule",
+            },
+      ),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Force remove" }),
+    ).toBeDefined();
+    expect(await screen.findByText("Used by an active schedule")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Force remove" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
   });
 
   it("marks the saved default, and only that one", async () => {
