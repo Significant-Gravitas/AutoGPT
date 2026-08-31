@@ -120,7 +120,12 @@ export function ThreadHeader({
                 <div className={chipClass}>{chipContent}</div>
               )}
             </TooltipTrigger>
-            <TooltipContent side="bottom">{role}</TooltipContent>
+            <TooltipContent
+              side="bottom"
+              className="bg-zinc-900 text-zinc-50 outline-none"
+            >
+              {role}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
