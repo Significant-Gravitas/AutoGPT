@@ -1033,7 +1033,13 @@ async def get_user_default_chat_route(
         user = await get_user_by_id(user_id)
     except ValueError:
         return None, None
-    return user.default_chat_auth_provider, user.default_chat_credential_id
+    # Shared-cache entries can outlive a rolling deploy. An object pickled by
+    # the previous version has no attributes for fields introduced here, so
+    # read them defensively until that cache entry expires.
+    return (
+        getattr(user, "default_chat_auth_provider", None),
+        getattr(user, "default_chat_credential_id", None),
+    )
 
 
 async def set_user_default_chat_route(

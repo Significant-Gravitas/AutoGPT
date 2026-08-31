@@ -645,6 +645,17 @@ class TestGetUserDefaultChatRoute:
 
         assert route == (None, None)
 
+    @pytest.mark.asyncio
+    async def test_an_old_cached_user_without_route_fields_reads_as_nothing_saved(self):
+        user = _application_user("user-1", "user@example.com")
+        user.__dict__.pop("default_chat_auth_provider", None)
+        user.__dict__.pop("default_chat_credential_id", None)
+
+        with patch.object(user_module, "get_user_by_id", AsyncMock(return_value=user)):
+            route = await user_module.get_user_default_chat_route("user-1")
+
+        assert route == (None, None)
+
 
 class TestSetUserDefaultChatRoute:
     @pytest.mark.asyncio
