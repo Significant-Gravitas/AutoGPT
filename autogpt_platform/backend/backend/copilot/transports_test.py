@@ -153,6 +153,29 @@ async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_linking_microsoft_preserves_the_existing_self_host_chatgpt_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _self_hosted_without_deployment(mocker)
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_codex_credentials()]
+            if provider == "codex"
+            else (
+                [_microsoft_credentials()]
+                if provider == "microsoft_365_copilot"
+                else []
+            )
+        )
+    )
+
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "codex",
+        "cred-codex",
+    )
+
+
+@pytest.mark.asyncio
 async def test_exactly_one_transport_is_ever_default() -> None:
     _connect("cred-a", "cred-b")
     _saved("codex", "cred-b")

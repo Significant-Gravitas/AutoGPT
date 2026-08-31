@@ -222,6 +222,16 @@ def _automatic_default(
     user_connections = [
         transport for transport in available if transport.auth_provider != "platform"
     ]
+    # Before Microsoft was added, one usable ChatGPT credential was the
+    # automatic self-host default. Preserve that existing choice when a newly
+    # linked provider appears; the user can explicitly move the default later.
+    codex = [
+        transport
+        for transport in user_connections
+        if transport.auth_provider == "codex"
+    ]
+    if len(codex) == 1:
+        return codex[0]
     return user_connections[0] if len(user_connections) == 1 else None
 
 
