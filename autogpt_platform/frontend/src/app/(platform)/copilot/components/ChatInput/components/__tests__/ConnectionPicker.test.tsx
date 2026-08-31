@@ -444,9 +444,7 @@ describe("ConnectionPicker", () => {
     ]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText(

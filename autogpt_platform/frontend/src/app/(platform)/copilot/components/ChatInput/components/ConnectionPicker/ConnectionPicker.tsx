@@ -112,7 +112,8 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
   // A second connection makes the route itself a decision, and the label
   // switches to it.
   // A tier only names a route that can actually run. With a locked-only offer
-  // there is no active connection, so the chip remains a connection prompt.
+  // there is no active connection, so the chip must stay a connection prompt
+  // and open the explanation instead of claiming a phantom Balanced tier.
   const showsTier =
     (connectionLocked && Boolean(active)) ||
     (!hasConnectionChoice && Boolean(active));
