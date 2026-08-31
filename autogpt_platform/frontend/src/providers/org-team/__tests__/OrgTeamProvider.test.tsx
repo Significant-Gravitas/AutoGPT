@@ -12,6 +12,29 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 
 import OrgTeamProvider from "../OrgTeamProvider";
 
+// GET /api/orgs responds in snake_case — mocks must match the wire shape.
+const PERSONAL_ORG_API = {
+  id: "org-personal",
+  name: "Jane's Org",
+  slug: "jane",
+  avatar_url: null,
+  description: null,
+  is_personal: true,
+  member_count: 1,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+const COMPANY_ORG_API = {
+  id: "org-company",
+  name: "Acme Inc",
+  slug: "acme",
+  avatar_url: "https://example.com/acme.png",
+  description: null,
+  is_personal: false,
+  member_count: 12,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
 const PERSONAL_ORG = {
   id: "org-personal",
   name: "Jane's Org",
@@ -25,7 +48,7 @@ const COMPANY_ORG = {
   id: "org-company",
   name: "Acme Inc",
   slug: "acme",
-  avatarUrl: null,
+  avatarUrl: "https://example.com/acme.png",
   isPersonal: false,
   memberCount: 12,
 };
@@ -80,9 +103,9 @@ describe("OrgTeamProvider", () => {
     vi.clearAllMocks();
   });
 
-  it("renders children and defaults the active org to the personal org on login", async () => {
+  it("renders children, normalizes the snake_case response, and defaults the active org to the personal org on login", async () => {
     mockLoggedIn();
-    const fetchMock = mockOrgsResponse([COMPANY_ORG, PERSONAL_ORG]);
+    const fetchMock = mockOrgsResponse([COMPANY_ORG_API, PERSONAL_ORG_API]);
 
     render(
       <OrgTeamProvider>
@@ -108,7 +131,7 @@ describe("OrgTeamProvider", () => {
 
   it("falls back to the first org when the user has no personal org", async () => {
     mockLoggedIn();
-    mockOrgsResponse([COMPANY_ORG]);
+    mockOrgsResponse([COMPANY_ORG_API]);
 
     render(
       <OrgTeamProvider>
@@ -125,7 +148,7 @@ describe("OrgTeamProvider", () => {
     window.localStorage.setItem("active-org-id", COMPANY_ORG.id);
     useOrgTeamStore.setState({ activeOrgID: COMPANY_ORG.id });
     mockLoggedIn();
-    mockOrgsResponse([COMPANY_ORG, PERSONAL_ORG]);
+    mockOrgsResponse([COMPANY_ORG_API, PERSONAL_ORG_API]);
 
     render(
       <OrgTeamProvider>

@@ -1,7 +1,7 @@
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AccountMenuOrgList } from "../AccountMenuOrgList";
 
@@ -23,6 +23,9 @@ const COMPANY_ORG = {
   memberCount: 12,
 };
 
+// Teams still exist as a product concept (org-settings teams tab, badges,
+// filters) but are no longer context switches, so the switcher list must
+// ignore them entirely. We seed teams here to prove they never surface.
 const DEFAULT_TEAM = {
   id: "team-default",
   name: "General",
@@ -54,7 +57,21 @@ function seedStore(overrides = {}) {
 
 describe("AccountMenuOrgList", () => {
   beforeEach(() => {
+    process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS = "true";
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_FORCE_FLAG_SHOW_ORG_SETTINGS;
+  });
+
+  it("renders nothing until the org store has loaded", () => {
+    seedStore({ isLoaded: false });
+
+    render(<AccountMenuOrgList />);
+
+    expect(screen.queryByTestId("create-organization-button")).toBeNull();
+    expect(screen.queryByText("No organizations yet")).toBeNull();
   });
 
   it("shows an empty state with a create button when there are no orgs", () => {
@@ -74,26 +91,30 @@ describe("AccountMenuOrgList", () => {
     expect(screen.getByText(PERSONAL_ORG.name)).toBeDefined();
     expect(screen.getByText(COMPANY_ORG.name)).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
+
+    // The checkmark alone is invisible to screen readers — the active org has
+    // to be exposed through aria-pressed as well.
+    expect(
+      screen
+        .getByRole("button", { name: new RegExp(COMPANY_ORG.name) })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: new RegExp(PERSONAL_ORG.name) })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
-  it("lists teams with a Private badge and a manage-teams link", () => {
+  it("never renders a teams section — teams are managed in org settings, not context switches", () => {
     seedStore();
-
-    render(<AccountMenuOrgList />);
-
-    expect(screen.getByText(DEFAULT_TEAM.name)).toBeDefined();
-    expect(screen.getByText(PRIVATE_TEAM.name)).toBeDefined();
-    expect(screen.getByText("Private")).toBeDefined();
-    expect(screen.getByText("Manage teams")).toBeDefined();
-  });
-
-  it("hides the team section when the org has no teams", () => {
-    seedStore({ teams: [] });
 
     render(<AccountMenuOrgList />);
 
     expect(screen.queryByText("Teams")).toBeNull();
     expect(screen.queryByText("Manage teams")).toBeNull();
+    expect(screen.queryByText(DEFAULT_TEAM.name)).toBeNull();
+    expect(screen.queryByText(PRIVATE_TEAM.name)).toBeNull();
   });
 
   it("switching org updates the active org in the store", async () => {
@@ -105,12 +126,14 @@ describe("AccountMenuOrgList", () => {
     expect(useOrgTeamStore.getState().activeOrgID).toBe(PERSONAL_ORG.id);
   });
 
-  it("switching team updates the active team in the store", async () => {
+  it("opens the create-organization dialog when the create button is clicked", async () => {
     seedStore();
     render(<AccountMenuOrgList />);
 
-    await userEvent.click(screen.getByText(PRIVATE_TEAM.name));
+    expect(screen.queryByText("URL slug")).toBeNull();
 
-    expect(useOrgTeamStore.getState().activeTeamID).toBe(PRIVATE_TEAM.id);
+    await userEvent.click(screen.getByTestId("create-organization-button"));
+
+    expect(await screen.findByText("URL slug")).toBeDefined();
   });
 });
