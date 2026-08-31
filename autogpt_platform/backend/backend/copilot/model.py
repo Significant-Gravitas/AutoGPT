@@ -1716,28 +1716,25 @@ async def update_session_llm_route(
     cached session would send the next turn back to the connection the user
     just moved off.
     """
-    try:
-        updated = await chat_db().update_chat_session_llm_route(
-            session_id, user_id, llm_auth_provider, llm_credential_id
-        )
-        if not updated:
-            return False
-
-        try:
-            cached = await _get_session_from_cache(session_id)
-            if cached:
-                cached.metadata.llm_auth_provider = llm_auth_provider
-                cached.metadata.llm_credential_id = llm_credential_id
-                await cache_chat_session(cached)
-        except Exception as e:
-            logger.warning(
-                f"Cache route update failed for session {session_id} "
-                f"(non-critical): {e}"
-            )
-        return True
-    except Exception as e:
-        logger.error(f"Failed to update route for session {session_id}: {e}")
+    updated = await chat_db().update_chat_session_llm_route(
+        session_id, user_id, llm_auth_provider, llm_credential_id
+    )
+    if not updated:
         return False
+
+    # Cache refresh is best-effort -- the DB write already succeeded.
+    try:
+        cached = await _get_session_from_cache(session_id)
+        if cached:
+            cached.metadata.llm_auth_provider = llm_auth_provider
+            cached.metadata.llm_credential_id = llm_credential_id
+            await cache_chat_session(cached)
+    except Exception as e:
+        logger.warning(
+            f"Cache route update failed for session {session_id} "
+            f"(non-critical): {e}"
+        )
+    return True
 
 
 async def update_session_pinned(

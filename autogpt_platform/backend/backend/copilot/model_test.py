@@ -28,6 +28,7 @@ from .model import (
     get_or_create_builder_session,
     is_message_duplicate,
     maybe_append_user_message,
+    update_session_llm_route,
     upsert_chat_session,
 )
 
@@ -53,6 +54,20 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_propagates_database_failures(
+    mocker: MockerFixture,
+) -> None:
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await update_session_llm_route("session-1", "user-1", "platform", None)
 
 
 @pytest.mark.asyncio(loop_scope="session")

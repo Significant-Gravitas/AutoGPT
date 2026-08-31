@@ -322,10 +322,18 @@ async def test_promotion_rechecks_the_advanced_tier_before_spending() -> None:
     with (
         _patch_queued_list([head]),
         patch.object(turn_queue, "chat_db", return_value=db),
-        patch("backend.copilot.turn_queue.is_user_paywalled", new=AsyncMock(return_value=False)),
-        patch("backend.copilot.turn_queue.get_global_rate_limits", new=AsyncMock(return_value=(1, 1, None))),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(1, 1, None)),
+        ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
-        patch.object(turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
         patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
         patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
@@ -354,10 +362,18 @@ async def test_promotion_refuses_when_the_entitlement_cannot_be_resolved() -> No
     with (
         _patch_queued_list([head]),
         patch.object(turn_queue, "chat_db", return_value=db),
-        patch("backend.copilot.turn_queue.is_user_paywalled", new=AsyncMock(return_value=False)),
-        patch("backend.copilot.turn_queue.get_global_rate_limits", new=AsyncMock(return_value=(1, 1, None))),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(1, 1, None)),
+        ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
-        patch.object(turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
         patch.object(
             turn_queue,
             "advanced_tier_entitled",
@@ -387,10 +403,18 @@ async def test_promotion_does_not_recheck_the_tier_for_a_standard_turn() -> None
     with (
         _patch_queued_list([head]),
         patch.object(turn_queue, "chat_db", return_value=db),
-        patch("backend.copilot.turn_queue.is_user_paywalled", new=AsyncMock(return_value=False)),
-        patch("backend.copilot.turn_queue.get_global_rate_limits", new=AsyncMock(return_value=(1, 1, None))),
+        patch(
+            "backend.copilot.turn_queue.is_user_paywalled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.turn_queue.get_global_rate_limits",
+            new=AsyncMock(return_value=(1, 1, None)),
+        ),
         patch("backend.copilot.turn_queue.check_rate_limit", new=AsyncMock()),
-        patch.object(turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
         patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
         patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
         patch("backend.copilot.executor.utils.dispatch_turn", new=AsyncMock()),
@@ -399,6 +423,43 @@ async def test_promotion_does_not_recheck_the_tier_for_a_standard_turn() -> None
 
     assert promoted is True
     entitled.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> None:
+    """Switching a queued turn to ChatGPT removes platform billing gates.
+
+    The pending message keeps the tier selected when it was enqueued, but the
+    session route is deliberately mutable so a blocked turn can continue on a
+    subscription-backed connection.
+    """
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "codex"
+    head.metadata.llm_credential_id = "cred-1"
+    pending = _pyd_message(metadata={"model": "advanced"})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    entitled = AsyncMock(side_effect=AssertionError("platform tier checked for Codex"))
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
+        patch.object(turn_queue, "advanced_tier_entitled", new=entitled),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    entitled.assert_not_awaited()
+    assert dispatch_turn_mock.await_args.kwargs["llm_auth_provider"] == "codex"
+    assert dispatch_turn_mock.await_args.kwargs["model"] == "advanced"
 
 
 @pytest.mark.asyncio

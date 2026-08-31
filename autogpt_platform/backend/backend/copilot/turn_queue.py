@@ -45,6 +45,7 @@ from backend.copilot.model import (
     _get_session_lock,
     invalidate_session_cache,
 )
+from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -54,10 +55,6 @@ from backend.copilot.rate_limit import (
 )
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
-from backend.copilot.offers import (
-    EntitlementUnavailable,
-    advanced_tier_entitled,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +268,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if head.metadata.llm_auth_provider == "codex":
+    route_provider = head.metadata.llm_auth_provider
+    if route_provider == "codex":
         if not await has_codex_access(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s lacks Codex entitlement, "
@@ -280,7 +278,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 head.session_id,
             )
             return False
-    else:
+    elif route_provider == "platform":
         if await is_user_paywalled(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
@@ -352,7 +350,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
     # goes back to queued rather than quietly re-running on Standard: nothing
     # in this feature changes what a turn runs on without being asked. It
     # promotes itself once entitlement returns, and can be cancelled meanwhile.
-    if metadata.get("model") == "advanced":
+    if route_provider == "platform" and metadata.get("model") == "advanced":
         try:
             entitled = await advanced_tier_entitled(user_id)
         except EntitlementUnavailable:
