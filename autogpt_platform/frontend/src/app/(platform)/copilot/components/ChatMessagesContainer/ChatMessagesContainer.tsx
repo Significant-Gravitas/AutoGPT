@@ -460,6 +460,7 @@ export function ChatMessagesContainer({
       <ThreadHeader
         expertIdentity={expertIdentity}
         readOnly={readOnly}
+        sessionId={sessionID}
         hasFloatingControls={hasFloatingControls}
       />
       <ChatMinimap messages={messages} />

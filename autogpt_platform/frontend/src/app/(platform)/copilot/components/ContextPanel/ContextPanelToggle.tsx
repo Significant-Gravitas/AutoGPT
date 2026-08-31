@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
 import { WorkspaceFilesPopover } from "../WorkspaceFileCards/components/WorkspaceFilesPopover";
-import { File02Icon, SidebarRightIcon } from "@hugeicons/core-free-icons";
+import { File02Icon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -87,7 +87,7 @@ export function ContextPanelToggle({ sessionId }: Props) {
         aria-pressed={isRightSidebarOpen}
         className={cn(buttonClass, isRightSidebarOpen && "bg-zinc-200/70")}
       >
-        <Icon icon={SidebarRightIcon} className={iconClass} />
+        <Icon icon={LicenseDraftIcon} className={iconClass} />
       </Button>
     </div>
   );

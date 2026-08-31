@@ -644,23 +644,10 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("shows a scheduled-workflows button that opens the schedules drawer", async () => {
+  it("does not render the retired schedules drawer button on the chip", () => {
     server.use(
       getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([
-        {
-          id: "sched-1",
-          name: "Content Calendar",
-          agent_name: "Content Calendar",
-          user_id: "user-1",
-          graph_id: "graph-1",
-          graph_version: 1,
-          cron: "40 7 * * *",
-          input_data: {},
-          next_run_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-          expert_id: "expert-maria",
-        },
-      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
     render(
       <ChatMessagesContainer
@@ -672,14 +659,8 @@ describe("ChatMessagesContainer — expert identity", () => {
       />,
     );
 
-    const button = await screen.findByTestId("expert-schedules-button");
-    expect(button.textContent).toContain("1 workflow scheduled");
-
-    fireEvent.click(button);
-    expect(
-      await screen.findByText("Maria's scheduled workflows"),
-    ).toBeDefined();
-    expect(await screen.findByTestId("schedule-row")).toBeDefined();
+    expect(screen.getByTestId("expert-thread-header")).toBeDefined();
+    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
   });
 
   it("does not read the fired expert's detail record for the schedules button", async () => {
