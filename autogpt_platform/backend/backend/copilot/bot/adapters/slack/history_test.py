@@ -102,6 +102,35 @@ async def test_our_own_userless_bot_message_is_excluded():
 
 
 @pytest.mark.asyncio
+async def test_our_own_userless_bot_message_is_excluded_past_the_tail_window():
+    # The bot_id that identifies our userless bot_message records comes from
+    # our user-keyed posts. On a thread longer than the retained tail that
+    # keyed post scrolls out of the window, so the id has to be collected
+    # while paging or our own words come back as third-party context.
+    older = {
+        "messages": [_msg("0.1", "UBOT", "ours keyed", bot_id="B1")]
+        + [_msg(f"{i}.0", "U1", f"filler {i}") for i in range(1, 60)],
+        "response_metadata": {"next_cursor": "c2"},
+    }
+    newer = {
+        "messages": [_msg(f"{i}.0", "U1", f"filler {i}") for i in range(60, 120)]
+        + [
+            {
+                "ts": "900.0",
+                "bot_id": "B1",
+                "username": "AutoGPT",
+                "text": "ours unkeyed",
+            }
+        ],
+        "response_metadata": {"next_cursor": ""},
+    }
+    with patch.object(history, "TAIL_SIZE", 50):
+        entries = await _fetch(_client(older, newer), exclude_ts="none")
+
+    assert "ours unkeyed" not in [e.text for e in entries]
+
+
+@pytest.mark.asyncio
 async def test_budget_keeps_the_newest_messages():
     page = {"messages": [_msg(f"{i}.0", "U1", f"m{i} " + "x" * 40) for i in range(5)]}
     with patch.object(history, "CHAR_BUDGET", 100):

@@ -52,9 +52,9 @@ async def fetch_thread_history(
         # prior replies would be folded back into its own prompt.
         logger.warning("Slack bot identity unknown; skipping thread history")
         return ()
-    tail = await _fetch_tail(client, channel, thread_ts)
+    tail, own_bot_ids = await _fetch_tail(client, channel, thread_ts, bot_user_id)
     recent, preset = _select_recent(
-        tail, exclude_ts=exclude_ts, bot_user_id=bot_user_id
+        tail, exclude_ts=exclude_ts, bot_user_id=bot_user_id, own_bot_ids=own_bot_ids
     )
     if not recent:
         return ()
@@ -80,16 +80,18 @@ async def fetch_thread_history(
 
 
 def _select_recent(
-    tail: list[dict[str, Any]], *, exclude_ts: str, bot_user_id: str
+    tail: list[dict[str, Any]],
+    *,
+    exclude_ts: str,
+    bot_user_id: str,
+    own_bot_ids: set[str],
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Newest-first messages minus the trigger and the bot's own posts, plus
     the on-message names for integration bots (no users.info entry).
 
     Our own posts are keyed by ``user``; a userless bot_message record of ours
-    is identified by the ``bot_id`` those user-keyed posts carry."""
-    own_bot_ids = {
-        m["bot_id"] for m in tail if m.get("user") == bot_user_id and m.get("bot_id")
-    }
+    is identified by the ``bot_id`` those user-keyed posts carry, collected by
+    :func:`_fetch_tail` across every page it reads."""
     recent = [
         m
         for m in reversed(tail)
@@ -156,9 +158,17 @@ async def _resolve_names(
 
 
 async def _fetch_tail(
-    client: AsyncWebClient, channel: str, thread_ts: str
-) -> list[dict[str, Any]]:
+    client: AsyncWebClient, channel: str, thread_ts: str, bot_user_id: str
+) -> tuple[list[dict[str, Any]], set[str]]:
+    """Recent tail of the thread, plus the ``bot_id``s our own posts carry.
+
+    The ids are collected across every page rather than from the retained
+    tail: on a long thread our user-keyed post scrolls out of the window
+    while a userless ``bot_message`` of ours stays in it, and without the id
+    from that older post we would feed our own words back into our own prompt
+    as someone else's."""
     tail: deque[dict[str, Any]] = deque(maxlen=TAIL_SIZE)
+    own_bot_ids: set[str] = set()
     cursor: Optional[str] = None
     for page in range(MAX_PAGES):
         try:
@@ -170,7 +180,7 @@ async def _fetch_tail(
             # aiohttp/asyncio errors for transport ones; neither may cost the
             # user their turn over optional context.
             logger.warning("Could not fetch Slack thread history", exc_info=True)
-            return []
+            return [], set()
         messages = list(resp.get("messages") or [])
         if page == 0 and messages:
             # The parent's reply_count is on the first page: an over-cap thread
@@ -182,11 +192,16 @@ async def _fetch_tail(
                     thread_ts,
                     reply_count,
                 )
-                return []
+                return [], set()
+        own_bot_ids.update(
+            m["bot_id"]
+            for m in messages
+            if m.get("user") == bot_user_id and m.get("bot_id")
+        )
         tail.extend(messages)
         cursor = (resp.get("response_metadata") or {}).get("next_cursor") or None
         if cursor is None:
-            return list(tail)
+            return list(tail), own_bot_ids
     # Past the cap we'd be holding a stale middle window, not the recent end
     # the prompt promises — better no history than misleading history.
     logger.warning(
@@ -194,4 +209,4 @@ async def _fetch_tail(
         thread_ts,
         MAX_PAGES,
     )
-    return []
+    return [], set()
