@@ -1,25 +1,59 @@
 import asyncio
+import copy
 import inspect
+from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
 
-from backend.blocks.github import notifications, pull_requests
+from backend.blocks.github import (
+    commits,
+    issues,
+    notifications,
+    pull_requests,
+    repo,
+    repo_branches,
+    reviews,
+    users,
+)
+from backend.blocks.github._api import (
+    convert_comment_url_to_api_endpoint,
+    get_paginated,
+)
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.github.commits import FileOperation, GithubMultiFileCommitBlock
+from backend.blocks.github.commits import (
+    FileOperation,
+    GithubListCommitsBlock,
+    GithubMultiFileCommitBlock,
+)
+from backend.blocks.github.issues import GithubListCommentsBlock, GithubListIssuesBlock
 from backend.blocks.github.notifications import (
     TEST_NOTIFICATION_ITEM,
+    GithubGetNotificationThreadBlock,
     GithubListNotificationsBlock,
     GithubMarkNotificationsAsReadBlock,
+    GithubMarkNotificationThreadAsDoneBlock,
+    GithubMarkNotificationThreadAsReadBlock,
+    GithubUnsubscribeNotificationThreadBlock,
     _notifications_url,
     _subject_html_url,
     _to_notification_item,
 )
 from backend.blocks.github.pull_requests import (
     GithubListPRReviewersBlock,
+    GithubListPullRequestsBlock,
     GithubMergePullRequestBlock,
     prepare_pr_api_url,
 )
+from backend.blocks.github.repo import (
+    GithubListDiscussionsBlock,
+    GithubListReleasesBlock,
+    GithubListStargazersBlock,
+    GithubListTagsBlock,
+)
+from backend.blocks.github.repo_branches import GithubListBranchesBlock
+from backend.blocks.github.reviews import GithubListPRReviewsBlock
+from backend.blocks.github.users import GithubGetUserInfoBlock
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 
@@ -316,6 +350,14 @@ class _FakeApi:
         self.calls.append(("put", url, kwargs))
         return mock.Mock(json=dict)
 
+    async def patch(self, url, **kwargs):
+        self.calls.append(("patch", url, kwargs))
+        return mock.Mock(json=dict)
+
+    async def delete(self, url, **kwargs):
+        self.calls.append(("delete", url, kwargs))
+        return mock.Mock(json=dict)
+
 
 class TestMarkAllAsReadRequest:
     def _run(self, repo: str, last_read_at: str) -> tuple[str, str, dict]:
@@ -423,3 +465,808 @@ class TestListReviewers:
 
     def test_deleted_accounts_are_ignored(self):
         assert len(_list_reviewers([_review(None, "APPROVED")])) == 1
+
+
+# ── get_paginated tests ──
+# Every list block delegates its fetching here, and every block test mocks the
+# list method wholesale, so the pagination logic is exercised directly.
+
+
+class _PagedApi:
+    """Serves canned pages and records the query params of each request."""
+
+    def __init__(self, pages: list[list[dict]]):
+        self.pages = pages
+        self.requests: list[dict] = []
+
+    async def get(self, url, **kwargs):
+        params = kwargs.get("params") or {}
+        self.requests.append({"url": url, **params})
+        index = int(params["page"]) - 1
+        page = self.pages[index] if index < len(self.pages) else []
+        return mock.Mock(json=lambda: page)
+
+
+def _paginate(pages: list[list[dict]], **kwargs) -> tuple[list[dict], _PagedApi]:
+    api = _PagedApi(pages)
+    items = asyncio.run(get_paginated(api, LIST_URL, **kwargs))  # type: ignore[arg-type]
+    return items, api
+
+
+LIST_URL = "https://api.github.com/repos/owner/repo/items"
+
+
+class TestGetPaginated:
+    def test_short_page_ends_the_fetch(self):
+        items, api = _paginate([[{"n": 1}, {"n": 2}]], limit=10)
+        assert items == [{"n": 1}, {"n": 2}]
+        assert len(api.requests) == 1
+
+    def test_empty_first_page_returns_nothing(self):
+        items, api = _paginate([[]], limit=10)
+        assert items == []
+        assert len(api.requests) == 1
+
+    def test_full_pages_are_followed_and_truncated_to_limit(self):
+        pages = [[{"n": 1}, {"n": 2}, {"n": 3}], [{"n": 4}, {"n": 5}, {"n": 6}]]
+        items, api = _paginate(pages, limit=4, max_page_size=3)
+        assert [i["n"] for i in items] == [1, 2, 3, 4]
+        assert [r["page"] for r in api.requests] == ["1", "2"]
+
+    def test_page_size_is_capped_by_limit_when_unfiltered(self):
+        _, api = _paginate([[]], limit=5)
+        assert api.requests[0]["per_page"] == "5"
+
+    def test_page_size_ignores_limit_when_filtering(self):
+        # A keep filter can reject anything, so pages must be fetched in full
+        _, api = _paginate([[]], limit=5, keep=lambda item: True)
+        assert api.requests[0]["per_page"] == "100"
+
+    def test_filtered_out_items_do_not_count_towards_the_limit(self):
+        pages = [
+            [{"n": 1, "ok": True}, {"n": 2, "ok": False}],
+            [{"n": 3, "ok": True}, {"n": 4, "ok": True}],
+        ]
+        items, api = _paginate(
+            pages, limit=2, max_page_size=2, keep=lambda item: item["ok"]
+        )
+        assert [i["n"] for i in items] == [1, 3]
+        assert len(api.requests) == 2
+
+    def test_start_page_is_honoured(self):
+        _, api = _paginate([[], [], []], limit=10, start_page=3)
+        assert api.requests[0]["page"] == "3"
+
+    def test_extra_params_are_forwarded(self):
+        _, api = _paginate([[]], limit=1, params={"state": "open"})
+        assert api.requests[0]["state"] == "open"
+
+
+# ── convert_comment_url_to_api_endpoint tests ──
+
+
+class TestConvertCommentUrl:
+    def test_api_url_passes_through(self):
+        url = "https://api.github.com/repos/owner/repo/issues/comments/1"
+        assert convert_comment_url_to_api_endpoint(url) == url
+
+    def test_issue_comment_anchor(self):
+        assert (
+            convert_comment_url_to_api_endpoint(
+                "https://github.com/owner/repo/issues/1#issuecomment-99"
+            )
+            == "https://api.github.com/repos/owner/repo/issues/comments/99"
+        )
+
+    def test_pr_review_comment_anchor(self):
+        assert (
+            convert_comment_url_to_api_endpoint(
+                "https://github.com/owner/repo/pull/1#discussion_r77"
+            )
+            == "https://api.github.com/repos/owner/repo/pulls/comments/77"
+        )
+
+    def test_url_without_anchor_falls_back_to_plain_conversion(self):
+        assert (
+            convert_comment_url_to_api_endpoint(
+                "https://github.com/owner/repo/issues/1"
+            )
+            == "https://api.github.com/repos/owner/repo/issues/1"
+        )
+
+    def test_repo_root_url(self):
+        assert (
+            convert_comment_url_to_api_endpoint("https://github.com/owner/repo")
+            == "https://api.github.com/repos/owner/repo"
+        )
+
+    def test_url_without_a_repo_is_rejected(self):
+        with pytest.raises(ValueError):
+            convert_comment_url_to_api_endpoint("https://github.com/owner")
+
+
+def test_subject_html_url_of_a_repo_root_is_not_rewritten():
+    assert (
+        _subject_html_url("https://api.github.com/repos/owner/repo")
+        == "https://github.com/owner/repo"
+    )
+
+
+# ── Notification thread request tests ──
+
+THREAD_URL = "https://api.github.com/notifications/threads/1337"
+
+
+def _thread_call(method, *args):
+    api = _FakeApi({THREAD_URL: RAW_NOTIFICATION})
+    with mock.patch.object(notifications, "get_api", lambda *a, **kw: api):
+        result = asyncio.run(method(TEST_CREDENTIALS, *args))
+    return result, api.calls[0]
+
+
+class TestNotificationThreadRequests:
+    def test_get_thread_maps_the_payload(self):
+        result, (method, url, _) = _thread_call(
+            GithubGetNotificationThreadBlock.get_thread, "1337"
+        )
+        assert (method, url) == ("get", THREAD_URL)
+        assert result == TEST_NOTIFICATION_ITEM
+
+    def test_mark_thread_as_read_patches_the_thread(self):
+        result, (method, url, _) = _thread_call(
+            GithubMarkNotificationThreadAsReadBlock.mark_thread_as_read, "1337"
+        )
+        assert (result, method, url) == (True, "patch", THREAD_URL)
+
+    def test_mark_thread_as_done_deletes_the_thread(self):
+        result, (method, url, _) = _thread_call(
+            GithubMarkNotificationThreadAsDoneBlock.mark_thread_as_done, "1337"
+        )
+        assert (result, method, url) == (True, "delete", THREAD_URL)
+
+    def test_unsubscribe_deletes_the_subscription(self):
+        result, (method, url, _) = _thread_call(
+            GithubUnsubscribeNotificationThreadBlock.unsubscribe_thread, "1337"
+        )
+        assert (result, method, url) == (True, "delete", f"{THREAD_URL}/subscription")
+
+
+# ── List-block request-building tests ──
+# Same rationale as the notification request tests above: the params these
+# blocks build never reach get_paginated in a block test, because the whole
+# list method is mocked out.
+
+REPO_URL = "https://github.com/owner/repo"
+
+_LIST_METHOD = {
+    GithubListCommitsBlock: "list_commits",
+    GithubListBranchesBlock: "list_branches",
+    GithubListIssuesBlock: "list_issues",
+    GithubListPullRequestsBlock: "list_prs",
+    GithubListReleasesBlock: "list_releases",
+}
+
+
+def _capture_paginated(module, block, input_kwargs, page: list[dict] | None = None):
+    """Runs a block's list method with the network stubbed; returns (result, call)."""
+    captured: dict = {}
+
+    async def fake_get_paginated(api, url, **kwargs):
+        captured.update(url=url, **kwargs)
+        items = page or []
+        keep = kwargs.get("keep")
+        return [i for i in items if keep is None or keep(i)]
+
+    method = getattr(block, _LIST_METHOD[block])
+    input_data = block.Input.model_validate(
+        {"credentials": TEST_CREDENTIALS_INPUT, **input_kwargs}
+    )
+    with (
+        mock.patch.object(module, "get_api", lambda *a, **kw: object()),
+        mock.patch.object(module, "get_paginated", fake_get_paginated),
+    ):
+        result = asyncio.run(method(TEST_CREDENTIALS, input_data))
+    return result, captured
+
+
+class TestListCommitsRequest:
+    def _call(self, **kwargs):
+        return _capture_paginated(
+            commits,
+            GithubListCommitsBlock,
+            {"repo_url": REPO_URL, **kwargs},
+        )[1]
+
+    def test_branch_becomes_the_sha_param(self):
+        call = self._call(branch="dev")
+        assert call["url"] == f"{REPO_URL}/commits"
+        assert call["params"] == {"sha": "dev"}
+
+    def test_optional_filters_become_params(self):
+        call = self._call(
+            path="src/main.py",
+            author="alice",
+            committer="bob",
+            since="2026-01-01T00:00:00Z",
+            until="2026-02-01T00:00:00Z",
+        )
+        assert call["params"] == {
+            "sha": "main",
+            "path": "src/main.py",
+            "author": "alice",
+            "committer": "bob",
+            "since": "2026-01-01T00:00:00Z",
+            "until": "2026-02-01T00:00:00Z",
+        }
+
+    def test_limit_is_used_by_default(self):
+        call = self._call(limit=7)
+        assert (call["limit"], call["start_page"]) == (7, 1)
+
+    def test_legacy_paging_overrides_limit(self):
+        call = self._call(limit=7, per_page=25, page=3)
+        assert (call["limit"], call["start_page"]) == (25, 3)
+
+    def test_legacy_page_alone_defaults_the_page_size(self):
+        call = self._call(limit=7, page=2)
+        assert (call["limit"], call["start_page"]) == (30, 2)
+
+    def test_commit_items_are_mapped(self):
+        raw = {
+            "sha": "abc123",
+            "commit": {
+                "message": "Initial commit",
+                "author": {"name": "octocat", "date": "2026-01-01T00:00:00Z"},
+            },
+        }
+        result, _ = _capture_paginated(
+            commits,
+            GithubListCommitsBlock,
+            {"repo_url": REPO_URL},
+            page=[raw],
+        )
+        assert result[0]["url"] == f"{REPO_URL}/commit/abc123"
+        assert result[0]["author"] == "octocat"
+
+    def test_missing_commit_author_degrades(self):
+        raw = {"sha": "abc123", "commit": {"message": "m", "author": None}}
+        result, _ = _capture_paginated(
+            commits,
+            GithubListCommitsBlock,
+            {"repo_url": REPO_URL},
+            page=[raw],
+        )
+        assert (result[0]["author"], result[0]["date"]) == ("Unknown", "")
+
+
+class TestListBranchesRequest:
+    def _call(self, **kwargs):
+        return _capture_paginated(
+            repo_branches,
+            GithubListBranchesBlock,
+            {"repo_url": REPO_URL, **kwargs},
+        )[1]
+
+    def test_default_sends_no_protected_filter(self):
+        call = self._call()
+        assert call["url"] == f"{REPO_URL}/branches"
+        assert call["params"] == {}
+
+    def test_protected_filter(self):
+        assert self._call(protected="protected")["params"] == {"protected": "true"}
+
+    def test_unprotected_filter(self):
+        assert self._call(protected="unprotected")["params"] == {"protected": "false"}
+
+    def test_legacy_paging_overrides_limit(self):
+        call = self._call(limit=7, per_page=10)
+        assert (call["limit"], call["start_page"]) == (10, 1)
+
+    def test_branch_items_are_mapped(self):
+        result, _ = _capture_paginated(
+            repo_branches,
+            GithubListBranchesBlock,
+            {"repo_url": REPO_URL},
+            page=[{"name": "main"}],
+        )
+        assert result == [{"name": "main", "url": f"{REPO_URL}/tree/main"}]
+
+
+class TestListIssuesRequest:
+    def _call(self, **kwargs):
+        return _capture_paginated(
+            issues,
+            GithubListIssuesBlock,
+            {"repo_url": REPO_URL, **kwargs},
+        )[1]
+
+    def test_defaults(self):
+        call = self._call()
+        assert call["url"] == f"{REPO_URL}/issues"
+        assert call["params"] == {
+            "state": "open",
+            "sort": "created",
+            "direction": "desc",
+        }
+
+    def test_labels_are_joined(self):
+        assert self._call(labels=["bug", "p0"])["params"]["labels"] == "bug,p0"
+
+    def test_optional_filters_become_params(self):
+        params = self._call(
+            assignee="alice",
+            creator="bob",
+            mentioned="carol",
+            milestone="4",
+            since="2026-01-01T00:00:00Z",
+        )["params"]
+        assert params["assignee"] == "alice"
+        assert params["creator"] == "bob"
+        assert params["mentioned"] == "carol"
+        assert params["milestone"] == "4"
+        assert params["since"] == "2026-01-01T00:00:00Z"
+
+    def test_pull_requests_are_filtered_out_by_default(self):
+        page = [
+            {"title": "issue", "html_url": "https://github.com/owner/repo/issues/1"},
+            {
+                "title": "pr",
+                "html_url": "https://github.com/owner/repo/pull/2",
+                "pull_request": {},
+            },
+        ]
+        result, _ = _capture_paginated(
+            issues,
+            GithubListIssuesBlock,
+            {"repo_url": REPO_URL},
+            page=page,
+        )
+        assert [i["title"] for i in result] == ["issue"]
+
+    def test_pull_requests_are_kept_when_requested(self):
+        call = self._call(include_pull_requests=True)
+        assert call["keep"] is None
+
+
+class TestListCommentsRequest:
+    def _call(self, issue_url: str, limit: int = 100, since: str = ""):
+        captured: dict = {}
+
+        async def fake_get_paginated(api, url, **kwargs):
+            captured.update(url=url, **kwargs)
+            return []
+
+        with (
+            mock.patch.object(issues, "get_api", lambda *a, **kw: object()),
+            mock.patch.object(issues, "get_paginated", fake_get_paginated),
+        ):
+            asyncio.run(
+                GithubListCommentsBlock.list_comments(
+                    TEST_CREDENTIALS, issue_url, limit, since
+                )
+            )
+        return captured
+
+    def test_issue_url_becomes_the_comments_endpoint(self):
+        call = self._call("https://github.com/owner/repo/issues/1")
+        assert (
+            call["url"] == "https://api.github.com/repos/owner/repo/issues/1/comments"
+        )
+        assert call["params"] is None
+
+    def test_pr_url_uses_the_same_issues_endpoint(self):
+        call = self._call("https://github.com/owner/repo/pull/42")
+        assert (
+            call["url"] == "https://api.github.com/repos/owner/repo/issues/42/comments"
+        )
+
+    def test_since_is_forwarded(self):
+        call = self._call(
+            "https://github.com/owner/repo/issues/1", since="2026-01-01T00:00:00Z"
+        )
+        assert call["params"] == {"since": "2026-01-01T00:00:00Z"}
+
+
+class TestListPullRequestsRequest:
+    def _call(self, **kwargs):
+        return _capture_paginated(
+            pull_requests,
+            GithubListPullRequestsBlock,
+            {"repo_url": REPO_URL, **kwargs},
+        )[1]
+
+    def test_defaults(self):
+        call = self._call()
+        assert call["url"] == f"{REPO_URL}/pulls"
+        assert call["params"] == {
+            "state": "open",
+            "sort": "created",
+            "direction": "desc",
+        }
+
+    def test_base_and_head_become_params(self):
+        params = self._call(base="dev", head="octocat:feature")["params"]
+        assert (params["base"], params["head"]) == ("dev", "octocat:feature")
+
+    def test_limit_is_forwarded(self):
+        assert self._call(limit=9)["limit"] == 9
+
+
+# ── list_reviews filtering tests ──
+
+
+def _list_reviews(reviews_page: list[dict], **kwargs):
+    captured: dict = {}
+
+    async def fake_get_paginated(api, url, **kw):
+        captured.update(url=url, **kw)
+        keep = kw.get("keep")
+        return [r for r in reviews_page if keep is None or keep(r)]
+
+    input_data = GithubListPRReviewsBlock.Input.model_validate(
+        {
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "repo": "owner/repo",
+            "pr_number": 1,
+            **kwargs,
+        }
+    )
+    with (
+        mock.patch.object(reviews, "get_api", lambda *a, **kw: object()),
+        mock.patch.object(reviews, "get_paginated", fake_get_paginated),
+    ):
+        result = asyncio.run(
+            GithubListPRReviewsBlock.list_reviews(TEST_CREDENTIALS, input_data)
+        )
+    return result, captured
+
+
+def _pr_review(login: str, state: str, id: int = 1) -> dict:
+    return {
+        "id": id,
+        "user": {"login": login},
+        "state": state,
+        "body": "",
+        "html_url": f"https://github.com/owner/repo/pull/1#pullrequestreview-{id}",
+    }
+
+
+class TestListReviews:
+    def test_endpoint_is_built_from_repo_and_pr_number(self):
+        _, call = _list_reviews([])
+        assert call["url"] == "https://api.github.com/repos/owner/repo/pulls/1/reviews"
+
+    def test_unfiltered_fetch_uses_the_limit(self):
+        _, call = _list_reviews([], limit=12)
+        assert call["limit"] == 12
+        assert call["keep"] is None
+
+    def test_post_fetch_filtering_raises_the_fetch_limit(self):
+        # State/latest_only filtering happens after fetching, so a small fetch
+        # limit would silently drop matches that sit further down the list.
+        _, call = _list_reviews([], limit=12, latest_only=True)
+        assert call["limit"] == 1000
+
+    def test_reviewer_filter_is_applied_while_fetching(self):
+        result, _ = _list_reviews(
+            [_pr_review("alice", "APPROVED", 1), _pr_review("bob", "APPROVED", 2)],
+            reviewer="alice",
+        )
+        assert [r["user"] for r in result] == ["alice"]
+
+    def test_latest_only_keeps_the_last_review_per_user(self):
+        result, _ = _list_reviews(
+            [
+                _pr_review("alice", "CHANGES_REQUESTED", 1),
+                _pr_review("alice", "APPROVED", 2),
+            ],
+            latest_only=True,
+        )
+        assert [(r["id"], r["state"]) for r in result] == [(2, "APPROVED")]
+
+    def test_latest_only_ignores_pending_drafts(self):
+        result, _ = _list_reviews(
+            [_pr_review("alice", "APPROVED", 1), _pr_review("alice", "PENDING", 2)],
+            latest_only=True,
+        )
+        assert [r["id"] for r in result] == [1]
+
+    def test_state_filter_is_case_insensitive_against_the_api(self):
+        result, _ = _list_reviews(
+            [
+                _pr_review("alice", "APPROVED", 1),
+                _pr_review("bob", "CHANGES_REQUESTED", 2),
+            ],
+            state="changes_requested",
+        )
+        assert [r["id"] for r in result] == [2]
+
+    def test_limit_is_applied_after_filtering(self):
+        result, _ = _list_reviews(
+            [_pr_review("a", "APPROVED", 1), _pr_review("b", "APPROVED", 2)],
+            state="approved",
+            limit=1,
+        )
+        assert len(result) == 1
+
+
+# ── list_releases filtering tests ──
+
+
+def _release(
+    tag: str,
+    *,
+    prerelease: bool = False,
+    draft: bool = False,
+    published_at: str | None = "2026-01-01T00:00:00Z",
+    created_at: str = "2026-01-01T00:00:00Z",
+) -> dict:
+    return {
+        "name": None,
+        "tag_name": tag,
+        "html_url": f"https://github.com/owner/repo/releases/tag/{tag}",
+        "published_at": published_at,
+        "created_at": created_at,
+        "prerelease": prerelease,
+        "draft": draft,
+    }
+
+
+def _list_releases(page: list[dict], **kwargs):
+    return _capture_paginated(
+        repo,
+        GithubListReleasesBlock,
+        {"repo_url": REPO_URL, **kwargs},
+        page=page,
+    )
+
+
+class TestListReleases:
+    def test_no_filter_means_no_keep_predicate(self):
+        _, call = _list_releases(
+            [],
+        )
+        assert call["url"] == f"{REPO_URL}/releases"
+        assert call["keep"] is None
+
+    def test_stable_excludes_prereleases_and_drafts(self):
+        result, _ = _list_releases(
+            [
+                _release("v1"),
+                _release("v2-rc", prerelease=True),
+                _release("v3", draft=True),
+            ],
+            release_type="stable",
+        )
+        assert [r["tag_name"] for r in result] == ["v1"]
+
+    def test_prerelease_filter(self):
+        result, _ = _list_releases(
+            [_release("v1"), _release("v2-rc", prerelease=True)],
+            release_type="prerelease",
+        )
+        assert [r["tag_name"] for r in result] == ["v2-rc"]
+
+    def test_draft_filter_uses_created_at_for_the_date(self):
+        result, _ = _list_releases(
+            [
+                _release(
+                    "v9",
+                    draft=True,
+                    published_at=None,
+                    created_at="2026-06-01T00:00:00Z",
+                ),
+                _release("v1", published_at="2026-06-01T00:00:00Z"),
+            ],
+            release_type="draft",
+            published_after="2026-05-01T00:00:00Z",
+        )
+        assert [r["tag_name"] for r in result] == ["v9"]
+
+    def test_published_after_and_before_bracket_the_range(self):
+        result, _ = _list_releases(
+            [
+                _release("old", published_at="2025-01-01T00:00:00Z"),
+                _release("hit", published_at="2026-06-01T00:00:00Z"),
+                _release("new", published_at="2027-01-01T00:00:00Z"),
+            ],
+            published_after="2026-01-01T00:00:00Z",
+            published_before="2026-12-31T00:00:00Z",
+        )
+        assert [r["tag_name"] for r in result] == ["hit"]
+
+    def test_undated_release_is_dropped_when_a_date_filter_is_set(self):
+        result, _ = _list_releases(
+            [_release("v1", published_at=None, created_at="")],
+            published_after="2026-01-01T00:00:00Z",
+        )
+        assert result == []
+
+    def test_name_falls_back_to_the_tag(self):
+        result, _ = _list_releases([_release("v1")])
+        assert result[0]["name"] == "v1"
+
+
+class TestParseTimestamp:
+    def test_empty_string_is_none(self):
+        assert repo._parse_timestamp("") is None
+
+    def test_zulu_suffix_is_understood(self):
+        assert repo._parse_timestamp("2026-01-01T00:00:00Z") == datetime(
+            2026, 1, 1, tzinfo=timezone.utc
+        )
+
+    def test_naive_timestamp_is_assumed_utc(self):
+        assert repo._parse_timestamp("2026-01-01T00:00:00") == datetime(
+            2026, 1, 1, tzinfo=timezone.utc
+        )
+
+
+# ── list_tags / list_stargazers tests ──
+
+
+class TestSimpleRepoLists:
+    def test_tags_are_mapped_to_tree_urls(self):
+        captured: dict = {}
+
+        async def fake_get_paginated(api, url, **kwargs):
+            captured.update(url=url, **kwargs)
+            return [{"name": "v1.0.0"}]
+
+        with (
+            mock.patch.object(repo, "get_api", lambda *a, **kw: object()),
+            mock.patch.object(repo, "get_paginated", fake_get_paginated),
+        ):
+            result = asyncio.run(
+                GithubListTagsBlock.list_tags(TEST_CREDENTIALS, REPO_URL, 5)
+            )
+        assert captured["url"] == f"{REPO_URL}/tags"
+        assert result == [{"name": "v1.0.0", "url": f"{REPO_URL}/tree/v1.0.0"}]
+
+    def test_stargazers_are_mapped(self):
+        captured: dict = {}
+
+        async def fake_get_paginated(api, url, **kwargs):
+            captured.update(url=url, **kwargs)
+            return [{"login": "octocat", "html_url": "https://github.com/octocat"}]
+
+        with (
+            mock.patch.object(repo, "get_api", lambda *a, **kw: object()),
+            mock.patch.object(repo, "get_paginated", fake_get_paginated),
+        ):
+            result = asyncio.run(
+                GithubListStargazersBlock.list_stargazers(TEST_CREDENTIALS, REPO_URL, 5)
+            )
+        assert captured["url"] == f"{REPO_URL}/stargazers"
+        assert result == [{"username": "octocat", "url": "https://github.com/octocat"}]
+
+
+# ── list_discussions (GraphQL) tests ──
+
+GRAPHQL_URL = "https://api.github.com/graphql"
+
+
+class _GraphqlApi:
+    """Replays a queue of GraphQL responses and snapshots each request."""
+
+    def __init__(self, responses: list[dict]):
+        self.responses = list(responses)
+        self.requests: list[dict] = []
+
+    async def post(self, url, **kwargs):
+        self.requests.append(copy.deepcopy(kwargs["json"]))
+        payload = self.responses.pop(0)
+        return mock.Mock(json=lambda: payload)
+
+
+def _discussions_page(nodes: list[dict], has_next: bool = False, cursor=None) -> dict:
+    return {
+        "data": {
+            "repository": {
+                "discussions": {
+                    "nodes": nodes,
+                    "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
+                }
+            }
+        }
+    }
+
+
+def _list_discussions(responses: list[dict], **kwargs):
+    api = _GraphqlApi(responses)
+    input_data = GithubListDiscussionsBlock.Input.model_validate(
+        {"credentials": TEST_CREDENTIALS_INPUT, "repo_url": REPO_URL, **kwargs}
+    )
+    with mock.patch.object(repo, "get_api", lambda *a, **kw: api):
+        result = asyncio.run(
+            GithubListDiscussionsBlock.list_discussions(TEST_CREDENTIALS, input_data)
+        )
+    return result, api.requests
+
+
+def _discussion(title: str) -> dict:
+    return {"title": title, "url": f"https://github.com/owner/repo/discussions/{title}"}
+
+
+class TestListDiscussions:
+    def test_defaults_send_no_filters(self):
+        _, requests = _list_discussions([_discussions_page([])])
+        variables = requests[0]["variables"]
+        assert variables["owner"] == "owner"
+        assert variables["repo"] == "repo"
+        assert variables["categoryId"] is None
+        assert variables["answered"] is None
+        assert variables["states"] is None
+        assert variables["orderBy"] == {"field": "UPDATED_AT", "direction": "DESC"}
+
+    def test_page_size_is_capped_at_100(self):
+        _, requests = _list_discussions([_discussions_page([])], num_discussions=250)
+        assert requests[0]["variables"]["num"] == 100
+
+    def test_filters_are_translated_to_graphql_arguments(self):
+        _, requests = _list_discussions(
+            [_discussions_page([])],
+            answered="unanswered",
+            state="closed",
+            order_by="created",
+            direction="asc",
+        )
+        variables = requests[0]["variables"]
+        assert variables["answered"] is False
+        assert variables["states"] == ["CLOSED"]
+        assert variables["orderBy"] == {"field": "CREATED_AT", "direction": "ASC"}
+
+    def test_pagination_follows_the_cursor_and_truncates(self):
+        result, requests = _list_discussions(
+            [
+                _discussions_page(
+                    [_discussion("a"), _discussion("b")], has_next=True, cursor="CUR"
+                ),
+                _discussions_page([_discussion("c"), _discussion("d")]),
+            ],
+            num_discussions=3,
+        )
+        assert [d["title"] for d in result] == ["a", "b", "c"]
+        assert requests[0]["variables"]["after"] is None
+        assert requests[1]["variables"]["after"] == "CUR"
+
+    def test_category_name_is_resolved_to_an_id(self):
+        categories = {
+            "data": {
+                "repository": {
+                    "discussionCategories": {"nodes": [{"id": "DIC_1", "name": "Q&A"}]}
+                }
+            }
+        }
+        _, requests = _list_discussions(
+            [categories, _discussions_page([])], category="q&a"
+        )
+        assert requests[1]["variables"]["categoryId"] == "DIC_1"
+
+    def test_unknown_category_raises(self):
+        categories = {
+            "data": {
+                "repository": {
+                    "discussionCategories": {"nodes": [{"id": "DIC_1", "name": "Q&A"}]}
+                }
+            }
+        }
+        with pytest.raises(ValueError, match="does not exist"):
+            _list_discussions([categories], category="Ideas")
+
+
+# ── get_user tests ──
+
+
+class TestGetUser:
+    def _call(self, username: str) -> str:
+        api = _FakeApi()
+        with mock.patch.object(users, "get_api", lambda *a, **kw: api):
+            asyncio.run(GithubGetUserInfoBlock.get_user(TEST_CREDENTIALS, username))
+        return api.calls[0][1]
+
+    def test_named_user(self):
+        assert self._call("octocat") == "https://api.github.com/users/octocat"
+
+    def test_empty_username_means_the_authenticated_user(self):
+        assert self._call("") == "https://api.github.com/user"
