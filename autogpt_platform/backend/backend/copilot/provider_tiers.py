@@ -23,6 +23,7 @@ from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
+    ModelMode,
     catalog_lookup,
     resolve_model_route,
 )
@@ -86,7 +87,7 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     ]
 
 
-async def resolve_engine_mode(user_id: str, config: ChatConfig) -> str:
+async def resolve_engine_mode(user_id: str, config: ChatConfig) -> ModelMode:
     """One engine decision per response.
 
     It is a property of the deployment and the user, not of which connection
@@ -102,7 +103,7 @@ async def resolve_engine_mode(user_id: str, config: ChatConfig) -> str:
 
 
 async def platform_tier_models(
-    mode: str, user_id: str, config: ChatConfig
+    mode: ModelMode, user_id: str, config: ChatConfig
 ) -> dict[CopilotLLMModel, str | None]:
     """Resolve each tier against the engine this user's turns will run on.
 
@@ -127,7 +128,7 @@ async def platform_tier_models(
     return resolved
 
 
-def codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
+def codex_tier_models(mode: ModelMode) -> dict[CopilotLLMModel, str | None]:
     """The models the catalog pins for the Codex cells of this engine.
 
     A registry read, so it costs nothing and needs no credential. The router
