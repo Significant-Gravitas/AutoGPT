@@ -27,10 +27,7 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     settings,
 )
-from backend.integrations.codex.access import (
-    CODEX_MINIMUM_PLAN_ERROR,
-    has_codex_access,
-)
+from backend.integrations.codex.access import CODEX_MINIMUM_PLAN_ERROR, has_codex_access
 from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
