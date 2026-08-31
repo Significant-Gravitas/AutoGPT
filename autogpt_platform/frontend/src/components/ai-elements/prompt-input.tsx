@@ -98,10 +98,26 @@ export function PromptInput({
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
 > & {
-  /** Reports the auto-resized scrollHeight (px) after every resize, so a
-   *  host can switch between single-row and stacked composer layouts. */
-  onHeightChange?: (height: number) => void;
+  /** Reports whether the content now spans more than one line, so a host can
+   *  switch between single-row and stacked composer layouts. Derived from the
+   *  box's own line-height rather than a shared pixel constant, which cannot
+   *  survive hosts that restyle the textarea. */
+  onMultilineChange?: (isMultiline: boolean) => void;
 };
+
+/** True once the content needs a second line. Compared against this box's own
+ *  computed line-height + padding, so a host's font or padding can change
+ *  without silently re-tuning the threshold. */
+function isWrapped(el: HTMLTextAreaElement, contentHeight: number): boolean {
+  const style = getComputedStyle(el);
+  const lineHeight = parseFloat(style.lineHeight);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return false;
+  const padding =
+    (parseFloat(style.paddingTop) || 0) +
+    (parseFloat(style.paddingBottom) || 0);
+  // One pixel of slack absorbs sub-pixel rounding.
+  return contentHeight > lineHeight + padding + 1;
+}
 
 export function PromptInputTextarea({
   onKeyDown,
@@ -109,20 +125,27 @@ export function PromptInputTextarea({
   className,
   placeholder = "Type your message...",
   value,
-  onHeightChange,
+  onMultilineChange,
   ...props
 }: PromptInputTextareaProps) {
   const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Ref keeps autoResize stable inside the memoized change handler while
   // still reaching the latest callback.
-  const onHeightChangeRef = useRef(onHeightChange);
-  onHeightChangeRef.current = onHeightChange;
+  const onMultilineChangeRef = useRef(onMultilineChange);
+  onMultilineChangeRef.current = onMultilineChange;
 
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-    onHeightChangeRef.current?.(el.scrollHeight);
+    // A host min-height floors scrollHeight (the hero composer sets 4.5rem),
+    // so an empty box would report its minimum and read as already wrapped.
+    // Measure the content with the floor lifted, then hand the box back.
+    const ownMinHeight = el.style.minHeight;
+    el.style.minHeight = "0";
+    const contentHeight = el.scrollHeight;
+    el.style.minHeight = ownMinHeight;
+    el.style.height = `${contentHeight}px`;
+    onMultilineChangeRef.current?.(isWrapped(el, contentHeight));
   }
 
   // Resize when value changes externally (e.g. a guided prompt dropped in,

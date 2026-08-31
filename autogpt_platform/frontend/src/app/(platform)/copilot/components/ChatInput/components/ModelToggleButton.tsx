@@ -6,22 +6,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
+import { cn } from "@/lib/utils";
 import { CpuIcon } from "@hugeicons/core-free-icons";
 import type { CopilotLlmModel } from "../../../store";
 
 interface Props {
   model: CopilotLlmModel;
   onToggle: () => void;
-  /** "pill" is the pre-brain-dump footer style; "chip" lives in the tray. */
-  variant?: "chip" | "pill";
 }
 
-export function ModelToggleButton({
-  model,
-  onToggle,
-  variant = "chip",
-}: Props) {
+export function ModelToggleButton({ model, onToggle }: Props) {
   const isAdvanced = model === "advanced";
   const tooltip = isAdvanced
     ? "Using the highest-capability model (click to switch to Balanced)."
@@ -30,34 +24,27 @@ export function ModelToggleButton({
     ? "Switch to Balanced model"
     : "Switch to Advanced model";
 
-  if (variant === "pill") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-pressed={isAdvanced}
-            onClick={onToggle}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-            aria-label={ariaLabel}
-          >
-            <Icon icon={CpuIcon} size={16} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
   return (
-    <ToggleChip
-      icon={<Icon icon={CpuIcon} size={14} />}
-      label={isAdvanced ? "Advanced" : "Balanced"}
-      tooltip={tooltip}
-      ariaLabel={ariaLabel}
-      pressed={isAdvanced}
-      onToggle={onToggle}
-      className="sm:min-w-[5.75rem]"
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-pressed={isAdvanced}
+          onClick={onToggle}
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
+            // Model tier drives cost and quality, and a tooltip never opens on
+            // touch — so the raised tier has to be visible on the icon itself.
+            isAdvanced
+              ? "text-emerald-600 hover:text-emerald-700"
+              : "text-zinc-500 hover:text-zinc-700",
+          )}
+          aria-label={ariaLabel}
+        >
+          <Icon icon={CpuIcon} size={16} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

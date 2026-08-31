@@ -371,18 +371,22 @@ describe("ChatInput mode toggle", () => {
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
   });
 
-  it("shows Thinking label in extended_thinking mode", () => {
+  // The toggles are icon-only in the composer row, so the mode reaches
+  // assistive tech through the label rather than visible text.
+  it("names the switch out of extended_thinking mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "extended_thinking";
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Thinking")).toBeDefined();
+    expect(screen.getByLabelText("Switch to Fast mode")).toBeDefined();
   });
 
-  it("shows Fast label in fast mode", () => {
+  it("names the switch out of fast mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "fast";
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Fast")).toBeDefined();
+    expect(
+      screen.getByLabelText("Switch to Extended Thinking mode"),
+    ).toBeDefined();
   });
 
   it("keeps the mode locked while pinned (building mode)", () => {

@@ -6,7 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
 import { cn } from "@/lib/utils";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 
@@ -17,53 +16,33 @@ import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 interface Props {
   isDryRun: boolean;
   onToggle: () => void;
-  /** "pill" is the pre-brain-dump footer style; "chip" lives in the tray. */
-  variant?: "chip" | "pill";
 }
 
-export function DryRunToggleButton({
-  isDryRun,
-  onToggle,
-  variant = "chip",
-}: Props) {
+export function DryRunToggleButton({ isDryRun, onToggle }: Props) {
   const tooltip = isDryRun
     ? "Test mode on — new sessions run without performing real actions (click to turn off)."
     : "Turn on test mode to try prompts without performing real actions.";
   const ariaLabel = isDryRun ? "Test mode active" : "Enable Test mode";
 
-  if (variant === "pill") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-pressed={isDryRun}
-            onClick={onToggle}
-            className={cn(
-              "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
-              isDryRun
-                ? "text-amber-600 hover:text-amber-700"
-                : "text-zinc-500 hover:text-zinc-700",
-            )}
-            aria-label={ariaLabel}
-          >
-            <Icon icon={FlaskConicalIcon} size={16} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
   return (
-    <ToggleChip
-      icon={<Icon icon={FlaskConicalIcon} size={14} />}
-      label={isDryRun ? "Test mode enabled" : "Enable test mode"}
-      tooltip={tooltip}
-      ariaLabel={ariaLabel}
-      pressed={isDryRun}
-      onToggle={onToggle}
-      className="sm:min-w-[9.5rem]"
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-pressed={isDryRun}
+          onClick={onToggle}
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-zinc-100",
+            isDryRun
+              ? "text-amber-600 hover:text-amber-700"
+              : "text-zinc-500 hover:text-zinc-700",
+          )}
+          aria-label={ariaLabel}
+        >
+          <Icon icon={FlaskConicalIcon} size={16} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

@@ -6,7 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { ToggleChip } from "@/components/atoms/ToggleChip/ToggleChip";
 import { cn } from "@/lib/utils";
 import { BrainIcon, FlashIcon, LockIcon } from "@hugeicons/core-free-icons";
 import type { CopilotMode } from "../../../store";
@@ -16,16 +15,9 @@ interface Props {
   onToggle: () => void;
   /** When true the mode is locked to Extended Thinking (agent build flow). */
   pinned?: boolean;
-  /** "pill" is the pre-brain-dump footer style; "chip" lives in the tray. */
-  variant?: "chip" | "pill";
 }
 
-export function ModeToggleButton({
-  mode,
-  onToggle,
-  pinned = false,
-  variant = "chip",
-}: Props) {
+export function ModeToggleButton({ mode, onToggle, pinned = false }: Props) {
   const isExtended = mode === "extended_thinking";
   const tooltipText = pinned
     ? "Extended Thinking is required while building an agent"
@@ -39,6 +31,8 @@ export function ModeToggleButton({
       ? "Switch to Fast mode"
       : "Switch to Extended Thinking mode";
 
+  // The glyph carries the state on its own — a brain, a lightning bolt, or a
+  // padlock — so the button stays readable without a text label.
   function getIcon() {
     if (pinned) return <Icon icon={LockIcon} size={16} />;
     return isExtended ? (
@@ -48,39 +42,24 @@ export function ModeToggleButton({
     );
   }
 
-  if (variant === "pill") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-pressed={isExtended}
-            aria-disabled={pinned}
-            onClick={onToggle}
-            className={cn(
-              "inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
-              pinned && "cursor-not-allowed opacity-70 hover:bg-transparent",
-            )}
-            aria-label={ariaLabel}
-          >
-            {getIcon()}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltipText}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
   return (
-    <ToggleChip
-      icon={getIcon()}
-      label={pinned || isExtended ? "Thinking" : "Fast"}
-      tooltip={tooltipText}
-      ariaLabel={ariaLabel}
-      pressed={isExtended}
-      onToggle={onToggle}
-      locked={pinned}
-      className="sm:min-w-[5.5rem]"
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-pressed={isExtended}
+          aria-disabled={pinned}
+          onClick={onToggle}
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700",
+            pinned && "cursor-not-allowed opacity-70 hover:bg-transparent",
+          )}
+          aria-label={ariaLabel}
+        >
+          {getIcon()}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }

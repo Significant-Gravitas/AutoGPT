@@ -29,7 +29,6 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
-import { ComposerTray } from "./components/ComposerTray";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -78,11 +77,6 @@ interface Props {
   /** Recipient picker chip rendered before the mode chips (new-task state). */
   recipientPicker?: ReactNode;
 }
-
-// One text row is ~48px (24px line + 24px vertical padding); anything taller
-// means the text wrapped and the composer stacks GPT-style: textarea full
-// width on top, controls on their own row below.
-const SINGLE_ROW_MAX_HEIGHT_PX = 56;
 
 export function ChatInput({
   onSend,
@@ -245,10 +239,6 @@ export function ChatInput({
     isTranscribing,
   });
 
-  // The brain-dump experience relocates the mode/model/dry-run chips into
-  // the tray below the card; off keeps them as pills in the footer.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
@@ -274,12 +264,8 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
-  // Narrows to string, so neither render site needs to re-test sessionId.
+  // Narrows to string, so the render site needn't re-test sessionId.
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
-  const hasTrayItems =
-    (showModeToggle && !isStreaming) ||
-    (showDryRunToggle && !hasSession) ||
-    Boolean(devtoolSessionId);
 
   const canSend =
     !disabled &&
@@ -377,9 +363,7 @@ export function ChatInput({
               onBlur={mentions.close}
               disabled={isInputDisabled}
               placeholder={resolvedPlaceholder}
-              onHeightChange={(height) =>
-                setIsMultiline(height > SINGLE_ROW_MAX_HEIGHT_PX)
-              }
+              onMultilineChange={setIsMultiline}
             />
             {isRecording && !value && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -394,31 +378,26 @@ export function ChatInput({
             align="inline-end"
             className="order-none ml-auto gap-1 py-1 pr-1.5"
           >
-            {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
+            {showModeToggle && !isStreaming && (
               <>
                 <ModeToggleButton
-                  variant="pill"
                   mode={copilotChatMode}
                   onToggle={handleToggleMode}
                   pinned={copilotModePinned}
                 />
                 <ModelToggleButton
-                  variant="pill"
                   model={copilotLlmModel}
                   onToggle={handleToggleModel}
                 />
               </>
             )}
-            {!isBrainDumpEnabled && showDryRunToggle && !hasSession && (
+            {showDryRunToggle && !hasSession && (
               <DryRunToggleButton
-                variant="pill"
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
               />
             )}
-            {/* ComposerTray renders only under the brain-dump flag, so the
-                badge is duplicated here to stay reachable in both layouts. */}
-            {!isBrainDumpEnabled && devtoolSessionId && (
+            {devtoolSessionId && (
               <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
             {showMicButton && (
@@ -475,42 +454,6 @@ export function ChatInput({
           Press Enter to send, Shift+Enter for new line, Space to record voice
         </span>
       </InputGroup>
-
-      {/* Mode and model are per-message settings sent with each stream request,
-          so they can be freely changed between turns in an existing session.
-          Hide only while actively streaming (too late to change for that turn).
-          DryRun is new-chat only: once a session exists its dry_run flag is
-          locked and read from session metadata (sessionDryRun in useCopilotPage),
-          with the banner in CopilotPage.tsx reflecting the actual state. */}
-      {Boolean(isBrainDumpEnabled) && hasTrayItems && (
-        <ComposerTray>
-          {showModeToggle && !isStreaming && (
-            <>
-              <ModeToggleButton
-                mode={copilotChatMode}
-                onToggle={handleToggleMode}
-                pinned={copilotModePinned}
-              />
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
-            </>
-          )}
-          {showDryRunToggle && !hasSession && (
-            <DryRunToggleButton
-              isDryRun={isDryRun}
-              onToggle={handleToggleDryRun}
-            />
-          )}
-          {devtoolSessionId && (
-            <TokenDevtoolBadge
-              sessionId={devtoolSessionId}
-              className="ml-auto"
-            />
-          )}
-        </ComposerTray>
-      )}
 
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
