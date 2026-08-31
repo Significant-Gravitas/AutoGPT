@@ -1,3 +1,4 @@
+import asyncio
 import codecs
 import json
 from collections.abc import AsyncIterator
@@ -129,7 +130,15 @@ class Microsoft365CopilotClient:
     ):
         self._access_token = access_token
         self._base_url = base_url.rstrip("/")
-        self._timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        # A grounded Copilot answer may legitimately stream for several minutes.
+        # Limit connection setup and periods with no bytes, not the total lifetime
+        # of the SSE response.
+        self._timeout = aiohttp.ClientTimeout(
+            total=None,
+            connect=30.0,
+            sock_connect=30.0,
+            sock_read=timeout_seconds,
+        )
         self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> "Microsoft365CopilotClient":
@@ -158,9 +167,18 @@ class Microsoft365CopilotClient:
 
     async def create_conversation(self) -> str:
         url = f"{self._base_url}/copilot/conversations"
-        async with self._client().post(url, headers=self._headers, json={}) as response:
-            await self._raise_for_error(response, "create a Copilot conversation")
-            payload = await response.json()
+        try:
+            async with self._client().post(
+                url, headers=self._headers, json={}
+            ) as response:
+                await self._raise_for_error(response, "create a Copilot conversation")
+                payload = await response.json()
+        except Microsoft365CopilotError:
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            raise Microsoft365CopilotError(
+                "Microsoft 365 Copilot could not create a Copilot conversation"
+            ) from error
         conversation_id = payload.get("id") if isinstance(payload, dict) else None
         if not isinstance(conversation_id, str) or not conversation_id:
             raise Microsoft365CopilotError(
@@ -186,12 +204,21 @@ class Microsoft365CopilotClient:
             web_enabled=web_enabled,
             file_uris=file_uris,
         )
-        async with self._client().post(
-            url, headers=self._headers, json=request
-        ) as response:
-            await self._raise_for_error(response, "continue a Copilot conversation")
-            async for delta in iter_copilot_text_deltas(response.content.iter_any()):
-                yield delta
+        try:
+            async with self._client().post(
+                url, headers=self._headers, json=request
+            ) as response:
+                await self._raise_for_error(response, "continue a Copilot conversation")
+                async for delta in iter_copilot_text_deltas(
+                    response.content.iter_any()
+                ):
+                    yield delta
+        except Microsoft365CopilotError:
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            raise Microsoft365CopilotError(
+                "Microsoft 365 Copilot could not continue a Copilot conversation"
+            ) from error
 
     async def _raise_for_error(
         self, response: aiohttp.ClientResponse, action: str

@@ -224,6 +224,7 @@ function Microsoft365CopilotConnectionDialog({
   credential,
   onOpenChange,
 }: MicrosoftProps) {
+  const [forceMessage, setForceMessage] = useState<string | null>(null);
   const { remove, isPending: isDisconnecting } = useDeleteIntegration();
   const credentialId = connection.credential_id;
   const accessLabels = microsoftAccessLabels(credential?.scopes);
@@ -232,91 +233,126 @@ function Microsoft365CopilotConnectionDialog({
       ? credential.title
       : undefined;
 
-  async function disconnect() {
+  const accountName = credential?.username ?? "Microsoft 365 Copilot";
+
+  function setManageOpen(open: boolean) {
+    if (!open) setForceMessage(null);
+    onOpenChange(open);
+  }
+
+  async function disconnect(force = false) {
     if (!credentialId) return;
-    await remove([
-      {
-        id: credentialId,
-        provider: "microsoft_365_copilot",
-        name: credential?.username ?? "Microsoft 365 Copilot",
-      },
-    ]);
-    onOpenChange(false);
+    const target = {
+      id: credentialId,
+      provider: "microsoft_365_copilot",
+      name: accountName,
+    };
+    const result = await remove([target], force);
+    const confirmation = result.needsConfirmation[0];
+    if (confirmation) {
+      setForceMessage(confirmation.message);
+      return;
+    }
+    if (result.succeeded.length === 0) return;
+
+    setForceMessage(null);
+    setManageOpen(false);
   }
 
   return (
-    <Dialog
-      title="Microsoft 365 Copilot"
-      styling={{ maxWidth: "32rem" }}
-      controlled={{ isOpen: true, set: onOpenChange }}
-    >
-      <Dialog.Content>
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-1">
+    <>
+      <Dialog
+        title="Microsoft 365 Copilot"
+        styling={{ maxWidth: "32rem" }}
+        controlled={{
+          isOpen: forceMessage === null,
+          set: (open) => {
+            if (!open && forceMessage !== null) return;
+            setManageOpen(open);
+          },
+        }}
+      >
+        <Dialog.Content>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1">
+              <Text variant="small" className="text-[#8A8A90]">
+                Connected work account
+              </Text>
+              <Text variant="body-medium" className="text-black">
+                {displayName ??
+                  credential?.username ??
+                  "Microsoft 365 Copilot account"}
+              </Text>
+              {displayName && credential?.username && (
+                <Text variant="small" className="text-[#505057]">
+                  {credential.username}
+                </Text>
+              )}
+              {!credential?.username && (
+                <Text variant="small" className="text-[#8A8A90]">
+                  Reconnect once to show the signed-in account here.
+                </Text>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Text variant="small-medium" className="text-[#505057]">
+                Access granted
+              </Text>
+              {accessLabels.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {accessLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <Text variant="small" className="text-[#8A8A90]">
+                  Reconnect once to refresh the access shown here.
+                </Text>
+              )}
+            </div>
+
+            <Text variant="small" className="text-[#505057]">
+              Microsoft still limits every answer to content this work account
+              can already access in Microsoft 365.
+            </Text>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                variant="destructive"
+                size="small"
+                onClick={() => void disconnect()}
+                loading={isDisconnecting}
+              >
+                Disconnect
+              </Button>
+            </div>
+
             <Text variant="small" className="text-[#8A8A90]">
-              Connected work account
+              Disconnecting stops new chats using this Copilot subscription.
+              Your chat history is kept, and your other integrations are
+              unaffected.
             </Text>
-            <Text variant="body-medium" className="text-black">
-              {displayName ??
-                credential?.username ??
-                "Microsoft 365 Copilot account"}
-            </Text>
-            {displayName && credential?.username && (
-              <Text variant="small" className="text-[#505057]">
-                {credential.username}
-              </Text>
-            )}
-            {!credential?.username && (
-              <Text variant="small" className="text-[#8A8A90]">
-                Reconnect once to show the signed-in account here.
-              </Text>
-            )}
           </div>
+        </Dialog.Content>
+      </Dialog>
 
-          <div className="flex flex-col gap-2">
-            <Text variant="small-medium" className="text-[#505057]">
-              Access granted
-            </Text>
-            {accessLabels.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {accessLabels.map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#505057]"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <Text variant="small" className="text-[#8A8A90]">
-                Reconnect once to refresh the access shown here.
-              </Text>
-            )}
-          </div>
-
-          <Text variant="small" className="text-[#505057]">
-            Microsoft still limits every answer to content this work account can
-            already access in Microsoft 365.
-          </Text>
-
-          <div className="flex justify-end pt-1">
-            <Button
-              variant="destructive"
-              size="small"
-              onClick={disconnect}
-              loading={isDisconnecting}
-            >
-              Disconnect
-            </Button>
-          </div>
-
-          <Text variant="small" className="text-[#8A8A90]">
-            Disconnecting stops new chats using this Copilot subscription. Your
-            chat history is kept, and your other integrations are unaffected.
-          </Text>
-        </div>
-      </Dialog.Content>
-    </Dialog>
+      <DeleteConfirmDialog
+        open={forceMessage !== null}
+        onOpenChange={(open) => {
+          if (!open) setForceMessage(null);
+        }}
+        itemNames={[accountName]}
+        isPending={isDisconnecting}
+        onConfirm={() => void disconnect(true)}
+        variant="force"
+        notice={forceMessage ?? undefined}
+      />
+    </>
   );
 }

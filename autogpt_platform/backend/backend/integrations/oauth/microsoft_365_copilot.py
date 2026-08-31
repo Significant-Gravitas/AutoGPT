@@ -192,15 +192,18 @@ class Microsoft365CopilotDeviceAuthHandler(BaseDeviceAuthHandler):
             if isinstance(raw_scopes, str)
             else []
         )
-        if not scopes and current:
-            scopes = current.scopes
+        if not scopes:
+            scopes = list(current.scopes if current else self.DEFAULT_SCOPES)
 
         expires_in = token_data.get("expires_in")
-        expires_at = (
-            int(time.time()) + int(expires_in)
-            if isinstance(expires_in, (int, str))
-            else None
-        )
+        try:
+            expires_at = (
+                int(time.time()) + int(expires_in)
+                if isinstance(expires_in, (int, str))
+                else None
+            )
+        except ValueError:
+            expires_at = None
         credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=current.title if current else "Microsoft 365 Copilot",

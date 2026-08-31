@@ -281,6 +281,63 @@ describe("AIConnectionsSection", () => {
     expect(screen.getByText("Teams chats")).toBeDefined();
   });
 
+  it("keeps the Microsoft manage dialog open when disconnect fails", async () => {
+    mockTransports(
+      [platform(false), microsoft(true)],
+      [
+        {
+          id: "cred-msft",
+          provider: "microsoft_365_copilot",
+          username: "nick@example.com",
+        },
+      ],
+    );
+    server.use(
+      getDeleteV1DeleteCredentialsMockHandler401({ detail: "Not authorized" }),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined(),
+    );
+  });
+
+  it("asks before force-removing an in-use Microsoft connection", async () => {
+    mockTransports([platform(false), microsoft(true)]);
+    server.use(
+      getDeleteV1DeleteCredentialsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("force") === "true"
+          ? { deleted: true, revoked: true }
+          : {
+              deleted: false,
+              need_confirmation: true,
+              message: "Used by an active schedule",
+            },
+      ),
+    );
+
+    render(<AIConnectionsSection />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Force remove" }),
+    ).toBeDefined();
+    expect(await screen.findByText("Used by an active schedule")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Force remove" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull(),
+    );
+  });
+
   it("marks the saved default, and only that one", async () => {
     mockTransports([platform(false), chatgpt(true)]);
 

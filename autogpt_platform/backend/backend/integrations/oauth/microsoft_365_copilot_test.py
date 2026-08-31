@@ -167,3 +167,31 @@ async def test_refresh_keeps_existing_refresh_token_when_omitted(mocker) -> None
 
     assert refreshed.refresh_token
     assert refreshed.refresh_token.get_secret_value() == "old-refresh"
+
+
+def test_initial_token_without_scope_keeps_requested_default_scopes() -> None:
+    credentials = (
+        Microsoft365CopilotDeviceAuthHandler()._credentials_from_token_response(
+            {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_in": 3600,
+            }
+        )
+    )
+
+    assert credentials.scopes == Microsoft365CopilotDeviceAuthHandler.DEFAULT_SCOPES
+
+
+def test_malformed_token_expiry_does_not_crash_authentication() -> None:
+    credentials = (
+        Microsoft365CopilotDeviceAuthHandler()._credentials_from_token_response(
+            {
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_in": "not-a-number",
+            }
+        )
+    )
+
+    assert credentials.access_token_expires_at is None

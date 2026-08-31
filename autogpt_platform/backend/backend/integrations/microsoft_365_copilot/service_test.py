@@ -6,6 +6,7 @@ from pydantic import SecretStr
 
 from backend.copilot.model import ChatSession
 from backend.data.model import OAuth2Credentials
+from backend.integrations.microsoft_365_copilot.client import Microsoft365CopilotError
 from backend.integrations.oauth.microsoft_365_copilot import (
     Microsoft365CopilotDeviceAuthHandler,
 )
@@ -38,6 +39,34 @@ class _FakeClient:
         yield " world"
 
 
+class _ExpiredConversationClient(_FakeClient):
+    async def create_conversation(self) -> str:
+        return "conversation-replacement"
+
+    async def stream_chat(self, conversation_id: str, message: str, **kwargs):
+        if conversation_id == "conversation-expired":
+            raise Microsoft365CopilotError("expired", status=410)
+        async for delta in super().stream_chat(conversation_id, message, **kwargs):
+            yield delta
+
+
+class _MidStreamFailureClient(_FakeClient):
+    async def stream_chat(self, conversation_id: str, message: str, **kwargs):
+        yield "Partial"
+        raise Microsoft365CopilotError("Copilot connection ended")
+
+
+def _credential_lease() -> MagicMock:
+    credentials = OAuth2Credentials(
+        id="credential-1",
+        provider="microsoft_365_copilot",
+        access_token=SecretStr("graph-token"),
+        refresh_token=SecretStr("refresh-token"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+    return MagicMock(credentials=credentials)
+
+
 @pytest.mark.asyncio
 async def test_service_streams_and_persists_graph_conversation(mocker) -> None:
     from backend.integrations.microsoft_365_copilot import service
@@ -49,14 +78,7 @@ async def test_service_streams_and_persists_graph_conversation(mocker) -> None:
         llm_credential_id="credential-1",
     )
     session.session_id = "session-1"
-    credentials = OAuth2Credentials(
-        id="credential-1",
-        provider="microsoft_365_copilot",
-        access_token=SecretStr("graph-token"),
-        refresh_token=SecretStr("refresh-token"),
-        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
-    )
-    lease = MagicMock(credentials=credentials)
+    lease = _credential_lease()
     upsert = mocker.patch.object(
         service, "upsert_chat_session", new=AsyncMock(side_effect=lambda value: value)
     )
@@ -116,3 +138,95 @@ def test_conversation_key_is_scoped_to_credential() -> None:
     )
 
     assert _conversation_key(session) == "microsoft_365_copilot:credential-2"
+
+
+@pytest.mark.asyncio
+async def test_service_replaces_an_expired_graph_conversation(mocker) -> None:
+    from backend.integrations.microsoft_365_copilot import service
+
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="credential-1",
+    )
+    session.session_id = "session-1"
+    key = "microsoft_365_copilot:credential-1"
+    session.metadata.llm_provider_session_ids[key] = "conversation-expired"
+    upsert = mocker.patch.object(
+        service, "upsert_chat_session", new=AsyncMock(side_effect=lambda value: value)
+    )
+    mocker.patch.object(
+        service, "persist_and_record_usage", new=AsyncMock(return_value=4)
+    )
+    mocker.patch.object(
+        service, "Microsoft365CopilotClient", _ExpiredConversationClient
+    )
+    mocker.patch.object(
+        service,
+        "get_user_by_id",
+        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+    )
+
+    events = [
+        event
+        async for event in service.stream_chat_completion_microsoft_365(
+            session_id="session-1",
+            message="Hi",
+            user_id="user-1",
+            session=session,
+            credential_lease=_credential_lease(),
+        )
+    ]
+
+    assert session.metadata.llm_provider_session_ids[key] == "conversation-replacement"
+    assert [event.type.value for event in events][-3:] == [
+        "text-end",
+        "finish-step",
+        "finish",
+    ]
+    assert upsert.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_service_closes_stream_after_midstream_failure(mocker) -> None:
+    from backend.integrations.microsoft_365_copilot import service
+
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        llm_auth_provider="microsoft_365_copilot",
+        llm_credential_id="credential-1",
+    )
+    session.session_id = "session-1"
+    session.metadata.llm_provider_session_ids["microsoft_365_copilot:credential-1"] = (
+        "conversation-1"
+    )
+    mocker.patch.object(service, "Microsoft365CopilotClient", _MidStreamFailureClient)
+    mocker.patch.object(
+        service,
+        "get_user_by_id",
+        new=AsyncMock(return_value=SimpleNamespace(timezone="UTC")),
+    )
+
+    events = [
+        event
+        async for event in service.stream_chat_completion_microsoft_365(
+            session_id="session-1",
+            message="Hi",
+            user_id="user-1",
+            session=session,
+            credential_lease=_credential_lease(),
+        )
+    ]
+
+    assert [event.type.value for event in events] == [
+        "start",
+        "start-step",
+        "text-start",
+        "text-delta",
+        "text-end",
+        "finish-step",
+        "error",
+        "finish",
+    ]
