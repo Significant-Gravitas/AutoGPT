@@ -15,22 +15,20 @@ const DEFAULT_EXPERT_ROLE = "Head of AI";
 interface Props {
   expertIdentity?: ExpertIdentity | null;
   readOnly: boolean;
-  /** The workspace-files card floats over the column's right side, so the
-   *  chip slides left to make room for it. */
-  areFilesOpen: boolean;
   /** The new layout floats the sidebar and workspace-files controls over the
    *  chat's top-left corner below `lg`; the chip clears them. */
   hasFloatingControls?: boolean;
 }
 
-/** Floats as a translucent chip over the scroller's top edge — the
+/** Floats as a translucent chip pinned to the pane's top-left gutter — the
  *  zero-height wrapper keeps it out of the flex flow so messages scroll
- *  underneath. An expert session wears the expert's identity and every
- *  other session is Autopilot's, so the thread is never anonymous. */
+ *  underneath. On narrow viewports the gutter disappears and the chip simply
+ *  overlaps the message column, which its translucency is built for. An
+ *  expert session wears the expert's identity and every other session is
+ *  Autopilot's, so the thread is never anonymous. */
 export function ThreadHeader({
   expertIdentity,
   readOnly,
-  areFilesOpen,
   hasFloatingControls = false,
 }: Props) {
   const name = expertIdentity?.name ?? "Autopilot";
@@ -40,12 +38,11 @@ export function ThreadHeader({
     <div data-testid="expert-thread-header" className="relative z-20 h-0">
       <div
         className={cn(
-          "ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-none absolute inset-x-0 top-3 mx-auto flex w-full max-w-3xl justify-start px-6 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
-          areFilesOpen && "xl:-translate-x-40",
+          "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",
           hasFloatingControls && "max-md:pl-28 md:max-lg:pl-20",
         )}
       >
-        <div className="pointer-events-auto flex min-w-0 items-center gap-1.5 rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-3 shadow-sm backdrop-blur-md">
+        <div className="pointer-events-auto flex min-w-0 max-w-xs items-center gap-1.5 rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-3 shadow-sm backdrop-blur-md">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

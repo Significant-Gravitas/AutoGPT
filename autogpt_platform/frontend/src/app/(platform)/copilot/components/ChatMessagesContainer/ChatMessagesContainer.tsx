@@ -98,8 +98,8 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** The host's floating workspace-files card is open, so the header and
-   *  the column slide aside for it. Only the copilot chat mounts that card;
+  /** The host's floating workspace-files card is open, so the column
+   *  slides aside for it. Only the copilot chat mounts that card;
    *  every other host (share viewer, memory and builder panels) leaves this
    *  off, whatever the persisted panel state says. */
   areFilesOpen?: boolean;
@@ -460,7 +460,6 @@ export function ChatMessagesContainer({
       <ThreadHeader
         expertIdentity={expertIdentity}
         readOnly={readOnly}
-        areFilesOpen={areFilesOpen}
         hasFloatingControls={hasFloatingControls}
       />
       <ChatMinimap messages={messages} />
