@@ -18,7 +18,13 @@ import { useMeasuredHeight } from "./useMeasuredHeight";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  title?: React.ReactNode;
+  description?: string;
 }
+
+const DEFAULT_TITLE = "Connect a service";
+const DEFAULT_DESCRIPTION =
+  "Pick a service to connect an API key or authorize with OAuth.";
 
 const TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 const HEIGHT_TRANSITION = {
@@ -38,7 +44,12 @@ const reducedVariants = {
   exit: { opacity: 0 },
 };
 
-export function ConnectServiceDialog({ open, onOpenChange }: Props) {
+export function ConnectServiceDialog({
+  open,
+  onOpenChange,
+  title = DEFAULT_TITLE,
+  description = DEFAULT_DESCRIPTION,
+}: Props) {
   const {
     query,
     setQuery,
@@ -61,7 +72,7 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog
-      title="Connect a service"
+      title={title}
       styling={{ maxWidth: "40rem" }}
       controlled={{
         isOpen: open,
@@ -104,6 +115,7 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
                         setQuery={setQuery}
                         providers={providers}
                         onSelect={handleSelect}
+                        description={description}
                       />
                     )}
                   </motion.div>

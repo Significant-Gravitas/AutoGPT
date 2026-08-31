@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -23,9 +28,14 @@ import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
 interface Props {
   expertId: string;
   expertName: string;
+  expertAvatarUrl: string | null;
 }
 
-export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
+export function ExpertIntegrationsSection({
+  expertId,
+  expertName,
+  expertAvatarUrl,
+}: Props) {
   const {
     granted,
     grantable,
@@ -182,6 +192,18 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
         onOpenChange={(open) => {
           if (!open) closeConnect();
         }}
+        title={
+          <span className="flex items-center gap-2.5">
+            <Avatar className="size-7">
+              {expertAvatarUrl ? (
+                <AvatarImage src={expertAvatarUrl} alt="" />
+              ) : null}
+              <AvatarFallback>{expertName}</AvatarFallback>
+            </Avatar>
+            Connect a service for {expertName}
+          </span>
+        }
+        description={`Pick a service to connect. ${expertName} will be able to use it on your behalf.`}
       />
     </section>
   );

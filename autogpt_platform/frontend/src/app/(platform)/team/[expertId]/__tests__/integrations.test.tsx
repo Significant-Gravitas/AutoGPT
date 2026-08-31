@@ -193,6 +193,11 @@ describe("managing an expert's integrations", () => {
     );
 
     expect(await screen.findByLabelText("Search services")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Pick a service to connect. Maria will be able to use it on your behalf.",
+      ),
+    ).toBeDefined();
   });
 
   it("grants a credential connected from inside the dialog", async () => {

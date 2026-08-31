@@ -199,6 +199,7 @@ export default function ExpertDetailPage() {
       <ExpertIntegrationsSection
         expertId={expert.id}
         expertName={expert.name}
+        expertAvatarUrl={expert.avatar_url ?? null}
       />
 
       <ExpertWorkflowsSection
