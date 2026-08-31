@@ -8,6 +8,7 @@ from backend.integrations.codex import chatgpt_auth
 from backend.integrations.codex.chatgpt_auth import (
     ChatGPTDeviceCode,
     CodexAuthError,
+    exchange_authorization_code,
     poll_device_code,
     refresh_access_token,
 )
@@ -147,6 +148,42 @@ async def test_a_non_json_body_is_a_failure_not_a_pending_state() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Token exchange
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_authorization_code_exchange_uses_oauth_form_encoding() -> None:
+    response = _FakeResponse(
+        200,
+        {"id_token": "id", "access_token": "at", "refresh_token": "rt"},
+    )
+    requests = AsyncMock()
+    requests.post = AsyncMock(return_value=response)
+
+    with patch.object(chatgpt_auth, "Requests", return_value=requests):
+        await exchange_authorization_code("auth-code", "pkce-verifier")
+
+    _, kwargs = requests.post.await_args
+    assert "json" not in kwargs
+    assert kwargs["headers"]["content-type"] == "application/x-www-form-urlencoded"
+    assert kwargs["data"] == {
+        "grant_type": "authorization_code",
+        "client_id": chatgpt_auth.CLIENT_ID,
+        "code": "auth-code",
+        "code_verifier": "pkce-verifier",
+        "redirect_uri": chatgpt_auth.DEVICE_REDIRECT_URI,
+    }
+
+
+@pytest.mark.asyncio
+async def test_authorization_code_exchange_reports_a_safe_provider_error() -> None:
+    with _patch_post(_FakeResponse(400, _error("invalid_grant"))):
+        with pytest.raises(CodexAuthError, match="HTTP 400, code=invalid_grant"):
+            await exchange_authorization_code("auth-code", "pkce-verifier")
+
+
+# --------------------------------------------------------------------------- #
 # Refresh
 # --------------------------------------------------------------------------- #
 
@@ -166,6 +203,28 @@ async def test_refresh_prefers_a_rotated_token_when_one_arrives() -> None:
     with _patch_post(_FakeResponse(200, payload)):
         tokens = await refresh_access_token(SecretStr("old-refresh"))
     assert tokens.refresh_token.get_secret_value() == "new-refresh"
+
+
+@pytest.mark.asyncio
+async def test_refresh_uses_oauth_form_encoding() -> None:
+    response = _FakeResponse(
+        200,
+        {"id_token": "id", "access_token": "at", "refresh_token": "new-refresh"},
+    )
+    requests = AsyncMock()
+    requests.post = AsyncMock(return_value=response)
+
+    with patch.object(chatgpt_auth, "Requests", return_value=requests):
+        await refresh_access_token(SecretStr("old-refresh"))
+
+    _, kwargs = requests.post.await_args
+    assert "json" not in kwargs
+    assert kwargs["headers"]["content-type"] == "application/x-www-form-urlencoded"
+    assert kwargs["data"] == {
+        "grant_type": "refresh_token",
+        "client_id": chatgpt_auth.CLIENT_ID,
+        "refresh_token": "old-refresh",
+    }
 
 
 @pytest.mark.asyncio

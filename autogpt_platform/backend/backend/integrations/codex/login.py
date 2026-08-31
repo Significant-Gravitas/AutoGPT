@@ -559,7 +559,7 @@ def _is_codex_credentials(
     return (
         isinstance(credentials, OAuth2Credentials)
         and credentials.provider == "codex"
-        and credentials.refresh_strategy == "provider_runtime"
+        and credentials.refresh_strategy in ("oauth_handler", "provider_runtime")
     )
 
 

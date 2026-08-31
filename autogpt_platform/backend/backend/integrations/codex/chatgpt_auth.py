@@ -116,9 +116,9 @@ class ChatGPTTokens(BaseModel):
     refresh_token: SecretStr
 
 
-def _headers() -> dict[str, str]:
+def _headers(*, content_type: str = "application/json") -> dict[str, str]:
     return {
-        "content-type": "application/json",
+        "content-type": content_type,
         "accept": "application/json",
         "originator": ORIGINATOR,
         "user-agent": USER_AGENT,
@@ -198,10 +198,10 @@ async def poll_device_code(device_auth_id: str, user_code: str) -> ChatGPTPollRe
 async def exchange_authorization_code(
     authorization_code: str, code_verifier: str
 ) -> ChatGPTTokens:
-    response = await Requests().post(
+    response = await Requests(raise_for_status=False).post(
         OAUTH_TOKEN_URL,
-        headers=_headers(),
-        json={
+        headers=_headers(content_type="application/x-www-form-urlencoded"),
+        data={
             "grant_type": "authorization_code",
             "client_id": CLIENT_ID,
             "code": authorization_code,
@@ -209,6 +209,15 @@ async def exchange_authorization_code(
             "redirect_uri": DEVICE_REDIRECT_URI,
         },
     )
+    if response.status != 200:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        raise CodexAuthError(
+            "ChatGPT token exchange failed "
+            f"(HTTP {response.status}, code={_error_code(payload)})"
+        )
     return ChatGPTTokens.model_validate(response.json())
 
 
@@ -216,8 +225,8 @@ async def refresh_access_token(refresh_token: SecretStr) -> ChatGPTTokens:
     """Exchange a refresh token. OpenAI rotates it, so persist what comes back."""
     response = await Requests(raise_for_status=False).post(
         OAUTH_TOKEN_URL,
-        headers=_headers(),
-        json={
+        headers=_headers(content_type="application/x-www-form-urlencoded"),
+        data={
             "grant_type": "refresh_token",
             "client_id": CLIENT_ID,
             "refresh_token": refresh_token.get_secret_value(),
