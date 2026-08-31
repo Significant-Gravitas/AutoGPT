@@ -101,6 +101,25 @@ describe("expert integrations in the thread header", () => {
     ).toBeDefined();
   });
 
+  it("names an MCP integration after the service, not its URL", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([
+        {
+          credential_id: "cred-mcp",
+          provider: "mcp",
+          title: "MCP: mcp.sentry.dev",
+          type: "host_scoped",
+        },
+      ]),
+    );
+
+    renderHeader();
+    await userEvent.click(await screen.findByTestId("expert-integrations"));
+
+    expect(await screen.findByText("Sentry")).toBeDefined();
+    expect(screen.queryByText("MCP: mcp.sentry.dev")).toBeNull();
+  });
+
   it("keeps the integration's name when its logo fails to load", async () => {
     server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
 

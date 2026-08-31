@@ -200,13 +200,20 @@ describe("managing an expert's integrations", () => {
     ).toBeDefined();
   });
 
-  it("grants a credential connected from inside the dialog", async () => {
+  it("grants only the credential the dialog created", async () => {
     const workLinkedin = {
       id: "cred-linkedin",
       provider: "linkedin",
       type: "oauth2",
       title: "Work LinkedIn",
     };
+    const teamNotion = {
+      id: "cred-notion",
+      provider: "notion",
+      type: "api_key",
+      title: "Team Notion",
+    };
+    // Lands on the account while the dialog is open, e.g. from another tab.
     const teamSlack = {
       id: "cred-slack",
       provider: "slack",
@@ -214,19 +221,31 @@ describe("managing an expert's integrations", () => {
       title: "Team Slack",
     };
     let connected = [workLinkedin];
-    let granted: string[] = [];
+    const granted: string[][] = [];
 
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/providers", () => HttpResponse.json([])),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+        ]),
+      ),
       http.get("*/api/integrations/credentials", () =>
         HttpResponse.json(connected),
       ),
+      http.post("*/api/integrations/notion/credentials", () => {
+        connected = [workLinkedin, teamSlack, teamNotion];
+        return HttpResponse.json(teamNotion, { status: 201 });
+      }),
       http.post(
         "*/api/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
-          granted = body.credential_ids;
+          granted.push(body.credential_ids);
           return HttpResponse.json([linkedin]);
         },
       ),
@@ -240,12 +259,41 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /Connect a new service/ }),
     );
-    await screen.findByLabelText("Search services");
+    await userEvent.click(await screen.findByText("Notion"));
 
-    connected = [workLinkedin, teamSlack];
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await userEvent.type(
+      await screen.findByPlaceholderText("My Notion key"),
+      "Team Notion",
+    );
+    await userEvent.type(screen.getByPlaceholderText("sk-..."), "secret-value");
+    await userEvent.click(screen.getByRole("button", { name: "Save API key" }));
 
-    await waitFor(() => expect(granted).toEqual(["cred-slack"]));
+    await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
+  });
+
+  it("does not offer integrations when the expert's own list fails to load", async () => {
+    let grantAttempts = 0;
+    server.use(
+      http.get("*/api/experts/expert-maria/credentials", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+      http.post("*/api/experts/expert-maria/credentials", () => {
+        grantAttempts += 1;
+        return HttpResponse.json([]);
+      }),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+
+    expect(
+      await screen.findByText("Couldn't load what Maria already has."),
+    ).toBeDefined();
+    expect(screen.queryByText("Team Notion")).toBeNull();
+    expect(grantAttempts).toBe(0);
   });
 
   it("names an MCP credential after the service behind it", async () => {

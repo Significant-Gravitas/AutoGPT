@@ -45,6 +45,7 @@ export function ExpertIntegrationsSection({
     isConnecting,
     openConnect,
     closeConnect,
+    connectCredential,
     addIntegration,
     removeIntegration,
     isGranting,
@@ -84,6 +85,10 @@ export function ExpertIntegrationsSection({
             ) : isGrantableError ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
                 Couldn&apos;t load your services.
+              </p>
+            ) : isError ? (
+              <p className="px-2 py-3 text-sm text-zinc-500">
+                Couldn&apos;t load what {expertName} already has.
               </p>
             ) : grantable.length === 0 ? (
               <p className="px-2 py-3 text-sm text-zinc-500">
@@ -204,6 +209,7 @@ export function ExpertIntegrationsSection({
           </span>
         }
         description={`Pick a service to connect. ${expertName} will be able to use it on your behalf.`}
+        onConnected={connectCredential}
       />
     </section>
   );

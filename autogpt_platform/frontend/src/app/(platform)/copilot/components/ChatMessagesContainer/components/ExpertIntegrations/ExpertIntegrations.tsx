@@ -7,7 +7,10 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import {
+  formatCredentialName,
+  formatProviderName,
+} from "@/components/contextual/IntegrationsPanel/helpers";
 import { useExpertIntegrations } from "./useExpertIntegrations";
 
 interface Props {
@@ -60,7 +63,7 @@ export function ExpertIntegrations({ expertId, expertName }: Props) {
             >
               <IntegrationLogo provider={integration.provider} />
               <span className="truncate text-sm text-zinc-700">
-                {integration.title}
+                {formatCredentialName(integration.title, integration.provider)}
               </span>
             </li>
           ))}

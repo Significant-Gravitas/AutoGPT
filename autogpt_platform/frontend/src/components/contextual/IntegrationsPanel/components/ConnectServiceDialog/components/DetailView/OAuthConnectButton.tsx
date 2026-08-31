@@ -2,6 +2,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import { useOAuthConnect } from "./useOAuthConnect";
 import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -10,7 +12,7 @@ interface Props {
   provider: string;
   providerName: string;
   buttonLabel?: string;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function OAuthConnectButton({

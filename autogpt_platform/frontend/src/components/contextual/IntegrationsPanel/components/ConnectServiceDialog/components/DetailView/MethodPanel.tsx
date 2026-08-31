@@ -1,5 +1,7 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+
 import {
   AuthType,
   type AuthMethod,
@@ -21,7 +23,7 @@ const TAB_LABEL: Record<AuthMethod, string> = {
 interface Props {
   method: AuthMethod;
   provider: ConnectableProvider;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function MethodPanel({ method, provider, onSuccess }: Props) {

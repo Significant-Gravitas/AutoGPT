@@ -7,6 +7,7 @@ import {
   useReducedMotion,
 } from "framer-motion";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -20,6 +21,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   title?: React.ReactNode;
   description?: string;
+  onConnected?: (credential: CredentialsMetaResponse) => void;
 }
 
 const DEFAULT_TITLE = "Connect a service";
@@ -49,6 +51,7 @@ export function ConnectServiceDialog({
   onOpenChange,
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
+  onConnected,
 }: Props) {
   const {
     query,
@@ -64,7 +67,7 @@ export function ConnectServiceDialog({
     handleSelect,
     handleBack,
     handleSuccess,
-  } = useConnectServiceDialog({ open, onOpenChange });
+  } = useConnectServiceDialog({ open, onOpenChange, onConnected });
 
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
