@@ -101,6 +101,9 @@ async def test_poll_and_refresh_rotate_tokens_without_secret(
     assert refreshed.refresh_token
     assert refreshed.refresh_token.get_secret_value() == "refresh-two"
     assert refreshed.access_token_expires_at == 8_200
+    assert refreshed.username == "nick@example.com"
+    assert refreshed.title == "Nick Example"
+    assert refreshed.metadata["microsoft_account_id"] == "microsoft-user-id"
     for call in client.post.await_args_list:
         assert call.kwargs["data"]["client_id"] == "configured-client"
         assert "client_secret" not in call.kwargs["data"]

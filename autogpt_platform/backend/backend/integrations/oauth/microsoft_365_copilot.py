@@ -204,16 +204,22 @@ class Microsoft365CopilotDeviceAuthHandler(BaseDeviceAuthHandler):
             )
         except ValueError:
             expires_at = None
-        credentials = OAuth2Credentials(
+        token_update = {
+            "access_token": SecretStr(access_token),
+            "refresh_token": SecretStr(refresh_token),
+            "access_token_expires_at": expires_at,
+            "scopes": scopes,
+        }
+        if current:
+            # Refresh changes token material, not the linked account's stored
+            # identity or caller-owned metadata.
+            return current.model_copy(update=token_update)
+        return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
-            title=current.title if current else "Microsoft 365 Copilot",
-            username=current.username if current else None,
+            title="Microsoft 365 Copilot",
             access_token=SecretStr(access_token),
             refresh_token=SecretStr(refresh_token),
             access_token_expires_at=expires_at,
             refresh_token_expires_at=None,
             scopes=scopes,
         )
-        if current:
-            credentials.id = current.id
-        return credentials
