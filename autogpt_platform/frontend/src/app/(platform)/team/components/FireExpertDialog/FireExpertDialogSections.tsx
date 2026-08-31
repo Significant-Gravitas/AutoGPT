@@ -7,6 +7,7 @@ import type { PauseItem } from "./helpers";
 type PreviewProps = {
   expertName: string;
   automationLine: string;
+  reassignLine: string | null;
   items: PauseItem[];
   isLoading: boolean;
   isError: boolean;
@@ -33,6 +34,7 @@ type FireLineProps = {
 export function FireExpertPreview({
   expertName,
   automationLine,
+  reassignLine,
   items,
   isLoading,
   isError,
@@ -58,6 +60,7 @@ export function FireExpertPreview({
       <ul className="flex flex-col gap-2.5">
         <FireLine>Installed workflows stay in your library.</FireLine>
         <FireLine>{getAutomationLineText()}</FireLine>
+        {reassignLine ? <FireLine>{reassignLine}</FireLine> : null}
         <FireLine>Any chat history stays available but read-only.</FireLine>
         <FireLine>Their work stays yours.</FireLine>
       </ul>

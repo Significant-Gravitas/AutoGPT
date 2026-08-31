@@ -4,6 +4,7 @@ import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { OriginBadge } from "../../../../components/OriginBadge/OriginBadge";
 import {
   formatElapsed,
   formatSpend,
@@ -26,6 +27,7 @@ export function TaskRow({ task }: Props) {
           <Badge variant={getStatusVariant(task.status)} size="small">
             {getStatusLabel(task.status)}
           </Badge>
+          <OriginBadge createdByType={task.created_by_type} />
           <Text variant="small" className="text-zinc-500">
             {formatElapsed(task)}
           </Text>

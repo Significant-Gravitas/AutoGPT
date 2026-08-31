@@ -5958,6 +5958,47 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/experts/hire-office": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Hire Office Pack",
+        "operationId": "hire_office",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HireOfficeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HireOfficeResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "Office template or expert template not found"
+          },
+          "409": { "description": "Active expert limit reached" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts/identities": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -5973,6 +6014,33 @@
                   "items": { "$ref": "#/components/schemas/ExpertIdentity" },
                   "type": "array",
                   "title": "Response List Expert Identities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/office-templates": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Office Templates",
+        "operationId": "list_office_templates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OfficeTemplateSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Office Templates"
                 }
               }
             }
@@ -6045,6 +6113,54 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/pods/{pod_id}": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Pod",
+        "description": "Set or clear the pod's lead. Delegations aimed at the pod (or at a\nmember from outside it) are routed to the lead.",
+        "operationId": "update_expert_pod",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Pod Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdatePodRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertPod" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Pod or lead expert not found" },
+          "409": { "description": "The lead is not a member of the pod" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experts/raise": {
@@ -14355,6 +14471,52 @@
         }
       }
     },
+    "/api/tasks/events": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "List Task Events",
+        "description": "Lightweight polling feed for the office view: one event per task\nupdated since ``since``, carrying the task's current lowercase status.",
+        "operationId": "list_task_events",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "Only events on tasks updated after this ISO 8601 instant",
+              "title": "Since"
+            },
+            "description": "Only events on tasks updated after this ISO 8601 instant"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskEventsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks/{task_id}": {
       "get": {
         "tags": ["v2", "tasks", "tasks", "private"],
@@ -14383,6 +14545,46 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Task not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/accept": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "Accept Task",
+        "description": "Approve a finished task's outcome.",
+        "operationId": "accept_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskReviewResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Task not found" },
+          "409": { "description": "Task is not finished" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -14470,6 +14672,54 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Task not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/reject": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks", "private"],
+        "summary": "Reject Task",
+        "description": "Reject a finished task's outcome. Under the revision cap this opens a\nrevision subtask for the same owner and nudges their session; at the cap\nit asks the user to clarify in chat instead of looping again.",
+        "operationId": "reject_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Task Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RejectTaskRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskReviewResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Task not found" },
+          "409": { "description": "Task is not finished" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16892,6 +17142,24 @@
           "narrative": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Narrative"
+          },
+          "nudge_items": {
+            "items": { "$ref": "#/components/schemas/BriefingNudgeItem" },
+            "type": "array",
+            "title": "Nudge Items",
+            "default": []
+          },
+          "merge_items": {
+            "items": { "$ref": "#/components/schemas/BriefingMergeItem" },
+            "type": "array",
+            "title": "Merge Items",
+            "default": []
+          },
+          "hire_items": {
+            "items": { "$ref": "#/components/schemas/BriefingHireItem" },
+            "type": "array",
+            "title": "Hire Items",
+            "default": []
           }
         },
         "type": "object",
@@ -16939,6 +17207,66 @@
         "type": "string",
         "enum": ["DAILY", "WEEKLY", "MONTHLY", "OFF"],
         "title": "BriefingFrequency"
+      },
+      "BriefingHireItem": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "task_count": { "type": "integer", "title": "Task Count" },
+          "example_titles": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Example Titles",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "name", "role", "task_count"],
+        "title": "BriefingHireItem",
+        "description": "A recommendation to hire a specific expert template, made after\nAutopilot self-handled several tasks in that template's lane."
+      },
+      "BriefingMergeItem": {
+        "properties": {
+          "task_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Task Ids"
+          },
+          "titles": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Titles"
+          }
+        },
+        "type": "object",
+        "required": ["task_ids", "titles"],
+        "title": "BriefingMergeItem",
+        "description": "Two open tasks that look like the same ask — a suggestion only,\nnothing is merged automatically."
+      },
+      "BriefingNudgeItem": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "title": { "type": "string", "title": "Title" },
+          "waiting_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Waiting Since"
+          },
+          "question": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Question"
+          },
+          "is_stale": {
+            "type": "boolean",
+            "title": "Is Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["task_id", "title", "waiting_since"],
+        "title": "BriefingNudgeItem",
+        "description": "A WAITING_USER task the user has sat on for over a day."
       },
       "BriefingResponse": {
         "properties": {
@@ -18502,6 +18830,13 @@
             "type": "array",
             "title": "Amendments"
           },
+          "stale_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Stale At"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -19613,6 +19948,11 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Trigger Names"
+          },
+          "open_task_count": {
+            "type": "integer",
+            "title": "Open Task Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -19643,6 +19983,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "lead_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lead Expert Id"
           }
         },
         "type": "object",
@@ -21010,6 +21354,31 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HireOfficeRequest": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" }
+        },
+        "type": "object",
+        "required": ["template_id"],
+        "title": "HireOfficeRequest"
+      },
+      "HireOfficeResult": {
+        "properties": {
+          "office_template_id": {
+            "type": "string",
+            "title": "Office Template Id"
+          },
+          "office_name": { "type": "string", "title": "Office Name" },
+          "hired": {
+            "items": { "$ref": "#/components/schemas/HiredOfficeExpert" },
+            "type": "array",
+            "title": "Hired"
+          }
+        },
+        "type": "object",
+        "required": ["office_template_id", "office_name", "hired"],
+        "title": "HireOfficeResult"
+      },
       "HireRequest": {
         "properties": {
           "template_id": { "type": "string", "title": "Template Id" },
@@ -21037,6 +21406,22 @@
         "type": "object",
         "required": ["expert", "failed_preloads"],
         "title": "HireResult"
+      },
+      "HiredOfficeExpert": {
+        "properties": {
+          "expert": { "$ref": "#/components/schemas/Expert" },
+          "intro_task_id": { "type": "string", "title": "Intro Task Id" },
+          "intro_task_title": { "type": "string", "title": "Intro Task Title" },
+          "schedule_created": { "type": "boolean", "title": "Schedule Created" }
+        },
+        "type": "object",
+        "required": [
+          "expert",
+          "intro_task_id",
+          "intro_task_title",
+          "schedule_created"
+        ],
+        "title": "HiredOfficeExpert"
       },
       "HomeAction": {
         "properties": {
@@ -21115,7 +21500,9 @@
               "paused",
               "credits",
               "question",
-              "task_escalation"
+              "task_escalation",
+              "task_failed",
+              "task_stale"
             ],
             "title": "Kind"
           },
@@ -23393,6 +23780,52 @@
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
+      "OfficeTemplateExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "tagline": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tagline"
+          },
+          "schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Cron"
+          },
+          "intro_task_title": { "type": "string", "title": "Intro Task Title" }
+        },
+        "type": "object",
+        "required": [
+          "template_id",
+          "name",
+          "role",
+          "avatar_url",
+          "tagline",
+          "schedule_cron",
+          "intro_task_title"
+        ],
+        "title": "OfficeTemplateExpert"
+      },
+      "OfficeTemplateSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "experts": {
+            "items": { "$ref": "#/components/schemas/OfficeTemplateExpert" },
+            "type": "array",
+            "title": "Experts"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "description", "experts"],
+        "title": "OfficeTemplateSummary"
+      },
       "OnboardingProfileRequest": {
         "properties": {
           "user_name": {
@@ -25019,6 +25452,20 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RejectTaskRequest": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["note"],
+        "title": "RejectTaskRequest",
+        "description": "The user's rejection of a task outcome, with what to change."
       },
       "RequestTopUp": {
         "properties": {
@@ -27060,7 +27507,14 @@
           "note": { "type": "string", "title": "Note" },
           "kind": {
             "type": "string",
-            "enum": ["note", "handoff", "escalation", "answer"],
+            "enum": [
+              "note",
+              "handoff",
+              "escalation",
+              "answer",
+              "retry",
+              "revision"
+            ],
             "title": "Kind",
             "default": "note"
           },
@@ -27090,7 +27544,7 @@
         "type": "object",
         "required": ["at", "by", "note"],
         "title": "TaskAmendment",
-        "description": "An event recorded against a live task: a scope note, a handoff\nbetween experts, an escalation to the user, or the user's answer.\nStored in the append-only ``amendments`` Json column, so new kinds land\nwithout a migration; ``kind`` defaults to ``note`` for phase-1 rows."
+        "description": "An event recorded against a live task: a scope note, a handoff\nbetween experts, an escalation to the user, the user's answer, an\noverseer stall retry, or a revision request on a rejected outcome.\nStored in the append-only ``amendments`` Json column, so new kinds land\nwithout a migration; ``kind`` defaults to ``note`` for phase-1 rows."
       },
       "TaskDecompositionResponse": {
         "properties": {
@@ -27125,6 +27579,33 @@
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
       },
+      "TaskEvent": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "event": { "type": "string", "title": "Event" },
+          "ts": { "type": "string", "title": "Ts" }
+        },
+        "type": "object",
+        "required": ["task_id", "expert_id", "event", "ts"],
+        "title": "TaskEvent",
+        "description": "One task's latest state change, for the office view's polling feed.\n``event`` is the task's lowercase status (\"queued\" / \"working\" /\n\"waiting_user\" / \"done\" / \"failed\" / \"cancelled\"); ``ts`` is the row's\n``updatedAt`` in ISO 8601. This exact shape is the frontend contract."
+      },
+      "TaskEventsResponse": {
+        "properties": {
+          "events": {
+            "items": { "$ref": "#/components/schemas/TaskEvent" },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": ["events"],
+        "title": "TaskEventsResponse"
+      },
       "TaskExpertRef": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -27139,6 +27620,27 @@
         "required": ["id", "name", "avatar_url", "role"],
         "title": "TaskExpertRef",
         "description": "The expert a task is owned by. Null owner = Autopilot."
+      },
+      "TaskReviewResult": {
+        "properties": {
+          "task": { "$ref": "#/components/schemas/DelegatedTask" },
+          "revision_task": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DelegatedTask" },
+              { "type": "null" }
+            ]
+          },
+          "escalated": {
+            "type": "boolean",
+            "title": "Escalated",
+            "default": false
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["task", "message"],
+        "title": "TaskReviewResult",
+        "description": "Outcome of an accept/reject action on a finished task. ``escalated``\nis set when the revision cap was hit: no new subtask was opened and the\nuser is asked to clarify in chat instead."
       },
       "TaskRunRef": {
         "properties": {
@@ -28335,6 +28837,17 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdatePodRequest": {
+        "properties": {
+          "lead_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lead Expert Id"
+          }
+        },
+        "type": "object",
+        "required": ["lead_expert_id"],
+        "title": "UpdatePodRequest"
       },
       "UpdateSessionPinnedRequest": {
         "properties": {

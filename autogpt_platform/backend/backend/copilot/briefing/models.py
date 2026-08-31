@@ -36,6 +36,37 @@ class BriefingDecisionItem(BaseModel):
     link: str
 
 
+class BriefingNudgeItem(BaseModel):
+    """A WAITING_USER task the user has sat on for over a day."""
+
+    task_id: str
+    title: str
+    waiting_since: datetime
+    question: str | None = None
+    # Set when the overseer already stamped the task stale (a week without
+    # an answer) — the renderer nags harder.
+    is_stale: bool = False
+
+
+class BriefingMergeItem(BaseModel):
+    """Two open tasks that look like the same ask — a suggestion only,
+    nothing is merged automatically."""
+
+    task_ids: list[str]
+    titles: list[str]
+
+
+class BriefingHireItem(BaseModel):
+    """A recommendation to hire a specific expert template, made after
+    Autopilot self-handled several tasks in that template's lane."""
+
+    template_id: str
+    name: str
+    role: str
+    task_count: int
+    example_titles: list[str] = []
+
+
 class BriefingContent(BaseModel):
     generated_at: datetime
     timezone: str
@@ -58,3 +89,9 @@ class BriefingContent(BaseModel):
     # and any briefing whose narrative call failed, carry None and render as
     # template-only.
     narrative: str | None = None
+    # Overseer/recruiter cards (see `overseer/cards.py` and
+    # `overseer/recruiter.py`). All default so stored rows predating them
+    # still validate.
+    nudge_items: list[BriefingNudgeItem] = []
+    merge_items: list[BriefingMergeItem] = []
+    hire_items: list[BriefingHireItem] = []

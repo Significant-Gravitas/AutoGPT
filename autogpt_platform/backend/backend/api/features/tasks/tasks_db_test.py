@@ -6,15 +6,19 @@ and the cancel cascade (which walks the tree with several statements).
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
+import fastapi
+import httpx
 import prisma.enums
 import prisma.models
 import pytest
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.tasks import task_actions, tasks_db
 from backend.api.features.tasks.errors import DelegatedTaskNotFoundError
+from backend.api.features.tasks.routes import router as tasks_router
 from backend.data.user import get_or_create_user
 from backend.util.exceptions import TaskDelegationRefusedError, TaskUpdateConflictError
 from backend.util.test import SpinTestServer
@@ -490,3 +494,65 @@ async def test_escalate_then_answer_round_trip(server: SpinTestServer):
     assert worker_session_id == "worker-session-1"
     assert task.amendments[-1].kind == "answer"
     assert task.amendments[-1].note == "Staging"
+
+
+# ─── events feed ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_task_events_never_include_another_users_tasks(server: SpinTestServer):
+    owner = await _create_seed_user()
+    intruder = await _create_seed_user()
+    task = await _seed_task(owner.id)
+    await _seed_task(intruder.id, title="Intruder task")
+
+    events = await tasks_db.list_task_events(owner.id)
+
+    assert [e.task_id for e in events] == [task.id]
+    assert events[0].event == "working"
+    assert all(
+        e.task_id != task.id for e in await tasks_db.list_task_events(intruder.id)
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_task_events_since_filters_older_rows(server: SpinTestServer):
+    owner = await _create_seed_user()
+    await _seed_task(owner.id, title="Older")
+    cutoff = datetime.fromisoformat((await tasks_db.list_task_events(owner.id))[-1].ts)
+    newer_task = await _seed_task(owner.id, title="Newer")
+
+    events = await tasks_db.list_task_events(owner.id, since=cutoff)
+
+    assert [e.task_id for e in events] == [newer_task.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_events_endpoint_only_returns_the_callers_rows(server: SpinTestServer):
+    """End-to-end tenancy proof for GET /tasks/events: user A's poll must
+    never surface user B's task events, with the real query underneath."""
+    owner = await _create_seed_user()
+    intruder = await _create_seed_user()
+    owner_task = await _seed_task(owner.id, title="Owner task")
+    await _seed_task(intruder.id, title="Intruder task")
+
+    app = fastapi.FastAPI()
+    app.include_router(tasks_router)
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": owner.id,
+        "role": "user",
+        "email": owner.email,
+    }
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get("/tasks/events")
+
+    assert response.status_code == 200
+    events = response.json()["events"]
+    assert [e["task_id"] for e in events] == [owner_task.id]
+    assert events[0] == {
+        "task_id": owner_task.id,
+        "expert_id": None,
+        "event": "working",
+        "ts": events[0]["ts"],
+    }

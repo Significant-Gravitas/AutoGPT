@@ -18,6 +18,9 @@ from backend.util.exceptions import TaskDelegationRefusedError, TaskUpdateConfli
 from backend.util.json import SafeJson
 
 from .errors import DelegatedTaskNotFoundError
+from .mapping import TASK_INCLUDE as _TASK_INCLUDE
+from .mapping import library_agents_by_graph as _library_agents_by_graph
+from .mapping import to_model as _to_model
 from .models import (
     MAX_TASK_HANDOFFS,
     MAX_TASK_QUESTION_OPTIONS,
@@ -28,7 +31,6 @@ from .models import (
     DelegatedTask,
     TaskAmendment,
 )
-from .tasks_db import _TASK_INCLUDE, _library_agents_by_graph, _to_model
 
 logger = logging.getLogger(__name__)
 

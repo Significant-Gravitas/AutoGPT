@@ -11,6 +11,8 @@ import { formatWeeklySpend } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AgentRow } from "./components/AgentRow";
+import { PodRollupRow } from "./components/PodRollupRow";
+import { useAgentTeam } from "./useAgentTeam";
 
 interface Props {
   dashboard: HomeDashboardResponse;
@@ -19,6 +21,8 @@ interface Props {
 
 export function AgentTeam({ dashboard, className }: Props) {
   const { team, agents } = dashboard;
+  const { showRollups, rollups, expandedPodIds, togglePod } =
+    useAgentTeam(agents);
   const readyCount = team.ready + team.working;
   const teamSpend = formatWeeklySpend(team.spend_cents);
   const statusLine =
@@ -64,6 +68,17 @@ export function AgentTeam({ dashboard, className }: Props) {
           description="Hire an expert to start delegating work."
           action={{ href: "/marketplace", label: "Browse experts" }}
         />
+      ) : showRollups ? (
+        <div className="divide-y divide-zinc-100">
+          {rollups.map((rollup) => (
+            <PodRollupRow
+              key={rollup.id}
+              rollup={rollup}
+              expanded={expandedPodIds.includes(rollup.id)}
+              onToggle={() => togglePod(rollup.id)}
+            />
+          ))}
+        </div>
       ) : (
         <div className="divide-y divide-zinc-100">
           {agents.slice(0, 3).map((agent) => (

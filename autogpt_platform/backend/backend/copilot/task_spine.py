@@ -8,7 +8,7 @@ simply lands without a task, exactly as it did before the spine existed.
 
 import logging
 
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.model import ChatSession, ChatSessionInfo, get_chat_session
 from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import TaskDelegationRefusedError
 
@@ -133,6 +133,65 @@ async def _final_answer(session: ChatSession, user_id: str) -> str:
         if message.role == "assistant" and message.content and message.content.strip():
             return " ".join(message.content.split())
     return "The delegated work finished."
+
+
+async def record_mid_task_instruction(
+    user_id: str, session: ChatSession | ChatSessionInfo, text: str
+) -> None:
+    """A user message into a session working a delegated task is a mid-task
+    instruction — append it to the task's timeline so the next model turn
+    (via ``build_task_context``) and the task drawer both see it.
+    Best-effort; the message itself still reaches the model either way."""
+    task_id = session.metadata.delegated_task_id
+    note = " ".join(text.split()) if text else ""
+    if not task_id or not note:
+        return
+    try:
+        await get_database_manager_async_client().append_task_amendment(
+            user_id, task_id, note=note, by="user", kind="note"
+        )
+    except Exception:
+        logger.warning(
+            "Failed to record mid-task instruction on task #%s",
+            task_id,
+            exc_info=True,
+        )
+
+
+async def build_task_context(user_id: str | None, session: ChatSession) -> str:
+    """The delegated-task briefing injected as ``<current_task>`` into a
+    worker session's turn. Empty string when the session has no open task —
+    the block is simply omitted."""
+    task_id = session.metadata.delegated_task_id
+    if not task_id or user_id is None:
+        return ""
+    try:
+        detail = await get_database_manager_async_client().get_delegated_task(
+            user_id, task_id
+        )
+    except Exception:
+        logger.warning(
+            "Failed to load task #%s for context injection", task_id, exc_info=True
+        )
+        return ""
+    task = detail.task if detail else None
+    if task is None or task.status not in ("QUEUED", "WORKING"):
+        return ""
+    lines = [
+        f"You are working delegated task '{task.title}' "
+        f"(task_id: {task.id}, status: {task.status}).",
+        f"Spec: {task.spec}",
+    ]
+    instructions = [a for a in task.amendments if a.kind == "note" and a.by == "user"]
+    if instructions:
+        lines.append("The user added instructions mid-task:")
+        lines.extend(
+            f"- [{a.at.isoformat(timespec='minutes')}] {a.note}" for a in instructions
+        )
+        lines.append(
+            "Fold these into the work in progress — they refine the spec above."
+        )
+    return "\n".join(lines)
 
 
 def _describe_run(agent_name: str, inputs: dict) -> str:

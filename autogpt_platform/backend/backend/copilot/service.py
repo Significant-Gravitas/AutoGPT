@@ -342,6 +342,15 @@ _TEAM_CONTEXT_PREFIX_RE = re.compile(
     r"^<team_context>.*?</team_context>\n\n", re.DOTALL
 )
 
+CURRENT_TASK_TAG = "current_task"
+_CURRENT_TASK_ANYWHERE_RE = re.compile(
+    r"<current_task>.*?</current_task>\s*", re.DOTALL
+)
+_CURRENT_TASK_LONE_TAG_RE = re.compile(r"</?current_task>", re.IGNORECASE)
+_CURRENT_TASK_PREFIX_RE = re.compile(
+    r"^<current_task>.*?</current_task>\n\n", re.DOTALL
+)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -422,7 +431,12 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
-    return _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    # Strip <current_task> blocks and lone tags — prevents spoofing of the
+    # server-injected delegated-task briefing (a forged block could point
+    # report_task/escalate_task at a task the session doesn't own).
+    without_task = _CURRENT_TASK_ANYWHERE_RE.sub("", without_expert)
+    return _CURRENT_TASK_LONE_TAG_RE.sub("", without_task)
 
 
 def sanitize_user_supplied_context(message: str) -> str:
@@ -478,6 +492,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
         result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
         result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
+        result = _CURRENT_TASK_PREFIX_RE.sub("", result)
     return result
 
 
@@ -574,6 +589,7 @@ async def inject_user_context(
     skills_ctx: str = "",
     user_id: str | None = None,
     expert_id: str | None = None,
+    task_ctx: str = "",
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -713,6 +729,16 @@ async def inject_user_context(
     expert_ctx = await build_expert_context(user_id, expert_id)
     if expert_ctx:
         final_message = expert_ctx + final_message
+    # Prepend the delegated-task briefing for worker sessions.  Trusted
+    # server-built string (see ``task_spine.build_task_context``) carrying
+    # the task's spec plus any mid-task user instructions, prepended AFTER
+    # sanitisation like every other trusted block.  Per-turn dynamic, so it
+    # sits below the cached <available_skills> prefix.
+    if task_ctx:
+        final_message = (
+            f"<{CURRENT_TASK_TAG}>\n{task_ctx}\n</{CURRENT_TASK_TAG}>\n\n"
+            + final_message
+        )
     # Prepend Graphiti warm context as a <memory_context> block AFTER
     # sanitization so the trusted server-injected block is never stripped by
     # ``sanitize_user_supplied_context``.  Memory must land BELOW

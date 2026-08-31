@@ -14,7 +14,7 @@ just passes the task on with the other tool.
 
 import logging
 
-from backend.api.features.experts.models import Expert
+from backend.api.features.experts.models import Expert, ExpertPod
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.db_accessors import experts_db
 
@@ -58,6 +58,10 @@ async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
     rather than raising — which leaves any exception meaning a real database
     failure. Those propagate to the caller, whose handler says "try again"
     instead of the flat lie that the teammate does not exist.
+
+    A reference matching no expert is finally tried as a pod name: an ask
+    aimed at "the growth pod" resolves to that pod's lead expert, who then
+    delegates within the members.
     """
     expert = await experts_db().get_expert(user_id, reference, include_workflows=False)
     if expert is not None:
@@ -70,7 +74,83 @@ async def resolve_target_expert(user_id: str, reference: str) -> Expert | None:
         for e in await experts_db().list_experts(user_id, with_metrics=False)
         if not e.is_archived and e.name.strip().casefold() == wanted
     ]
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        return None
+    return await _lead_of_pod_named(user_id, wanted)
+
+
+async def _lead_of_pod_named(user_id: str, wanted: str) -> Expert | None:
+    """The lead expert of the uniquely-named pod matching *wanted*, if any."""
+    pods = [
+        p
+        for p in await experts_db().list_pods(user_id)
+        if p.name.strip().casefold() == wanted
+    ]
+    if len(pods) != 1 or pods[0].lead_expert_id is None:
+        return None
+    lead = await experts_db().get_expert(
+        user_id, pods[0].lead_expert_id, include_workflows=False
+    )
+    if lead is None or lead.is_archived:
+        return None
+    return lead
+
+
+async def route_to_pod_lead(
+    user_id: str, caller_expert_id: str | None, target: Expert
+) -> Expert:
+    """Who should actually receive work aimed at *target*.
+
+    A delegation aimed at a pod member from outside the pod lands on the
+    pod's lead, who then delegates within the members with the same tools.
+    Calls from inside the pod (the lead included) keep their direct target so
+    the lead can actually distribute work; a lead who cannot take work
+    (missing, archived, paused, or the caller themself) falls back to the
+    direct target rather than blocking the delegation.
+    """
+    if target.pod_id is None:
+        return target
+    try:
+        pod = await _pod_by_id(user_id, target.pod_id)
+        if pod is None or pod.lead_expert_id is None or pod.lead_expert_id == target.id:
+            return target
+        if caller_expert_id is not None:
+            if caller_expert_id == pod.lead_expert_id:
+                return target
+            caller = await experts_db().get_expert(
+                user_id, caller_expert_id, include_workflows=False
+            )
+            if caller is not None and caller.pod_id == target.pod_id:
+                return target
+        lead = await experts_db().get_expert(
+            user_id, pod.lead_expert_id, include_workflows=False
+        )
+    except Exception as e:
+        # Routing is an optimisation on top of a valid direct target; a pod
+        # lookup hiccup must not fail the delegation itself.
+        logger.warning(f"Pod-lead routing lookup failed: {e}")
+        return target
+    if (
+        lead is None
+        or lead.is_archived
+        or lead.schedules_paused_at is not None
+        or lead.id == caller_expert_id
+    ):
+        return target
+    logger.info(
+        "Routing: delegation aimed at expert %s rerouted to pod lead %s (pod %s)",
+        target.id,
+        lead.id,
+        target.pod_id,
+    )
+    return lead
+
+
+async def _pod_by_id(user_id: str, pod_id: str) -> ExpertPod | None:
+    pods = await experts_db().list_pods(user_id)
+    return next((p for p in pods if p.id == pod_id), None)
 
 
 async def unknown_target_message(

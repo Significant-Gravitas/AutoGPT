@@ -78,9 +78,13 @@ def roster(monkeypatch):
     async def fake_list_experts(user_id, *, with_metrics=True, **_):
         return list(experts.values())
 
+    async def fake_list_pods(user_id):
+        return []
+
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
+    db.list_pods = fake_list_pods
     for module in ("handoff_to_expert", "expert_delegation"):
         monkeypatch.setattr(
             f"backend.copilot.tools.{module}.experts_db",

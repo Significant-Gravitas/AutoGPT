@@ -50,6 +50,7 @@ from .base import BaseTool
 from .expert_delegation import (
     chain_refusal,
     resolve_target_expert,
+    route_to_pod_lead,
     safe_caller_name,
     unknown_target_message,
 )
@@ -187,6 +188,10 @@ class DelegateToExpertTool(BaseTool):
                 "run_sub_session to isolate it in a fresh context.",
                 session,
             )
+
+        # Work aimed at a pod member from outside the pod lands on the pod's
+        # lead, who then delegates within the members.
+        target = await route_to_pod_lead(user_id, session.expert_id, target)
 
         refusal = await chain_refusal(user_id, session, target)
         if refusal is not None:

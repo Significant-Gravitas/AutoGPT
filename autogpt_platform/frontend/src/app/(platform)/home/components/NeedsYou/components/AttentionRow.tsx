@@ -1,5 +1,7 @@
 import {
   AlertCircleIcon,
+  CancelCircleIcon,
+  Clock01Icon,
   CoinsDollarIcon,
   MessageQuestionIcon,
   PauseIcon,
@@ -12,6 +14,7 @@ import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAtten
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { cn } from "@/lib/utils";
 import { AttentionRowActions } from "./AttentionRowActions";
 import { EscalationAnswer } from "./EscalationAnswer";
 
@@ -28,6 +31,8 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
   credits: CoinsDollarIcon,
   question: MessageQuestionIcon,
   task_escalation: Task01Icon,
+  task_failed: CancelCircleIcon,
+  task_stale: Clock01Icon,
 };
 
 const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
@@ -37,7 +42,18 @@ const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
   credits: "Credits",
   question: "Question",
   task_escalation: "Task question",
+  task_failed: "Failed",
+  task_stale: "Stale",
 };
+
+// Failed and stale tasks carry their own alarm color on the fallback glyph;
+// every other kind keeps the neutral chip.
+const KIND_ICON_CLASSES: Partial<Record<HomeAttentionItem["kind"], string>> = {
+  task_failed: "bg-red-50 text-red-600 ring-red-200",
+  task_stale: "bg-amber-50 text-amber-600 ring-amber-200",
+};
+
+const DEFAULT_ICON_CLASS = "bg-zinc-50 text-zinc-500 ring-zinc-200";
 
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
@@ -61,7 +77,12 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
               avatarUrl={item.expert.avatar_url}
             />
           ) : (
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-zinc-50 text-zinc-500 ring-1 ring-inset ring-zinc-200">
+            <span
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset",
+                KIND_ICON_CLASSES[item.kind] ?? DEFAULT_ICON_CLASS,
+              )}
+            >
               <Icon icon={ICONS[item.kind]} size={17} aria-hidden="true" />
             </span>
           )}

@@ -206,7 +206,9 @@ export function buildTaskTree(
 
 export function getTimelineEvents(task: DelegatedTask) {
   return (task.amendments ?? []).filter((amendment) =>
-    ["handoff", "escalation", "answer"].includes(amendment.kind ?? "note"),
+    ["handoff", "escalation", "answer", "note", "retry", "revision"].includes(
+      amendment.kind ?? "note",
+    ),
   );
 }
 
@@ -214,6 +216,9 @@ export function getTimelineLabel(kind: string | undefined): string {
   if (kind === "handoff") return "Handed off";
   if (kind === "escalation") return "Asked you";
   if (kind === "answer") return "You answered";
+  if (kind === "note") return "User note";
+  if (kind === "retry") return "Overseer retried";
+  if (kind === "revision") return "Revision requested";
   return "Note";
 }
 

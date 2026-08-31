@@ -7,6 +7,7 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
 import { TaskActivity } from "./components/TaskActivity";
+import { TaskOutcomeReview } from "./components/TaskOutcomeReview/TaskOutcomeReview";
 import { TaskProperties } from "./components/TaskProperties";
 import { TaskSpec } from "./components/TaskSpec";
 import { TaskSubtasks } from "./components/TaskSubtasks";
@@ -83,6 +84,7 @@ export default function TaskDetailPage() {
               <p className="whitespace-pre-line text-sm leading-6 text-zinc-600">
                 {task.outcome_summary}
               </p>
+              <TaskOutcomeReview task={task} />
             </section>
           ) : null}
 

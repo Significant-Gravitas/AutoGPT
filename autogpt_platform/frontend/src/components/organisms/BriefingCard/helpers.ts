@@ -9,7 +9,14 @@ import type { BriefingRunItem } from "@/app/api/__generated__/models/briefingRun
 export function hasRecapContent(
   briefing: BriefingResponse | null | undefined,
 ): briefing is BriefingResponse {
-  return Boolean(briefing && briefing.content.run_items.length > 0);
+  if (!briefing) return false;
+  const { run_items, nudge_items, merge_items, hire_items } = briefing.content;
+  return (
+    run_items.length > 0 ||
+    (nudge_items?.length ?? 0) > 0 ||
+    (merge_items?.length ?? 0) > 0 ||
+    (hire_items?.length ?? 0) > 0
+  );
 }
 
 export const COLLAPSED_ROWS = 3;

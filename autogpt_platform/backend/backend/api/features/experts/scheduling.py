@@ -15,6 +15,7 @@ import prisma.models
 from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts.models import ExpertDetachPreview
+from backend.api.features.tasks import overseer_db
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.util.clients import get_scheduler_client
@@ -147,6 +148,9 @@ async def get_detach_preview(user_id: str, expert_id: str) -> ExpertDetachPrevie
     return ExpertDetachPreview(
         schedule_names=[s.name or s.cron for s in schedules],
         trigger_names=[p.name for p in presets],
+        open_task_count=await overseer_db.count_open_tasks_for_expert(
+            user_id, expert_id
+        ),
     )
 
 

@@ -21,6 +21,7 @@ import { notFound } from "next/navigation";
 import { AllTasksSection } from "./components/AllTasksSection/AllTasksSection";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
+import { HireOfficeGallery } from "./components/HireOfficeGallery/HireOfficeGallery";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { PodBoard } from "./components/PodBoard/PodBoard";
@@ -149,6 +150,8 @@ export default function TeamPage() {
           {!isLoading && !isError && hiredExperts.length === 0 ? (
             <EmptyTeamState />
           ) : null}
+
+          <HireOfficeGallery />
         </TabsLineContent>
 
         <TabsLineContent value="pods">

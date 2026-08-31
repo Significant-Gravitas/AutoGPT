@@ -21,7 +21,14 @@ class HomeAction(BaseModel):
 class HomeAttentionItem(BaseModel):
     id: str
     kind: Literal[
-        "approval", "setup", "paused", "credits", "question", "task_escalation"
+        "approval",
+        "setup",
+        "paused",
+        "credits",
+        "question",
+        "task_escalation",
+        "task_failed",
+        "task_stale",
     ]
     priority: Literal["high", "normal"]
     title: str

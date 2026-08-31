@@ -11,6 +11,7 @@ import type { BriefingResponse } from "@/app/api/__generated__/models/briefingRe
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { BriefingExtras } from "./components/BriefingExtras";
 import { RunRow } from "./components/RunRow";
 import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
 import { useBriefingCard } from "./useBriefingCard";
@@ -60,70 +61,74 @@ export function BriefingCard({ briefing, className }: Props) {
         </Text>
       </div>
 
-      <div className="overflow-hidden rounded-3xl bg-white shadow-zinc-950 smooth-shadow-ring-sm">
-        <motion.div
-          // Real height, not a layout transform: the page below has to reflow
-          // with the card, and a transform would scale the rows' text.
-          initial={false}
-          animate={{ height: height ?? "auto" }}
-          transition={heightTransition}
-          className="relative"
-        >
-          <ul
-            ref={listRef}
-            className={cn(
-              "h-full divide-y divide-zinc-100",
-              isShowingAll
-                ? "overflow-y-auto scrollbar-none"
-                : "overflow-hidden",
-            )}
+      {run_items.length > 0 ? (
+        <div className="overflow-hidden rounded-3xl bg-white shadow-zinc-950 smooth-shadow-ring-sm">
+          <motion.div
+            // Real height, not a layout transform: the page below has to reflow
+            // with the card, and a transform would scale the rows' text.
+            initial={false}
+            animate={{ height: height ?? "auto" }}
+            transition={heightTransition}
+            className="relative"
           >
-            {run_items.map((item, index) => (
-              <RunRow
-                key={item.execution_id}
-                item={item}
-                isHidden={!isShowingAll && index >= COLLAPSED_ROWS}
-              />
-            ))}
-          </ul>
+            <ul
+              ref={listRef}
+              className={cn(
+                "h-full divide-y divide-zinc-100",
+                isShowingAll
+                  ? "overflow-y-auto scrollbar-none"
+                  : "overflow-hidden",
+              )}
+            >
+              {run_items.map((item, index) => (
+                <RunRow
+                  key={item.execution_id}
+                  item={item}
+                  isHidden={!isShowingAll && index >= COLLAPSED_ROWS}
+                />
+              ))}
+            </ul>
 
-          {/* Inside the card, over the scrolling rows: the scrollbar is
+            {/* Inside the card, over the scrolling rows: the scrollbar is
               hidden, so these are the only affordance once the list runs past
               its window. */}
-          <ScrollArrow
-            direction="up"
-            isVisible={canScrollUp}
-            onScroll={() => scrollByStep(-1)}
-          />
-          <ScrollArrow
-            direction="down"
-            isVisible={canScrollDown}
-            onScroll={() => scrollByStep(1)}
-          />
-        </motion.div>
-
-        {hasMore ? (
-          <button
-            type="button"
-            onClick={toggleShowAll}
-            className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-3 text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
-          >
-            <Text variant="small-medium" className="text-inherit">
-              {isShowingAll
-                ? "Show less"
-                : `Show all results (${run_items.length})`}
-            </Text>
-            <Icon
-              icon={ArrowDown01Icon}
-              size={14}
-              className={cn(
-                "transition-transform",
-                isShowingAll && "rotate-180",
-              )}
+            <ScrollArrow
+              direction="up"
+              isVisible={canScrollUp}
+              onScroll={() => scrollByStep(-1)}
             />
-          </button>
-        ) : null}
-      </div>
+            <ScrollArrow
+              direction="down"
+              isVisible={canScrollDown}
+              onScroll={() => scrollByStep(1)}
+            />
+          </motion.div>
+
+          {hasMore ? (
+            <button
+              type="button"
+              onClick={toggleShowAll}
+              className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-3 text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+            >
+              <Text variant="small-medium" className="text-inherit">
+                {isShowingAll
+                  ? "Show less"
+                  : `Show all results (${run_items.length})`}
+              </Text>
+              <Icon
+                icon={ArrowDown01Icon}
+                size={14}
+                className={cn(
+                  "transition-transform",
+                  isShowingAll && "rotate-180",
+                )}
+              />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <BriefingExtras content={briefing.content} />
     </section>
   );
 }

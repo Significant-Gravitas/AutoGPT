@@ -28,7 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
-from backend.copilot import engine_switch
+from backend.copilot import engine_switch, task_spine
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -1952,6 +1952,7 @@ async def stream_chat_completion_baseline(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
+            task_ctx=await task_spine.build_task_context(user_id, session),
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not

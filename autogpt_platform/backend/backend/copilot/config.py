@@ -369,6 +369,17 @@ class ChatConfig(BaseSettings):
         "0 means no spend allowed (will block); there is no unlimited tier.",
     )
 
+    # Hard per-task spend ceiling for tasks the dream proactive pass opens.
+    # Enforced by backend.copilot.dream.proactive: a DREAM-created task whose
+    # spendTotal reaches this cap is stopped and marked FAILED.
+    dream_task_budget_cap: int = Field(
+        default=25,
+        ge=0,
+        description="Per-task credit cap (100 credits = $1) for dream-created "
+        "proactive tasks. A task at or over the cap is failed rather than "
+        "allowed to keep spending.",
+    )
+
     # Cost (in credits / cents) to reset the daily rate limit using credits.
     # When a user hits their daily limit, they can spend this amount to reset
     # the daily counter and keep working.  Set to 0 to disable the feature.

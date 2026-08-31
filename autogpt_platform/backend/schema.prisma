@@ -1029,6 +1029,12 @@ model Expert {
   podId String?
   Pod   ExpertPod? @relation(fields: [podId], references: [id], onDelete: SetNull)
 
+  LeadOfPods ExpertPod[] @relation("PodLead")
+
+  // How far the proactive (dream) pass may go on this expert's behalf:
+  // SUGGEST = briefing proposal only, ASK_FIRST/AUTONOMOUS = run a capped task.
+  autonomyLevel ExpertAutonomyLevel @default(SUGGEST)
+
   // Tenancy
   organizationId String?
   teamId         String?
@@ -1129,8 +1135,32 @@ model ExpertPod {
 
   Experts Expert[]
 
+  // Optional lead: pod-domain asks route to the lead, who delegates within
+  // members via the existing subtask tools. SetNull keeps the pod on archive.
+  leadExpertId String?
+  Lead         Expert? @relation("PodLead", fields: [leadExpertId], references: [id], onDelete: SetNull)
+
   // Doubles as the userId lookup index for list_pods.
   @@unique([userId, name])
+}
+
+enum ExpertAutonomyLevel {
+  SUGGEST
+  ASK_FIRST
+  AUTONOMOUS
+}
+
+// A hireable "office pack": config lists expert template ids plus per-expert
+// {scheduleCron?, introTaskTitle, introTaskSpec}. Hiring an office hires every
+// expert, creates schedules, and opens one intro DelegatedTask per expert.
+model OfficeTemplate {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  name        String @unique
+  description String
+  config      Json
 }
 
 // Who asked for the work. USER = a person typed it into a chat, EXPERT =
@@ -1204,6 +1234,10 @@ model DelegatedTask {
   status         DelegatedTaskStatus     @default(QUEUED)
   outcomeSummary String?
   acceptance     DelegatedTaskAcceptance @default(PENDING)
+
+  // Stamped by the overseer when a WAITING_USER task passes a week without
+  // an answer. Never auto-cancelled — the stale section on Home nags instead.
+  staleAt DateTime?
 
   // Every expert the task passed through, oldest first. Lets the UI show a
   // handoff trail and lets cycle detection run without walking the tree.

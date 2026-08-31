@@ -23,6 +23,7 @@ import {
   getTaskFilterKey,
   getTaskOrbVariant,
 } from "../../../task-helpers";
+import { OriginBadge } from "../../OriginBadge/OriginBadge";
 import { RefreshButton } from "../../RefreshButton";
 import { TaskStatusChip } from "../../TaskStatusChip/TaskStatusChip";
 import { useDelegatedTasksBoard } from "./useDelegatedTasksBoard";
@@ -130,7 +131,10 @@ function OwnerCell({ owner }: { owner: DelegatedTask["owner"] }) {
 function buildCells(task: DelegatedTask) {
   return {
     task: (
-      <span className="truncate font-medium text-zinc-900">{task.title}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-medium text-zinc-900">{task.title}</span>
+        <OriginBadge createdByType={task.created_by_type} />
+      </span>
     ),
     owner: <OwnerCell owner={task.owner} />,
     status: (

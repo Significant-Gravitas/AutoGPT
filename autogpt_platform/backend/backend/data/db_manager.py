@@ -48,7 +48,7 @@ from backend.api.features.store.db import (
     get_store_agents,
 )
 from backend.api.features.store.embeddings import backfill_missing_embeddings
-from backend.api.features.tasks import task_actions, tasks_db
+from backend.api.features.tasks import overseer_db, task_actions, task_review, tasks_db
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
@@ -520,6 +520,8 @@ class DatabaseManager(AppService):
     expert_row_exists = _(experts_db.expert_row_exists)
     resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
     list_experts = _(experts_db.list_experts)
+    # Pod-lead routing: the delegation tools resolve pod membership and leads.
+    list_pods = _(experts_db.list_pods)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
@@ -547,6 +549,17 @@ class DatabaseManager(AppService):
     handoff_delegated_task = _(task_actions.handoff_delegated_task)
     escalate_delegated_task = _(task_actions.escalate_delegated_task)
     report_delegated_task = _(task_actions.report_delegated_task)
+    # Phase 3: the overseer pass (scheduler process) and the mid-task
+    # instruction hook, plus the pause writer its expert-health check uses.
+    list_open_tasks = _(tasks_db.list_open_tasks)
+    append_task_amendment = _(task_review.append_task_amendment)
+    has_running_executions = _(overseer_db.has_running_executions)
+    mark_task_stale = _(overseer_db.mark_task_stale)
+    count_recent_failed_tasks_by_expert = _(
+        overseer_db.count_recent_failed_tasks_by_expert
+    )
+    list_recent_autopilot_tasks = _(overseer_db.list_recent_autopilot_tasks)
+    pause_expert_schedules = _(experts_scheduling.pause_expert_schedules)
 
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
@@ -918,6 +931,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     expert_row_exists = d.expert_row_exists
     resolve_attributable_expert = d.resolve_attributable_expert
     list_experts = d.list_experts
+    list_pods = d.list_pods
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
@@ -950,6 +964,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     handoff_delegated_task = d.handoff_delegated_task
     escalate_delegated_task = d.escalate_delegated_task
     report_delegated_task = d.report_delegated_task
+    list_open_tasks = d.list_open_tasks
+    append_task_amendment = d.append_task_amendment
+    has_running_executions = d.has_running_executions
+    mark_task_stale = d.mark_task_stale
+    count_recent_failed_tasks_by_expert = d.count_recent_failed_tasks_by_expert
+    list_recent_autopilot_tasks = d.list_recent_autopilot_tasks
+    pause_expert_schedules = d.pause_expert_schedules
     get_user_chat_sessions = d.get_user_chat_sessions
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question

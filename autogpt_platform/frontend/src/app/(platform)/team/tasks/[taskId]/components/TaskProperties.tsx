@@ -3,6 +3,7 @@
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { TaskRunRef } from "@/app/api/__generated__/models/taskRunRef";
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,10 +12,12 @@ import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusB
 import {
   Clock01Icon,
   DollarCircleIcon,
+  Flag01Icon,
   PlayCircleIcon,
   Progress02Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
+import { OriginBadge } from "../../../components/OriginBadge/OriginBadge";
 import type { IconSvgElement } from "@hugeicons/react";
 import Link from "next/link";
 import { ACTION_BUTTON_CLASS } from "../../../helpers";
@@ -39,13 +42,23 @@ export function TaskProperties({ task, onCancel, isCancelling }: Props) {
     <aside className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
       <Card title="Properties">
         <Row label="Status" icon={Progress02Icon}>
-          <TaskStatusChip
-            status={task.status}
-            orbVariant={getTaskOrbVariant(task.id)}
-          />
+          <span className="inline-flex items-center gap-1.5">
+            <TaskStatusChip
+              status={task.status}
+              orbVariant={getTaskOrbVariant(task.id)}
+            />
+            {task.stale_at && isOpenTask(task) ? (
+              <Badge variant="warning" size="small">
+                Stale
+              </Badge>
+            ) : null}
+          </span>
         </Row>
         <Row label="Owner" icon={UserIcon}>
           <TaskOwner owner={task.owner} />
+        </Row>
+        <Row label="Origin" icon={Flag01Icon}>
+          <OriginBadge createdByType={task.created_by_type} />
         </Row>
         <Row label="Spend" icon={DollarCircleIcon}>
           <span className="text-zinc-700">{formatSpend(task.spend_total)}</span>

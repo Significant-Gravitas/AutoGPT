@@ -9,9 +9,11 @@ import pytest
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.task_spine import (
     _describe_run,
+    build_task_context,
     fail_task,
     mark_task_working,
     open_task_for_run,
+    record_mid_task_instruction,
     settle_task_for_turn,
 )
 
@@ -230,3 +232,119 @@ def test_describe_run_lists_inputs_and_truncates():
     assert "Run Brief with:" in described
     assert "- topic: 'news'" in described
     assert len(_describe_run("Brief", {"blob": "x" * 10_000})) <= 4_000
+
+
+# ─── phase 3: mid-task instructions + task context ─────────────────────
+
+
+def _amendment_client(task: object) -> MagicMock:
+    client = MagicMock()
+    client.append_task_amendment = AsyncMock()
+    client.get_delegated_task = AsyncMock(
+        return_value=MagicMock(task=task) if task is not None else None
+    )
+    return client
+
+
+def _context_task(
+    *,
+    status: str = "WORKING",
+    amendments: list | None = None,
+):
+    from backend.api.features.tasks.models import TaskAmendment
+
+    task = MagicMock(status=status)
+    task.id = "task-1"
+    task.title = "Draft the weekly report"
+    task.spec = "Cover revenue and churn."
+    task.amendments = [
+        TaskAmendment.model_validate(a) if isinstance(a, dict) else a
+        for a in (amendments or [])
+    ]
+    return task
+
+
+@pytest.mark.asyncio
+async def test_mid_task_instruction_is_appended_as_a_user_note():
+    client = _amendment_client(None)
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await record_mid_task_instruction(
+            "user-1", _worker_session(), "Also include churn numbers.\n"
+        )
+
+    kwargs = client.append_task_amendment.call_args.kwargs
+    args = client.append_task_amendment.call_args.args
+    assert args == ("user-1", "task-1")
+    assert kwargs["note"] == "Also include churn numbers."
+    assert kwargs["by"] == "user"
+    assert kwargs["kind"] == "note"
+
+
+@pytest.mark.asyncio
+async def test_mid_task_instruction_skips_sessions_without_a_task():
+    client = _amendment_client(None)
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await record_mid_task_instruction("user-1", _session(), "hello")
+
+    client.append_task_amendment.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mid_task_instruction_swallows_rpc_failure():
+    client = _amendment_client(None)
+    client.append_task_amendment.side_effect = RuntimeError("rpc down")
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        await record_mid_task_instruction("user-1", _worker_session(), "note")
+
+
+@pytest.mark.asyncio
+async def test_task_context_carries_spec_and_mid_task_instructions():
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    task = _context_task(
+        amendments=[
+            {
+                "at": _dt(2026, 8, 30, 9, 30, tzinfo=_UTC),
+                "by": "user",
+                "note": "Also include churn numbers.",
+                "kind": "note",
+            },
+            {
+                "at": _dt(2026, 8, 30, 9, 0, tzinfo=_UTC),
+                "by": "overseer",
+                "note": "retried",
+                "kind": "retry",
+            },
+        ]
+    )
+    client = _amendment_client(task)
+
+    with patch(f"{_MODULE}.get_database_manager_async_client", return_value=client):
+        context = await build_task_context("user-1", _worker_session())
+
+    assert "task_id: task-1" in context
+    assert "Cover revenue and churn." in context
+    assert "added instructions mid-task" in context
+    assert "Also include churn numbers." in context
+    assert "retried" not in context
+
+
+@pytest.mark.asyncio
+async def test_task_context_is_empty_for_closed_or_missing_tasks():
+    with patch(
+        f"{_MODULE}.get_database_manager_async_client",
+        return_value=_amendment_client(_context_task(status="DONE")),
+    ):
+        assert await build_task_context("user-1", _worker_session()) == ""
+
+    with patch(
+        f"{_MODULE}.get_database_manager_async_client",
+        return_value=_amendment_client(None),
+    ):
+        assert await build_task_context("user-1", _worker_session()) == ""
+
+    assert await build_task_context("user-1", _session()) == ""

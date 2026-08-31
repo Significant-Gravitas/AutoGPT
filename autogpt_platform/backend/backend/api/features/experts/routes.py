@@ -4,7 +4,7 @@ from fastapi import APIRouter, Security
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.experts import credentials as expert_credentials
-from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts import experts_db, hire_office, scheduling
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -37,6 +37,10 @@ class HireRequest(BaseModel):
     name: str | None = Field(default=None, max_length=100)
 
 
+class HireOfficeRequest(BaseModel):
+    template_id: str
+
+
 class InstallWorkflowRequest(BaseModel):
     store_listing_version_id: str
 
@@ -58,6 +62,12 @@ class AssignPodRequest(BaseModel):
     # expert, while an omitted field is rejected rather than treated as
     # a silent detach.
     pod_id: str | None
+
+
+class UpdatePodRequest(BaseModel):
+    # Same required-but-nullable convention as AssignPodRequest: an explicit
+    # {"lead_expert_id": null} clears the lead.
+    lead_expert_id: str | None
 
 
 class CreateRaisedExpertRequest(BaseModel):
@@ -105,6 +115,38 @@ class CreateRaisedExpertRequest(BaseModel):
 @router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
+
+
+# Office routes are declared before "/{expert_id}" so "/experts/office-templates"
+# is not swallowed by the expert-detail path parameter.
+@router.get("/office-templates", operation_id="list_office_templates")
+async def list_office_templates() -> list[hire_office.OfficeTemplateSummary]:
+    return await hire_office.list_office_templates()
+
+
+@router.post(
+    "/hire-office",
+    operation_id="hire_office",
+    responses={
+        404: {"description": "Office template or expert template not found"},
+        409: {"description": "Active expert limit reached"},
+    },
+)
+async def hire_office_pack(
+    request: HireOfficeRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> hire_office.HireOfficeResult:
+    try:
+        return await hire_office.hire_office(user_id, request.template_id)
+    except hire_office.OfficeTemplateNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except experts_db.ExpertTemplateNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except experts_db.ExpertLimitExceededError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail={"code": "active_expert_limit", "limit": e.limit},
+        )
 
 
 @router.post(
@@ -225,6 +267,32 @@ async def list_expert_pods(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> list[ExpertPod]:
     return await experts_db.list_pods(user_id)
+
+
+@router.patch(
+    "/pods/{pod_id}",
+    operation_id="update_expert_pod",
+    responses={
+        404: {"description": "Pod or lead expert not found"},
+        409: {"description": "The lead is not a member of the pod"},
+    },
+)
+async def update_expert_pod(
+    pod_id: str,
+    request: UpdatePodRequest,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertPod:
+    """Set or clear the pod's lead. Delegations aimed at the pod (or at a
+    member from outside it) are routed to the lead."""
+    try:
+        return await experts_db.set_pod_lead(user_id, pod_id, request.lead_expert_id)
+    except (
+        experts_db.ExpertNotFoundError,
+        experts_db.ExpertPodNotFoundError,
+    ):
+        raise fastapi.HTTPException(status_code=404, detail="Expert or pod not found")
+    except experts_db.ExpertPodLeadNotMemberError as e:
+        raise fastapi.HTTPException(status_code=409, detail=str(e))
 
 
 @router.patch(

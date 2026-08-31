@@ -25,6 +25,7 @@ def compose_attention_items(
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
     tasks: list[DelegatedTask] | None = None,
+    failed_tasks: list[DelegatedTask] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
@@ -40,6 +41,12 @@ def compose_attention_items(
         _escalation_attention(task, escalation)
         for task, escalation in _open_escalations(tasks or [])
     )
+    items.extend(
+        _failed_task_attention(task)
+        for task in failed_tasks or []
+        if _failed_after_retry(task)
+    )
+    items.extend(_stale_task_attention(task) for task in tasks or [] if task.stale_at)
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
     return sorted(items, key=_attention_sort_key)
@@ -202,6 +209,60 @@ def _escalation_attention(
         primary_action=HomeAction(
             label="View task", href=f"/team?task={quote(task.id)}"
         ),
+    )
+
+
+def _failed_after_retry(task: DelegatedTask) -> bool:
+    """Only the failures the overseer gave up on earn a card — a run the
+    user watched fail in chat already told them."""
+    return task.status == "FAILED" and any(a.kind == "retry" for a in task.amendments)
+
+
+def _failed_task_attention(task: DelegatedTask) -> HomeAttentionItem:
+    owner = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-failed-{task.id}",
+        kind="task_failed",
+        priority="high",
+        title=f"“{task.title}” failed after a retry",
+        description=_clip(task.outcome_summary or f"{owner} could not finish it."),
+        why_it_matters="The work stopped; restart it or hand it to someone else.",
+        expert=_task_expert(task),
+        created_at=as_utc(task.updated_at),
+        task_id=task.id,
+        primary_action=HomeAction(
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
+        ),
+    )
+
+
+def _stale_task_attention(task: DelegatedTask) -> HomeAttentionItem:
+    owner = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-stale-{task.id}",
+        kind="task_stale",
+        priority="normal",
+        title=f"Still waiting on you: “{task.title}”",
+        description=f"{owner} asked over a week ago and is still waiting.",
+        why_it_matters="The task stays parked until you answer — it is never "
+        "cancelled for you.",
+        expert=_task_expert(task),
+        created_at=as_utc(task.stale_at) if task.stale_at else None,
+        task_id=task.id,
+        primary_action=HomeAction(
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
+        ),
+    )
+
+
+def _task_expert(task: DelegatedTask) -> HomeExpert | None:
+    if task.owner is None:
+        return None
+    return HomeExpert(
+        id=task.owner.id,
+        name=task.owner.name,
+        role=task.owner.role,
+        avatar_url=task.owner.avatar_url,
     )
 
 

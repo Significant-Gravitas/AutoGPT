@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.dream_events import EmitFn, emit_dream_operations_event
 from backend.copilot.graphiti.client import derive_memory_scope_key
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -52,6 +53,7 @@ from .locks import (
     dream_lock,
 )
 from .model_pricing import compute_cost_usd, execution_path_discount
+from .proactive import run_proactive_pass
 from .prompts import (
     MAX_DEMOTIONS_PER_PASS,
     MAX_PROPOSALS_PER_PASS,
@@ -744,6 +746,7 @@ async def _execute_dream_pass_async(
     transport_is_local: bool = False,
     config: ChatConfig | None = None,
     status_id: str | None = None,
+    emit: EmitFn | None = None,
 ) -> DreamPassResult:
     config = config or ChatConfig()
     pass_id = str(uuidlib.uuid4())
@@ -984,9 +987,18 @@ async def _execute_dream_pass_async(
                 user_id, input_bundle.window_end, expert_id
             )
 
+            # Proactive pass only after a completed sync apply — skipped and
+            # batch-submitted passes never reach here, so the mode gating
+            # lives with the rest of the state machine as dream_events.py
+            # prescribes. Best-effort: proposals must never fail the dream.
+            await _run_proactive_pass_safe(user_id, pass_id, config)
+
             completed_at = datetime.now(timezone.utc)
             snapshot = apply_stats.get("snapshot")
             raw_session_id = apply_stats.get("session_id")
+
+            if emit is not None and isinstance(snapshot, DreamOperationsSnapshot):
+                await emit_dream_operations_event(emit, snapshot, pass_id, user_id)
 
             def _as_int(key: str) -> int:
                 v = apply_stats.get(key, 0)
@@ -1067,11 +1079,33 @@ def _failure_result(
     )
 
 
+async def _run_proactive_pass_safe(
+    user_id: str, pass_id: str, config: ChatConfig
+) -> None:
+    """Run the idle-expert proactive pass; log-and-continue on failure."""
+    try:
+        result = await run_proactive_pass(user_id, dream_pass_id=pass_id, config=config)
+    except Exception:
+        logger.warning(
+            "Dream proactive pass failed for user %s", user_id[:12], exc_info=True
+        )
+        return
+    if result.created or result.budget_capped_task_count:
+        logger.info(
+            "Dream proactive pass %s: %d task(s) proposed, %d over-budget "
+            "task(s) stopped",
+            pass_id,
+            len(result.created),
+            result.budget_capped_task_count,
+        )
+
+
 async def execute_dream_pass(
     user_id: str,
     *,
     status_id: str | None = None,
     expert_id: str | None = None,
+    emit: EmitFn | None = None,
 ) -> DreamPassResult:
     """Public async entry point used by the scheduler + admin trigger.
 
@@ -1080,9 +1114,15 @@ async def execute_dream_pass(
     into the batch path so the BatchExecutor callbacks can update the
     user-visible status row as each phase lands. AgentProbe + other
     sync callers pass ``None`` and never hit the batch path.
+
+    ``emit`` is the caller's stream closure (same shape baseline / sdk
+    use for ``StreamStatus``); when provided, a completed sync pass
+    surfaces its operations snapshot inline via
+    :func:`emit_dream_operations_event`. ``None`` (scheduler, eval)
+    skips the event.
     """
     return await _execute_dream_pass_async(
-        user_id, status_id=status_id, expert_id=expert_id
+        user_id, status_id=status_id, expert_id=expert_id, emit=emit
     )
 
 

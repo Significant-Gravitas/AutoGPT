@@ -32,6 +32,10 @@ MAX_TASK_HANDOFFS = 5
 # is told to escalate to the user rather than delegate further.
 MAX_TASK_DEPTH = 3
 
+# How many revision rounds a rejected outcome may trigger before the reject
+# stops spawning subtasks and asks the user to clarify instead.
+MAX_TASK_REVISIONS = 2
+
 TASK_QUESTION_MAX_LENGTH = 1_000
 TASK_ANSWER_MAX_LENGTH = 4_000
 MAX_TASK_QUESTION_OPTIONS = 6
@@ -39,6 +43,10 @@ MAX_TASK_QUESTION_OPTIONS = 6
 # Bounds the list endpoint so one user's history can't turn into an unbounded
 # scan; the Tasks tab pages by nothing else today.
 MAX_TASKS_PER_PAGE = 50
+
+# Bounds one poll of the office view's events feed; the client polls again
+# with a fresh `since` rather than paging.
+MAX_TASK_EVENTS = 100
 
 
 class TaskExpertRef(BaseModel):
@@ -63,12 +71,15 @@ class TaskRunRef(BaseModel):
     link: str | None
 
 
-TaskAmendmentKind = Literal["note", "handoff", "escalation", "answer"]
+TaskAmendmentKind = Literal[
+    "note", "handoff", "escalation", "answer", "retry", "revision"
+]
 
 
 class TaskAmendment(BaseModel):
     """An event recorded against a live task: a scope note, a handoff
-    between experts, an escalation to the user, or the user's answer.
+    between experts, an escalation to the user, the user's answer, an
+    overseer stall retry, or a revision request on a rejected outcome.
     Stored in the append-only ``amendments`` Json column, so new kinds land
     without a migration; ``kind`` defaults to ``note`` for phase-1 rows."""
 
@@ -104,9 +115,27 @@ class DelegatedTask(BaseModel):
     spend_total: int
     outcome_summary: str | None
     amendments: list[TaskAmendment]
+    # Overseer stamp: a WAITING_USER task that sat unanswered for a week.
+    stale_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     runs: list[TaskRunRef] = []
+
+
+class TaskEvent(BaseModel):
+    """One task's latest state change, for the office view's polling feed.
+    ``event`` is the task's lowercase status ("queued" / "working" /
+    "waiting_user" / "done" / "failed" / "cancelled"); ``ts`` is the row's
+    ``updatedAt`` in ISO 8601. This exact shape is the frontend contract."""
+
+    task_id: str
+    expert_id: str | None
+    event: str
+    ts: str
+
+
+class TaskEventsResponse(BaseModel):
+    events: list[TaskEvent]
 
 
 class DelegatedTaskDetail(BaseModel):
@@ -131,6 +160,33 @@ class AnswerTaskRequest(BaseModel):
         if not stripped:
             raise ValueError("Answer must not be blank")
         return stripped
+
+
+class RejectTaskRequest(BaseModel):
+    """The user's rejection of a task outcome, with what to change."""
+
+    note: str = Field(min_length=1, max_length=TASK_ANSWER_MAX_LENGTH)
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def strip_note(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Rejection note must not be blank")
+        return stripped
+
+
+class TaskReviewResult(BaseModel):
+    """Outcome of an accept/reject action on a finished task. ``escalated``
+    is set when the revision cap was hit: no new subtask was opened and the
+    user is asked to clarify in chat instead."""
+
+    task: DelegatedTask
+    revision_task: "DelegatedTask | None" = None
+    escalated: bool = False
+    message: str
 
 
 class CreateTaskRequest(BaseModel):

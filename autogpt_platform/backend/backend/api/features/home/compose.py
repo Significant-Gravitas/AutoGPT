@@ -37,6 +37,7 @@ def compose_home_dashboard(
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
     open_tasks: list[DelegatedTask] | None = None,
+    failed_tasks: list[DelegatedTask] | None = None,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -77,6 +78,7 @@ def compose_home_dashboard(
             credits_balance=credits_balance,
             questions=questions,
             tasks=open_tasks,
+            failed_tasks=failed_tasks,
         ),
         briefing=compose_briefing(
             now=now,

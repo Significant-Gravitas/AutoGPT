@@ -16,6 +16,7 @@ import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { ExecutionCard } from "./ExecutionCard";
 import { ExpertChangeCard, ExpertChangeCardSkeleton } from "./ExpertCards";
 import { RoutingCard, RoutingConfirmCard } from "./RoutingCard";
+import { TaskUpdateCard } from "./TaskUpdateCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
 import type { ChainRow } from "./helpers";
@@ -202,6 +203,11 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     if (setupCard) return setupCard;
     const questions = asItems(output.questions);
     if (questions) return <QuestionsCard questions={questions} />;
+    // A task action tool (report / escalate / handoff) reports back on the
+    // task it touched — distinct from the delegation cards below, which sniff
+    // on status + task_id rather than this explicit type tag.
+    if (str(output, "type") === "task_update")
+      return <TaskUpdateCard output={output} />;
   }
 
   switch (row.tool) {
