@@ -253,6 +253,7 @@ class SlackAdapter(WebhookAdapter):
             event_type == "message"
             and channel_type in ("channel", "group")
             and event.get("thread_ts")
+            and not await self._also_arrives_as_mention(event, team_id)
         ):
             # Reply in a channel thread without an @mention — the handler checks
             # thread-subscription state and ignores it if it isn't ours. Slack
@@ -265,6 +266,32 @@ class SlackAdapter(WebhookAdapter):
             await self._on_message_callback(ctx, self)
         except Exception:
             logger.exception("Slack event handler failed")
+
+    async def _also_arrives_as_mention(
+        self, event: dict[str, Any], team_id: Optional[str]
+    ) -> bool:
+        """True when this ``message`` event is a copy of an ``app_mention``.
+
+        Slack delivers both for a single @mention, and we subscribe to both.
+        In a thread we don't own the duplicate is dropped for us (the handler
+        ignores the un-mentioned copy), but in a thread we DO own both copies
+        pass the subscription gate and the turn runs twice — two model calls,
+        two replies. Take the ``app_mention`` copy, which carries
+        ``bot_mentioned=True``, and drop this one.
+
+        An unresolvable identity answers False: a duplicate turn is a much
+        smaller failure than silently swallowing the user's message.
+        """
+        team = event.get("team") or team_id
+        if not team:
+            return False
+        bot_user_id = await self._bot_user_id_for(team)
+        if not bot_user_id:
+            return False
+        return any(
+            m.group(1) == bot_user_id
+            for m in _USER_MENTION_RE.finditer(event.get("text") or "")
+        )
 
     async def _build_context(
         self,
@@ -611,15 +638,32 @@ class SlackAdapter(WebhookAdapter):
         """Post ``text`` chunked under the message cap; return the first ts.
 
         Later chunks thread off the first so a long post stays one conversation.
+
+        Raises only if the *first* chunk fails — once anything is delivered, a
+        later-chunk failure stops the send and keeps the partial result rather
+        than discarding what already posted, because the caller reports the
+        whole post as failed and a retry would duplicate the delivered chunks
+        (mirrors Discord's ``_send_chunked``). ``first_ts`` can't stand in for
+        "nothing sent yet": it starts non-None when posting into a thread.
         """
         client = await self._client_for(team_id)
         if client is None:
             return None
         first_ts = thread_ts
+        posted = False
         for rendered in self._localized_chunks(text, config.CHUNK_FLUSH_AT):
-            resp = await client.chat_postMessage(
-                channel=channel, text=rendered, thread_ts=first_ts
-            )
+            try:
+                resp = await client.chat_postMessage(
+                    channel=channel, text=rendered, thread_ts=first_ts
+                )
+            except Exception:
+                # SlackApiError for API failures, raw transport errors
+                # otherwise — a partial send must survive either.
+                if not posted:
+                    raise
+                logger.exception("Dropping trailing Slack chunk after partial send")
+                break
+            posted = True
             if first_ts is None:
                 first_ts = resp.get("ts")
         return first_ts

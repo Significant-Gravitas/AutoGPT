@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
+from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
 
 from .adapter import (
     TelegramAdapter,
@@ -415,6 +416,28 @@ class TestProactiveChunking:
         for c in calls:
             sent = c.kwargs["text"]
             assert sent.count("<pre>") == sent.count("</pre>") == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_chunked_post_keeps_what_landed(self):
+        # A 400/429 past the first chunk would otherwise report the whole post
+        # failed, and the model reposts — duplicating the delivered chunks.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[{"message_id": 77}, TelegramAPIError("sendMessage failed")]
+        )
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        ref = await a.post_channel_message("123", f"```python\n{code}\n```")
+        assert ref is not None
+        assert ref.id == "77"
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_failure_still_raises(self):
+        # Nothing landed, so the caller must hear about it and retry.
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=TelegramAPIError("sendMessage failed"))
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        with pytest.raises(TelegramAPIError):
+            await a.post_channel_message("123", f"```python\n{code}\n```")
 
     @pytest.mark.asyncio
     async def test_entity_dense_chunks_respect_the_parsed_length_cap(self):

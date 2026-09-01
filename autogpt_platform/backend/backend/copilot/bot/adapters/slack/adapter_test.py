@@ -5,6 +5,7 @@ import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from slack_sdk.errors import SlackApiError
 
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.data.bot_installs import BotInstallCredentials
@@ -153,6 +154,107 @@ class TestInboundRouting:
         assert ctx.channel_type == "thread"
         assert ctx.bot_mentioned is False
         assert ctx.channel_id == "T1|G1|1.0"
+
+    @pytest.mark.asyncio
+    async def test_mention_in_thread_does_not_double_fire(self, adapter):
+        # Slack sends BOTH app_mention and message.channels for one @mention.
+        # In a thread we own, the subscription gate passes both, so without a
+        # dedupe the turn runs twice — two model calls, two replies.
+        contexts = []
+
+        async def cb(ctx, ad):
+            contexts.append(ctx)
+
+        adapter.on_message(cb)
+        mention = {
+            "type": "app_mention",
+            "channel": "C1",
+            "ts": "2.0",
+            "thread_ts": "1.0",
+            "user": "U1",
+            "text": "<@UBOT> what now",
+            "team": "T1",
+        }
+        with patch(_SUBSCRIBED, new=AsyncMock(return_value=True)):
+            await adapter._dispatch_event(mention)
+            await adapter._dispatch_event(
+                {**mention, "type": "message", "channel_type": "channel"}
+            )
+        assert len(contexts) == 1
+        assert contexts[0].bot_mentioned is True
+
+    @pytest.mark.asyncio
+    async def test_private_channel_mention_does_not_double_fire(self, adapter):
+        contexts = []
+
+        async def cb(ctx, ad):
+            contexts.append(ctx)
+
+        adapter.on_message(cb)
+        mention = {
+            "type": "app_mention",
+            "channel": "G1",
+            "ts": "2.0",
+            "thread_ts": "1.0",
+            "user": "U1",
+            "text": "hey <@UBOT> look",
+            "team": "T1",
+        }
+        with patch(_SUBSCRIBED, new=AsyncMock(return_value=True)):
+            await adapter._dispatch_event(mention)
+            await adapter._dispatch_event(
+                {**mention, "type": "message", "channel_type": "group"}
+            )
+        assert len(contexts) == 1
+
+    @pytest.mark.asyncio
+    async def test_thread_reply_mentioning_someone_else_still_forwards(self, adapter):
+        # Only OUR mention is a duplicate of an app_mention; a reply that pings
+        # a teammate must still reach the handler.
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "message",
+                "channel_type": "channel",
+                "channel": "C1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "<@U9> can you look",
+                "team": "T1",
+            }
+        )
+        assert captured["ctx"].bot_mentioned is False
+
+    @pytest.mark.asyncio
+    async def test_unknown_bot_identity_keeps_forwarding_thread_replies(self, adapter):
+        # Failing open on an unresolvable identity: a duplicate turn is a much
+        # smaller failure than silently swallowing the user's message.
+        adapter._clients["T1"].auth_test = AsyncMock(side_effect=RuntimeError("down"))
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "message",
+                "channel_type": "channel",
+                "channel": "C1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "<@UBOT> hi",
+                "team": "T1",
+            }
+        )
+        assert "ctx" in captured
 
     @pytest.mark.asyncio
     async def test_mention_in_unowned_thread_pulls_history(self, adapter):
@@ -460,6 +562,32 @@ class TestOutbound:
         await adapter.send_message("T1|C1|", "\x00U9\x00 hi", ())
         text = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
         assert "<@U9>" not in text and "\x00" not in text
+
+    @pytest.mark.asyncio
+    async def test_partial_chunked_post_keeps_what_landed(self, adapter):
+        # Raising past the first chunk makes deliver_message report the whole
+        # post failed, and the model reposts — duplicating the chunks that
+        # already landed. Keep the partial result instead.
+        client = adapter._clients["T1"]
+        client.chat_postMessage = AsyncMock(
+            side_effect=[
+                {"ts": "111.222"},
+                SlackApiError("ratelimited", MagicMock()),
+            ]
+        )
+        ref = await adapter.post_channel_message("T1|C1|", "ab&" * 2000)
+        assert ref is not None
+        assert ref.id == "111.222"
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_failure_still_raises(self, adapter):
+        # Nothing landed, so the caller must hear about it and retry.
+        client = adapter._clients["T1"]
+        client.chat_postMessage = AsyncMock(
+            side_effect=SlackApiError("ratelimited", MagicMock())
+        )
+        with pytest.raises(SlackApiError):
+            await adapter.post_channel_message("T1|C1|", "ab&" * 2000)
 
     @pytest.mark.asyncio
     async def test_send_file_uploads_into_thread(self, adapter):

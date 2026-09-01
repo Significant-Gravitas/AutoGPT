@@ -140,6 +140,56 @@ async def test_budget_keeps_the_newest_messages():
 
 
 @pytest.mark.asyncio
+async def test_budget_measures_the_expanded_mention_text():
+    # <@U…> tokens expand into "@Display Name" — budgeting the raw form
+    # undercounts the real prompt size and overshoots CHAR_BUDGET.
+    async def expand(text: str) -> str:
+        return text.replace("<@U2>", "@a-rather-long-display-name").strip()
+
+    page = {"messages": [_msg(f"{i}.0", "U1", f"m{i} <@U2>") for i in range(5)]}
+    with patch.object(history, "CHAR_BUDGET", 100):
+        entries = await history.fetch_thread_history(
+            _client(page),
+            channel="C1",
+            thread_ts="1.0",
+            exclude_ts="none",
+            bot_user_id="UBOT",
+            display_name=_name,
+            strip_mentions=expand,
+        )
+
+    assert sum(len(e.text) for e in entries) <= 100
+
+
+@pytest.mark.asyncio
+async def test_entry_that_strips_to_nothing_does_not_spend_budget():
+    # A message that is only our own mention strips to "" and is dropped —
+    # it must not have eaten budget an older, real message could have used.
+    async def expand(text: str) -> str:
+        return text.replace("<@UBOT>", "").strip()
+
+    page = {
+        "messages": [
+            _msg("1.0", "U1", "keep me"),
+            _msg("2.0", "U1", "<@UBOT>"),
+            _msg("3.0", "U1", "and me"),
+        ]
+    }
+    with patch.object(history, "CHAR_BUDGET", 16):
+        entries = await history.fetch_thread_history(
+            _client(page),
+            channel="C1",
+            thread_ts="1.0",
+            exclude_ts="none",
+            bot_user_id="UBOT",
+            display_name=_name,
+            strip_mentions=expand,
+        )
+
+    assert [e.text for e in entries] == ["keep me", "and me"]
+
+
+@pytest.mark.asyncio
 async def test_display_names_resolved_once_per_user():
     calls: list[str] = []
 

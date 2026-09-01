@@ -61,12 +61,18 @@ async def fetch_thread_history(
 
     async def _entries() -> AsyncIterator[MessageHistoryEntry]:
         for m in recent:
-            text = (m.get("text") or "").strip()
+            # Expand mentions before the budget measures the text, per
+            # `budget_history`'s contract: a <@U…> token becomes a longer
+            # "@Display Name", and an entry that was only our own mention
+            # collapses to nothing. Budgeting the raw form would undercount
+            # the real size and spend budget on entries dropped right after.
+            # The generator is lazy and the budget stops early, so this pays
+            # for the entries it keeps, not the whole tail.
+            text = await strip_mentions((m.get("text") or "").strip())
             if text:
                 author = _author(m)
-                # The id stands in for the name, and mention tokens stay raw,
-                # until the budget has decided which entries are worth the
-                # users.info lookups.
+                # The id stands in for the name until the budget has decided
+                # which entries are worth the users.info lookups.
                 yield MessageHistoryEntry(
                     username=preset.get(author, author), user_id=author, text=text
                 )
@@ -76,7 +82,7 @@ async def fetch_thread_history(
         {e.user_id for e in kept if e.user_id and e.user_id not in preset},
         display_name,
     )
-    return await _finalize(kept, names=names, strip_mentions=strip_mentions)
+    return _finalize(kept, names=names)
 
 
 def _select_recent(
@@ -110,26 +116,19 @@ def _select_recent(
     return recent, preset
 
 
-async def _finalize(
+def _finalize(
     kept: tuple[MessageHistoryEntry, ...],
     *,
     names: dict[str, str],
-    strip_mentions: Callable[[str], Awaitable[str]],
 ) -> tuple[MessageHistoryEntry, ...]:
-    entries = []
-    for e in kept:
-        text = await strip_mentions(e.text)
-        if not text:
-            continue
-        uid = e.user_id or ""
-        entries.append(
-            MessageHistoryEntry(
-                username=_label(names.get(uid, e.username)),
-                user_id=e.user_id,
-                text=text,
-            )
+    return tuple(
+        MessageHistoryEntry(
+            username=_label(names.get(e.user_id or "", e.username)),
+            user_id=e.user_id,
+            text=e.text,
         )
-    return tuple(entries)
+        for e in kept
+    )
 
 
 def _author(message: dict[str, Any]) -> str:
