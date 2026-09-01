@@ -1914,6 +1914,8 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         sequence=7,
         model="claude-sonnet-4-6",
         routing_source="env",
+        llm_auth_provider=None,
+        llm_credential_id=None,
     )
     assert flushed.stamps_pending_save is False
 

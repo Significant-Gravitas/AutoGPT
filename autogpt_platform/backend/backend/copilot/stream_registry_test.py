@@ -594,13 +594,13 @@ def test_every_response_type_survives_the_relay():
     stays green — this has now happened twice (MODE_CHANGED, COMPACTION).
     Adding a ``ResponseType`` should force a decision here.
     """
-    import inspect
-    import re
-
     from backend.copilot.response_model import ResponseType
 
-    source = inspect.getsource(stream_registry._reconstruct_chunk)
-    mapped = set(re.findall(r"ResponseType\.(\w+)\.value", source))
+    mapped = {
+        member.name
+        for member in ResponseType
+        if member.value in stream_registry.CHUNK_TYPE_TO_CLASS
+    }
     expected = {m.name for m in ResponseType} - _UNRELAYED_RESPONSE_TYPES
 
     missing = sorted(expected - mapped)
