@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anthropic
+import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -75,7 +76,17 @@ logger = logging.getLogger(__name__)
 
 # Non-streaming calls emit no bytes until the completion is done, so this has
 # to cover the whole generation — a slow long answer is not a stalled socket.
-DEFAULT_REQUEST_TIMEOUT_SECONDS: float = settings.config.llm_request_timeout_seconds
+DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
+
+# Matches the OpenAI/Anthropic SDK defaults. Only the read phase needs the
+# generation budget; a scalar would also stretch connect, so a blackholed SYN
+# would park an executor worker for the full deadline.
+CONNECT_TIMEOUT_SECONDS = 5.0
+
+
+def request_timeout(timeout_seconds: float) -> httpx.Timeout:
+    return httpx.Timeout(timeout_seconds, connect=CONNECT_TIMEOUT_SECONDS)
+
 
 # Provider names accepted by ``call_provider``. Kept as a string Literal
 # (not an enum) so the helper stays provider-name-agnostic — callers
@@ -471,7 +482,7 @@ async def _call_openai_responses(
         # See OPEN-3187.
         store=False,
         include=["reasoning.encrypted_content"],
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
         # ``omit`` is only valid for TYPED params — the SDK strips it
         # there. ``extra_body`` flows raw into ``options.extra_json``
         # (``make_request_options`` checks ``is not None``), and
@@ -553,7 +564,7 @@ async def _call_anthropic_messages(
         messages=anth_messages,
         max_tokens=max_tokens,
         tools=an_tools,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     if temperature is not None and _anthropic_accepts_temperature(model):
         create_kwargs["temperature"] = temperature
@@ -664,7 +675,7 @@ async def _call_groq(
         messages=messages,
         response_format=response_format,
         max_tokens=max_tokens,
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so models that reject it never see the field.
@@ -712,7 +723,9 @@ async def _call_ollama(
     if temperature is not None:
         options["temperature"] = temperature
 
-    client = ollama.AsyncClient(host=ollama_host, timeout=timeout_seconds)
+    client = ollama.AsyncClient(
+        host=ollama_host, timeout=request_timeout(timeout_seconds)
+    )
     response = await client.chat(
         model=model,
         messages=messages,
@@ -827,7 +840,7 @@ async def _call_openai_compat(
             if force_json_output
             else openai.omit
         ),
-        timeout=timeout_seconds,
+        timeout=request_timeout(timeout_seconds),
     )
     # Same guard as the Anthropic path — only send ``temperature`` when
     # the caller set one, so upstreams that reject it (some reasoning
@@ -1046,7 +1059,7 @@ async def call_provider_openai_compat_sync(
         "model": model,
         "messages": cast(list[ChatCompletionMessageParam], messages),
         "max_tokens": max_tokens,
-        "timeout": timeout_seconds,
+        "timeout": request_timeout(timeout_seconds),
     }
     if extra_body:
         create_kwargs["extra_body"] = extra_body

@@ -61,7 +61,7 @@ USER_ERROR_STATUS_CODES = (401, 403, 429)
 
 # Non-streaming calls emit no bytes until the completion is done, so this has
 # to cover the whole generation — a slow long answer is not a stalled socket.
-LLM_REQUEST_TIMEOUT_SECONDS: float = settings.config.llm_request_timeout_seconds
+LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,

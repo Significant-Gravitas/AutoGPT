@@ -16,14 +16,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from backend.util.llm.providers import (
+    CONNECT_TIMEOUT_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
     call_provider,
+    request_timeout,
 )
+from backend.util.settings import Config, Settings
 
 
 def _msg(role: str, content: str) -> dict:
@@ -1404,12 +1408,36 @@ class TestUtf8Sanitization:
 
 class TestDefaults:
     def test_default_timeout_tracks_the_setting(self):
-        from backend.util.settings import Settings
-
         assert (
             DEFAULT_REQUEST_TIMEOUT_SECONDS
             == Settings().config.llm_request_timeout_seconds
         )
+
+    def test_shipped_default_is_600_seconds(self):
+        # The constant above only proves the wiring; without this the shipped
+        # SLA is pinned by nothing and can drift silently.
+        assert Config.model_fields["llm_request_timeout_seconds"].default == 600
+
+    @pytest.mark.parametrize("bad", [29, 1501])
+    def test_timeout_outside_the_supported_band_is_rejected(self, bad):
+        # Below the band a healthy long call dies; at/above the 1800s node cap
+        # the node timeout fires first and hides the provider/model error.
+        with pytest.raises(ValidationError):
+            Config(llm_request_timeout_seconds=bad)
+
+    def test_block_and_provider_layers_share_one_deadline(self):
+        # The whole point of routing both through the setting: a call bounded
+        # at one layer and not the other reintroduces the drift this replaced.
+        from backend.blocks.llm import LLM_REQUEST_TIMEOUT_SECONDS
+
+        assert LLM_REQUEST_TIMEOUT_SECONDS == DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    def test_request_timeout_bounds_connect_separately(self):
+        # A scalar would stretch every httpx phase, so a blackholed SYN would
+        # park a worker for the whole generation budget.
+        t = request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
+        assert t.connect == CONNECT_TIMEOUT_SECONDS
+        assert t.read == DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------

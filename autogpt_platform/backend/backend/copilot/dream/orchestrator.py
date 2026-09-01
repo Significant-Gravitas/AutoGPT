@@ -96,9 +96,9 @@ SANITIZE_MAX_TOKENS = 16384
 # → call_provider. These exist because a single shared default can't fit
 # every phase: recombine/sanitize carry 16384-token output budgets precisely
 # because real responses exceed 8192 tokens, and at real decode speeds
-# (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K response takes 150-400s
-# — the old 120s shared default killed exactly the responses
-# the token-cap raise above was meant to save.
+# (Opus-class ~40-60 tok/s via OpenRouter) an 8-16K response takes 150-400s,
+# so a ceiling under that truncates exactly the responses the token-cap
+# budgets above exist to produce.
 #
 # A conservative ~20 tok/s decode floor would ask for max_output_tokens/20
 # ≈ 205s / 819s / 819s per phase, but that sums to 1843s of LLM budget

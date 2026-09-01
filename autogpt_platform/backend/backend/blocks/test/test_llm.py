@@ -9,7 +9,9 @@ import openai
 import pytest
 
 import backend.blocks.llm as llm
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.model import NodeExecutionStats
+from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1463,12 +1465,18 @@ class TestAnthropicCacheControl:
 class TestLLMRequestTimeout:
     """Test that llm_call enforces a hard request timeout regardless of provider."""
 
-    def test_timeout_leaves_room_under_the_node_cap(self):
-        # A per-call deadline at or above the node cap means the node cap fires
-        # first, losing the provider/model detail (and the hint) in the error.
-        from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
-
-        assert llm.LLM_REQUEST_TIMEOUT_SECONDS < DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    def test_configurable_ceiling_stays_under_the_node_cap(self):
+        # Asserted on the schema bound, not the live constant: the constant is
+        # env-derived, so checking it would pass or fail on the runner's
+        # environment instead of on the code, and would leave a misconfigured
+        # deployment unguarded. Past the node cap the node timeout fires first
+        # and replaces the provider/model error with a generic one.
+        bound = next(
+            m.le
+            for m in Config.model_fields["llm_request_timeout_seconds"].metadata
+            if getattr(m, "le", None) is not None
+        )
+        assert bound < DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
     async def test_llm_call_times_out_when_provider_hangs(self, monkeypatch):
@@ -1492,7 +1500,10 @@ class TestLLMRequestTimeout:
                     max_tokens=100,
                 )
 
-            assert "0.2s" in str(exc_info.value) or "exceeded" in str(exc_info.value)
+            msg = str(exc_info.value)
+            assert "0.2s" in msg and "exceeded" in msg
+            # The remediation hint is the user-visible half of this error.
+            assert "max_tokens" in msg
 
     @pytest.mark.asyncio
     async def test_llm_call_passes_timeout_to_openai_sdk(self):

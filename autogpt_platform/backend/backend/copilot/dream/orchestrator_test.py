@@ -451,30 +451,19 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     ]
 
 
-# The 120s the shared default used to be hardcoded to. Pinned as a literal
-# rather than imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS` — that default
-# is now a config setting sized for generic block calls, independent of this
-# budget, and no longer a stand-in for "the value that truncated recombine".
-_HISTORICAL_TRUNCATING_TIMEOUT_SECONDS = 120
+# A 120s ceiling truncates a 16384-token decode. Pinned as a literal, not
+# imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS`: that setting sizes generic
+# block calls and is free to move independently of this budget.
+_TRUNCATING_TIMEOUT_SECONDS = 120
 
 
-def test_long_output_phase_timeouts_exceed_the_shared_request_default():
-    """Regression pin: every phase used to run on the shared 120s default,
-    which cannot decode the 16384 output tokens recombine/sanitize are
-    budgeted for. If these ever drop back to (or below) that, the
-    token-cap raise becomes dead letter again."""
-    assert (
-        orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS
-        > _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
-    )
-    assert (
-        orchestrator_mod.SANITIZE_TIMEOUT_SECONDS
-        > _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
-    )
-    assert (
-        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS
-        >= _HISTORICAL_TRUNCATING_TIMEOUT_SECONDS
-    )
+def test_long_output_phase_timeouts_clear_the_120s_truncation_threshold():
+    """Regression pin: at 120s the phases cannot decode the 16384 output
+    tokens recombine/sanitize are budgeted for. If these ever drop to (or
+    below) that, the token-cap raise becomes dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= _TRUNCATING_TIMEOUT_SECONDS
 
 
 def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
