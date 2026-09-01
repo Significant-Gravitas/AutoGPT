@@ -13031,7 +13031,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Admin Add Pending Agent to Library",
-        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can then load the graph: get_graph() grants a library\nversion that was submitted, and PENDING counts as submitted.",
         "operationId": "postV2Admin add pending agent to library",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

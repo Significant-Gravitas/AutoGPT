@@ -1391,6 +1391,8 @@ async def get_graph(
 
     # The only non-owner path. A store listing on its own must not grant
     # access, so there is deliberately no marketplace lookup beside this one.
+    # Deliberately stricter than validate_graph_execution_permissions(): read
+    # and execute disagree until that one is aligned (see PR #14205, note 1).
     if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, version),
@@ -1440,12 +1442,7 @@ def graph_in_library_filter(
         "AgentGraph": {
             "is": {
                 "StoreListingVersions": {
-                    "some": {
-                        "OR": [
-                            {"submissionStatus": status}
-                            for status in SUBMITTED_TO_MARKETPLACE
-                        ]
-                    }
+                    "some": {"submissionStatus": {"in": list(SUBMITTED_TO_MARKETPLACE)}}
                 }
             }
         },
@@ -1458,8 +1455,8 @@ def graph_in_library_filter(
 async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
     """Batch-fetch multiple store-listed graphs by their IDs.
 
-    Only returns graphs that have approved store listings (publicly available).
-    Does not require permission checks since store-listed graphs are public.
+    The APPROVED-listing filter below *is* the authorization: an approved
+    listing is public, so no per-caller permission check is applied.
 
     Args:
         graph_ids: List of graph IDs to fetch
@@ -1763,6 +1760,8 @@ async def validate_graph_execution_permissions(
     # Step 3: Apply permission logic
     # Access is granted if the user owns it, it's in the marketplace, OR
     # it's in the user's library ("you added it, you keep it").
+    # Looser than the read gate in graph_in_library_filter(): a library-only,
+    # never-submitted version still executes here but 404s on read.
     if not (
         user_owns_graph
         or user_has_in_library

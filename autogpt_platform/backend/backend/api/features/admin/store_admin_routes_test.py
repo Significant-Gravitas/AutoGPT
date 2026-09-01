@@ -18,7 +18,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubmissionStatus
 
-from backend.data.graph import get_graph_as_admin
+from backend.data.graph import get_graph, get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
 from .store_admin_routes import router as store_admin_router
@@ -335,8 +335,6 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
             return_value=mock_library_agent
         )
 
-        from backend.data.graph import get_graph
-
         result = await get_graph(
             graph_id=GRAPH_ID,
             version=GRAPH_VERSION,
@@ -346,10 +344,9 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
     assert result is mock_graph_model, "Library membership should grant graph access"
     # Review would break if PENDING were not an accepted status.
     lib_where = mock_lib_prisma.return_value.find_first.await_args.kwargs["where"]
-    statuses = {
-        clause["submissionStatus"]
-        for clause in lib_where["AgentGraph"]["is"]["StoreListingVersions"]["some"][
-            "OR"
-        ]
-    }
+    statuses = set(
+        lib_where["AgentGraph"]["is"]["StoreListingVersions"]["some"][
+            "submissionStatus"
+        ]["in"]
+    )
     assert SubmissionStatus.PENDING in statuses

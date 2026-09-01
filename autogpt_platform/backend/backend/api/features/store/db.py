@@ -1402,7 +1402,7 @@ async def get_my_agents(
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
-    """Get agent using the version ID and store listing version ID.
+    """Get the graph behind a store listing version, for public download.
 
     Unauthenticated endpoint: the installable-listing check below *is* the
     authorization, so `get_graph()` is told to skip its own (it would deny).
