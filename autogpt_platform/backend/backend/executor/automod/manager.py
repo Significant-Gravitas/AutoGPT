@@ -53,10 +53,13 @@ class AutoModManager:
             return None
 
         # Get graph model and collect all inputs
+        # The execution is already authorized; without this, a graph the user
+        # may run but not read reads back as None and skips moderation.
         graph_model = await db_client.get_graph(
             graph_exec.graph_id,
             user_id=graph_exec.user_id,
             version=graph_exec.graph_version,
+            skip_access_check=True,
         )
 
         if not graph_model or not graph_model.nodes:
