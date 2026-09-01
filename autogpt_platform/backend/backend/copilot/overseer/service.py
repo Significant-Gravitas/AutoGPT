@@ -44,6 +44,11 @@ _FAILED_OUTCOME = (
 )
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Normalize a possibly naive DB timestamp to timezone-aware UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 async def run_overseer_pass(
     user_id: str, *, now: datetime | None = None
 ) -> dict[str, int]:
@@ -74,7 +79,7 @@ async def run_overseer_pass(
             if (
                 task.status == "WAITING_USER"
                 and task.stale_at is None
-                and task.updated_at < now - STALE_AFTER
+                and _as_utc(task.updated_at) < now - STALE_AFTER
             ):
                 if await client.mark_task_stale(user_id, task.id, stale_at=now):
                     summary["stale"] += 1
@@ -101,7 +106,7 @@ async def _find_stalled(
     candidates = [
         task
         for task in tasks
-        if task.status == "WORKING" and task.updated_at < now - STALL_AFTER
+        if task.status == "WORKING" and _as_utc(task.updated_at) < now - STALL_AFTER
     ]
     if not candidates:
         return []
