@@ -10,7 +10,7 @@ Creates an incident in All Quiet and pages the on-call responder
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Posts to All Quiet's `/incident` endpoint with a title, severity and status. All Quiet then applies your routing rules to decide who gets paged — so the block does not pick a responder itself; it hands the incident to the rotation. Optional team IDs override the integration's default routing, and arbitrary key/value attributes ride along for context (host, runbook link, dashboard URL). Note that `on_call_users` is often empty in the response because All Quiet resolves routing asynchronously; read the incident back with Get Incident to see who it landed on.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -39,7 +39,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+An agent monitoring error rates notices checkout failures spiking. Rather than posting into a chat channel nobody is watching at 3am, it creates a Critical incident routed to the Platform team, attaching the dashboard URL and the failing endpoint as attributes — and All Quiet phones whoever is actually on call.
 <!-- END MANUAL -->
 
 ---
@@ -51,7 +51,7 @@ Investigates, resolves, escalates or comments on an All Quiet incident
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Applies an *intent* to an existing incident — All Quiet's term for a state transition such as Investigated (acknowledge), Resolved, Escalated or Commented. Which intents an incident accepts depends on its current status: an open incident accepts Investigated/Resolved/Escalated, a resolved one accepts Unresolved. The block emits `allowed_intents` after the update so a graph can choose its next move without a second read. The severity can be changed in the same call. Because All Quiet's patch endpoint does not echo the updated incident, the block re-reads it to report the resulting state.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -77,7 +77,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+After an agent raises an incident and its automated remediation succeeds, it applies the Resolved intent with a message describing what it did, closing the loop so nobody gets woken for an issue that has already fixed itself. If remediation fails instead, it applies Escalated to push the incident to the next tier.
 <!-- END MANUAL -->
 
 ---

@@ -10,7 +10,7 @@ Looks up who is on call in All Quiet, now or at a given time
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Reads All Quiet's computed rotation rather than a static schedule, so overrides, escalation tiers and rotation handoffs are all reflected. Leaving `timestamp` empty asks who is on call right now; supplying an ISO-8601 timestamp asks who was or will be on call then. A user covering several teams appears once per team in `shifts`, so the block also emits a de-duplicated `users`/`user_ids`/`emails` set to avoid notifying the same person repeatedly. `has_coverage` is false when nobody is on call, which is worth branching on before assuming an alert will reach someone.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,7 +37,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+Before an agent takes a disruptive automated action such as a production deploy, it checks who is on call and includes their name in the change notice. Wired to `has_coverage`, the same graph can refuse to deploy at all when the rotation has a gap.
 <!-- END MANUAL -->
 
 ---

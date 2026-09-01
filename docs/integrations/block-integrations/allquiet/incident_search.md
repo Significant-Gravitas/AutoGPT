@@ -10,7 +10,7 @@ Fetches a single All Quiet incident by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Fetches one incident by ID and flattens its current status and severity onto the result — All Quiet stores those at the head of the incident's event timeline rather than on the incident itself. `allowed_intents` reports which transitions the incident will currently accept. Turning on `include_markdown` makes a second call for All Quiet's rendered markdown report, which bundles the attributes and full timeline into prose that is well suited to feeding an LLM.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +34,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+A triage agent receives an incident ID from the trigger block, fetches it with `include_markdown` enabled, and feeds the markdown report — attributes, timeline and all — to an LLM to draft a first-response summary and suggest a likely cause.
 <!-- END MANUAL -->
 
 ---
@@ -46,7 +46,7 @@ Searches All Quiet incidents by status, severity, team or text
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Searches the incident list with All Quiet's server-side filters: status, severity, teams, a free-text title match, an unattended flag, and a created-at range. Results are paginated (`limit`/`offset`) and `has_more` reports whether further pages exist. Alongside the full list the block emits each incident individually, plus a list of bare `incident_ids` that feeds straight into Get Incident or Update Incident.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -79,7 +79,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+A morning-standup agent lists every incident created in the last 24 hours, groups them by severity, and posts a digest — or, filtering on `unattended`, chases anything still open that nobody has picked up.
 <!-- END MANUAL -->
 
 ---

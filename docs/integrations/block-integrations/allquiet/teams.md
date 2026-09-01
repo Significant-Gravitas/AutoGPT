@@ -10,7 +10,7 @@ Lists All Quiet teams and their IDs
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Lists the teams in your All Quiet organization with their IDs, time zones and labels, optionally filtered by name. Its `team_ids` output is designed to feed the `team_ids` input on Create Incident, List Incidents and Get On-Call, so a graph can target teams by name without hardcoding UUIDs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +34,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+A graph that should page whichever team owns a failing service looks the team up by display name, then passes the resulting ID to Create Incident — so renaming or re-creating a team in All Quiet doesn't require editing the agent.
 <!-- END MANUAL -->
 
 ---

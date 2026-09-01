@@ -10,7 +10,7 @@ Triggers a graph when All Quiet posts an incident to this webhook
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Runs when All Quiet's outbound webhook posts to this block's URL. Because the request body is whatever Handlebars template you configure in All Quiet, the block does not impose a schema: it always emits the raw `payload`, and additionally reads the well-known keys from both All Quiet's stock flattened template (`incidentId`/`incidentTitle`/`incidentProperties`) and a fuller template that forwards the incident itself. If you enable signing in All Quiet and paste the secret into the block, each delivery is verified as an HMAC-SHA256 of `<timestamp>:<body>` — both the All Quiet (`x-aq-signature`) and AWS (`x-amzn-event-signature`) header formats are accepted — and stale timestamps are rejected to prevent replay. Leave the secret empty and the webhook URL is the only credential.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +34,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+An incident is raised in All Quiet by a Prometheus alert. The trigger starts a graph that pulls the incident's attributes, queries the relevant logs and dashboards, drafts a probable-cause summary with an LLM, and posts it back as a comment — so the responder opens an incident that already has a first pass of investigation attached.
 <!-- END MANUAL -->
 
 ---
