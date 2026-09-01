@@ -22,9 +22,6 @@ import backend.data.redis_client as redis_client
 def _reset_module_caches() -> None:
     """Flush cached singletons between tests so each test sees a fresh connect."""
     redis_client.get_redis.cache_clear()
-    redis_client._async_clients.clear()
-    redis_client._async_client_finalizers.clear()
-    redis_client._async_client_locks.clear()
 
 
 def test_connect_builds_redis_cluster() -> None:
@@ -146,12 +143,15 @@ def test_get_redis_caches_connect() -> None:
 async def test_get_redis_async_caches_connect() -> None:
     with patch.object(redis_client, "connect_async", autospec=True) as mock_conn:
         fake = MagicMock(spec=AsyncRedisCluster)
+        fake.close = AsyncMock()
         mock_conn.return_value = fake
         a = await redis_client.get_redis_async()
         b = await redis_client.get_redis_async()
+        await redis_client.disconnect_async()
 
     assert a is b
     mock_conn.assert_called_once()
+    fake.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -232,6 +232,33 @@ async def test_disconnect_async_closes_cached_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_disconnect_async_preserves_client_when_close_fails() -> None:
+    fake = MagicMock(spec=AsyncRedisCluster)
+    fake.close = AsyncMock(side_effect=[RedisConnectionError("close failed"), None])
+
+    with patch.object(
+        redis_client,
+        "connect_async",
+        new=AsyncMock(return_value=fake),
+    ):
+        await redis_client.get_redis_async()
+        disconnect_once = redis_client.disconnect_async.__wrapped__
+
+        with pytest.raises(RedisConnectionError, match="close failed"):
+            await disconnect_once()
+
+        loop = asyncio.get_running_loop()
+        assert redis_client._async_clients[loop] is fake
+        assert loop in redis_client._async_client_finalizers
+
+        await disconnect_once()
+
+    assert fake.close.await_count == 2
+    assert not redis_client._async_clients
+    assert not redis_client._async_client_finalizers
+
+
+@pytest.mark.asyncio
 async def test_disconnect_async_no_cached_client_is_noop() -> None:
     with patch.object(redis_client, "connect_async", autospec=True) as mock_connect:
         await redis_client.disconnect_async()
@@ -297,7 +324,6 @@ def test_sharded_pubsub_end_to_end_sync() -> None:
 async def test_sharded_spublish_end_to_end_async() -> None:
     """Async cluster client routes SPUBLISH via ``execute_command``
     because redis-py 6.x has no async ``spublish()`` wrapper."""
-    redis_client._async_clients.clear()
     cluster = await redis_client.get_redis_async()
     try:
         res = await cluster.execute_command(
