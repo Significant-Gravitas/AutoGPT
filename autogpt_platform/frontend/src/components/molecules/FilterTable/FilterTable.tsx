@@ -199,7 +199,7 @@ function FilterChips({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label="More filters"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 data-[state=open]:bg-zinc-100"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors data-[state=open]:bg-zinc-100 hover:bg-zinc-100"
           >
             <Icon icon={More02Icon} size={14} />
           </DropdownMenuTrigger>
@@ -239,9 +239,7 @@ function FilterChip({ filter, count, active, onSelect }: ChipProps) {
       onClick={() => onSelect(filter.key)}
       className={cn(
         "flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-zinc-100 text-zinc-900"
-          : "text-zinc-500 hover:bg-zinc-50",
+        active ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:bg-zinc-50",
       )}
     >
       <ChipMarker filter={filter} active={active} />
@@ -295,7 +293,10 @@ function ChipMarker({ filter, active }: MarkerProps) {
   if (!filter.dot) return null;
 
   return (
-    <span className="size-1.5 rounded-full" style={{ background: filter.dot }} />
+    <span
+      className="size-1.5 rounded-full"
+      style={{ background: filter.dot }}
+    />
   );
 }
 

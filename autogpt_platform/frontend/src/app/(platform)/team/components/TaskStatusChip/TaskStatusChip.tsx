@@ -18,11 +18,7 @@ interface Props {
   accentClassName?: string;
 }
 
-export function TaskStatusChip({
-  status,
-  orbVariant,
-  accentClassName,
-}: Props) {
+export function TaskStatusChip({ status, orbVariant, accentClassName }: Props) {
   const icon = getStatusIcon(status);
 
   return (

@@ -317,7 +317,8 @@ const config = {
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
-        "orb-wave": "orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both",
+        "orb-wave":
+          "orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both",
       },
       transitionDuration: {
         "400": "400ms",

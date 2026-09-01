@@ -116,7 +116,11 @@ function OwnerCell({ owner }: { owner: DelegatedTask["owner"] }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
       {owner ? (
-        <ExpertAvatar name={owner.name} avatarUrl={owner.avatar_url} size={20} />
+        <ExpertAvatar
+          name={owner.name}
+          avatarUrl={owner.avatar_url}
+          size={20}
+        />
       ) : (
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 ring-1 ring-inset ring-zinc-200">
           <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-3" />

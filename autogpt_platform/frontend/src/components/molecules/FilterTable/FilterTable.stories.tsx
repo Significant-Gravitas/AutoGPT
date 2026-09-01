@@ -38,7 +38,12 @@ const columns = [
 
 const filters = [
   { key: "todo", label: "To do", icon: Clock01Icon, dot: "#f09a2f" },
-  { key: "progress", label: "In Progress", icon: Loading03Icon, dot: "#16a6c7" },
+  {
+    key: "progress",
+    label: "In Progress",
+    icon: Loading03Icon,
+    dot: "#16a6c7",
+  },
   {
     key: "done",
     label: "Completed",
