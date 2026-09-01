@@ -60,10 +60,17 @@ describe("isInternalToolOutput", () => {
     return generated(name, `/sessions/s1/tool-outputs/${name}`);
   }
 
-  test("matches SDK tool results parked in the session tool-output dir", () => {
+  test("matches whatever is parked in the session tool-output dir", () => {
     expect(isInternalToolOutput(toolOutput("toolu_01ABCdef.json"))).toBe(true);
     expect(isInternalToolOutput(toolOutput("mcp_a1b2-c3d4.json"))).toBe(true);
-    expect(isInternalToolOutput(toolOutput("TOOLU_01ABC.JSON"))).toBe(true);
+    // The ids the platform actually mints: `_execute_tool_sync` synthesizes
+    // `sdk-<uuid>` for every SDK-transport call, and the baseline transport
+    // passes the provider's id straight through. Neither is `toolu_`/`mcp_`.
+    expect(isInternalToolOutput(toolOutput("sdk-a1b2c3d4e5f6.json"))).toBe(
+      true,
+    );
+    expect(isInternalToolOutput(toolOutput("call_9xYzAbC.json"))).toBe(true);
+    expect(isInternalToolOutput(toolOutput("tc-123.json"))).toBe(true);
     expect(
       isInternalToolOutput(
         generated(
@@ -77,9 +84,6 @@ describe("isInternalToolOutput", () => {
   test("leaves user-facing files alone", () => {
     expect(isInternalToolOutput(generated("report.json"))).toBe(false);
     expect(isInternalToolOutput(generated("result.csv"))).toBe(false);
-    expect(isInternalToolOutput(toolOutput("toolu_notes.txt"))).toBe(false);
-    expect(isInternalToolOutput(toolOutput("toolusage.json"))).toBe(false);
-    expect(isInternalToolOutput(toolOutput("mcpserver.json"))).toBe(false);
     expect(
       isInternalToolOutput(
         generated("notes.json", "/sessions/s1/my-tool-results-archive.json"),
@@ -87,10 +91,10 @@ describe("isInternalToolOutput", () => {
     ).toBe(false);
   });
 
-  // Both halves of the shape are load-bearing, exactly as in the backend
-  // classifier: an SDK id prefix on its own is a plausible deliverable name,
-  // and a `tool-outputs/` folder on its own may well be the user's.
-  test("needs the tool-output directory and the SDK id prefix together", () => {
+  // The directory is the entire rule, so the session root is what bounds it:
+  // an SDK-looking name outside that folder is a plausible deliverable, and a
+  // `tool-outputs/` folder deeper in the tree is the user's own.
+  test("bounds the match to a tool-output dir at the session root", () => {
     expect(isInternalToolOutput(generated("mcp_config.json"))).toBe(false);
     expect(isInternalToolOutput(generated("toolu_01ABCdef.json"))).toBe(false);
     expect(
@@ -103,7 +107,15 @@ describe("isInternalToolOutput", () => {
     ).toBe(false);
     expect(
       isInternalToolOutput(
-        generated("data.json", "/sessions/s1/tool-results/data.json"),
+        generated(
+          "toolu_mine.json",
+          "/sessions/s1/my-pipeline/tool-outputs/toolu_mine.json",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isInternalToolOutput(
+        generated("deep.json", "/sessions/s1/tool-outputs/nested/deep.json"),
       ),
     ).toBe(false);
   });

@@ -108,7 +108,11 @@ const SESSION = "session-1";
 // flight or every one of them was filtered out, so a "stays unlabeled"
 // assertion would pass trivially. This probe gives those tests something to
 // await that proves the listing actually arrived.
-function LoadedFilesProbe({ sessionId }: { sessionId: string }) {
+interface Props {
+  sessionId: string;
+}
+
+function LoadedFilesProbe({ sessionId }: Props) {
   const { generated } = useSessionFiles(sessionId);
   return <div data-testid="generated-count">{generated.length}</div>;
 }
@@ -160,6 +164,19 @@ function toolOutputs(): ListFilesResponse["files"] {
       origin: "generated",
       created_at: "2026-05-20T14:00:00Z",
     },
+    // The id an SDK-transport session actually produces: `_execute_tool_sync`
+    // synthesizes `sdk-<uuid>` rather than forwarding the SDK's `toolu_*`, so
+    // this is the shape the default AutoPilot path parks in the directory.
+    {
+      id: "ffffffff-0000-0000-0000-000000000006",
+      name: "sdk-a1b2c3d4e5f6.json",
+      path: "/sessions/session-1/tool-outputs/sdk-a1b2c3d4e5f6.json",
+      mime_type: "application/json",
+      size_bytes: 320,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T16:00:00Z",
+    },
   ];
 }
 
@@ -198,7 +215,7 @@ describe("ContextPanelToggle internal tool output", () => {
             size_bytes: 64,
             metadata: {},
             origin: "generated",
-            created_at: "2026-05-20T15:00:00Z",
+            created_at: "2026-05-20T17:00:00Z",
           },
         ]),
       ),
@@ -206,6 +223,30 @@ describe("ContextPanelToggle internal tool output", () => {
     render(<ContextPanelToggle sessionId={SESSION} />);
 
     expect(await screen.findByLabelText("Open mcp_config.json")).toBeDefined();
+  });
+
+  test("still wears a deliverable under the user's own tool-outputs folder", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(
+        listing([
+          realFile(),
+          ...toolOutputs(),
+          {
+            id: "99999999-0000-0000-0000-000000000007",
+            name: "data.json",
+            path: "/sessions/session-1/my-pipeline/tool-outputs/data.json",
+            mime_type: "application/json",
+            size_bytes: 96,
+            metadata: {},
+            origin: "generated",
+            created_at: "2026-05-20T17:00:00Z",
+          },
+        ]),
+      ),
+    );
+    render(<ContextPanelToggle sessionId={SESSION} />);
+
+    expect(await screen.findByLabelText("Open data.json")).toBeDefined();
   });
 
   test("stays unlabeled when every generated file is an internal tool output", async () => {
@@ -218,7 +259,9 @@ describe("ContextPanelToggle internal tool output", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("generated-count").textContent).toBe("3"),
+      expect(screen.getByTestId("generated-count").textContent).toBe(
+        String(toolOutputs().length),
+      ),
     );
     expect(screen.getByLabelText("Open artifacts")).toBeDefined();
 

@@ -13,14 +13,17 @@ export function isUploadedFile(item: WorkspaceFileItem): boolean {
 
 // Agent SDK tool results that leak into the workspace. `_persist_and_summarize`
 // (backend/copilot/tools/base.py) parks every oversized tool result at
-// `tool-outputs/<tool_call_id>.json` within the session, so the directory
-// segment and the SDK's id prefix together are the whole shape — the same pair
-// the backend classifier requires (`_SDK_TOOL_RESULT_RE` in
-// backend/copilot/context.py). Demanding both keeps a deliverable merely named
-// `mcp_config.json`, or one written under a user's own `tool-outputs/` folder,
-// eligible to stand as the session's latest document.
+// `tool-outputs/<tool_call_id>.json`, and `WorkspaceManager.write_file`
+// session-scopes that, so the directory hangs directly off the session root and
+// nothing user-facing ever writes into it — that segment alone is the whole
+// shape. The id is deliberately not part of the match: `_execute_tool_sync`
+// (backend/copilot/sdk/tool_adapter.py) mints its own `sdk-<uuid>` ids and the
+// baseline transport passes the provider's through, so no one prefix covers
+// them. Anchoring at the session root is what keeps a deliverable under a
+// user's own `my-pipeline/tool-outputs/` folder eligible to stand as the
+// session's latest document.
 const SDK_TOOL_RESULT_PATH =
-  /(?:^|\/)tool-(?:results|outputs)\/(?:toolu|mcp)_[\w-]+\.json$/i;
+  /^\/sessions\/[^/]+\/tool-(?:results|outputs)\/[^/]+$/i;
 
 export function isInternalToolOutput(item: WorkspaceFileItem): boolean {
   if (isUploadedFile(item)) return false;
