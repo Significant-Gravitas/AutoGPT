@@ -932,6 +932,10 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
                 action_verb="running",
             )
+        except Exception:
+            if task_id:
+                await fail_task(user_id, task_id, "The run could not be started.")
+            raise
 
         if task_id:
             await mark_task_working(user_id, task_id)
