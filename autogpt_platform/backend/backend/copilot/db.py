@@ -961,6 +961,22 @@ async def get_sessions_with_pending_question(
     return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
+async def get_session_titles(
+    user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    """Titles for the given sessions of *user_id*, keyed by session id.
+
+    Sessions that no longer exist (or belong to someone else) are simply
+    absent — callers render a fallback label instead.
+    """
+    if not session_ids:
+        return {}
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id}
+    )
+    return {row.id: row.title for row in rows}
+
+
 def _escape_like(value: str) -> str:
     """Escape LIKE wildcards so ``title_contains`` matches literally.
 

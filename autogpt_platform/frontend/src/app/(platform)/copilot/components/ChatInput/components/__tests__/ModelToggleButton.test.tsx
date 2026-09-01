@@ -16,15 +16,22 @@ function render(ui: ReactElement) {
 }
 
 describe("ModelToggleButton", () => {
-  it("shows no text label when model is standard", () => {
+  it("carries no text label — the composer row is icon-only", () => {
     render(<ModelToggleButton model="standard" onToggle={vi.fn()} />);
     expect(screen.queryByText("Standard")).toBeNull();
     expect(screen.queryByText("Advanced")).toBeNull();
   });
 
-  it("shows Advanced label when model is advanced", () => {
+  // Model tier drives cost and quality, and a tooltip never opens on touch,
+  // so the raised tier has to be legible on the glyph itself.
+  it("tints the glyph so the advanced tier is visible without a tooltip", () => {
     render(<ModelToggleButton model="advanced" onToggle={vi.fn()} />);
-    expect(screen.getByText("Advanced")).toBeTruthy();
+    const advanced = screen.getByRole("button").className;
+    expect(advanced).toContain("emerald");
+    cleanup();
+
+    render(<ModelToggleButton model="standard" onToggle={vi.fn()} />);
+    expect(screen.getByRole("button").className).not.toContain("emerald");
   });
 
   it("calls onToggle when clicked", () => {

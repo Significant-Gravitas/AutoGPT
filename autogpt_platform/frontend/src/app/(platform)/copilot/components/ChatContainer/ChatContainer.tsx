@@ -281,6 +281,7 @@ export const ChatContainer = ({
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
                   hasFloatingControls={hasFloatingControls}
+                  canOpenActivity={isArtifactsEnabled}
                   areFilesOpen={areFilesOpen}
                 />
                 {archivedExpertIdentity ? (

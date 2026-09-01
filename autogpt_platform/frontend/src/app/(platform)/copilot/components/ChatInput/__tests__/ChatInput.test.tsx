@@ -117,12 +117,6 @@ vi.mock("../useVoiceRecording", () => ({
 }));
 
 vi.mock("@/components/ai-elements/prompt-input", () => ({
-  PromptInputBody: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PromptInputFooter: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
   PromptInputSubmit: ({
     disabled,
     status,
@@ -166,9 +160,6 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
       />
     );
   },
-  PromptInputTools: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="tools">{children}</div>
-  ),
   PromptInputButton: ({
     children,
     onClick,
@@ -184,15 +175,9 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/input-group", () => ({
-  InputGroup: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode;
-    className?: string;
-  }) => <div className={className}>{children}</div>,
-}));
+// InputGroup/InputGroupAddon render as-is: they are plain presentational
+// wrappers, and stubbing them hid the addon contract (role, data-align,
+// click-to-focus) that the composer relies on.
 
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: ({
@@ -263,6 +248,34 @@ afterEach(() => {
   mockFlagValue = false;
   mockTokenDevtoolEnabled = false;
   mockInitialPrompt = null;
+});
+
+describe("ChatInput composer row", () => {
+  it("keeps the leading and trailing addons on their declared sides", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    const aligns = Array.from(
+      document.querySelectorAll("[data-slot=input-group-addon]"),
+    ).map((addon) => addon.getAttribute("data-align"));
+
+    expect(aligns).toEqual(["inline-start", "inline-end"]);
+  });
+
+  it("focuses the message box when the addon gutter is clicked", () => {
+    render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    // The composer autofocuses on mount, so blur first — otherwise the
+    // assertion below would pass without the addon doing anything.
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    textarea.blur();
+    expect(document.activeElement).not.toBe(textarea);
+
+    fireEvent.click(
+      document.querySelector("[data-slot=input-group-addon]") as Element,
+    );
+
+    expect(document.activeElement).toBe(textarea);
+  });
 });
 
 describe("ChatInput token devtool badge", () => {
@@ -358,18 +371,22 @@ describe("ChatInput mode toggle", () => {
     expect(screen.queryByLabelText(/AI connection:/i)).toBeNull();
   });
 
-  it("shows Thinking label in extended_thinking mode", () => {
+  // The toggles are icon-only in the composer row, so the mode reaches
+  // assistive tech through the label rather than visible text.
+  it("names the switch out of extended_thinking mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "extended_thinking";
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Thinking")).toBeDefined();
+    expect(screen.getByLabelText("Switch to Fast mode")).toBeDefined();
   });
 
-  it("shows Fast label in fast mode", () => {
+  it("names the switch out of fast mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "fast";
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByText("Fast")).toBeDefined();
+    expect(
+      screen.getByLabelText("Switch to Extended Thinking mode"),
+    ).toBeDefined();
   });
 
   it("keeps the mode locked while pinned (building mode)", () => {

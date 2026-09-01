@@ -5377,7 +5377,8 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
+          },
+          "429": { "description": "Rate limit exceeded" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       },
@@ -6161,6 +6162,154 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/credentials": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Credentials",
+        "description": "The integrations this expert is allowed to use.",
+        "operationId": "list_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response List Expert Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Grant Expert Credentials",
+        "operationId": "grant_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCredentialsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Grant Expert Credentials"
+                }
+              }
+            }
+          },
+          "400": { "description": "Unknown credential" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/credentials/{credential_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Revoke Expert Credential",
+        "operationId": "revoke_expert_credential",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Credential Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Revoke Expert Credential"
+                }
               }
             }
           },
@@ -19093,6 +19242,18 @@
         ],
         "title": "Expert"
       },
+      "ExpertCredentialRef": {
+        "properties": {
+          "credential_id": { "type": "string", "title": "Credential Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": { "type": "string", "title": "Title" },
+          "type": { "type": "string", "title": "Type" }
+        },
+        "type": "object",
+        "required": ["credential_id", "provider", "title", "type"],
+        "title": "ExpertCredentialRef",
+        "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
+      },
       "ExpertDetachPreview": {
         "properties": {
           "schedule_names": {
@@ -19602,6 +19763,20 @@
         "type": "object",
         "title": "GlobalSearchResponse",
         "description": "Top-N hits bucketed by item type.\n\nFor a non-empty query this contains hybrid-search results.\nFor an empty query this contains the most-recently-updated items\nper bucket (cached per-user with a short TTL)."
+      },
+      "GrantCredentialsRequest": {
+        "properties": {
+          "credential_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Credential Ids"
+          }
+        },
+        "type": "object",
+        "required": ["credential_ids"],
+        "title": "GrantCredentialsRequest"
       },
       "Graph": {
         "properties": {
@@ -20758,7 +20933,8 @@
             "type": "array",
             "title": "Agents"
           },
-          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" },
+          "recent_work": { "$ref": "#/components/schemas/HomeRecentWork" }
         },
         "type": "object",
         "required": [
@@ -20787,6 +20963,89 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeRecentWork": {
+        "properties": {
+          "groups": {
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkGroup" },
+            "type": "array",
+            "title": "Groups"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "HomeRecentWork"
+      },
+      "HomeRecentWorkGroup": {
+        "properties": {
+          "actor": { "$ref": "#/components/schemas/HomeWorkActor" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "session_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Title"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          },
+          "latest_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest At"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkItem" },
+            "type": "array",
+            "title": "Items"
+          },
+          "more_count": {
+            "type": "integer",
+            "title": "More Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["actor", "latest_at", "items"],
+        "title": "HomeRecentWorkGroup"
+      },
+      "HomeRecentWorkItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "category": {
+            "type": "string",
+            "enum": ["file", "integration", "schedule"],
+            "title": "Category"
+          },
+          "event_type": { "type": "string", "title": "Event Type" },
+          "title": { "type": "string", "title": "Title" },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "file_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "File Id"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          }
+        },
+        "type": "object",
+        "required": ["id", "category", "event_type", "title", "occurred_at"],
+        "title": "HomeRecentWorkItem"
       },
       "HomeTeamSummary": {
         "properties": {
@@ -20867,6 +21126,25 @@
           "daily"
         ],
         "title": "HomeWeekSummary"
+      },
+      "HomeWorkActor": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["expert", "autopilot", "agent"],
+            "title": "Kind"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["kind", "name"],
+        "title": "HomeWorkActor"
       },
       "HostScopedCredentials": {
         "properties": {

@@ -1,20 +1,16 @@
 "use client";
 
-import { useAutoOpenForFiles } from "./useAutoOpenForFiles";
 import { useCollapseContextPanelOnSession } from "./useCollapseContextPanelOnSession";
 
 interface Props {
   sessionId: string | null;
-  /** Auto-opening is desktop-only — on mobile the panel is a full-screen
-   *  sheet, so opening it on session entry would bury the chat. The
-   *  session-entry collapse below must still run on mobile: it is what
-   *  forgets the previous chat's artifact, and the chat column mounts its
-   *  artifacts button on every viewport. */
-  canAutoOpen?: boolean;
 }
 
-export function ContextPanelAutoOpen({ sessionId, canAutoOpen = true }: Props) {
+/** Session-entry reset: forgets the previous chat's artifact so it can't
+ *  bleed into the next chat. The panel no longer auto-opens on entry — the
+ *  top-right artifacts button carries the latest filename instead, so one
+ *  click reaches the same file without hijacking the layout. */
+export function ContextPanelAutoOpen({ sessionId }: Props) {
   useCollapseContextPanelOnSession(sessionId);
-  useAutoOpenForFiles(sessionId, canAutoOpen);
   return null;
 }
