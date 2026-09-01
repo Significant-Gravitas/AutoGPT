@@ -92,6 +92,7 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.delegatedTaskId = None
     return m
 
 

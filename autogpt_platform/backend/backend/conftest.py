@@ -47,22 +47,9 @@ def target_user_id() -> str:
 
 
 async def _create_user_with_loop_retry(user_data: dict) -> None:
-    """Create a user, retrying once on a transient ``Event loop is closed``.
+    from backend.util.test import get_or_create_user_with_retry
 
-    Fire-and-forget background tasks elsewhere can leave the Prisma pool
-    bound to a now-closed test function loop. The first session-loop DB
-    call after that surfaces as ``RuntimeError: Event loop is closed``;
-    the pool re-establishes itself on the retry.
-    """
-    from backend.data.user import get_or_create_user
-    from backend.util.exceptions import DatabaseError
-
-    try:
-        await get_or_create_user(user_data)
-    except DatabaseError as e:
-        if "Event loop is closed" not in str(e):
-            raise
-        await get_or_create_user(user_data)
+    await get_or_create_user_with_retry(user_data)
 
 
 @pytest.fixture

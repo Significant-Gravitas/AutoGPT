@@ -412,22 +412,21 @@ def test_accept_task_409s_when_the_task_is_open(
     assert response.status_code == 409
 
 
-def test_reject_task_opens_a_revision_and_nudges_the_owner_session(
+def test_reject_task_reopens_it_and_nudges_the_owner_session(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    parent = _make_task(status="DONE", acceptance="REJECTED", revision_count=1)
-    revision = _make_task(
-        id="task-2",
-        status="QUEUED",
-        parent_task_id="task-1",
+    reopened = _make_task(
+        status="WORKING",
+        acceptance="PENDING",
+        revision_count=1,
         origin_session_id="worker-session-1",
-        spec="Revise the outcome of task 'Draft the weekly report'.",
+        outcome_summary="First draft used Q2 numbers.",
     )
     mock_reject = mocker.patch(
         "backend.api.features.tasks.routes.task_review.reject_delegated_task",
         new_callable=AsyncMock,
-        return_value=(parent, revision),
+        return_value=(reopened, True),
     )
     mocker.patch(
         "backend.api.features.tasks.routes.queue_user_message",
@@ -444,10 +443,12 @@ def test_reject_task_opens_a_revision_and_nudges_the_owner_session(
     assert response.status_code == 200
     data = response.json()
     assert data["escalated"] is False
-    assert data["revision_task"]["id"] == "task-2"
+    assert data["task"]["id"] == "task-1"
+    assert data["task"]["status"] == "WORKING"
     mock_reject.assert_awaited_once_with(test_user_id, "task-1", note="Use Q3 numbers")
     schedule_kwargs = mock_schedule.await_args.kwargs
     assert schedule_kwargs["session_id"] == "worker-session-1"
+    assert "Use Q3 numbers" in schedule_kwargs["message"]
     assert "report_task" in schedule_kwargs["message"]
 
 
@@ -458,7 +459,7 @@ def test_reject_task_at_the_cap_escalates_without_scheduling(
     mocker.patch(
         "backend.api.features.tasks.routes.task_review.reject_delegated_task",
         new_callable=AsyncMock,
-        return_value=(parent, None),
+        return_value=(parent, False),
     )
     mock_schedule = mocker.patch(
         "backend.api.features.tasks.routes.schedule_chat_turn",

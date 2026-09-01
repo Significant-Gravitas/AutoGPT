@@ -19,14 +19,13 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from backend.api.features.tasks import task_actions, tasks_db
 from backend.api.features.tasks.errors import DelegatedTaskNotFoundError
 from backend.api.features.tasks.routes import router as tasks_router
-from backend.data.user import get_or_create_user
 from backend.util.exceptions import TaskDelegationRefusedError, TaskUpdateConflictError
-from backend.util.test import SpinTestServer
+from backend.util.test import SpinTestServer, get_or_create_user_with_retry
 
 
 async def _create_seed_user():
     suffix = uuid.uuid4().hex[:8]
-    return await get_or_create_user(
+    return await get_or_create_user_with_retry(
         {
             "sub": str(uuid.uuid4()),
             "email": f"task-seed-{suffix}@example.com",

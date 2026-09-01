@@ -19,9 +19,10 @@ from backend.data.execution import (
     get_graph_execution,
 )
 from backend.data.model import _BaseCredentials
-from backend.data.user import create_default_user
+from backend.data.user import User, create_default_user, get_or_create_user
 from backend.executor import ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
+from backend.util.exceptions import DatabaseError
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,22 @@ class SpinTestServer:
         self.agent_server.set_test_dependency_overrides(
             {get_user_id: self.test_get_user_id}
         )
+
+
+async def get_or_create_user_with_retry(user_data: dict) -> User:
+    """Get-or-create a user, retrying once on a transient ``Event loop is closed``.
+
+    Fire-and-forget background tasks elsewhere can leave the Prisma pool bound
+    to a now-closed test function loop. The first session-loop DB call after
+    that surfaces as ``RuntimeError: Event loop is closed``; the pool
+    re-establishes itself on the retry.
+    """
+    try:
+        return await get_or_create_user(user_data)
+    except DatabaseError as e:
+        if "Event loop is closed" not in str(e):
+            raise
+        return await get_or_create_user(user_data)
 
 
 async def wait_execution(

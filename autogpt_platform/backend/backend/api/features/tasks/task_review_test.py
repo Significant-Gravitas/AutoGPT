@@ -13,14 +13,13 @@ import prisma.models
 import pytest
 
 from backend.api.features.tasks import overseer_db, task_review
-from backend.data.user import get_or_create_user
 from backend.util.exceptions import TaskDelegationRefusedError
-from backend.util.test import SpinTestServer
+from backend.util.test import SpinTestServer, get_or_create_user_with_retry
 
 
 async def _create_seed_user():
     suffix = uuid.uuid4().hex[:8]
-    return await get_or_create_user(
+    return await get_or_create_user_with_retry(
         {
             "sub": str(uuid.uuid4()),
             "email": f"task-review-{suffix}@example.com",
