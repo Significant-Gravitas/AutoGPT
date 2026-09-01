@@ -134,6 +134,9 @@ export function useOnboardingPage() {
     useState(true);
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
+  // Set in the same batch as the init effect's `goToStep`, so the first
+  // render where this is true already carries the settled step.
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialise store from URL on mount, clamp ?step= to the highest step
   // the user has actually reached. No-step URL resumes from the highest
@@ -159,27 +162,21 @@ export function useOnboardingPage() {
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
+    setIsInitialized(true);
   }, [isReady, searchParams, goToStep, preparingStep, steps]);
 
-  // Report reaching a step, before the ceiling below is advanced past it.
-  //
-  // `>=` rather than `>` so a genuinely new user's first step still counts
-  // (their ceiling already reads 1). That same comparison discards the render
-  // that lands before the init effect above has clamped `currentStep`: a user
-  // resuming at step 3 transiently holds the store default of 1, and 1 >= 3 is
-  // false, so no spurious Welcome is reported. Going back re-renders an earlier
-  // step below the ceiling and is likewise ignored; the per-step guard in
-  // `trackOnboardingStep` covers coming forward again.
+  // Report the step the wizard is actually showing. `isOnboardingStateLoading`
+  // is the same gate the page renders on — it also covers the window holding
+  // the ONBOARDING_COMPLETE check that redirects finished users to /copilot —
+  // and `isInitialized` means the step above has settled, so a user resuming
+  // at Preparing never reports the store's default of Welcome on the way past.
+  // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
+  // going back and forward reports nothing new.
   useEffect(() => {
-    // Gated on exactly what the page renders on. While `isOnboardingStateLoading`
-    // is true the wizard is still `null`, and that window contains the
-    // ONBOARDING_COMPLETE check that redirects finished users to /copilot — so
-    // reporting on `isReady` alone counted people the UI never showed a step to.
-    if (!isReady || isOnboardingStateLoading) return;
-    if (currentStep < readHighestStep()) return;
+    if (isOnboardingStateLoading || !isInitialized) return;
     const key = onboardingStepKey(steps, currentStep);
     if (key) trackOnboardingStep(key);
-  }, [isReady, isOnboardingStateLoading, currentStep, steps]);
+  }, [isOnboardingStateLoading, isInitialized, currentStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
