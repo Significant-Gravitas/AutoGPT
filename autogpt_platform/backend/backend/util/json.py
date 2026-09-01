@@ -4,6 +4,7 @@ import math
 import re
 from collections import OrderedDict
 from copy import deepcopy
+from enum import Enum
 from threading import Lock
 from typing import Any, Type, TypeVar, overload
 
@@ -137,11 +138,14 @@ def loads(
     return parsed
 
 
-_VALIDATOR_CACHE: OrderedDict[bytes, Any] = OrderedDict()
+_SchemaTypeFingerprint = tuple[tuple[int, type[Any]], ...]
+_SchemaCacheKey = tuple[bytes, _SchemaTypeFingerprint]
+
+_VALIDATOR_CACHE: OrderedDict[_SchemaCacheKey, Any] = OrderedDict()
 # The 565 built-in Block classes can each contribute a normal and dry-run
 # schema; 2,048 covers that working set while leaving room for user schemas.
 _VALIDATOR_CACHE_MAX_ENTRIES = 2048
-_VALIDATOR_CACHE_MAX_KEY_BYTES = 16 * 1024
+_VALIDATOR_CACHE_MAX_KEY_BYTES = 32 * 1024
 _VALIDATOR_CACHE_LOCK = Lock()
 
 
@@ -173,41 +177,54 @@ def _compiled_validator(schema: dict[str, Any]):
     return _remember(key, _new_validator(schema))
 
 
-def _schema_cache_key(schema: dict[str, Any]) -> bytes | None:
+def _schema_cache_key(schema: dict[str, Any]) -> _SchemaCacheKey | None:
     """Return an injective, size-bounded key for safely cacheable schemas."""
-    if not _is_json_native(schema):
-        return None
     try:
         key = orjson.dumps(schema)
     except TypeError:
         return None
     if len(key) > _VALIDATOR_CACHE_MAX_KEY_BYTES:
         return None
-    return key
+    type_fingerprint = _schema_type_fingerprint(schema)
+    if type_fingerprint is None:
+        return None
+    return key, type_fingerprint
 
 
-def _is_json_native(value: Any) -> bool:
-    """Check that orjson preserves every value's type and meaning."""
+def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
+    """Describe string subclasses while rejecting unsafe serialization."""
     pending = [value]
+    seen_containers: set[int] = set()
+    string_subclasses: list[tuple[int, type[Any]]] = []
+    string_position = 0
     while pending:
         current = pending.pop()
         current_type = type(current)
-        if current is None or current_type in (str, int, bool):
+        if current is None or current_type in (int, bool):
+            continue
+        if issubclass(current_type, str):
+            if current_type is not str:
+                if not issubclass(current_type, Enum):
+                    return None
+                string_subclasses.append((string_position, current_type))
+            string_position += 1
             continue
         if current_type is float:
             if not math.isfinite(current):
-                return False
+                return None
             continue
-        if current_type is list:
-            pending.extend(current)
-            continue
+        if current_type not in (list, dict):
+            return None
+        identity = id(current)
+        if identity in seen_containers:
+            return None
+        seen_containers.add(identity)
         if current_type is dict:
-            if any(type(key) is not str for key in current):
-                return False
-            pending.extend(current.values())
-            continue
-        return False
-    return True
+            # orjson.dumps rejects non-exact-string keys before this walk.
+            pending.extend(reversed(tuple(current.values())))
+        else:
+            pending.extend(reversed(current))
+    return tuple(string_subclasses)
 
 
 def _new_validator(schema: dict[str, Any]):
@@ -221,7 +238,7 @@ def _new_validator(schema: dict[str, Any]):
     return validator_cls(schema_copy)
 
 
-def _remember(key: bytes, value: Any) -> Any:
+def _remember(key: _SchemaCacheKey, value: Any) -> Any:
     """Publish and return one value, evicting the least-recently used entry.
 
     The keys are caller-supplied schemas, which on this platform come from

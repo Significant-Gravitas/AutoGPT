@@ -9,6 +9,9 @@ import pytest
 from prisma import Json
 from pydantic import BaseModel
 
+from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.slack.blocks import SendSlackMessageBlock
+from backend.integrations.providers import ProviderName
 from backend.util import json as json_util
 from backend.util.json import SafeJson, validate_with_jsonschema
 
@@ -873,17 +876,40 @@ class TestValidateWithJsonschema:
 
         assert validators[0] is validators[1]
 
+    def test_cached_validator_is_safe_for_concurrent_use(self, monkeypatch):
+        """Concurrent executions can share the published validator safely."""
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        schema = {"type": "object", "properties": {"f": {"type": "integer"}}}
+
+        def validate(index: int) -> bool:
+            value: int | str = index if index % 2 == 0 else str(index)
+            return validate_with_jsonschema(schema, {"f": value}) is None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            outcomes = list(pool.map(validate, range(200)))
+
+        assert outcomes == [index % 2 == 0 for index in range(200)]
+        assert len(cache) == 1
+
     def test_concurrent_eviction_is_atomic(self, monkeypatch):
         """Two full-cache misses cannot evict the same entry concurrently."""
-        cache: OrderedDict[bytes, Any] = OrderedDict({b"old": object()})
+        old_key: json_util._SchemaCacheKey = (b"old", ())
+        new_keys: tuple[json_util._SchemaCacheKey, ...] = (
+            (b"new-a", ()),
+            (b"new-b", ()),
+        )
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict(
+            {old_key: object()}
+        )
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_ENTRIES", 1)
         values = (object(), object())
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = (
-                pool.submit(json_util._remember, b"new-a", values[0]),
-                pool.submit(json_util._remember, b"new-b", values[1]),
+                pool.submit(json_util._remember, new_keys[0], values[0]),
+                pool.submit(json_util._remember, new_keys[1], values[1]),
             )
             published = tuple(future.result() for future in futures)
 
@@ -892,7 +918,7 @@ class TestValidateWithJsonschema:
 
     def test_cache_uses_lru_eviction(self, monkeypatch):
         """A recently reused schema survives the next full-cache insertion."""
-        cache: OrderedDict[bytes, Any] = OrderedDict()
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_ENTRIES", 2)
         schemas = [
@@ -956,7 +982,7 @@ class TestValidateWithJsonschema:
         monkeypatch,
     ):
         """Values that orjson conflates retain jsonschema's exact behavior."""
-        cache: OrderedDict[bytes, Any] = OrderedDict()
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
 
         assert validate_with_jsonschema(
@@ -970,7 +996,7 @@ class TestValidateWithJsonschema:
 
     def test_nonfinite_key_cannot_hide_malformed_schema(self, monkeypatch):
         """A non-finite key cannot collide with an invalid null constraint."""
-        cache: OrderedDict[bytes, Any] = OrderedDict()
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
         nonfinite = {
             "type": "object",
@@ -986,13 +1012,72 @@ class TestValidateWithJsonschema:
             validate_with_jsonschema(malformed, {"value": 5})
         assert not cache
 
+    @pytest.mark.parametrize("block_cls", [SendSlackMessageBlock, OrchestratorBlock])
+    def test_real_credentialed_block_schemas_are_cacheable(
+        self, block_cls, monkeypatch
+    ):
+        """Production schemas with ProviderName values should hit the cache."""
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
+        monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
+        schema = block_cls().input_schema.jsonschema()
+
+        assert json_util._schema_cache_key(schema) is not None
+        first = json_util._compiled_validator(schema)
+        second = json_util._compiled_validator(schema)
+        assert first is second
+        assert len(cache) == 1
+
+    def test_string_subclass_schema_key_stays_injective(self):
+        """A string subclass must not share a key with an exact string."""
+        plain_key = json_util._schema_cache_key({"enum": [ProviderName.SLACK.value]})
+        subclass_key = json_util._schema_cache_key({"enum": [ProviderName.SLACK]})
+
+        assert plain_key is not None
+        assert subclass_key is not None
+        assert subclass_key != plain_key
+
+    def test_unsafe_schema_values_bypass_cache(self):
+        """Only stable JSON primitives and string enums are cacheable."""
+
+        class CustomString(str):
+            pass
+
+        assert json_util._schema_cache_key({"enum": [CustomString("value")]}) is None
+        assert json_util._schema_cache_key(cast(dict[str, Any], {1: "value"})) is None
+        assert json_util._schema_cache_key({"minimum": 1.5}) is not None
+
+    def test_excessively_deep_schema_bypasses_cache(self):
+        """The serializer's recursion bound remains a graceful cache bypass."""
+        schema: dict[str, Any] = {}
+        current = schema
+        for _ in range(300):
+            child: dict[str, Any] = {}
+            current["nested"] = child
+            current = child
+
+        assert json_util._schema_cache_key(schema) is None
+
+    def test_reused_container_bypasses_cache(self):
+        """Repeated identity is rejected so cyclic schemas cannot hang the walk."""
+        shared = {"type": "string"}
+        schema = {"allOf": [shared, shared]}
+
+        assert json_util._schema_cache_key(schema) is None
+
+    def test_cyclic_schema_bypasses_cache(self):
+        """A cyclic schema is rejected without an unbounded admission walk."""
+        schema: dict[str, Any] = {"type": "object"}
+        schema["self"] = schema
+
+        assert json_util._schema_cache_key(schema) is None
+
     def test_oversized_schema_is_not_retained(self, monkeypatch):
         """Caller-controlled schemas above the key budget compile uncached."""
-        cache: OrderedDict[bytes, Any] = OrderedDict()
+        cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
         schema = {
             "type": "object",
-            "description": "x" * 20_000,
+            "description": "x" * 40_000,
             "properties": {"value": {"type": "string"}},
         }
 
