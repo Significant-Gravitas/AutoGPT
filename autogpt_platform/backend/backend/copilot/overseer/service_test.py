@@ -28,8 +28,11 @@ def _task(
     origin_session_id: str | None = "sess-1",
     owner: TaskExpertRef | None = None,
     created_by_type: str = "USER",
+    naive_updated: bool = False,
 ) -> DelegatedTask:
     updated = _NOW - timedelta(minutes=updated_minutes_ago)
+    if naive_updated:
+        updated = updated.replace(tzinfo=None)
     return DelegatedTask(
         id=task_id,
         title="Draft the weekly report",
@@ -229,6 +232,29 @@ async def test_week_old_waiting_task_is_stamped_stale():
 
     assert summary["stale"] == 1
     client.mark_task_stale.assert_awaited_once_with("user-1", "task-1", stale_at=_NOW)
+
+
+@pytest.mark.asyncio
+async def test_naive_updated_at_does_not_crash_the_pass():
+    # Prisma can hand back a timezone-naive ``updated_at``; the pass must
+    # normalize it rather than raise TypeError on the comparison.
+    client = _client(
+        [
+            _task(updated_minutes_ago=20, naive_updated=True),
+            _task(
+                task_id="task-2",
+                status="WAITING_USER",
+                updated_minutes_ago=8 * 24 * 60,
+                naive_updated=True,
+            ),
+        ],
+        running={"task-1": False},
+    )
+    with _patched(client):
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 1
+    assert summary["stale"] == 1
 
 
 @pytest.mark.asyncio
