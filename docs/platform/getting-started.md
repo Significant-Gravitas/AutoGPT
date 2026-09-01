@@ -127,7 +127,7 @@ Inside the `autogpt_platform` directory, you can use:
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
 | `make init-env`        | Create missing `.env` files from `.env.default` (`autogpt_platform`, `backend`, and `frontend`) |
-| `make start-core`      | Start just the core services (Postgres, Redis, RabbitMQ) in background        |
+| `make start-core`      | Start dependency services (PostgreSQL, cache cluster, RabbitMQ, FalkorDB, ClamAV) and run migrations, in background |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
