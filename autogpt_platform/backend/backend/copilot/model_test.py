@@ -14,10 +14,8 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from prisma.models import Expert
 from pytest_mock import MockerFixture
-from redis.exceptions import RedisError
-
 from backend.data.redis_client import get_redis_async
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotFoundError, RedisError
 
 from .model import (
     ChatMessage,

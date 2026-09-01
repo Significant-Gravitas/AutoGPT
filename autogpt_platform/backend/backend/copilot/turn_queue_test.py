@@ -50,6 +50,7 @@ def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
     s.session_id = session_id
     s.title = title
     s.updated_at = datetime.now(timezone.utc)
+    s.metadata.llm_auth_provider = "platform"
     return s
 
 
