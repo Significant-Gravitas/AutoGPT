@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from collections.abc import AsyncGenerator
-from weakref import WeakKeyDictionary
+from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from dotenv import load_dotenv
 from redis import Redis
@@ -165,29 +165,43 @@ _async_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedisClient] =
 _async_client_finalizers: WeakKeyDictionary[
     asyncio.AbstractEventLoop, AsyncGenerator[None, None]
 ] = WeakKeyDictionary()
+_async_client_locks: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, ReferenceType[asyncio.Lock]
+] = WeakKeyDictionary()
+
+
+def _get_async_client_lock(loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
+    lock_ref = _async_client_locks.get(loop)
+    lock = lock_ref() if lock_ref is not None else None
+    if lock is None:
+        lock = asyncio.Lock()
+        _async_client_locks[loop] = ref(lock)
+    return lock
 
 
 @conn_retry("AsyncRedis", "Releasing connection")
 async def disconnect_async():
     loop = asyncio.get_running_loop()
-    client = _async_clients.pop(loop, None)
-    finalizer = _async_client_finalizers.pop(loop, None)
-    if finalizer is not None:
-        await finalizer.aclose()
-    elif client is not None:
-        await client.close()
+    async with _get_async_client_lock(loop):
+        client = _async_clients.pop(loop, None)
+        finalizer = _async_client_finalizers.pop(loop, None)
+        if finalizer is not None:
+            await finalizer.aclose()
+        elif client is not None:
+            await client.close()
 
 
 async def get_redis_async() -> AsyncRedisClient:
     loop = asyncio.get_running_loop()
-    client = _async_clients.get(loop)
-    if client is None:
-        client = await connect_async()
-        finalizer = _close_async_client_on_loop_shutdown(client)
-        await anext(finalizer)
-        _async_clients[loop] = client
-        _async_client_finalizers[loop] = finalizer
-    return client
+    async with _get_async_client_lock(loop):
+        client = _async_clients.get(loop)
+        if client is None:
+            client = await connect_async()
+            finalizer = _close_async_client_on_loop_shutdown(client)
+            await anext(finalizer)
+            _async_clients[loop] = client
+            _async_client_finalizers[loop] = finalizer
+        return client
 
 
 async def _close_async_client_on_loop_shutdown(
@@ -200,7 +214,7 @@ async def _close_async_client_on_loop_shutdown(
         loop = asyncio.get_running_loop()
         if _async_clients.get(loop) is client:
             _async_clients.pop(loop, None)
-        _async_client_finalizers.pop(loop, None)
+            _async_client_finalizers.pop(loop, None)
         await client.close()
 
 

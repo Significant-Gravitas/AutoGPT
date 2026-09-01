@@ -53,8 +53,10 @@ class SpinTestServer:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await redis_client.disconnect_async()
-        await db.disconnect()
+        try:
+            await redis_client.disconnect_async()
+        finally:
+            await db.disconnect()
 
         self.scheduler.__exit__(exc_type, exc_val, exc_tb)
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
