@@ -136,7 +136,11 @@ const TASK_STATUS: Record<
 > = {
   completed: RUN_STATUS.COMPLETED,
   error: RUN_STATUS.FAILED,
-  cancelled: { icon: CancelCircleIcon, className: "text-zinc-400", spin: false },
+  cancelled: {
+    icon: CancelCircleIcon,
+    className: "text-zinc-400",
+    spin: false,
+  },
   running: RUN_STATUS.RUNNING,
   queued: RUN_STATUS.QUEUED,
 };
