@@ -3,14 +3,14 @@
 Blocks that read All Quiet incidents — fetching a single incident by ID, or searching the incident list by status, severity, team, text or time range.
 <!-- END MANUAL -->
 
-## All Quiet Get Incident
+## AllQuiet Get Incident
 
 ### What it is
 Fetches a single All Quiet incident by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Fetches one incident by ID and flattens its current status and severity onto the result — All Quiet stores those at the head of the incident's event timeline rather than on the incident itself. `allowed_intents` reports which transitions the incident will currently accept. Turning on `include_markdown` makes a second call for All Quiet's rendered markdown report, which bundles the attributes and full timeline into prose that is well suited to feeding an LLM.
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,19 +34,19 @@ Fetches one incident by ID and flattens its current status and severity onto the
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A triage agent receives an incident ID from the trigger block, fetches it with `include_markdown` enabled, and feeds the markdown report — attributes, timeline and all — to an LLM to draft a first-response summary and suggest a likely cause.
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
 
-## All Quiet List Incidents
+## AllQuiet List Incidents
 
 ### What it is
 Searches All Quiet incidents by status, severity, team or text
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Searches the incident list with All Quiet's server-side filters: status, severity, teams, a free-text title match, an unattended flag, and a created-at range. Results are paginated (`limit`/`offset`) and `has_more` reports whether further pages exist. Alongside the full list the block emits each incident individually, plus a list of bare `incident_ids` that feeds straight into Get Incident or Update Incident.
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -79,7 +79,7 @@ Searches the incident list with All Quiet's server-side filters: status, severit
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-A morning-standup agent lists every incident created in the last 24 hours, groups them by severity, and posts a digest — or, filtering on `unattended`, chases anything still open that nobody has picked up.
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
