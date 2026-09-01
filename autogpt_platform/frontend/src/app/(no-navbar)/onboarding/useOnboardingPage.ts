@@ -134,9 +134,11 @@ export function useOnboardingPage() {
     useState(true);
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
-  // Set in the same batch as the init effect's `goToStep`, so the first
-  // render where this is true already carries the settled step.
-  const [isInitialized, setIsInitialized] = useState(false);
+  // Distinct from the `hasInitialized` ref above: that guards init running
+  // once, this says the chosen step has landed. Set in the same batch as the
+  // init effect's `goToStep`, so the first render where it is true already
+  // carries the settled step.
+  const [isStepSettled, setIsStepSettled] = useState(false);
 
   // Initialise store from URL on mount, clamp ?step= to the highest step
   // the user has actually reached. No-step URL resumes from the highest
@@ -162,21 +164,21 @@ export function useOnboardingPage() {
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-    setIsInitialized(true);
+    setIsStepSettled(true);
   }, [isReady, searchParams, goToStep, preparingStep, steps]);
 
   // Report the step the wizard is actually showing. `isOnboardingStateLoading`
   // is the same gate the page renders on — it also covers the window holding
   // the ONBOARDING_COMPLETE check that redirects finished users to /copilot —
-  // and `isInitialized` means the step above has settled, so a user resuming
+  // and `isStepSettled` means the step above has landed, so a user resuming
   // at Preparing never reports the store's default of Welcome on the way past.
   // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
   // going back and forward reports nothing new.
   useEffect(() => {
-    if (isOnboardingStateLoading || !isInitialized) return;
+    if (isOnboardingStateLoading || !isStepSettled) return;
     const key = onboardingStepKey(steps, currentStep);
     if (key) trackOnboardingStep(key);
-  }, [isOnboardingStateLoading, isInitialized, currentStep, steps]);
+  }, [isOnboardingStateLoading, isStepSettled, currentStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
