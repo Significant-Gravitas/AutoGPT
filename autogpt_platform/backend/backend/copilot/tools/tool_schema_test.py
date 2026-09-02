@@ -112,14 +112,14 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-#
-# NOT bumped for the spawn tools' ``grant_tools`` parameter (3 schemas), which
-# is why its description in ``copilot/tree.py`` is deliberately one short line:
-# the registry measures 60840 chars, ~160 headroom. That is thin — under ~0.3%
-# — so the next tool or wording change here should bump the budget rather than
-# shave prose, and be aware CI has historically measured a few hundred chars
-# above local because env-flagged tools register there and not here.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 62_000 for the spawn tools' ``grant_tools`` parameter
+# (3 schemas). Merged registry measures 60982 chars; ~1k headroom, in line with
+# the earlier bumps. Measure the way this test does — ``json.dumps`` over the
+# whole list — not by summing per-tool lengths: that misses ~142 chars of array
+# separators and overstates headroom, which is how an earlier note here came to
+# claim 160 when the real figure was 18. CI also measures a few hundred chars
+# above local, because env-flagged tools register there and not here.
+_CHAR_BUDGET = 62_000
 
 
 @pytest.fixture(scope="module")
