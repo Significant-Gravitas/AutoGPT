@@ -27,7 +27,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 });
 
 const baseProps = {
-  inputLayoutId: "test-layout",
   isCreatingSession: false,
   onCreateSession: vi.fn(),
   onSend: vi.fn(),
