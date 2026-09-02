@@ -1481,10 +1481,15 @@ async def stream_chat_post(
         ensure_task_overseer_scheduled(user_id),
         name=f"task-overseer-register-{user_id[:12]}",
     )
-    if session.metadata.delegated_task_id:
+
+    def record_task_amendment() -> None:
         # A user message into a session working a delegated task is a
         # mid-task instruction: record it on the task's timeline so the
-        # next model turn (and the drawer) can see it.
+        # next model turn (and the drawer) can see it. Called only once
+        # the message is admitted (queued or scheduled), so a retried
+        # request that deduplicates never appends the amendment twice.
+        if not session.metadata.delegated_task_id:
+            return
         spawn_background_task(
             record_mid_task_instruction(user_id, session, request.message),
             name=f"task-amendment-{session_id[:12]}",
@@ -1565,6 +1570,7 @@ async def stream_chat_post(
                 context=request.context,
                 file_ids=request.file_ids,
             )
+            record_task_amendment()
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
             if exc.status_code != 409:
@@ -1698,6 +1704,7 @@ async def stream_chat_post(
                 status_code=429,
                 detail=inflight_turn_limit_message(inflight_cap),
             )
+        record_task_amendment()
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
@@ -1709,6 +1716,7 @@ async def stream_chat_post(
             f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
         )
     else:
+        record_task_amendment()
         log_meta["turn_id"] = turn_id
         # First chunk on the turn stream: gives the SSE subscriber an
         # immediate status to render while the turn waits for an executor

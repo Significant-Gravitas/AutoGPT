@@ -25,6 +25,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    DelegatedTask,
     Expert,
     LibraryAgent,
     SharedExecutionFile,
@@ -951,6 +952,14 @@ async def create_graph_execution(
         )
         if expert is None:
             raise ValueError(f"Expert #{expert_id} is unavailable")
+
+    # Same rule for the task receipt: never link a run to another user's task.
+    if delegated_task_id:
+        task = await DelegatedTask.prisma().find_first(
+            where={"id": delegated_task_id, "userId": user_id}
+        )
+        if task is None:
+            raise ValueError(f"Delegated task #{delegated_task_id} is unavailable")
 
     result = await AgentGraphExecution.prisma().create(
         data={

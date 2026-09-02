@@ -254,9 +254,16 @@ async def _finish_hire(
     a fresh hire installs the template's preloads, a revived hire resumes
     its paused schedules."""
     if state == "created":
-        failed = await experts_db._install_preloads(
-            expert_row.id, user_id, template.Workflows or []
-        )
+        try:
+            failed = await experts_db._install_preloads(
+                expert_row.id, user_id, template.Workflows or []
+            )
+        except Exception:
+            logger.exception(
+                f"Office hire: failed to install preloads for expert "
+                f"#{expert_row.id}"
+            )
+            return
         if failed:
             logger.warning(
                 f"Office hire: {len(failed)} preload(s) failed for expert "

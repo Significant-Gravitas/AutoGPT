@@ -1,8 +1,6 @@
 "use client";
 
-import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { okData } from "@/app/api/helpers";
 import {
   formatFileSize,
   getFileDownloadUrl,
@@ -10,6 +8,7 @@ import {
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { File02Icon } from "@hugeicons/core-free-icons";
 import { TaskCard } from "./TaskCard";
+import { useTaskFilesCard } from "./useTaskFilesCard";
 
 interface Props {
   sessionId: string | null;
@@ -19,17 +18,7 @@ interface Props {
  *  disappears entirely (rather than showing an empty shell) when the task has
  *  no session or the session produced nothing. */
 export function TaskFilesCard({ sessionId }: Props) {
-  const filesQuery = useListWorkspaceFiles(
-    { session_id: sessionId },
-    {
-      query: {
-        select: (res) => okData(res) ?? null,
-        enabled: Boolean(sessionId),
-      },
-    },
-  );
-
-  const files = filesQuery.data?.files ?? [];
+  const { files } = useTaskFilesCard(sessionId);
   if (files.length === 0) return null;
 
   return (

@@ -32,7 +32,7 @@ export function PodBoard({
     );
   }
 
-  if (podGroups.length === 0) {
+  if (podGroups.length === 0 && ungroupedExperts.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-[1.75rem] border border-dashed border-zinc-300 bg-white p-10 text-center">
         <Text variant="large-medium">No pods yet</Text>

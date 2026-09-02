@@ -106,6 +106,17 @@ async def test_budget_cap_at_exact_cap_is_enforced(server: SpinTestServer):
     assert row.status == prisma.enums.DelegatedTaskStatus.FAILED
 
 
+async def test_zero_cap_is_a_zero_credit_limit(server: SpinTestServer):
+    user = await _create_seed_user()
+    expert = await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.AUTONOMOUS)
+    task = await _seed_dream_task(user.id, expert.id, spend=0)
+
+    assert await enforce_task_budget_caps(user.id, 0) == 1
+    row = await prisma.models.DelegatedTask.prisma().find_unique(where={"id": task.id})
+    assert row is not None
+    assert row.status == prisma.enums.DelegatedTaskStatus.FAILED
+
+
 async def test_suggest_expert_gets_proposal_that_never_executes(
     server: SpinTestServer,
 ):

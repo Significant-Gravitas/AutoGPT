@@ -240,11 +240,14 @@ async def create_delegated_task(
             "ancestorExpertIds": ancestors,
             "parentTaskId": parent_task_id,
             "rootTaskId": root_task_id,
-        }
+        },
+        include=_TASK_INCLUDE,
     )
     if root_task_id is None:
         stamped = await prisma.models.DelegatedTask.prisma().update(
-            where={"id": row.id}, data={"rootTaskId": row.id}
+            where={"id": row.id},
+            data={"rootTaskId": row.id},
+            include=_TASK_INCLUDE,
         )
         return _to_model(stamped or row, {})
     return _to_model(row, {})

@@ -4,7 +4,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type { ReactNode } from "react";
 import type { PauseItem } from "./helpers";
 
-type PreviewProps = {
+interface PreviewProps {
   expertName: string;
   automationLine: string;
   reassignLine: string | null;
@@ -13,7 +13,7 @@ type PreviewProps = {
   isError: boolean;
   isReady: boolean;
   onRetry: () => unknown;
-};
+}
 
 type FooterProps = {
   expertName: string;

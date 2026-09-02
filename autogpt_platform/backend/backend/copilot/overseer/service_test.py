@@ -126,6 +126,20 @@ async def test_first_stall_records_retry_and_nudges_the_session():
 
 
 @pytest.mark.asyncio
+async def test_task_closed_under_the_pass_is_not_dispatched():
+    """The task closed between list_open_tasks and the retry — the amendment
+    returns None, so nothing gets nudged or kicked off and nothing counts."""
+    client = _client([_task(updated_minutes_ago=20)], running={"task-1": False})
+    client.append_task_amendment = AsyncMock(return_value=None)
+    with _patched(client) as mocks:
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 0
+    mocks["schedule"].assert_not_awaited()
+    mocks["kickoff"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_queued_task_with_no_session_gets_a_worker():
     """An intro task from a hire lands QUEUED with nothing driving it. The
     retry has no session to nudge, so it opens one for the owner instead."""

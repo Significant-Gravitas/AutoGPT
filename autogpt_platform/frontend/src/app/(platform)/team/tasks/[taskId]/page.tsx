@@ -22,7 +22,8 @@ export default function TaskDetailPage() {
   const expertsFlag = useFlagStatus(Flag.HIRE_EXPERTS);
   const taskManagementFlag = useFlagStatus(Flag.EXPERT_TASK_MANAGEMENT);
   const ready = expertsFlag.ready && taskManagementFlag.ready;
-  const enabled = Boolean(expertsFlag.enabled) && Boolean(taskManagementFlag.enabled);
+  const enabled =
+    Boolean(expertsFlag.enabled) && Boolean(taskManagementFlag.enabled);
   const { task, children, isLoading, isError, refetch, cancel, isCancelling } =
     useTaskDetailPage({ taskId, enabled: enabled && ready });
 

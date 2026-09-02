@@ -128,14 +128,28 @@ describe("TeamPage tabs", () => {
     expect(screen.queryByRole("heading", { name: "Growth" })).toBeNull();
   });
 
-  test("Pod board tells you how to start when there are no pods", async () => {
+  test("Pod board tells you how to start when there are no pods and no experts", async () => {
+    const user = userEvent.setup();
+    server.use(getListExpertsMockHandler([]));
+
+    render(<TeamPage />);
+    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
+
+    expect(await screen.findByText("No pods yet")).toBeDefined();
+  });
+
+  test("Pod board still shows ungrouped experts when there are no pods", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     await user.click(await screen.findByRole("tab", { name: "Pod board" }));
 
-    expect(await screen.findByText("No pods yet")).toBeDefined();
+    expect(
+      await screen.findByRole("heading", { name: "Ungrouped" }),
+    ).toBeDefined();
+    expect(screen.getByText("Maria")).toBeDefined();
+    expect(screen.queryByText("No pods yet")).toBeNull();
   });
 
   test("All tasks merges runs from every hired expert", async () => {

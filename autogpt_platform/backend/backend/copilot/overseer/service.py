@@ -79,8 +79,8 @@ async def run_overseer_pass(
                 )
                 summary["failed"] += 1
             else:
-                await _retry_task(client, user_id, task)
-                summary["retried"] += 1
+                if await _retry_task(client, user_id, task):
+                    summary["retried"] += 1
 
         for task in tasks:
             if (
@@ -137,7 +137,7 @@ def _can_stall(task: DelegatedTask) -> bool:
     return task.status == "QUEUED" and task.created_by_type != "DREAM"
 
 
-async def _retry_task(client, user_id: str, task: DelegatedTask) -> None:
+async def _retry_task(client, user_id: str, task: DelegatedTask) -> bool:
     """First stall: record the retry on the timeline, then nudge the working
     session back into motion. The amendment write bumps ``updatedAt``, so
     the next stall check measures from the retry — a second silent window
@@ -145,10 +145,13 @@ async def _retry_task(client, user_id: str, task: DelegatedTask) -> None:
 
     A task with no session never got a worker at all (its kickoff failed, or
     it was opened outside a conversation), so the retry opens one instead of
-    nudging."""
-    await client.append_task_amendment(
+    nudging. Returns False when the task closed under us — the amendment was
+    not saved, so nothing gets dispatched for it either."""
+    amended = await client.append_task_amendment(
         user_id, task.id, note=_RETRY_NOTE, by="overseer", kind="retry"
     )
+    if amended is None:
+        return False
     if task.origin_session_id is None:
         await start_task_in_new_session(
             user_id,
@@ -156,7 +159,7 @@ async def _retry_task(client, user_id: str, task: DelegatedTask) -> None:
             title=task.title,
             expert_id=task.owner.id if task.owner else None,
         )
-        return
+        return True
     message = (
         f"[Overseer] Task '{task.title}' (task_id: {task.id}) has stalled — "
         "no progress for 15 minutes and no run in flight. Pick it back up "
@@ -182,3 +185,4 @@ async def _retry_task(client, user_id: str, task: DelegatedTask) -> None:
             task.id,
             exc_info=True,
         )
+    return True

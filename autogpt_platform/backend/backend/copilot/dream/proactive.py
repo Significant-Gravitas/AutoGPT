@@ -72,9 +72,11 @@ async def enforce_task_budget_caps(user_id: str, cap: int) -> int:
 
     ``spendTotal`` is reconciled when a task's run settles, so this sweep is
     the hard stop that keeps a dream-created task from queueing further paid
-    work once its budget is gone. Returns the number of tasks stopped.
+    work once its budget is gone. Returns the number of tasks stopped. The
+    config floors the cap at zero, which is a real zero-credit limit — any
+    spend at all stops the task.
     """
-    if cap <= 0:
+    if cap < 0:
         return 0
     stopped = await prisma.models.DelegatedTask.prisma().update_many(
         where={

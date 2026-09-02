@@ -57,6 +57,21 @@ async def _seed_task(
     )
 
 
+async def _seed_running_execution(
+    user_id: str, task_id: str
+) -> prisma.models.AgentGraphExecution:
+    graph = await prisma.models.AgentGraph.prisma().create(data={"userId": user_id})
+    return await prisma.models.AgentGraphExecution.prisma().create(
+        data={
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "userId": user_id,
+            "executionStatus": prisma.enums.AgentExecutionStatus.RUNNING,
+            "delegatedTaskId": task_id,
+        }
+    )
+
+
 # ─── tenancy ───────────────────────────────────────────────────────────
 
 
@@ -260,14 +275,16 @@ async def test_cancel_stops_only_the_callers_running_executions(
     """The stop call is what actually reaches into another tenant's compute,
     so the execution query has to be user-scoped too, not just task-scoped."""
     owner = await _create_seed_user()
+    intruder = await _create_seed_user()
     task = await _seed_task(owner.id)
+    owner_execution = await _seed_running_execution(owner.id, task.id)
+    await _seed_running_execution(intruder.id, task.id)
 
     stop = AsyncMock()
     with patch.object(tasks_db.execution_utils, "stop_graph_execution", stop):
         await tasks_db.cancel_task(owner.id, task.id)
 
-    for call in stop.await_args_list:
-        assert call.kwargs["user_id"] == owner.id
+    stop.assert_awaited_once_with(graph_exec_id=owner_execution.id, user_id=owner.id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -278,15 +295,17 @@ async def test_cancel_survives_an_execution_that_refuses_to_stop(
     stop failure must not roll the cancel back or surface as a 500."""
     owner = await _create_seed_user()
     task = await _seed_task(owner.id)
+    await _seed_running_execution(owner.id, task.id)
 
     with patch.object(
         tasks_db.execution_utils,
         "stop_graph_execution",
         new_callable=AsyncMock,
         side_effect=RuntimeError("executor unreachable"),
-    ):
+    ) as stop:
         detail = await tasks_db.cancel_task(owner.id, task.id)
 
+    stop.assert_awaited()
     assert detail.task.status == "CANCELLED"
 
 
@@ -493,6 +512,43 @@ async def test_escalate_then_answer_round_trip(server: SpinTestServer):
     assert worker_session_id == "worker-session-1"
     assert task.amendments[-1].kind == "answer"
     assert task.amendments[-1].note == "Staging"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_answer_after_handoff_does_not_resume_the_old_owner_session(
+    server: SpinTestServer,
+):
+    """A handoff while WAITING_USER moves ownership; the answer must not be
+    delivered into the previous owner's escalating session."""
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    escalated = await task_actions.escalate_delegated_task(
+        owner.id,
+        created.id,
+        question="Ship to staging or prod?",
+        session_id="alice-session",
+    )
+    assert escalated.status == "WAITING_USER"
+
+    handed = await task_actions.handoff_delegated_task(
+        owner.id,
+        created.id,
+        to_expert_id=bob.id,
+        note="Bob owns deploys.",
+        expected_updated_at=escalated.updated_at,
+    )
+    assert handed.status == "WAITING_USER"
+
+    task, worker_session_id = await task_actions.answer_delegated_task(
+        owner.id, created.id, answer="Staging"
+    )
+    assert task.status == "WORKING"
+    assert worker_session_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

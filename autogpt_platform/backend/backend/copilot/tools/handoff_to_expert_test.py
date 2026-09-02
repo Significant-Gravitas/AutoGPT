@@ -623,13 +623,13 @@ class TestFailedTransfer:
 
 class TestGating:
     def test_handoff_is_hidden_in_autopilot_sessions(self) -> None:
-        assert TOOL_GROUPS["handoff_to_expert"] == "experts"
+        assert TOOL_GROUPS["handoff_to_expert"] == "expert_delegation"
         names = {t["function"]["name"] for t in get_available_tools()}
         # What survives the filter, NOT what it hid — naming this `hidden`
         # invites "fixing" the assertion below into its own inverse.
         remaining = {
             t["function"]["name"]
-            for t in get_available_tools(disabled_groups=["experts"])
+            for t in get_available_tools(disabled_groups=["expert_delegation"])
         }
         assert "handoff_to_expert" in names
         assert "handoff_to_expert" not in remaining

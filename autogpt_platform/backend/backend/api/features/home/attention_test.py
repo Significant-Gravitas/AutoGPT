@@ -471,6 +471,33 @@ def test_task_escalation_becomes_an_answerable_card() -> None:
     assert item.primary_action.href == "/team?task=task-1"
 
 
+def test_stale_task_with_escalation_yields_one_card_and_escalation_wins() -> None:
+    """A task that is both stale and escalated must not appear twice — the
+    escalation card is the actionable one, so it suppresses the stale nag.
+    A stale task without an escalation still gets its own card."""
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[],
+        schedules=[],
+        credits_balance=100,
+        tasks=[
+            _waiting_task(stale_at=NOW - timedelta(days=1)),
+            _waiting_task(
+                id="task-2",
+                root_task_id="task-2",
+                amendments=[],
+                stale_at=NOW - timedelta(days=2),
+            ),
+        ],
+    )
+
+    assert [(item.kind, item.task_id) for item in items] == [
+        ("task_escalation", "task-1"),
+        ("task_stale", "task-2"),
+    ]
+
+
 def test_non_waiting_and_question_less_tasks_render_no_card() -> None:
     """A WORKING task has nothing to answer, and a WAITING_USER row without
     an escalation entry (legacy or hand-edited) has nothing to render."""

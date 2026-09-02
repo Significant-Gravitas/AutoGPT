@@ -10,8 +10,9 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
-const { expertsFlag } = vi.hoisted(() => ({
+const { expertsFlag, taskManagementFlag } = vi.hoisted(() => ({
   expertsFlag: { enabled: true },
+  taskManagementFlag: { enabled: true },
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
@@ -25,7 +26,8 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
       flag === "hire-experts"
         ? { enabled: expertsFlag.enabled, ready: true }
         : actual.useFlagStatus(flag as never),
-    useGetFlag: () => true,
+    useGetFlag: (flag: string) =>
+      flag === "expert-task-management" ? taskManagementFlag.enabled : true,
   };
 });
 
@@ -106,6 +108,7 @@ const doneTask = makeTask({
 
 beforeEach(() => {
   expertsFlag.enabled = true;
+  taskManagementFlag.enabled = true;
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
@@ -114,6 +117,7 @@ beforeEach(() => {
 
 afterEach(() => {
   expertsFlag.enabled = true;
+  taskManagementFlag.enabled = true;
 });
 
 async function openTasksTab() {
@@ -190,6 +194,16 @@ describe("Expert Tasks tab", () => {
     const hrefs = rows.map((row) => row.getAttribute("href")).filter(Boolean);
     expect(hrefs).toContain("/team/tasks/task-active");
     expect(hrefs).toContain("/team/tasks/task-done");
+  });
+
+  test("the Tasks tab disappears when task management is off, page stays", async () => {
+    taskManagementFlag.enabled = false;
+    server.use(getListTasksMockHandler([]));
+
+    render(<ExpertDetailPage />);
+
+    expect(await screen.findByRole("tab", { name: "Basics" })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "Tasks" })).toBeNull();
   });
 
   test("the whole page, tab included, is gone when the experts flag is off", () => {

@@ -37,16 +37,23 @@ def compose_attention_items(
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
     )
+    escalations = _open_escalations(tasks or [])
     items.extend(
-        _escalation_attention(task, escalation)
-        for task, escalation in _open_escalations(tasks or [])
+        _escalation_attention(task, escalation) for task, escalation in escalations
     )
     items.extend(
         _failed_task_attention(task)
         for task in failed_tasks or []
         if _failed_after_retry(task)
     )
-    items.extend(_stale_task_attention(task) for task in tasks or [] if task.stale_at)
+    # A stale task with a live escalation already has an actionable card
+    # above — a second "still waiting" row for the same task is just noise.
+    escalated_ids = {task.id for task, _ in escalations}
+    items.extend(
+        _stale_task_attention(task)
+        for task in tasks or []
+        if task.stale_at and task.id not in escalated_ids
+    )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
     return sorted(items, key=_attention_sort_key)

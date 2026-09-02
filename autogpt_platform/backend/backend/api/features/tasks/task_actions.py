@@ -266,7 +266,19 @@ def _latest_escalation_session(row: prisma.models.DelegatedTask) -> str | None:
     if not isinstance(row.amendments, list):
         return None
     for entry in reversed(row.amendments):
-        if isinstance(entry, dict) and entry.get("kind") == "escalation":
+        if not isinstance(entry, dict):
+            continue
+        # A handoff after the escalation moved ownership: the escalating
+        # session belongs to the previous owner, and delivering the answer
+        # there would resume the wrong expert. Degrade to timeline-only.
+        if entry.get("kind") == "handoff":
+            return None
+        if entry.get("kind") == "escalation":
+            # A manager escalation can land after the user one; the answer
+            # resumes only the session that asked the user. Rows written
+            # before ``target`` existed default to "user".
+            if (entry.get("target") or "user") != "user":
+                continue
             session_id = entry.get("session_id")
             return session_id if isinstance(session_id, str) else None
     return None

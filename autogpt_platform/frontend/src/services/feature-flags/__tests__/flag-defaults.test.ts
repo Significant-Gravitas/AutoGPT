@@ -69,7 +69,9 @@ describe("expert flag default fails closed", () => {
   });
 
   it("resolves EXPERT_TASK_MANAGEMENT to false when LaunchDarkly has not answered, keeping the task-receipt surfaces hidden", () => {
-    const { result } = renderHook(() => useGetFlag(Flag.EXPERT_TASK_MANAGEMENT));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.EXPERT_TASK_MANAGEMENT),
+    );
     expect(result.current).toBe(false);
   });
 });

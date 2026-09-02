@@ -37,13 +37,12 @@ export function ProactiveSection() {
   );
 }
 
-function ProactiveRow({
-  task,
-  kind,
-}: {
+interface ProactiveRowProps {
   task: DelegatedTask;
   kind: "proposal" | "outcome";
-}) {
+}
+
+function ProactiveRow({ task, kind }: ProactiveRowProps) {
   return (
     <Link
       href={`/team/tasks/${task.id}`}

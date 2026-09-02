@@ -14,7 +14,7 @@ import prisma.models
 
 from backend.util.json import SafeJson
 
-from .mapping import RUNNING_EXECUTION_STATUSES, to_model
+from .mapping import RUNNING_EXECUTION_STATUSES, TASK_INCLUDE, to_model
 from .models import MAX_TASKS_PER_PAGE, OPEN_TASK_STATUSES, DelegatedTask, TaskAmendment
 
 logger = logging.getLogger(__name__)
@@ -87,6 +87,7 @@ async def list_recent_failed_tasks(
         },
         order={"updatedAt": "desc"},
         take=min(limit, MAX_TASKS_PER_PAGE),
+        include=TASK_INCLUDE,
     )
     return [to_model(row, {}) for row in rows]
 
@@ -105,6 +106,7 @@ async def list_recent_autopilot_tasks(
         },
         order={"createdAt": "desc"},
         take=limit,
+        include=TASK_INCLUDE,
     )
     return [to_model(row, {}) for row in rows]
 

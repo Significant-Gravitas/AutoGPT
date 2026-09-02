@@ -1851,8 +1851,12 @@ async def stream_chat_completion_baseline(
     # rules and task-spine tools ride expert-task-management on top of
     # hire-experts, so the spine can be turned off (or removed) without
     # darkening the rest of the experts surface.
-    task_management_enabled = experts_enabled and await is_feature_enabled(
-        Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+    task_management_enabled = (
+        experts_enabled
+        and user_id is not None
+        and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        )
     )
     delegation_supplement = (
         get_delegation_supplement(role) if task_management_enabled else ""
