@@ -93,6 +93,7 @@ function headerFor(
 
 interface Proposal {
   toolCallId: string;
+  kind: ExpertKind | null;
   name: string;
   confirmationId: string;
 }
@@ -106,15 +107,22 @@ function proposalOf(part: ToolUIPart): Proposal | null {
   if (!confirmationId || !preview) return null;
   return {
     toolCallId: part.toolCallId,
+    kind: kindOf(output),
     name: str(preview, "name") ?? "this expert",
     confirmationId,
   };
 }
 
 function decisionLine(proposal: Proposal, decision: Decision): string {
+  const verb =
+    proposal.kind === "hire"
+      ? "hire"
+      : proposal.kind === "update"
+        ? "update"
+        : "create";
   return decision === "approved"
-    ? `Approved: create ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
-    : `Not approved: do not create ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
+    ? `Approved: ${verb} ${proposal.name} (confirmation_id: ${proposal.confirmationId}).`
+    : `Not approved: do not ${verb} ${proposal.name}, discard that proposal (confirmation_id: ${proposal.confirmationId}).`;
 }
 
 function toExpertArtifact(
@@ -187,11 +195,7 @@ export function ExpertChangeCard({
   const summary = tagline ?? about;
   // The panel always has the full charter to show; inline, the button only
   // earns its place when the one-line summary leaves something out.
-  const hasCharter =
-    (!!tagline && !!about) ||
-    !!boundaries ||
-    !!str(expert, "voice_preferences") ||
-    typeof expert.weekly_budget === "number";
+  const hasCharter = (!!tagline && !!about) || !!boundaries;
   const showDetails = panelAvailable || hasCharter;
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   const header = headerFor(kindOf(output), output.applied === true);

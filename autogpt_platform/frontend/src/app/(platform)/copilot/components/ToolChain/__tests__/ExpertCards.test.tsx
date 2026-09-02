@@ -168,6 +168,26 @@ describe("expert change cards", () => {
     expect(screen.getByRole("button", { name: "Details" })).toBeDefined();
   });
 
+  it("hides Details when the tagline is the whole card", () => {
+    render(
+      <ExpertChangeCard
+        output={{
+          type: "expert_change_proposed",
+          applied: false,
+          preview: {
+            kind: "raise",
+            name: "Otto",
+            tagline: "Sorts your morning inbox.",
+            voice_preferences: "Short sentences.",
+            weekly_budget: 2000,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+  });
+
   it("still offers Details without a tagline when there is more to read", () => {
     render(
       <ExpertChangeCard
@@ -443,6 +463,33 @@ describe("expert approval", () => {
     );
 
     expect(prompt()).toBe("Approved: create Otto (confirmation_id: c-a).");
+  });
+
+  it("drafts the verb the proposal actually asks for", async () => {
+    const user = userEvent.setup();
+    render(
+      <ExpertChangeGroup
+        parts={[
+          expertPart(
+            "output-available",
+            {
+              type: "expert_change_proposed",
+              applied: false,
+              confirmation_id: "c-u",
+              preview: { kind: "update", name: "Otto", role: "Engineer" },
+            },
+            "u",
+          ),
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.click(
+      screen.getByRole("button", { name: "Add decisions to message" }),
+    );
+
+    expect(prompt()).toBe("Approved: update Otto (confirmation_id: c-u).");
   });
 
   it("offers no decision once applied or on a read-only transcript", () => {

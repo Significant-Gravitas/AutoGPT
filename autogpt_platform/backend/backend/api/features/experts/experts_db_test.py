@@ -399,6 +399,7 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
     assert reloaded is not None
     assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert reloaded.color == "sky-300"
+    assert reloaded.tagline == "Finds your leads and their decision-makers."
 
 
 @pytest.mark.asyncio(loop_scope="session")
