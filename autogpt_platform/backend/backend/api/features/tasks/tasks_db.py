@@ -440,13 +440,10 @@ async def _open_subtree_ids(user_id: str, task_id: str) -> list[str] | None:
         children = await prisma.models.DelegatedTask.prisma().find_many(
             where={"parentTaskId": {"in": frontier}, "userId": user_id}
         )
-        frontier = [child.id for child in children if child.id not in seen]
+        fresh = [child for child in children if child.id not in seen]
+        frontier = [child.id for child in fresh]
         seen.update(frontier)
-        open_ids.extend(
-            child.id
-            for child in children
-            if child.id in seen and child.status in open_statuses
-        )
+        open_ids.extend(child.id for child in fresh if child.status in open_statuses)
     return open_ids
 
 

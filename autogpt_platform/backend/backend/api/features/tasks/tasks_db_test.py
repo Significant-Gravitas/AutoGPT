@@ -212,6 +212,23 @@ async def test_close_task_does_not_resurrect_a_cancelled_task(server: SpinTestSe
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_open_subtree_walk_survives_a_corrupted_cycle(server: SpinTestServer):
+    """Depth is bounded on write, but a read must not spin on — or double
+    count — a parent chain that has been corrupted into a cycle."""
+    owner = await _create_seed_user()
+    root = await _seed_task(owner.id, title="Root")
+    child = await _seed_task(owner.id, title="Child", parent_task_id=root.id)
+    await prisma.models.DelegatedTask.prisma().update(
+        where={"id": root.id}, data={"parentTaskId": child.id}
+    )
+
+    open_ids = await tasks_db._open_subtree_ids(owner.id, root.id)
+
+    assert open_ids is not None
+    assert sorted(open_ids) == sorted([root.id, child.id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_cancel_cascades_to_open_descendants_only(server: SpinTestServer):
     owner = await _create_seed_user()
     root = await _seed_task(owner.id, title="Root")
