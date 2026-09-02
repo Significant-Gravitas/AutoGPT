@@ -198,6 +198,14 @@ class ChatMessage(BaseModel):
     model: str | None = None
     routing_source: RoutingSource | None = Field(default=None, exclude=True)
 
+    # Which connection served this turn. Unlike routing_source this is the
+    # user's own choice, not an internal cohort, so it is safe to serialize
+    # and is what lets a chat show what each turn actually ran on.
+    # None on user/tool rows and on rows written before this existed --
+    # ``segment_of`` resolves those against the session's own route.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
+
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
     persisted (mid-turn flush assigned its sequence before end-of-turn
@@ -261,6 +269,10 @@ class ChatMessage(BaseModel):
             # DB column is a plain string; the values are always ones we wrote
             # (this PR owns the column) and Pydantic re-validates on construct.
             routing_source=cast("RoutingSource | None", prisma_message.routingSource),
+            llm_auth_provider=cast(
+                "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
+            ),
+            llm_credential_id=prisma_message.llmCredentialId,
         )
 
 
@@ -978,18 +990,35 @@ async def upsert_chat_session(
 
         # Ordinary upserts keep best-effort cache-on-DB-error behavior;
         # tenancy changes return above after eviction instead.
-        # Title (update_session_title) and pin state (update_session_pinned)
-        # are mutated *outside* this lock — they only touch their single field,
-        # not messages — so a concurrent rename, auto-title, or pin/unpin may
-        # have written a newer value to Redis while this upsert was in progress.
-        # Always prefer the cached title/pin to avoid reverting it with the
-        # stale in-memory copy.
+        # Title and pin state are mutated outside this lock. Connection route
+        # updates use this same lock, but a route update that completed before
+        # this upsert acquired it may still be newer than this turn's in-memory
+        # session. Prefer those cached fields so the stale turn cannot revert
+        # a rename, pin, or connection switch.
         try:
             existing_cached = await _get_session_from_cache(session.session_id)
             if existing_cached:
                 updates: dict[str, Any] = {"is_pinned": existing_cached.is_pinned}
                 if existing_cached.title:
                     updates["title"] = existing_cached.title
+                # The route decides who pays for the next turn. A long turn
+                # finishing after the user switched connection would otherwise
+                # put the old one back in Redis while the database holds the
+                # new one, and bill the next turn to the connection they just
+                # left. Only the two route keys are taken from the cache; the
+                # rest of this session's metadata is this turn's own.
+                cached_route = existing_cached.metadata
+                if (
+                    cached_route.llm_auth_provider != session.metadata.llm_auth_provider
+                    or cached_route.llm_credential_id
+                    != session.metadata.llm_credential_id
+                ):
+                    updates["metadata"] = session.metadata.model_copy(
+                        update={
+                            "llm_auth_provider": cached_route.llm_auth_provider,
+                            "llm_credential_id": cached_route.llm_credential_id,
+                        }
+                    )
                 session = session.model_copy(update=updates)
             await cache_chat_session(session)
         except Exception as e:
@@ -1102,6 +1131,9 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                     "model": msg.model,
                     "routing_source": msg.routing_source,
+                    "llm_auth_provider": msg.llm_auth_provider,
+                    "llm_credential_id": msg.llm_credential_id,
+                    "metadata": msg.metadata,
                 }
             )
         logger.info(
@@ -1152,6 +1184,8 @@ async def _save_session_to_db(
                 sequence=msg.sequence,
                 model=msg.model,
                 routing_source=msg.routing_source,
+                llm_auth_provider=msg.llm_auth_provider,
+                llm_credential_id=msg.llm_credential_id,
             )
         except Exception as e:
             logger.error(
@@ -1661,6 +1695,53 @@ async def update_session_title(
     except Exception as e:
         logger.error(f"Failed to update title for session {session_id}: {e}")
         return False
+
+
+async def update_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: CopilotLlmAuthProvider,
+    llm_credential_id: str | None,
+) -> bool:
+    """Move an existing chat onto a different connection, from the next turn.
+
+    The session's metadata is segment zero -- where the chat started, and the
+    answer for any turn that carries no stamp of its own. Changing it does not
+    rewrite history: turns already stamped keep the connection they ran on, so
+    a chat that hit a limit and continued elsewhere reads as what it was.
+
+    Written through the same cache the title update uses, because a stale
+    cached session would send the next turn back to the connection the user
+    just moved off.
+    """
+    # This is a read-modify-write of the cached session. Serialize it with
+    # full-session upserts so a route change cannot write an older cache
+    # snapshot over messages that a turn just persisted (or vice versa).
+    async with _get_session_lock(session_id) as lock_acquired:
+        if not lock_acquired:
+            raise RedisError(
+                f"Could not serialize route update for session {session_id}"
+            )
+
+        updated = await chat_db().update_chat_session_llm_route(
+            session_id, user_id, llm_auth_provider, llm_credential_id
+        )
+        if not updated:
+            return False
+
+        # Cache refresh is best-effort -- the DB write already succeeded.
+        try:
+            cached = await _get_session_from_cache(session_id)
+            if cached:
+                cached.metadata.llm_auth_provider = llm_auth_provider
+                cached.metadata.llm_credential_id = llm_credential_id
+                await cache_chat_session(cached)
+        except Exception as e:
+            logger.warning(
+                f"Cache route update failed for session {session_id} "
+                f"(non-critical): {e}"
+            )
+        return True
 
 
 async def update_session_pinned(

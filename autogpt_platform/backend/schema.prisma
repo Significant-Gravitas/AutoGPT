@@ -129,6 +129,14 @@ model User {
 
   timezone String @default("not-set")
 
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
+
   subscriptionTier SubscriptionTier @default(NO_TIER)
 
   // Relations
@@ -627,6 +635,14 @@ model ChatMessage {
   // without them. Null on user/tool rows and rows predating this column.
   model         String?
   routingSource String?
+
+  // Which connection served this assistant turn. The session's metadata is
+  // the route a chat STARTS on; these record the route a turn actually RAN
+  // on, so a later route change cannot rewrite what already happened.
+  // Null on user/tool rows and on rows predating this column, where the
+  // session's own route is the answer (see `segment_of`).
+  llmAuthProvider String?
+  llmCredentialId String?
 
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
