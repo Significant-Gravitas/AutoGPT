@@ -16,7 +16,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TaskDetailPage from "../page";
 
-const { expertsFlag } = vi.hoisted(() => ({ expertsFlag: { enabled: true } }));
+const { expertsFlag, taskManagementFlag } = vi.hoisted(() => ({
+  expertsFlag: { enabled: true },
+  taskManagementFlag: { enabled: true },
+}));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -25,10 +28,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: expertsFlag.enabled, ready: true }
-        : actual.useFlagStatus(flag as never),
+    useFlagStatus: (flag: string) => {
+      if (flag === "hire-experts")
+        return { enabled: expertsFlag.enabled, ready: true };
+      if (flag === "expert-task-management")
+        return { enabled: taskManagementFlag.enabled, ready: true };
+      return actual.useFlagStatus(flag as never);
+    },
   };
 });
 
@@ -82,11 +88,13 @@ function makeTask(overrides: Partial<DelegatedTask> = {}): DelegatedTask {
 
 beforeEach(() => {
   expertsFlag.enabled = true;
+  taskManagementFlag.enabled = true;
   server.use(getListWorkspaceFilesMockHandler({ files: [] }));
 });
 
 afterEach(() => {
   expertsFlag.enabled = true;
+  taskManagementFlag.enabled = true;
 });
 
 describe("task detail page", () => {
@@ -385,6 +393,13 @@ describe("task detail page", () => {
 
   test("the page is gone when the experts flag is off", () => {
     expertsFlag.enabled = false;
+    server.use(getGetTaskMockHandler({ task: makeTask(), children: [] }));
+
+    expect(() => render(<TaskDetailPage />)).toThrow("NEXT_NOT_FOUND");
+  });
+
+  test("the page is gone when task management is off, even with experts on", () => {
+    taskManagementFlag.enabled = false;
     server.use(getGetTaskMockHandler({ task: makeTask(), children: [] }));
 
     expect(() => render(<TaskDetailPage />)).toThrow("NEXT_NOT_FOUND");

@@ -63,8 +63,13 @@ describe("expert flag default fails closed", () => {
       .forEach((k) => delete process.env[k]);
   });
 
-  it("resolves HIRE_EXPERTS to false when LaunchDarkly has not answered, keeping the team and task-receipt surfaces hidden", () => {
+  it("resolves HIRE_EXPERTS to false when LaunchDarkly has not answered, keeping the team surfaces hidden", () => {
     const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    expect(result.current).toBe(false);
+  });
+
+  it("resolves EXPERT_TASK_MANAGEMENT to false when LaunchDarkly has not answered, keeping the task-receipt surfaces hidden", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.EXPERT_TASK_MANAGEMENT));
     expect(result.current).toBe(false);
   });
 });

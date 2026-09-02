@@ -58,10 +58,16 @@ def _entry(template_id: str, *, cron: str | None = None) -> dict:
 @pytest.fixture
 def kickoff():
     """The intro-task kickoff reaches the copilot queue, which these DB-level
-    tests do not run — stub it and assert on the call instead."""
-    with patch.object(
-        hire_office, "start_task_in_new_session", AsyncMock(return_value="session-1")
-    ) as mock:
+    tests do not run — stub it and assert on the call instead. The
+    expert-task-management flag is pinned on so the kickoff gate opens."""
+    with (
+        patch.object(
+            hire_office,
+            "start_task_in_new_session",
+            AsyncMock(return_value="session-1"),
+        ) as mock,
+        patch.object(hire_office, "is_feature_enabled", AsyncMock(return_value=True)),
+    ):
         yield mock
 
 
@@ -123,6 +129,33 @@ async def test_hire_office_starts_every_intro_task(server: SpinTestServer, kicko
         for hired in result.hired
     }
     assert all(call.args == (user.id,) for call in kickoff.call_args_list)
+
+
+async def test_hire_office_task_management_off_skips_the_kickoff(
+    server: SpinTestServer,
+):
+    """Without expert-task-management the hire still lands every expert and
+    intro-task row, but no worker session is opened — the tasks stay QUEUED
+    behind the flag instead of running invisibly."""
+    user = await _create_seed_user()
+    template = await _seed_template("Ops")
+    office = await _seed_office([_entry(template.id)])
+
+    with (
+        patch.object(
+            hire_office, "start_task_in_new_session", AsyncMock()
+        ) as kickoff_mock,
+        patch.object(hire_office, "is_feature_enabled", AsyncMock(return_value=False)),
+    ):
+        result = await hire_office.hire_office(user.id, office.id)
+
+    assert len(result.hired) == 1
+    kickoff_mock.assert_not_awaited()
+    task = await prisma.models.DelegatedTask.prisma().find_unique(
+        where={"id": result.hired[0].intro_task_id}
+    )
+    assert task is not None
+    assert task.status == prisma.enums.DelegatedTaskStatus.QUEUED
 
 
 async def test_hire_office_survives_a_failed_kickoff(server: SpinTestServer, kickoff):

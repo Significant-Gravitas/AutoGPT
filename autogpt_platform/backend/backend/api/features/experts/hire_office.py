@@ -30,6 +30,7 @@ from backend.copilot.task_kickoff import start_task_in_new_session
 from backend.data.db import transaction
 from backend.data.user import get_user_by_id
 from backend.util.exceptions import ExpertNotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -223,6 +224,13 @@ async def _start_intro_task(
     cannot be dispatched leaves the task QUEUED and visible on the board,
     which the user can still cancel, rather than failing the whole hire."""
     try:
+        # The kickoff is task-spine behavior: without expert-task-management
+        # the hire still lands every expert, but their intro tasks stay
+        # QUEUED instead of opening worker sessions the user cannot see.
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return
         await start_task_in_new_session(
             user_id,
             task_id=task_id,

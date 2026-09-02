@@ -167,12 +167,15 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
     if not user_id:
         return ""
     try:
-        # ``delegate_to_expert`` is hidden from the tool schema and refused by
-        # execute_tool when the hire-experts flag is off, so the roster block
-        # must not tell the model to call it. Same boolean the engines use to
-        # gate the delegation supplement and the tool groups.
+        # ``delegate_to_expert`` is hidden from the tool schema when either
+        # flag is off, so the roster block must not tell the model to call
+        # it. Same booleans the engines use to gate the delegation
+        # supplement and the tool groups: the roster rides hire-experts,
+        # the delegation phrasing additionally rides expert-task-management.
         delegation_enabled = await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
+        ) and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
         )
         if expert_id:
             return await _expert_session_context(

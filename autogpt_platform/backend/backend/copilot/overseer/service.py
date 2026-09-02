@@ -59,6 +59,10 @@ async def run_overseer_pass(
     summary = {"retried": 0, "failed": 0, "stale": 0, "paused_experts": 0}
     if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
         return summary
+    if not await is_feature_enabled(
+        Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+    ):
+        return summary
     now = now or datetime.now(UTC)
     client = get_database_manager_async_client()
 

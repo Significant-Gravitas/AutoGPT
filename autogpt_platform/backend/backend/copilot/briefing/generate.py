@@ -271,6 +271,13 @@ async def _compose_fresh_briefing(
 async def _compose_task_cards(user_id: str, now: datetime, experts: list[Expert]):
     """Overseer/recruiter cards for the briefing. Best-effort: a task-spine
     hiccup must not sink the whole briefing."""
+    # Nudges, merges and recruiter hires are all derived from DelegatedTask
+    # rows, so the whole card set rides expert-task-management (the briefing
+    # shell itself rides hire-experts, checked by the caller).
+    if not await is_feature_enabled(
+        Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+    ):
+        return [], [], []
     client = get_database_manager_async_client()
     try:
         open_tasks = await client.list_open_tasks(user_id)

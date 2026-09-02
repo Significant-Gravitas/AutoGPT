@@ -9,7 +9,12 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 from backend.util.feature_flag import Flag
 
-from .service import _get_pending_questions, build_home_dashboard
+from .service import (
+    _get_failed_tasks,
+    _get_open_tasks,
+    _get_pending_questions,
+    build_home_dashboard,
+)
 
 
 def _execution() -> GraphExecutionMeta:
@@ -468,6 +473,53 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     assert dashboard.upcoming_tasks == []
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+class TestTaskSpineFlagGate:
+    """Open/failed DelegatedTask reads ride the expert-task-management flag:
+    with it off Home must never reach the task tables, so no task attention
+    rows or spine titles can leak to a task-management-off cohort."""
+
+    @pytest.mark.asyncio
+    async def test_flag_off_returns_no_open_tasks_and_never_touches_tasks_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        is_enabled = mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=False),
+        )
+        list_open = mocker.patch(
+            "backend.api.features.home.service.tasks_db.list_open_tasks",
+            AsyncMock(return_value=["should never be reached"]),
+        )
+
+        result = await _get_open_tasks(user_id="user-1")
+
+        assert result == []
+        list_open.assert_not_awaited()
+        is_enabled.assert_awaited_once_with(
+            Flag.EXPERT_TASK_MANAGEMENT, "user-1", default=False
+        )
+
+    @pytest.mark.asyncio
+    async def test_flag_off_returns_no_failed_tasks_and_never_touches_overseer_db(
+        self, mocker: MockerFixture
+    ) -> None:
+        mocker.patch(
+            "backend.api.features.home.service.is_feature_enabled",
+            AsyncMock(return_value=False),
+        )
+        list_failed = mocker.patch(
+            "backend.api.features.home.service.overseer_db.list_recent_failed_tasks",
+            AsyncMock(return_value=["should never be reached"]),
+        )
+
+        result = await _get_failed_tasks(
+            user_id="user-1", now=datetime.now(timezone.utc)
+        )
+
+        assert result == []
+        list_failed.assert_not_awaited()
 
 
 class TestPendingQuestionsFlagGate:

@@ -13,7 +13,11 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import {
+  Flag,
+  useFlagStatus,
+  useGetFlag,
+} from "@/services/feature-flags/use-get-flag";
 import {
   ArrowLeft02Icon,
   Calendar03Icon,
@@ -69,6 +73,10 @@ export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const isTaskManagementEnabled = useGetFlag(Flag.EXPERT_TASK_MANAGEMENT);
+  const visibleTabs = isTaskManagementEnabled
+    ? TABS
+    : TABS.filter((tab) => tab.value !== "tasks");
   const {
     expert,
     isLoading,
@@ -145,7 +153,7 @@ export default function ExpertDetailPage() {
 
       <TabsLine defaultValue="basics">
         <TabsLineList flush className="overflow-x-auto">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <TabsLineTrigger
               key={tab.value}
               value={tab.value}
@@ -161,12 +169,14 @@ export default function ExpertDetailPage() {
           <ExpertAboutSection text={expert.bio || expert.identity} />
         </TabsLineContent>
 
-        <TabsLineContent value="tasks">
-          <DelegatedTasksBoard
-            expertId={expert.id}
-            enabled={Boolean(enabled) && ready}
-          />
-        </TabsLineContent>
+        {isTaskManagementEnabled ? (
+          <TabsLineContent value="tasks">
+            <DelegatedTasksBoard
+              expertId={expert.id}
+              enabled={Boolean(enabled) && ready}
+            />
+          </TabsLineContent>
+        ) : null}
 
         <TabsLineContent value="schedules">
           <ExpertSchedulesSection

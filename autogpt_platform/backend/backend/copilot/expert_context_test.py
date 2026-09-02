@@ -34,11 +34,11 @@ _EC = "backend.copilot.expert_context"
 
 @pytest.fixture(autouse=True)
 def hire_experts_flag_on():
-    """Pin the hire-experts flag on.
+    """Pin the hire-experts and expert-task-management flags on.
 
-    ``build_expert_context`` reads it to decide whether the roster block may
-    name ``delegate_to_expert``; without pinning it these tests would follow
-    whatever LaunchDarkly (or a local ``FORCE_FLAG_`` override) says.
+    ``build_expert_context`` reads them to decide whether the roster block
+    may name ``delegate_to_expert``; without pinning them these tests would
+    follow whatever LaunchDarkly (or a local ``FORCE_FLAG_`` override) says.
     """
     with patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=True)):
         yield
@@ -513,6 +513,30 @@ class TestBuildExpertContextPlainSession:
         mock_db.list_experts = AsyncMock(return_value=[_expert()])
         with (
             patch(f"{_EC}.is_feature_enabled", AsyncMock(return_value=False)),
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<team_context>" in result
+        assert "Maria" in result
+        assert "delegate_to_expert" not in result
+        assert "opening that expert's thread" in result
+
+    @pytest.mark.asyncio
+    async def test_task_management_off_keeps_the_roster_but_not_the_tool(self):
+        """hire-experts on, expert-task-management off: the roster still
+        ships (the team exists) but the rule must fall back to pointing at
+        the expert's thread — the delegation tools are hidden."""
+        from backend.copilot.expert_context import build_expert_context
+        from backend.util.feature_flag import Flag
+
+        mock_db = MagicMock()
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        with (
+            patch(
+                f"{_EC}.is_feature_enabled",
+                AsyncMock(side_effect=lambda flag, *a, **k: flag is Flag.HIRE_EXPERTS),
+            ),
             patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
         ):
             result = await build_expert_context("user-1", None)

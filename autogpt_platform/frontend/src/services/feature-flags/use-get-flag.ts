@@ -21,10 +21,17 @@ export enum Flag {
   CHAT_WORKSPACE_FILES = "chat-workspace-files",
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
-  // Also gates the DelegatedTask "receipt" surfaces (expert Tasks tab,
-  // team All-tasks board, task detail drawer) — they ride this flag
-  // rather than having one of their own.
+  // Gates the experts surface: hiring, roster, expert chat, /team,
+  // /raise, marketplace expert sections and the sidebar Team nav.
   HIRE_EXPERTS = "hire-experts",
+  // Child gate of HIRE_EXPERTS for the DelegatedTask "receipt" surfaces:
+  // the expert Tasks tab, the team All-tasks spine board and the
+  // /team/tasks/[taskId] detail page. Split out so task management can
+  // be switched off (or removed) without darkening the experts surface.
+  // Mirror of the backend ``Flag`` enum, which gates the task tools,
+  // overseer cron, briefing task cards and Home task attention rows on
+  // the same key.
+  EXPERT_TASK_MANAGEMENT = "expert-task-management",
   // Reveals the notification-preferences card on /settings/account. The card
   // is built but its design is still being reworked, so it ships dark and is
   // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
@@ -74,6 +81,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.EXPERT_TASK_MANAGEMENT]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
@@ -143,6 +151,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_PROGRESS_BAR;
     case Flag.HIRE_EXPERTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS;
+    case Flag.EXPERT_TASK_MANAGEMENT:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_EXPERT_TASK_MANAGEMENT;
     case Flag.SETTINGS_NOTIFICATIONS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_SETTINGS_NOTIFICATIONS;
     case Flag.ONBOARDING_BRAIN_DUMP:

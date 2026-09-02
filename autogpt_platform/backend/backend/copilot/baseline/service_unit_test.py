@@ -48,6 +48,7 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util.feature_flag import Flag
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
@@ -2971,6 +2972,21 @@ class TestBaselineExpertsFlagGuard:
         is_feature_enabled_mock = await _run_baseline_until_experts_gate(
             user_id="user-1", hire_experts_enabled=True
         )
+        # Two awaits: hire-experts plus its expert-task-management child gate.
+        assert is_feature_enabled_mock.await_count == 2
+        assert is_feature_enabled_mock.await_args_list[0].args[0] is Flag.HIRE_EXPERTS
+        assert (
+            is_feature_enabled_mock.await_args_list[1].args[0]
+            is Flag.EXPERT_TASK_MANAGEMENT
+        )
+
+    @pytest.mark.asyncio
+    async def test_flag_off_turn_skips_the_task_management_flag(self) -> None:
+        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
+            user_id="user-1", hire_experts_enabled=False
+        )
+        # ``task_management_enabled = experts_enabled and await ...`` must
+        # short-circuit: no experts surface, no task-spine lookup.
         is_feature_enabled_mock.assert_awaited_once()
 
 

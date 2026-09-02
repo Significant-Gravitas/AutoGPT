@@ -1847,7 +1847,16 @@ async def stream_chat_completion_baseline(
     experts_enabled = bool(user_id) and await is_feature_enabled(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
-    delegation_supplement = get_delegation_supplement(role) if experts_enabled else ""
+    # Task management is a child gate of the experts surface: the delegation
+    # rules and task-spine tools ride expert-task-management on top of
+    # hire-experts, so the spine can be turned off (or removed) without
+    # darkening the rest of the experts surface.
+    task_management_enabled = experts_enabled and await is_feature_enabled(
+        Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+    )
+    delegation_supplement = (
+        get_delegation_supplement(role) if task_management_enabled else ""
+    )
     role_charter = get_role_charter(role) if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
@@ -2111,7 +2120,9 @@ async def stream_chat_completion_baseline(
     # above; the role split lives in the shared helper.
     disabled_tool_groups.extend(
         expert_tool_disabled_groups(
-            experts_enabled=experts_enabled, expert_id=session.expert_id
+            experts_enabled=experts_enabled,
+            task_management_enabled=task_management_enabled,
+            expert_id=session.expert_id,
         )
     )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)

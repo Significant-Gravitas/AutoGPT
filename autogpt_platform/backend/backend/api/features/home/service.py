@@ -270,6 +270,13 @@ async def _get_open_tasks(*, user_id: str) -> list[DelegatedTask]:
     # active-task cards (which fall back to execution data), so a failure here
     # must cost titles, not the page.
     try:
+        # Task attention rows and spine enrichment ride the
+        # expert-task-management flag; with it off Home shows execution
+        # data only, with no dead links into the hidden task pages.
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return []
         return await tasks_db.list_open_tasks(user_id)
     except Exception:
         logger.warning(
@@ -282,6 +289,11 @@ async def _get_failed_tasks(*, user_id: str, now: datetime) -> list[DelegatedTas
     # Recently FAILED tasks feed the "failed after retry" attention card.
     # Fail-soft like open tasks: losing them costs a card, not the page.
     try:
+        # Gated like open tasks: failed-task attention is a task-spine card.
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return []
         return await overseer_db.list_recent_failed_tasks(
             user_id, since=now - timedelta(days=3)
         )

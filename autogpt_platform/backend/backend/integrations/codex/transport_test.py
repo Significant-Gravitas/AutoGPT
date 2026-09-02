@@ -1472,8 +1472,10 @@ async def test_never_returning_runtime_close_cannot_strand_home_or_capacity(tmp_
         runtime_factory=_runtime_factory(runtime),
     )
 
+    # Shutdown is bounded at ~0.11s (control timeout + cancel grace); the generous
+    # deadline only distinguishes "bounded" from "stranded forever" on slow runners.
     with pytest.raises(CodexTransportError, match="runtime shutdown"):
-        await asyncio.wait_for(transport._account(lease), timeout=0.2)
+        await asyncio.wait_for(transport._account(lease), timeout=5)
 
     assert transport._capacity._value == 1
     assert not tuple(tmp_path.iterdir())

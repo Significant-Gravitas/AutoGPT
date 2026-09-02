@@ -19,9 +19,12 @@ const BAND_CLASS = "px-6 md:px-8";
 
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
-  const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const expertsFlag = useFlagStatus(Flag.HIRE_EXPERTS);
+  const taskManagementFlag = useFlagStatus(Flag.EXPERT_TASK_MANAGEMENT);
+  const ready = expertsFlag.ready && taskManagementFlag.ready;
+  const enabled = Boolean(expertsFlag.enabled) && Boolean(taskManagementFlag.enabled);
   const { task, children, isLoading, isError, refetch, cancel, isCancelling } =
-    useTaskDetailPage({ taskId, enabled: Boolean(enabled) && ready });
+    useTaskDetailPage({ taskId, enabled: enabled && ready });
 
   if (!ready || isLoading) {
     return (

@@ -675,29 +675,36 @@ class TestHandoffPolling:
 
 
 class TestExpertToolGate:
-    """The shared engine gate: flag off hides everything, flag on splits by
-    session role. Anonymous turns never reach the flag (engines pass
-    experts_enabled=False for user_id=None)."""
+    """The shared engine gate: hire-experts off hides everything, on splits
+    by session role, and the task-spine groups additionally require the
+    expert-task-management flag. Anonymous turns never reach the flags
+    (engines pass experts_enabled=False for user_id=None)."""
 
     def test_flag_off_disables_every_team_group(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=False, expert_id=None) == [
-            "experts",
-            "expert_admin",
-            "delegation",
-        ]
         assert expert_tool_disabled_groups(
-            experts_enabled=False, expert_id="expert-a"
-        ) == ["experts", "expert_admin", "delegation"]
+            experts_enabled=False, task_management_enabled=False, expert_id=None
+        ) == ["experts", "expert_admin", "team", "delegation", "expert_delegation"]
+        assert expert_tool_disabled_groups(
+            experts_enabled=False, task_management_enabled=True, expert_id="expert-a"
+        ) == ["experts", "expert_admin", "team", "delegation", "expert_delegation"]
 
     def test_plain_session_loses_expert_session_tools(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=True, expert_id=None) == [
-            "experts"
-        ]
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=True, expert_id=None
+        ) == ["experts", "expert_delegation"]
 
     def test_expert_session_loses_staffing_tools(self) -> None:
         assert expert_tool_disabled_groups(
-            experts_enabled=True, expert_id="expert-a"
+            experts_enabled=True, task_management_enabled=True, expert_id="expert-a"
         ) == ["expert_admin"]
+
+    def test_task_management_off_hides_the_task_spine_only(self) -> None:
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=False, expert_id=None
+        ) == ["experts", "expert_delegation", "delegation"]
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=False, expert_id="expert-a"
+        ) == ["expert_admin", "delegation", "expert_delegation"]
 
 
 class TestExecuteToolEnforcesDisabledGroups:

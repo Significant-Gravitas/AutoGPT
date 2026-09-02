@@ -33,6 +33,10 @@ async def ensure_task_overseer_scheduled(user_id: str) -> None:
             return
         if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
             return
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return
         if await _marker_present(user_id):
             return
 
