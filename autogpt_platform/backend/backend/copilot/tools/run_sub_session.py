@@ -31,7 +31,12 @@ from typing import Any
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
-from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
@@ -215,6 +220,7 @@ class RunSubSessionTool(BaseTool):
                     session_id=session.session_id,
                 )
             inner_session_id = sub_session_param
+            opened_here = False
         else:
             new_session = await create_chat_session(
                 user_id,
@@ -240,6 +246,7 @@ class RunSubSessionTool(BaseTool):
                 origin="automation",
             )
             inner_session_id = new_session.session_id
+            opened_here = True
 
         effective_prompt = prompt
         if system_context.strip():
@@ -261,6 +268,8 @@ class RunSubSessionTool(BaseTool):
             allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
+        if opened_here:
+            await discard_unused_sub_session(inner_session_id, user_id, outcome)
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
@@ -419,6 +428,34 @@ def _as_payload(output: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+# Outcomes meaning the turn never reached the sub's session, so the row we
+# opened for it holds nothing. Notably NOT ``failed``: there the turn ran and
+# errored, and its thread is the only record of that.
+_NOTHING_QUEUED: frozenset[SessionOutcome] = frozenset(
+    {"refused", "rejected_concurrent_turn_cap"}
+)
+
+
+async def discard_unused_sub_session(
+    session_id: str, user_id: str, outcome: SessionOutcome
+) -> None:
+    """Drop a thread opened for a turn that was then refused.
+
+    A tree refusal or the concurrent-turn cap rejects the turn after the
+    session row exists, leaving an empty conversation the user can open from
+    their history. Best-effort by contract: a failed cleanup must not turn a
+    refusal into an error.
+    """
+    if outcome not in _NOTHING_QUEUED:
+        return
+    try:
+        await delete_chat_session(session_id, user_id)
+    except Exception:
+        logger.warning(
+            "Failed to clean up unused sub-session %s", session_id, exc_info=True
+        )
 
 
 def response_from_outcome(

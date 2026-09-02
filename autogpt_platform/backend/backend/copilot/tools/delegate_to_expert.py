@@ -55,6 +55,7 @@ from .models import DelegatedExpertInfo, ErrorResponse, ToolResponseBase
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     apply_delegated_expert,
+    discard_unused_sub_session,
     list_sub_workspace_files,
     response_from_outcome,
 )
@@ -199,6 +200,8 @@ class DelegateToExpertTool(BaseTool):
             allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
+        if not delegated_session_id.strip():
+            await discard_unused_sub_session(inner_session_id, user_id, outcome)
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
