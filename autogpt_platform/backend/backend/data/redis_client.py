@@ -183,15 +183,12 @@ def _get_async_client_lock(loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
 async def disconnect_async():
     loop = asyncio.get_running_loop()
     async with _get_async_client_lock(loop):
-        client = _async_clients.get(loop)
-        finalizer = _async_client_finalizers.get(loop)
-        if client is not None:
-            await client.close()
-            if _async_clients.get(loop) is client:
-                _async_clients.pop(loop, None)
-        if finalizer is not None and _async_client_finalizers.get(loop) is finalizer:
-            _async_client_finalizers.pop(loop, None)
+        client = _async_clients.pop(loop, None)
+        finalizer = _async_client_finalizers.pop(loop, None)
+        if finalizer is not None:
             await finalizer.aclose()
+        elif client is not None:
+            await client.close()
 
 
 async def get_redis_async() -> AsyncRedisClient:
@@ -216,10 +213,9 @@ async def _close_async_client_on_loop_shutdown(
     finally:
         loop = asyncio.get_running_loop()
         if _async_clients.get(loop) is client:
-            await client.close()
-            if _async_clients.get(loop) is client:
-                _async_clients.pop(loop, None)
-                _async_client_finalizers.pop(loop, None)
+            _async_clients.pop(loop, None)
+            _async_client_finalizers.pop(loop, None)
+        await client.close()
 
 
 # Sharded pub/sub only delivers on the keyslot-owning shard; subscribers
