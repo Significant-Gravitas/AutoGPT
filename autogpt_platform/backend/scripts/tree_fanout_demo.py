@@ -61,6 +61,19 @@ class InMemoryRedis:
     async def expire(self, key: str, seconds: int) -> int:
         return 1
 
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        key = str(args[0])
+        ceiling, max_nodes, nodes, _ttl = (str(a) for a in args[1:5])
+        if key in self.hashes:
+            return 0
+        self.hashes[key] = {
+            "ceiling": ceiling,
+            "max_nodes": max_nodes,
+            "nodes": nodes,
+            "spent": "0",
+        }
+        return 1
+
 
 async def spawn(
     ledger: TreeLedger, spawner: TurnEnvelope, request: SpawnRequest
