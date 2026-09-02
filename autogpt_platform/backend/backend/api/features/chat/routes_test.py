@@ -12,6 +12,7 @@ from pydantic import SecretStr
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
@@ -64,12 +65,12 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(
-        chat_routes.credentials_manager.store,
+        chat_transports.credentials_manager.store,
         "get_creds_by_provider",
         new=AsyncMock(return_value=[]),
     )
     mocker.patch.object(
-        chat_routes,
+        chat_transports,
         "has_codex_access_for_discovery",
         new=AsyncMock(return_value=True),
     )
@@ -78,7 +79,18 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         "enforce_codex_access_http",
         new=AsyncMock(),
     )
+    mocker.patch.object(
+        chat_transports,
+        "get_user_default_chat_route",
+        new=AsyncMock(return_value=(None, None)),
+    )
+    mocker.patch.object(
+        chat_transports,
+        "set_user_default_chat_route",
+        new=AsyncMock(),
+    )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
+    mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.CLOUD)
     yield
     app.dependency_overrides.clear()
 
@@ -1127,7 +1139,7 @@ def _set_self_hosted_chat_config(
     *,
     configured: bool,
 ) -> None:
-    mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.LOCAL)
+    mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.LOCAL)
     self_hosted_config = MagicMock()
     self_hosted_config.test_mode = False
     self_hosted_config.use_claude_code_subscription = False
@@ -1136,7 +1148,7 @@ def _set_self_hosted_chat_config(
         if configured
         else (None, "https://api.anthropic.com/v1/")
     )
-    mocker.patch.object(chat_routes, "config", self_hosted_config)
+    mocker.patch.object(chat_transports, "config", self_hosted_config)
 
 
 def test_list_chat_transports_hosted_platform_only(
@@ -1161,7 +1173,7 @@ def test_list_chat_transports_hosted_platform_only(
 def test_list_chat_transports_hosted_defaults_to_platform_with_codex(
     test_user_id: str,
 ) -> None:
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
 
@@ -1193,11 +1205,11 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
     test_user_id: str,
 ) -> None:
     access = mocker.patch.object(
-        chat_routes,
+        chat_transports,
         "has_codex_access_for_discovery",
         new=AsyncMock(return_value=False),
     )
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     lookup.return_value = [_codex_credentials()]
 
     response = client.get("/transports")
@@ -1221,7 +1233,7 @@ def test_list_chat_transports_hosted_omits_codex_without_required_plan(
 def test_list_chat_transports_omits_invalid_codex_credentials(
     test_user_id: str,
 ) -> None:
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials(provider_state=None)
     ]
 
@@ -1262,7 +1274,7 @@ def test_list_chat_transports_self_hosted_codex_is_default_without_deployment(
     test_user_id: str,
 ) -> None:
     _set_self_hosted_chat_config(mocker, configured=False)
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
 
@@ -1292,7 +1304,7 @@ def test_list_chat_transports_self_hosted_deployment_stays_default_with_codex(
     test_user_id: str,
 ) -> None:
     _set_self_hosted_chat_config(mocker, configured=True)
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         _codex_credentials()
     ]
 
@@ -1314,6 +1326,174 @@ def test_list_chat_transports_self_hosted_deployment_stays_default_with_codex(
         "available": True,
         "default": False,
     }
+
+
+# ─── the default connection for new chats ──────────────────────────────
+
+
+def test_list_chat_transports_marks_the_saved_default(
+    test_user_id: str,
+) -> None:
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+
+    response = client.get("/transports")
+
+    assert response.status_code == 200
+    platform, codex = response.json()["transports"]
+    assert platform["default"] is False
+    assert codex["default"] is True
+
+
+def test_set_default_transport_saves_the_choice(
+    test_user_id: str,
+) -> None:
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+
+    response = client.put(
+        "/transports/default",
+        json={"auth_provider": "codex", "credential_id": "cred-codex"},
+    )
+
+    assert response.status_code == 200
+    chat_transports.set_user_default_chat_route.assert_awaited_once_with(
+        test_user_id, "codex", "cred-codex"
+    )
+    platform, codex = response.json()["transports"]
+    assert platform["default"] is False
+    assert codex["default"] is True
+
+
+def test_set_default_transport_clears_the_choice(
+    test_user_id: str,
+) -> None:
+    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+
+    response = client.put("/transports/default", json={})
+
+    assert response.status_code == 200
+    chat_transports.set_user_default_chat_route.assert_awaited_once_with(
+        test_user_id, None, None
+    )
+
+
+def test_set_default_transport_requires_an_account_for_chatgpt() -> None:
+    response = client.put("/transports/default", json={"auth_provider": "codex"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_credential_required"
+    chat_transports.set_user_default_chat_route.assert_not_awaited()
+
+
+def test_set_default_transport_rejects_an_unknown_account() -> None:
+    response = client.put(
+        "/transports/default",
+        json={"auth_provider": "codex", "credential_id": "cred-nope"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+    chat_transports.set_user_default_chat_route.assert_not_awaited()
+
+
+def test_set_default_transport_reports_a_missing_user_profile() -> None:
+    chat_transports.set_user_default_chat_route.side_effect = NotFoundError(
+        "User user-1 not found"
+    )
+
+    response = client.put(
+        "/transports/default",
+        json={"auth_provider": "platform"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User user-1 not found"
+
+
+def test_set_default_transport_documents_not_found_responses() -> None:
+    operation = client.get("/openapi.json").json()["paths"]["/transports/default"][
+        "put"
+    ]
+
+    assert operation["responses"]["404"]["description"] == (
+        "The credential or user profile was not found"
+    )
+
+
+def test_set_default_transport_rejects_unknown_fields() -> None:
+    response = client.put(
+        "/transports/default",
+        json={"auth_provider": "platform", "make_it_sticky": True},
+    )
+
+    assert response.status_code == 422
+
+
+def test_create_session_uses_the_saved_default(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """A new chat with no route in the request starts on the saved default."""
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    mock_create = _mock_create_chat_session(mocker)
+    mock_paywall = mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-codex"
+    # The platform paywall is for platform-backed turns; this one isn't.
+    mock_paywall.assert_not_awaited()
+
+
+def test_an_explicit_route_still_beats_the_saved_default(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
+        _codex_credentials()
+    ]
+    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-codex")
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={"llm_auth_provider": "platform"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
+    assert mock_create.call_args.kwargs["llm_credential_id"] is None
+
+
+def test_a_saved_default_that_vanished_falls_back_instead_of_failing(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The saved ChatGPT account was disconnected since it was chosen."""
+    chat_transports.get_user_default_chat_route.return_value = ("codex", "cred-gone")
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/sessions", json={})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
 
 
 def test_create_session_dry_run_true(
@@ -1379,7 +1559,7 @@ def test_create_session_requires_credential_for_codex_route() -> None:
 def test_create_session_codex_route_rejects_unowned_credential(
     test_user_id: str,
 ) -> None:
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
 
     response = client.post(
         "/sessions",
@@ -1405,7 +1585,7 @@ def test_create_session_codex_route_rejects_user_without_required_plan(
             )
         ),
     )
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     mock_create = mocker.patch.object(
         chat_routes,
         "create_chat_session",
@@ -1439,7 +1619,7 @@ def test_create_session_codex_route_persists_owned_credential(
         ),
     )
     credential = _codex_credentials("cred-1")
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         credential
     ]
 
@@ -1461,7 +1641,7 @@ def test_create_session_hosted_defaults_to_platform_with_codex_connected(
     test_user_id: str,
 ) -> None:
     credential = _codex_credentials()
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     lookup.return_value = [credential]
     mock_create = _mock_create_chat_session(mocker)
     mock_paywall = mocker.patch(
@@ -1486,7 +1666,7 @@ def test_create_session_self_hosted_defaults_to_codex_when_unconfigured(
 ) -> None:
     _set_self_hosted_chat_config(mocker, configured=False)
     credential = _codex_credentials()
-    chat_routes.credentials_manager.store.get_creds_by_provider.return_value = [
+    chat_transports.credentials_manager.store.get_creds_by_provider.return_value = [
         credential
     ]
     mock_create = _mock_create_chat_session(mocker)
@@ -1548,7 +1728,7 @@ def test_create_session_self_hosted_rejects_invalid_codex_as_unconfigured(
     provider_state_version: int,
 ) -> None:
     _set_self_hosted_chat_config(mocker, configured=False)
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     lookup.return_value = [
         _codex_credentials(
             provider_state=provider_state,
@@ -1573,7 +1753,7 @@ def test_create_session_self_hosted_requires_selection_for_multiple_codex_routes
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     _set_self_hosted_chat_config(mocker, configured=False)
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     lookup.return_value = [
         _codex_credentials("cred-one"),
         _codex_credentials("cred-two"),
@@ -1595,7 +1775,7 @@ def test_create_session_self_hosted_requires_selection_for_multiple_codex_routes
 def test_create_session_respects_explicit_platform_route(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     mock_create = _mock_create_chat_session(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.enforce_payment_paywall",
@@ -3506,7 +3686,7 @@ def test_create_session_with_builder_graph_id_uses_get_or_create(
         new_callable=AsyncMock,
         side_effect=_fake_get_or_create,
     )
-    lookup = chat_routes.credentials_manager.store.get_creds_by_provider
+    lookup = chat_transports.credentials_manager.store.get_creds_by_provider
     lookup.return_value = [_codex_credentials()]
 
     response = client.post("/sessions", json={"builder_graph_id": "graph-1"})

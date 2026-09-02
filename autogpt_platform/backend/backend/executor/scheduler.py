@@ -38,6 +38,7 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -350,6 +351,9 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
+            llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+                args.user_id
+            )
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
@@ -361,6 +365,11 @@ async def _execute_copilot_turn(**kwargs):
                 # defaults to "interactive" and schedule_followup becomes a
                 # way to reach the staffing tools with nobody watching.
                 origin="automation",
+                # Model-authored or not, it still runs on the connection the
+                # user chose — a scheduled turn should not quietly bill to a
+                # different one than the chat it follows up on.
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             )
             if args.expert_id and new_session.expert_id is None:
                 # The scope check above passed, so the expert was archived or
