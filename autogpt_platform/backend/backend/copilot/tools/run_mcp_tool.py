@@ -251,10 +251,15 @@ class RunMCPToolTool(BaseTool):
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
-            if creds is not None:
-                # Credentialed clients are constructed above so malformed
-                # legacy rows take the reconnect path instead of escaping.
-                assert client is not None
+            # Credentialed clients are constructed above so malformed legacy
+            # rows take the reconnect path instead of escaping.  Checked rather
+            # than asserted: `python -O` strips asserts, and a None client here
+            # would raise AttributeError inside the surrounding
+            # `except Exception` and report the user "optimistically connected"
+            # on a credential nothing ever probed.
+            if client is None:
+                connected = False
+            elif creds is not None:
                 probe_client = client
                 try:
                     try:

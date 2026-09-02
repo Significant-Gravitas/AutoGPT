@@ -71,6 +71,19 @@ describe("MCP manual authentication helpers", () => {
     );
   });
 
+  it("rejects an unencoded user:password under the Basic scheme", () => {
+    // The Base64 alphabet has no ":", so this is the raw pair a provider's
+    // docs show. Sent verbatim it 401s with nothing naming the missing step.
+    expect(validateMCPAuthCredential("pk-lf-abc:sk-lf-xyz", "basic")).toMatch(
+      /unencoded user:password/,
+    );
+    expect(
+      validateMCPAuthCredential("Basic pk-lf-abc:sk-lf-xyz", "basic"),
+    ).toMatch(/unencoded user:password/);
+    // Bearer tokens legitimately contain colons.
+    expect(validateMCPAuthCredential("user:pass", "bearer")).toBeNull();
+  });
+
   it("rejects a Basic credential containing whitespace", () => {
     expect(validateMCPAuthCredential("dXNlcjpwYXNz", "basic")).toBeNull();
     expect(validateMCPAuthCredential("Basic dXNlcjpwYXNz", "basic")).toBeNull();

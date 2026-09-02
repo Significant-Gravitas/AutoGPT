@@ -34,24 +34,35 @@ export function detectMCPAuthScheme(value: string): MCPAuthScheme | null {
 }
 
 /**
- * Reject a credential the backend would read back as a different scheme.
+ * Reject a Basic value the server could not possibly accept.
  *
- * A Basic credential is Base64 of `user:password`, so whitespace inside it is
- * always a paste mistake — and one we cannot send safely: the backend treats a
- * multi-word value after a scheme word as a bare Bearer credential, so
- * `Basic a b` would be stored and sent as `Bearer Basic a b`. Fail loudly here
- * instead. Returns an error message, or null when the value is sendable.
+ * RFC 7617 puts Base64 of `user:password` on the wire, not the pair itself, and
+ * the Base64 alphabet contains neither `:` nor whitespace. Both mistakes are
+ * worth catching here rather than at the server:
+ *
+ * - a raw `pk-lf-abc:sk-lf-xyz` (what a provider's docs show) would be stored
+ *   and sent verbatim, and every call would 401 with nothing pointing at the
+ *   missing encoding step;
+ * - a value with a space would be re-read by the backend as a bare Bearer
+ *   credential, so `Basic a b` goes on the wire as `Bearer Basic a b`.
+ *
+ * Returns an error message, or null when the value is sendable.
  */
 export function validateMCPAuthCredential(
   value: string,
   scheme: MCPAuthScheme,
 ): string | null {
+  if (scheme !== "basic") return null;
+
   const candidate = value
     .trim()
     .replace(AUTHORIZATION_HEADER_PREFIX, "")
     .trim();
   const credential = matchSchemePrefix(candidate)?.credential ?? candidate;
-  if (scheme === "basic" && /\s/.test(credential)) {
+  if (credential.includes(":")) {
+    return "This looks like an unencoded user:password. Basic authentication sends the Base64 of that pair — encode it first, or paste the complete Authorization header.";
+  }
+  if (/\s/.test(credential)) {
     return "A Basic credential is the Base64 of user:password and cannot contain spaces.";
   }
   return null;

@@ -3,7 +3,7 @@ import logging
 import secrets
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -258,22 +258,23 @@ class CredentialsMetaResponse(BaseModel):
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider in (
-            ProviderName.MCP,
-            ProviderName.MCP.value,
-            "ProviderName.MCP",
-        ):
+        if _is_mcp_credential(cred):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
 
 
-def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
-    mcp_auth_scheme = None
-    if isinstance(cred, OAuth2Credentials) and cred.provider in (
+def _is_mcp_credential(cred: Credentials) -> TypeGuard[OAuth2Credentials]:
+    """Whether this is an MCP credential, across the provider spellings in use."""
+    return isinstance(cred, OAuth2Credentials) and cred.provider in (
         ProviderName.MCP,
         ProviderName.MCP.value,
         "ProviderName.MCP",
-    ):
+    )
+
+
+def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    mcp_auth_scheme = None
+    if _is_mcp_credential(cred):
         stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
         if stored_scheme in ("basic", "bearer"):
             mcp_auth_scheme = stored_scheme

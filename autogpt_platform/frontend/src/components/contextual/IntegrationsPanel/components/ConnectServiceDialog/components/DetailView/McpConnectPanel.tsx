@@ -15,8 +15,13 @@ import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOA
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
-  detectMCPAuthScheme,
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import {
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
   type MCPAuthScheme,
@@ -39,8 +44,6 @@ export function McpConnectPanel({ onSuccess }: Props) {
   });
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
-  const [authScheme, setAuthScheme] = useState<MCPAuthScheme>("bearer");
-  const [authSchemeTouched, setAuthSchemeTouched] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +66,12 @@ export function McpConnectPanel({ onSuccess }: Props) {
     : null;
   const savedAuthScheme: MCPAuthScheme =
     savedCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
-
-  useEffect(() => {
-    if (!authSchemeTouched && !trimmedToken) setAuthScheme(savedAuthScheme);
-  }, [authSchemeTouched, savedAuthScheme, trimmedToken]);
+  const {
+    scheme: authScheme,
+    selectScheme,
+    detectSchemeFrom,
+    resetScheme,
+  } = useMCPAuthScheme(savedAuthScheme, token);
 
   async function invalidateCredentials() {
     await invalidateConnectionQueries(queryClient);
@@ -183,8 +188,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
   function handleSwitchToOAuth() {
     setPhase("form");
     setToken("");
-    setAuthScheme("bearer");
-    setAuthSchemeTouched(false);
+    resetScheme();
     setError(null);
   }
 
@@ -195,8 +199,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     if (!serverIdentityChanged) return;
 
     setToken("");
-    setAuthScheme("bearer");
-    setAuthSchemeTouched(false);
+    resetScheme();
     setPhase("form");
     setError(null);
   }
@@ -222,47 +225,27 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
       {phase === "manual-token" ? (
         <>
-          <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700">
-            Authentication type
-            <select
-              aria-label="Authentication type"
-              value={authScheme}
-              onChange={(e) => {
-                setAuthScheme(e.target.value as MCPAuthScheme);
-                setAuthSchemeTouched(true);
-              }}
-              disabled={isSubmitting}
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-normal text-zinc-900"
-            >
-              <option value="bearer">API token (Bearer)</option>
-              <option value="basic">Basic authentication</option>
-            </select>
-          </label>
+          <MCPAuthSchemeField
+            value={authScheme}
+            onChange={selectScheme}
+            disabled={isSubmitting}
+            className="flex flex-col gap-1"
+            labelClassName="text-sm font-medium text-zinc-700"
+            selectClassName="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          />
           <Input
             id="mcp-auth-token"
-            label={
-              authScheme === "basic"
-                ? "Basic authentication token"
-                : "API token"
-            }
+            label={mcpAuthTokenLabel(authScheme)}
             type="password"
             placeholder="Paste API token"
             value={token}
             onChange={(e) => {
               const nextToken = e.target.value;
               setToken(nextToken);
-              const detected = detectMCPAuthScheme(nextToken);
-              if (detected) {
-                setAuthScheme(detected);
-                setAuthSchemeTouched(true);
-              }
+              detectSchemeFrom(nextToken);
             }}
             disabled={isSubmitting}
-            hint={
-              authScheme === "basic"
-                ? 'Paste the value after "Basic", or paste the complete Authorization header.'
-                : "Paste the token itself. AutoGPT sends it using Bearer authentication."
-            }
+            hint={mcpAuthTokenHint(authScheme)}
           />
         </>
       ) : null}

@@ -3,13 +3,15 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
-  detectMCPAuthScheme,
-  prepareMCPAuthCredential,
-  type MCPAuthScheme,
-} from "@/lib/mcp-auth";
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { prepareMCPAuthCredential } from "@/lib/mcp-auth";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
 
 function hostOf(serverUrl: string): string | null {
@@ -25,10 +27,11 @@ function hostOf(serverUrl: string): string | null {
  *  MCPSetupCard drives via the request callbacks. */
 export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
   const [token, setToken] = useState("");
-  const [authScheme, setAuthScheme] = useState<MCPAuthScheme>(
-    request.authScheme,
-  );
-  const [authSchemeTouched, setAuthSchemeTouched] = useState(false);
+  const {
+    scheme: authScheme,
+    selectScheme,
+    detectSchemeFrom,
+  } = useMCPAuthScheme(request.authScheme, token);
   const host = hostOf(request.serverUrl);
   // "mcp.notion.com" → "notion" so existing /integrations/*.png icons
   // resolve; unknown services fall back to the avatar's initial.
@@ -36,12 +39,6 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
     .replace(/^mcp\./, "")
     .split(".")[0]
     .toLowerCase();
-
-  useEffect(() => {
-    if (!authSchemeTouched && !token.trim()) {
-      setAuthScheme(request.authScheme);
-    }
-  }, [authSchemeTouched, request.authScheme, token]);
 
   function submitCredential() {
     const credential = prepareMCPAuthCredential(token, authScheme);
@@ -90,45 +87,28 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
 
       {request.showManualToken && !request.connected && (
         <div className="mx-4 mb-3 grid gap-2">
-          <label className="grid gap-1 text-xs font-medium text-zinc-700">
-            Authentication type
-            <select
-              aria-label={`Authentication type for ${request.service}`}
-              value={authScheme}
-              onChange={(e) => {
-                setAuthScheme(e.target.value as MCPAuthScheme);
-                setAuthSchemeTouched(true);
-              }}
-              disabled={request.loading}
-              className="rounded-xl bg-zinc-50 px-3 py-2 text-sm font-normal text-zinc-800 ring-1 ring-zinc-100"
-            >
-              <option value="bearer">API token (Bearer)</option>
-              <option value="basic">Basic authentication</option>
-            </select>
-          </label>
+          <MCPAuthSchemeField
+            value={authScheme}
+            onChange={selectScheme}
+            disabled={request.loading}
+            nameSuffix={request.service}
+            className="grid gap-1"
+            labelClassName="text-xs font-medium text-zinc-700"
+            selectClassName="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100"
+          />
           <p className="text-xs text-zinc-500">
-            {authScheme === "basic"
-              ? 'Paste the value after "Basic", or paste the complete Authorization header.'
-              : "Paste the API token itself. AutoGPT will send it using Bearer authentication."}
+            {mcpAuthTokenHint(authScheme)}
           </p>
           <div className="flex gap-2">
             <input
               type="password"
-              aria-label={`${
-                authScheme === "basic"
-                  ? "Basic authentication token"
-                  : "API token"
-              } for ${request.service}`}
+              aria-label={`${mcpAuthTokenLabel(authScheme)} for ${request.service}`}
               placeholder="Paste API token"
               value={token}
               onChange={(e) => {
                 const nextToken = e.target.value;
                 setToken(nextToken);
-                const detected = detectMCPAuthScheme(nextToken);
-                if (detected) {
-                  setAuthScheme(detected);
-                  setAuthSchemeTouched(true);
-                }
+                detectSchemeFrom(nextToken);
               }}
               onKeyDown={(e) =>
                 e.key === "Enter" &&

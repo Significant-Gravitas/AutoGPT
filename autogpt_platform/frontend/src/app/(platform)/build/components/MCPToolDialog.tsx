@@ -31,8 +31,13 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
-  detectMCPAuthScheme,
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import {
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
   type MCPAuthScheme,
@@ -114,8 +119,6 @@ export function MCPToolDialog({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [manualAuthScheme, setManualAuthScheme] =
-    useState<MCPAuthScheme>("bearer");
   const [selectedTool, setSelectedTool] = useState<MCPToolResponse | null>(
     null,
   );
@@ -125,6 +128,25 @@ export function MCPToolDialog({
   const [credentialServerUrl, setCredentialServerUrl] = useState<string | null>(
     null,
   );
+
+  // Seed the selector from the scheme already stored for this server, so
+  // reconnecting a Basic credential does not silently downgrade it to Bearer.
+  // This was the only surface that never read `mcp_auth_scheme`.
+  const storedAuthScheme: MCPAuthScheme =
+    allProviders?.["mcp"]?.savedCredentials.find(
+      (credential) =>
+        typeof credential.host === "string" &&
+        credential.host.trim().replace(/\/+$/, "") ===
+          serverUrl.trim().replace(/\/+$/, ""),
+    )?.mcp_auth_scheme === "basic"
+      ? "basic"
+      : "bearer";
+  const {
+    scheme: manualAuthScheme,
+    selectScheme,
+    detectSchemeFrom,
+    resetScheme,
+  } = useMCPAuthScheme(storedAuthScheme, manualToken);
 
   const startOAuthRef = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
@@ -142,7 +164,7 @@ export function MCPToolDialog({
     setStep("url");
     setServerUrl("");
     setManualToken("");
-    setManualAuthScheme("bearer");
+    resetScheme();
     setTools([]);
     setServerName(null);
     setLoading(false);
@@ -172,7 +194,7 @@ export function MCPToolDialog({
       setAuthRequired(false);
       setShowManualToken(false);
       setManualToken("");
-      setManualAuthScheme("bearer");
+      resetScheme();
       setStep("tool");
     },
     [],
@@ -448,13 +470,20 @@ export function MCPToolDialog({
                 value={serverUrl}
                 onChange={(e) => {
                   const nextUrl = e.target.value;
+                  // Only a real change of server identity discards work in
+                  // progress. Clearing on every keystroke meant fixing one
+                  // character of the path threw away the typed credential and
+                  // forced a full discover → 401 → OAuth-probe round trip.
+                  const serverChanged = serverUrl.trim() !== nextUrl.trim();
                   setServerUrl(nextUrl);
+                  if (!serverChanged) return;
+
                   if (credentialServerUrl !== nextUrl.trim()) {
                     setCredentials(null);
                     setCredentialServerUrl(null);
                   }
                   setManualToken("");
-                  setManualAuthScheme("bearer");
+                  resetScheme();
                   setAuthRequired(false);
                   setShowManualToken(false);
                   setError(null);
@@ -479,26 +508,17 @@ export function MCPToolDialog({
             {/* Manual credential entry — only visible when expanded */}
             {showManualToken && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="mcp-auth-type" className="text-sm">
-                  Authentication type
-                </Label>
-                <select
-                  id="mcp-auth-type"
+                <MCPAuthSchemeField
                   value={manualAuthScheme}
-                  onChange={(e) =>
-                    setManualAuthScheme(e.target.value as MCPAuthScheme)
-                  }
+                  onChange={selectScheme}
                   disabled={loading || oauthLoading}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="bearer">API token (Bearer)</option>
-                  <option value="basic">Basic authentication</option>
-                </select>
+                  className="flex flex-col gap-2"
+                  labelClassName="text-sm font-medium"
+                  selectClassName="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                />
 
                 <Label htmlFor="mcp-auth-token" className="text-sm">
-                  {manualAuthScheme === "basic"
-                    ? "Basic authentication token"
-                    : "API token"}
+                  {mcpAuthTokenLabel(manualAuthScheme)}
                 </Label>
                 <Input
                   id="mcp-auth-token"
@@ -508,17 +528,14 @@ export function MCPToolDialog({
                   onChange={(e) => {
                     const value = e.target.value;
                     setManualToken(value);
-                    const detected = detectMCPAuthScheme(value);
-                    if (detected) setManualAuthScheme(detected);
+                    detectSchemeFrom(value);
                   }}
                   onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
                 <p className="text-xs text-gray-500">
-                  {manualAuthScheme === "basic"
-                    ? 'Paste the value after "Basic", or paste the complete Authorization line.'
-                    : "Paste the token itself. AutoGPT will send it as Bearer authentication."}
+                  {mcpAuthTokenHint(manualAuthScheme)}
                 </p>
               </div>
             )}

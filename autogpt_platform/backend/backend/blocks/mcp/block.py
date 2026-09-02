@@ -18,9 +18,14 @@ from backend.blocks._base import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.client import (
+    MCPClient,
+    MCPClientError,
+    normalize_mcp_authorization,
+)
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    invalidate_mcp_credential,
     normalize_mcp_url,
     parse_mcp_content,
 )
@@ -226,9 +231,12 @@ class MCPToolBlock(Block):
         if required:
             missing = required - set(input_data.tool_arguments.keys())
             if missing:
-                yield "error", (
-                    f"Missing required argument(s): {', '.join(sorted(missing))}. "
-                    f"Please fill in all required fields marked with * in the block form."
+                yield (
+                    "error",
+                    (
+                        f"Missing required argument(s): {', '.join(sorted(missing))}. "
+                        f"Please fill in all required fields marked with * in the block form."
+                    ),
                 )
                 return
 
@@ -243,6 +251,26 @@ class MCPToolBlock(Block):
         auth_token = (
             credentials.access_token.get_secret_value() if credentials else None
         )
+
+        # ``MCPClient`` normalizes the Authorization value and rejects one it
+        # cannot represent.  The route and the copilot both catch that, drop the
+        # credential and offer a reconnect; without the same handling here a
+        # malformed legacy row surfaces as a bare "MCP tool call failed: …" and
+        # stays stored, so the run fails identically forever.
+        if auth_token is not None:
+            try:
+                normalize_mcp_authorization(auth_token)
+            except ValueError:
+                if credentials is not None:
+                    await invalidate_mcp_credential(user_id, credentials.id)
+                yield (
+                    "error",
+                    (
+                        "The stored credential for this MCP server is no longer usable "
+                        "and has been removed. Please reconnect the server."
+                    ),
+                )
+                return
 
         try:
             result = await self._call_mcp_tool(

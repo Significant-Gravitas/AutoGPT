@@ -72,9 +72,6 @@ def normalize_mcp_authorization(value: str) -> str:
         scheme = "Bearer"
         credential = candidate
 
-    if not credential:
-        raise ValueError("Authentication credential must not be blank.")
-
     return f"{scheme} {credential}"
 
 
@@ -119,9 +116,6 @@ class MCPClient:
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
-        # Keep the public attribute for compatibility with callers/tests that may
-        # inspect it, while normalizing the actual request header separately.
-        self.auth_token = auth_token
         self.authorization = (
             normalize_mcp_authorization(auth_token) if auth_token is not None else None
         )

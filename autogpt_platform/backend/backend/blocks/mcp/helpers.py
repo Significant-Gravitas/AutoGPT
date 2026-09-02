@@ -37,6 +37,24 @@ def server_host(server_url: str) -> str:
         return server_url
 
 
+def is_manual_mcp_credential(credentials: OAuth2Credentials) -> bool:
+    """Whether an MCP credential was pasted by the user rather than obtained via OAuth.
+
+    Manual credentials are stored as ``OAuth2Credentials`` for compatibility
+    with the existing credential plumbing, but they carry no refresh token and
+    none of the OAuth client metadata the refresh path needs.  Callers use this
+    to avoid treating the two kinds as interchangeable — rotating a manual
+    credential in place is safe, doing the same to an OAuth row would discard
+    its refresh token and client registration.
+    """
+    metadata = credentials.metadata or {}
+    return (
+        credentials.refresh_token is None
+        and not metadata.get("mcp_token_url")
+        and not metadata.get("mcp_client_id")
+    )
+
+
 def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     """Parse MCP tool response content into a plain Python value.
 
@@ -75,9 +93,10 @@ def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
 async def invalidate_mcp_credential(user_id: str, credential_id: str) -> None:
     """Delete a stored MCP credential that the server just rejected.
 
-    Called from the copilot's ``run_mcp_tool`` path when an MCP server
-    returns 401/403 with a credential we *do* have on file — meaning the
-    token was revoked or expired server-side without our local
+    Called wherever a stored credential turns out to be unusable: the copilot's
+    ``run_mcp_tool`` probe and the discovery route on a 401/403, and the MCP
+    block when the stored value cannot be sent as an Authorization header at
+    all — meaning the token was revoked or expired server-side without our local
     ``access_token_expires_at`` knowing.  Removing the dead row prevents
     ``auto_lookup_mcp_credential`` from feeding the same stale token back
     on the next attempt and lets the user re-auth cleanly via the setup

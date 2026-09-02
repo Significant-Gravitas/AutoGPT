@@ -620,7 +620,13 @@ class TestStoreToken:
         mock_cm.store.delete_creds_by_id.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_store_token_preserves_all_matching_credential_ids(self, client):
+    async def test_store_token_rotates_one_row_and_prunes_duplicates(self, client):
+        """Rotation touches exactly one row and lets the duplicates go.
+
+        Every ``update`` is a read-modify-write of the user's whole credential
+        set, so updating each duplicate in turn multiplied the writes by the
+        number of stale rows and left the row count growing forever.
+        """
         old_creds = [
             OAuth2Credentials(
                 provider="mcp",
@@ -649,15 +655,101 @@ class TestStoreToken:
         assert response.json()["id"] == old_creds[-1].id
         assert response.json()["mcp_auth_scheme"] == "basic"
         mock_cm.create.assert_not_awaited()
-        assert mock_cm.update.await_count == 2
-        updated_creds = [call.args[1] for call in mock_cm.update.await_args_list]
-        assert [cred.id for cred in updated_creds] == [cred.id for cred in old_creds]
-        assert all(
-            cred.access_token.get_secret_value() == "Basic encoded-value"
-            for cred in updated_creds
+        mock_cm.update.assert_awaited_once()
+        assert mock_cm.update.await_args is not None
+        updated = mock_cm.update.await_args.args[1]
+        assert updated.id == old_creds[-1].id
+        assert updated.access_token.get_secret_value() == "Basic encoded-value"
+        # A static pasted credential carries no OAuth scopes.
+        assert updated.scopes == []
+        mock_cm.store.delete_creds_by_id.assert_awaited_once_with(
+            "test-user-id", old_creds[0].id
         )
-        assert all(cred.scopes == ["existing-scope"] for cred in updated_creds)
-        mock_cm.store.delete_creds_by_id.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_replaces_an_oauth_credential_instead_of_converting_it(
+        self, client
+    ):
+        """An OAuth row is replaced, never rewritten in place.
+
+        Rewriting one would keep its id and ``type="oauth2"`` while discarding
+        the refresh token and the client registration behind it, so a saved
+        graph would silently start running on a pasted static secret and the
+        refresh token would never reach the provider's revocation endpoint.
+        """
+        oauth_cred = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("oauth-access"),
+            refresh_token=SecretStr("oauth-refresh"),
+            scopes=["read"],
+            metadata={
+                "mcp_server_url": "https://mcp.example.com/mcp",
+                "mcp_token_url": "https://mcp.example.com/token",
+                "mcp_client_id": "client-abc",
+            },
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[oauth_cred])
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.store.delete_creds_by_id = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "pasted-token",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.update.assert_not_awaited()
+        mock_cm.create.assert_awaited_once()
+        assert mock_cm.create.await_args is not None
+        created = mock_cm.create.await_args.args[1]
+        assert created.id != oauth_cred.id
+        assert created.refresh_token is None
+        assert created.scopes == []
+        mock_cm.store.delete_creds_by_id.assert_awaited_once_with(
+            "test-user-id", oauth_cred.id
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_clears_stale_expiry_on_rotation(self, client):
+        """Positive guard: a rotated manual credential must not stay expiring.
+
+        Deleting the clearing left every assertion green, because only the
+        negative "refresh is not attempted" case was covered.
+        """
+        old_cred = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("old-token"),
+            access_token_expires_at=1,
+            username="someone",
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.store.delete_creds_by_id = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "new-token",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_cm.update.await_args is not None
+        updated = mock_cm.update.await_args.args[1]
+        assert updated.access_token_expires_at is None
+        assert updated.username is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_does_not_mutate_managed_matching_credential(

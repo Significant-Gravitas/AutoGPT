@@ -8,10 +8,12 @@ import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
+from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.block import TEST_CREDENTIALS_INPUT, MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
+from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
 
 
@@ -252,3 +254,94 @@ async def test_store_rejects_header_injection(
     assert response.status_code == 422
     assert "single line" in response.json()["detail"].lower()
     validate_url_host.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_block_uses_the_credential_it_was_given():
+    """An injected credential is used as-is; auto-lookup is the fallback only.
+
+    Pins the block half of the "is the bound credential actually used?"
+    question: given one, ``run`` must not go looking for another.
+    """
+    block = MCPToolBlock()
+    credentials = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr("Basic cWE6YmFzaWM="),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+
+    with (
+        patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
+        patch(
+            "backend.blocks.mcp.block.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+        ) as auto_lookup,
+    ):
+        call_tool.return_value = "ok"
+        outputs = [
+            output
+            async for output in block.run(
+                MCPToolBlock.Input(
+                    server_url="https://mcp.example.com/mcp",
+                    selected_tool="a_tool",
+                    tool_arguments={},
+                ),
+                user_id="test-user-id",
+                credentials=credentials,
+            )
+        ]
+
+    auto_lookup.assert_not_awaited()
+    assert call_tool.await_args is not None
+    assert call_tool.await_args.kwargs["auth_token"] == "Basic cWE6YmFzaWM="
+    assert ("result", "ok") in outputs
+
+
+@pytest.mark.asyncio
+async def test_block_drops_a_credential_it_cannot_send():
+    """A malformed stored credential is invalidated with a reconnect message.
+
+    The route and the copilot both do this; without it here the same broken row
+    surfaced as a bare "MCP tool call failed: …" and stayed stored, so every
+    later run failed identically with no way out.
+    """
+    block = MCPToolBlock()
+    credentials = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr("Authorization: Digest nope"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+
+    with (
+        patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
+        patch(
+            "backend.blocks.mcp.block.invalidate_mcp_credential",
+            new_callable=AsyncMock,
+        ) as invalidate,
+    ):
+        outputs = [
+            output
+            async for output in block.run(
+                MCPToolBlock.Input(
+                    server_url="https://mcp.example.com/mcp",
+                    selected_tool="a_tool",
+                    tool_arguments={},
+                ),
+                user_id="test-user-id",
+                credentials=credentials,
+            )
+        ]
+
+    call_tool.assert_not_awaited()
+    invalidate.assert_awaited_once_with("test-user-id", credentials.id)
+    assert outputs == [
+        (
+            "error",
+            "The stored credential for this MCP server is no longer usable "
+            "and has been removed. Please reconnect the server.",
+        )
+    ]

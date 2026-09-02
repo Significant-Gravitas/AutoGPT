@@ -9,11 +9,13 @@ import {
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { Button } from "@/components/atoms/Button/Button";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
-  detectMCPAuthScheme,
-  prepareMCPAuthCredential,
-  type MCPAuthScheme,
-} from "@/lib/mcp-auth";
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { prepareMCPAuthCredential, type MCPAuthScheme } from "@/lib/mcp-auth";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
@@ -112,9 +114,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showManualToken, setShowManualToken] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [manualAuthScheme, setManualAuthScheme] =
-    useState<MCPAuthScheme>("bearer");
-  const [manualAuthSchemeTouched, setManualAuthSchemeTouched] = useState(false);
+  const {
+    scheme: manualAuthScheme,
+    selectScheme,
+    detectSchemeFrom,
+  } = useMCPAuthScheme(storedManualAuthScheme, manualToken);
   // ``localConnected`` is set ONLY when the user successfully completes
   // OAuth / manual-token in this component instance.  It is NOT seeded
   // from ``initiallyConnected`` — that path is handled via ``liveSays``
@@ -129,12 +133,6 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // on the next attempt so the user can retry.
   const [forceDisconnected, setForceDisconnected] = useState(false);
   const oauthAbortRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    if (!manualAuthSchemeTouched && !manualToken.trim()) {
-      setManualAuthScheme(storedManualAuthScheme);
-    }
-  }, [manualAuthSchemeTouched, manualToken, storedManualAuthScheme]);
 
   // Combined view:
   //   1. ``forceDisconnected`` (set by the catch block) wins.
@@ -421,54 +419,34 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
         {showManualToken && (
           <div className="mt-3 grid gap-2">
-            <label className="grid gap-1 text-xs font-medium text-gray-700">
-              Authentication type
-              <select
-                aria-label={`Authentication type for ${service}`}
-                value={manualAuthScheme}
-                onChange={(e) => {
-                  setManualAuthScheme(e.target.value as MCPAuthScheme);
-                  setManualAuthSchemeTouched(true);
-                }}
-                disabled={loading}
-                className="rounded border bg-background px-2 py-1.5 text-sm font-normal"
-              >
-                <option value="bearer">API token (Bearer)</option>
-                <option value="basic">Basic authentication</option>
-              </select>
-            </label>
+            <MCPAuthSchemeField
+              value={manualAuthScheme}
+              onChange={selectScheme}
+              disabled={loading}
+              nameSuffix={service}
+              className="grid gap-1"
+              labelClassName="text-xs font-medium text-gray-700"
+              selectClassName="rounded border bg-background px-2 py-1.5 text-sm"
+            />
             <label
               htmlFor={manualTokenInputId}
               className="text-xs font-medium text-gray-700"
             >
-              {manualAuthScheme === "basic"
-                ? "Basic authentication token"
-                : "API token"}
+              {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
             <p className="text-xs text-gray-500">
-              {manualAuthScheme === "basic"
-                ? 'Paste the value after "Basic", or paste the complete Authorization header.'
-                : "Paste the API token itself. AutoGPT will send it using Bearer authentication."}
+              {mcpAuthTokenHint(manualAuthScheme)}
             </p>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}
                 type="password"
-                aria-label={`${
-                  manualAuthScheme === "basic"
-                    ? "Basic authentication token"
-                    : "API token"
-                } for ${service}`}
                 placeholder="Paste API token"
                 value={manualToken}
                 onChange={(e) => {
                   const nextToken = e.target.value;
                   setManualToken(nextToken);
-                  const detected = detectMCPAuthScheme(nextToken);
-                  if (detected) {
-                    setManualAuthScheme(detected);
-                    setManualAuthSchemeTouched(true);
-                  }
+                  detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
                   e.key === "Enter" && !loading && handleManualToken()

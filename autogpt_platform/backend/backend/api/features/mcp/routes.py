@@ -25,6 +25,7 @@ from backend.blocks.mcp.client import (
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
+    is_manual_mcp_credential,
     normalize_mcp_url,
     server_host,
 )
@@ -54,7 +55,8 @@ class DiscoverToolsRequest(BaseModel):
         min_length=1,
         description=(
             "Optional bare Bearer token, Basic/Bearer value, or complete "
-            "Authorization header"
+            "Authorization header. Omit the field (or send null) for an "
+            "unauthenticated server; an empty string is rejected."
         ),
     )
 
@@ -426,8 +428,14 @@ class MCPStoreTokenRequest(BaseModel):
 
 @router.post(
     "/token",
-    # Keep the existing summary so generated clients retain their current method name.
+    # The summary is pinned so the generated client keeps its current method
+    # name; the description is where Basic support is documented.
     summary="Store a bearer token for an MCP server",
+    description=(
+        "Store a manually entered MCP credential. Accepts a bare token "
+        "(sent as Bearer, unchanged from before), an explicit `Basic <value>` "
+        "or `Bearer <value>`, or a complete `Authorization:` header."
+    ),
 )
 async def mcp_store_token(
     request: MCPStoreTokenRequest,
@@ -456,21 +464,32 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
-    # Reuse existing user-owned IDs so saved graphs keep resolving their
-    # credential references after a manual token rotation.
-    matching_credentials: list[OAuth2Credentials] = []
+    # Reuse an existing *manual* credential ID so saved graphs keep resolving
+    # their credential references after a token rotation.  OAuth rows for the
+    # same server are replaced, never converted: rewriting one in place would
+    # keep its ID and ``type="oauth2"`` while destroying the refresh token and
+    # the ``mcp_client_id``/``mcp_token_url`` metadata behind it, so a saved
+    # graph would silently start running on a pasted static secret and the
+    # refresh token would be dropped without hitting the provider's revocation
+    # endpoint.
+    manual_credentials: list[OAuth2Credentials] = []
+    oauth_credential_ids: list[str] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        matching_credentials = [
-            old
-            for old in old_creds
-            if isinstance(old, OAuth2Credentials)
-            and not old.is_managed
-            and normalize_mcp_url((old.metadata or {}).get("mcp_server_url", ""))
-            == server_url
-        ]
+        for old in old_creds:
+            if (
+                not isinstance(old, OAuth2Credentials)
+                or old.is_managed
+                or normalize_mcp_url((old.metadata or {}).get("mcp_server_url", ""))
+                != server_url
+            ):
+                continue
+            if is_manual_mcp_credential(old):
+                manual_credentials.append(old)
+            else:
+                oauth_credential_ids.append(old.id)
     except Exception as e:
         logger.exception("Could not query existing MCP credentials")
         raise fastapi.HTTPException(
@@ -479,42 +498,40 @@ async def mcp_store_token(
         ) from e
 
     auth_scheme = authorization.split(" ", 1)[0].lower()
-    if matching_credentials:
-        updated_credentials: list[OAuth2Credentials] = []
-        for old in matching_credentials:
-            updated = old.model_copy(
-                update={
-                    "title": f"MCP: {hostname}",
-                    "username": None,
-                    "access_token": SecretStr(authorization),
-                    "access_token_expires_at": None,
-                    "refresh_token": None,
-                    "refresh_token_expires_at": None,
-                    "provider_state": None,
-                    "provider_state_version": None,
-                    "metadata": {
-                        "mcp_server_url": server_url,
-                        "mcp_auth_scheme": auth_scheme,
-                    },
-                }
-            )
-            await creds_manager.update(user_id, updated)
-            updated_credentials.append(updated)
-        # Return the newest matching ID, consistent with auto-lookup's
-        # last-row tiebreaker, while every existing ID remains valid.
-        credentials = updated_credentials[-1]
+    metadata = {"mcp_server_url": server_url, "mcp_auth_scheme": auth_scheme}
+    # Every write below is a read-modify-write of the user's whole credential
+    # set, so touch exactly one row: rotate the newest manual credential and
+    # drop the rest, rather than updating each duplicate in turn.
+    superseded_ids = [old.id for old in manual_credentials[:-1]] + oauth_credential_ids
+    if manual_credentials:
+        credentials = manual_credentials[-1].model_copy(
+            update={
+                "title": f"MCP: {hostname}",
+                "username": None,
+                "access_token": SecretStr(authorization),
+                "access_token_expires_at": None,
+                "scopes": [],
+                "metadata": metadata,
+            }
+        )
+        await creds_manager.update(user_id, credentials)
     else:
         credentials = OAuth2Credentials(
             provider=ProviderName.MCP.value,
             title=f"MCP: {hostname}",
             access_token=SecretStr(authorization),
             scopes=[],
-            metadata={
-                "mcp_server_url": server_url,
-                "mcp_auth_scheme": auth_scheme,
-            },
+            metadata=metadata,
         )
         await creds_manager.create(user_id, credentials)
+
+    # Only after the new credential is safely stored, so a failed write leaves
+    # the user with their previous credential rather than none at all.
+    for old_id in superseded_ids:
+        try:
+            await creds_manager.store.delete_creds_by_id(user_id, old_id)
+        except Exception:
+            logger.debug("Could not clean up superseded MCP credential", exc_info=True)
 
     return to_meta_response(credentials)
 

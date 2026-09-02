@@ -129,7 +129,7 @@ describe("MCPToolDialog credential binding", () => {
     );
     const mcpStoreToken = vi.fn().mockResolvedValue(CREDENTIAL);
     const providers = {
-      mcp: { mcpStoreToken },
+      mcp: { mcpStoreToken, savedCredentials: [] },
     } as unknown as CredentialsProvidersContextType;
     const onConfirm = vi.fn();
 
@@ -151,6 +151,103 @@ describe("MCPToolDialog credential binding", () => {
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ credentials: CREDENTIAL }),
     );
+  });
+
+  it("sends a Basic credential with the selected scheme", async () => {
+    // Hardcoding "bearer" at the prepare call survived the whole dialog suite:
+    // no Basic case existed on this surface.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer)
+      .mockResolvedValueOnce(
+        apiResponse(401, { detail: "Authentication required" }),
+      )
+      .mockResolvedValueOnce(
+        apiResponse(200, {
+          tools: [PRIVATE_TOOL],
+          server_name: "Private Server",
+        }),
+      );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, { detail: "OAuth not supported" }),
+    );
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(200, CREDENTIAL),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    await screen.findByLabelText("Authentication type");
+    fireEvent.change(screen.getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(screen.getByLabelText("Basic authentication token"), {
+      target: { value: "cGstbGYtYWJjZA==" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect & Discover" }));
+
+    await screen.findByRole("button", { name: /private-tool/i });
+    expect(postV2StoreABearerTokenForAnMcpServer).toHaveBeenCalledWith({
+      server_url: PRIVATE_SERVER_URL,
+      token: "Basic cGstbGYtYWJjZA==",
+    });
+  });
+
+  it("seeds the selector from the scheme already stored for the server", async () => {
+    // This dialog was the only surface that never read `mcp_auth_scheme`, so
+    // reconnecting a Basic credential silently downgraded it to Bearer.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, { detail: "OAuth not supported" }),
+    );
+
+    const providers = {
+      mcp: {
+        savedCredentials: [
+          {
+            id: "c1",
+            provider: "mcp",
+            type: "oauth2",
+            title: "MCP",
+            host: PRIVATE_SERVER_URL,
+            mcp_auth_scheme: "basic",
+          },
+        ],
+      },
+    } as unknown as CredentialsProvidersContextType;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPToolDialog open onClose={() => {}} onConfirm={vi.fn()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Server URL"), {
+      target: { value: PRIVATE_SERVER_URL },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    const select = (await screen.findByLabelText(
+      "Authentication type",
+    )) as HTMLSelectElement;
+    expect(select.value).toBe("basic");
   });
 
   it("does not store a manual credential rejected by discovery", async () => {
