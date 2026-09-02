@@ -11,6 +11,17 @@ export type SelectedTriggerKind =
   | "error"
   | "not-found";
 
+export function isNewAgentTaskDisabled(args: {
+  sidebarLoading: boolean;
+  isTemplateLoading: boolean;
+  activeTab: string;
+}): boolean {
+  return (
+    args.sidebarLoading ||
+    (args.isTemplateLoading && args.activeTab === "templates")
+  );
+}
+
 // Optional type-hint prefixes for `activeItem` values on the Triggers tab,
 // so the right detail view can render without waiting for the item lists.
 // Bare IDs (old links, other tabs) parse with a null hint and are resolved

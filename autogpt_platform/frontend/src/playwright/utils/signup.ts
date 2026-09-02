@@ -3,6 +3,7 @@ import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
 import { skipOnboardingIfPresent } from "./onboarding";
+import { expect } from "@playwright/test";
 
 export async function signupTestUser(
   page: any,
@@ -21,12 +22,13 @@ export async function signupTestUser(
     // Navigate to signup page
     await page.goto("/signup");
 
-    // Wait for page to load
-    getText("Create a new account");
+    // Wait for the hydrated form, not the server-rendered loading shell.
+    await getText("Create your account").waitFor({ state: "visible" });
 
     // Fill form
     const emailInput = getField("Email");
     await emailInput.fill(userEmail);
+    await expect(emailInput).toHaveValue(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
     const confirmPasswordInput = page.locator("#confirmPassword");
