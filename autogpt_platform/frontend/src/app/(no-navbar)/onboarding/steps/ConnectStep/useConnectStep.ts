@@ -1,9 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-
 import {
-  getGetV2ListChatConnectionsQueryKey,
   useGetV2ListChatConnections,
   useGetV2ListProviderModelTiers,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -13,7 +10,6 @@ import { useOnboardingWizardStore } from "../../store";
 import { hasLinkedSubscription, linkedModelsSentence } from "./helpers";
 
 export function useConnectStep() {
-  const queryClient = useQueryClient();
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
 
   const connectionsQuery = useGetV2ListChatConnections({
@@ -36,14 +32,7 @@ export function useConnectStep() {
 
   const { connect, isPending } = useOAuthConnect({
     provider: "codex",
-    onSuccess: () => {
-      // The next step's copy depends on what is connected, and so does the
-      // decision to show this step at all on a later visit.
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListChatConnectionsQueryKey(),
-      });
-      nextStep();
-    },
+    onSuccess: nextStep,
   });
 
   return {

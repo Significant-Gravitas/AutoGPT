@@ -53,7 +53,7 @@ from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.integrations.codex.transport import (
-    PooledCodexRuntimeLease,
+    CodexCredentialLease,
     get_codex_transport,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -330,7 +330,7 @@ async def resolve_model_route(
 async def resolve_codex_model_route(
     mode: ModelMode,
     tier: ModelTier,
-    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+    credential_lease: CredentialLease | CodexCredentialLease,
 ) -> ResolvedCodexModel:
     """Resolve a Codex model against both the catalog and the account."""
     advertised = await _advertised_codex_models(credential_lease)
@@ -348,9 +348,9 @@ async def resolve_codex_model_route(
 
 
 async def _advertised_codex_models(
-    credential_lease: CredentialLease | PooledCodexRuntimeLease,
+    credential_lease: CredentialLease | CodexCredentialLease,
 ) -> list[CodexModelInfo]:
-    if isinstance(credential_lease, PooledCodexRuntimeLease):
+    if isinstance(credential_lease, CodexCredentialLease):
         return await credential_lease.models()
     return await get_codex_transport().models(credential_lease)
 

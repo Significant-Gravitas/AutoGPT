@@ -87,6 +87,17 @@ function mockOffers(offers: AIConnectionOffer[]) {
   server.use(getGetV2ListChatConnectionsMockHandler200({ offers }));
 }
 
+/**
+ * The picker's trigger, whichever thing it is currently labelled with.
+ *
+ * The chip names the connection when there is one to choose, and the tier when
+ * there is not, so matching either label alone would tie every test that merely
+ * needs to open the popover to the label rule. Both end in "— change".
+ */
+function openPicker() {
+  return screen.findByRole("button", { name: /— change/ });
+}
+
 beforeEach(() => {
   useCopilotUIStore.setState({
     copilotLlmAuth: null,
@@ -99,9 +110,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(await screen.findByText("Your AutoGPT plan")).toBeDefined();
     expect(screen.getByText("Your ChatGPT plan")).toBeDefined();
@@ -121,9 +130,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByRole("radio", { name: "Balanced · sonnet-5" }),
@@ -141,9 +148,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     const tiers = await screen.findByRole("radiogroup", { name: "Model tier" });
     expect(
@@ -193,9 +198,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
     render(<ConnectionPicker />);
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
     await userEvent.click(
       await screen.findByRole("radio", { name: /ChatGPT/ }),
     );
@@ -205,6 +208,36 @@ describe("ConnectionPicker", () => {
         authProvider: "codex",
       }),
     );
+  });
+
+  it("moves and selects between connections with the arrow keys", async () => {
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectionPicker />);
+
+    await userEvent.click(await openPicker());
+    const connections = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    const platform = within(connections).getByRole("radio", {
+      name: /AutoGPT Platform/,
+    });
+    const linked = within(connections).getByRole("radio", {
+      name: /ChatGPT/,
+    });
+
+    platform.focus();
+    await userEvent.keyboard("x");
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+
+    await userEvent.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "codex",
+        credentialId: "cred-1",
+      });
+      expect(document.activeElement).toBe(linked);
+    });
   });
 
   it("is one tab stop, and the arrow keys move and select within it", async () => {
@@ -252,9 +285,7 @@ describe("ConnectionPicker", () => {
     ]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     await waitFor(() =>
       expect(
@@ -269,9 +300,7 @@ describe("ConnectionPicker", () => {
     mockOffers([chatgpt({ is_default: true })]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByRole("radio", { name: "Balanced" }),
@@ -282,9 +311,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
     await userEvent.click(
       await screen.findByRole("radio", { name: /ChatGPT/ }),
     );
@@ -301,9 +328,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText(/builder's chat panel always runs on AutoGPT/),
@@ -382,9 +407,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), locked()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(await screen.findByText("ChatGPT")).toBeDefined();
     expect(
@@ -429,9 +452,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), locked()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText(/spending no AutoGPT credits/),
@@ -453,9 +474,7 @@ describe("ConnectionPicker", () => {
     ]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText(
@@ -469,9 +488,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), locked()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
     await screen.findByText("A Max plan or higher is required to use ChatGPT.");
 
     expect(screen.queryByRole("radio", { name: /ChatGPT/ })).toBeNull();
@@ -484,9 +501,12 @@ describe("ConnectionPicker", () => {
 
     render(<ConnectionPicker />);
 
-    expect(
-      await screen.findByRole("button", { name: /Runs on AutoGPT Platform/ }),
-    ).toBeDefined();
+    await userEvent.click(await openPicker());
+    // What it lands on is what it marks selected: never the locked one.
+    const landed = await screen.findByRole("radio", {
+      name: /AutoGPT Platform/,
+    });
+    expect(landed.getAttribute("aria-checked")).toBe("true");
     // What it lands on is what it shows: a locked offer is never the one the
     // chip names. Nothing is written into the store either, because showing a
     // default is not the user choosing it.
@@ -499,9 +519,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText("Balanced: sonnet-5 · Advanced: opus-5"),
@@ -512,9 +530,7 @@ describe("ConnectionPicker", () => {
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(await screen.findByText("Connected")).toBeDefined();
     // The deployment route is not something anyone connected.
@@ -538,9 +554,7 @@ describe("ConnectionPicker", () => {
     ]);
 
     render(<ConnectionPicker />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Runs on/ }),
-    );
+    await userEvent.click(await openPicker());
 
     expect(
       await screen.findByText(/A Max plan or higher is required for Advanced/),
@@ -590,5 +604,54 @@ describe("ConnectionPicker", () => {
 
     const trigger = await screen.findByRole("button", { name: /Runs on/ });
     expect(trigger.getAttribute("aria-label")).not.toMatch(/your plan/);
+  });
+
+  it("shows the tier when there is no connection to choose", async () => {
+    // Naming the only connection teaches a hosted user nothing — they would
+    // read "AutoGPT Platform" on every chat. The tier is the live choice.
+    mockOffers([chatgpt({ is_default: true })]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", { name: /Model tier Balanced/ }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Runs on/ })).toBeNull();
+  });
+
+  it("names the connection once there is more than one", async () => {
+    mockOffers([offer({ is_default: true }), chatgpt()]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", { name: /Runs on AutoGPT Platform/ }),
+    ).toBeDefined();
+  });
+
+  it("treats a locked alternative as no choice at all", async () => {
+    // A row the user cannot pick is an explanation, not an option, so the chip
+    // stays on the tier — but the row still earns its place in the popover.
+    mockOffers([offer({ is_default: true }), locked()]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByRole("button", { name: /Model tier/ }),
+    ).toBeDefined();
+    await userEvent.click(await openPicker());
+    expect(screen.getByText("ChatGPT")).toBeDefined();
+  });
+
+  it("drops the key icon when the chip names a tier", async () => {
+    // A key stands for a credential; against "Balanced" it would be labelling
+    // reasoning depth as an account.
+    mockOffers([chatgpt({ is_default: true })]);
+
+    render(<ConnectionPicker />);
+    const trigger = await screen.findByRole("button", { name: /Model tier/ });
+
+    // One icon left: the dropdown chevron.
+    expect(trigger.querySelectorAll("svg")).toHaveLength(1);
   });
 });

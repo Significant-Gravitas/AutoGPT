@@ -56,6 +56,7 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     tier,
     setTier,
     showTiers,
+    hasConnectionChoice,
     isLoading,
     isError,
   } = useConnectionPicker();
@@ -105,7 +106,17 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
     disabled: !isSelectable(offer),
   }));
   const runsOnOwnPlan = active ? isLinkedAccount(active) : false;
-  const showsTier = connectionLocked && Boolean(active);
+  // With no connection to choose between, naming it says nothing — a hosted
+  // user would read "AutoGPT Platform" on every chat and learn only that there
+  // is one. The tier is the live choice, so that is what the chip carries.
+  // A second connection makes the route itself a decision, and the label
+  // switches to it.
+  // A tier only names a route that can actually run. With a locked-only offer
+  // there is no active connection, so the chip must stay a connection prompt
+  // and open the explanation instead of claiming a phantom Balanced tier.
+  const showsTier =
+    (connectionLocked && Boolean(active)) ||
+    (!hasConnectionChoice && Boolean(active));
   const label = showsTier
     ? tierName(active, tier)
     : (active?.display_name ?? "Choose connection");
@@ -132,7 +143,9 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          <Icon icon={KeyIcon} size={14} />
+          {/* The key stands for a credential. Against a tier name it would be
+              labelling reasoning depth as an account, so it is dropped. */}
+          {!showsTier && <Icon icon={KeyIcon} size={14} />}
           <span className="hidden sm:inline">{triggerLabel}</span>
           <Icon
             icon={ArrowDown01Icon}
@@ -146,57 +159,61 @@ export function ConnectionPicker({ connectionLocked = false }: Props) {
         align="start"
         className="w-[26rem] max-w-[calc(100vw-2rem)] border-border bg-popover p-0 text-popover-foreground"
       >
-        {(!connectionLocked || onlyOfferIsLocked) && (
-          <>
-            <SectionLabel>Runs on</SectionLabel>
-            <div
-              role="radiogroup"
-              aria-label="Connection this chat runs on"
-              onKeyDown={(event) => {
-                const to = nextRovingValue(
-                  connectionOptions,
-                  active?.offer_id ?? "",
-                  event.key,
-                );
-                if (to === null) return;
-                event.preventDefault();
-                const target = offers.find((o) => o.offer_id === to);
-                if (target) chooseConnection(target);
-                event.currentTarget
-                  .querySelector<HTMLElement>(`[data-offer="${to}"]`)
-                  ?.focus();
-              }}
-            >
-              {offers.map((offer) => (
-                <ChoiceRow
-                  key={offer.offer_id}
-                  offerId={offer.offer_id}
-                  tabIndex={rovingTabIndex(
+        {/* One runnable row is nothing to choose between. A locked-only row is
+            different: the explanation and unlock link are the entire reason
+            the chip remains visible. */}
+        {(!connectionLocked || onlyOfferIsLocked) &&
+          (offers.length > 1 || onlyOfferIsLocked) && (
+            <>
+              <SectionLabel>Runs on</SectionLabel>
+              <div
+                role="radiogroup"
+                aria-label="Connection this chat runs on"
+                onKeyDown={(event) => {
+                  const to = nextRovingValue(
                     connectionOptions,
-                    { value: offer.offer_id },
                     active?.offer_id ?? "",
-                  )}
-                  title={offer.display_name}
-                  subtitle={offerSubtitle(offer)}
-                  badge={isLinkedAccount(offer) ? "Connected" : undefined}
-                  notes={[tierSummary(offer), ...offer.limitations].filter(
-                    Boolean,
-                  )}
-                  isSelected={offer.offer_id === active?.offer_id}
-                  onSelect={() => chooseConnection(offer)}
-                  lock={
-                    offer.lock_reason
-                      ? {
-                          reason: offer.lock_reason,
-                          href: offer.unlock_href ?? null,
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          </>
-        )}
+                    event.key,
+                  );
+                  if (to === null) return;
+                  event.preventDefault();
+                  const target = offers.find((o) => o.offer_id === to);
+                  if (target) chooseConnection(target);
+                  event.currentTarget
+                    .querySelector<HTMLElement>(`[data-offer="${to}"]`)
+                    ?.focus();
+                }}
+              >
+                {offers.map((offer) => (
+                  <ChoiceRow
+                    key={offer.offer_id}
+                    offerId={offer.offer_id}
+                    tabIndex={rovingTabIndex(
+                      connectionOptions,
+                      { value: offer.offer_id },
+                      active?.offer_id ?? "",
+                    )}
+                    title={offer.display_name}
+                    subtitle={offerSubtitle(offer)}
+                    badge={isLinkedAccount(offer) ? "Connected" : undefined}
+                    notes={[tierSummary(offer), ...offer.limitations].filter(
+                      Boolean,
+                    )}
+                    isSelected={offer.offer_id === active?.offer_id}
+                    onSelect={() => chooseConnection(offer)}
+                    lock={
+                      offer.lock_reason
+                        ? {
+                            reason: offer.lock_reason,
+                            href: offer.unlock_href ?? null,
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
         {showTiers && (
           <>

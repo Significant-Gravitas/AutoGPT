@@ -14,7 +14,7 @@ function hash(key: readonly unknown[]) {
 }
 
 describe("invalidateConnectionQueries", () => {
-  it("refreshes credentials, chat connections and transports", async () => {
+  it("refreshes the credentials, chat connections and transports lists", async () => {
     const client = new QueryClient();
     const invalidateQueries = vi.fn().mockResolvedValue(undefined);
     client.invalidateQueries = invalidateQueries;
