@@ -5,12 +5,19 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Manual E2E Test
 
 Test a PR/branch end-to-end by building the full platform, interacting via browser and API, capturing screenshots, and reporting results.
+
+**Changelog 2.2.0** — auth flow updated for Better Auth (Supabase signup is
+gone), env-setup gaps closed, a proven Playwright fallback for agent-browser,
+a billing-test trap that produces false passes, safer process cleanup, and a
+mock-provider pattern for deterministic $0 testing. Learned on
+[#14206](https://github.com/Significant-Gravitas/AutoGPT/pull/14206) — see the
+[evidence comment](https://github.com/Significant-Gravitas/AutoGPT/pull/14206#issuecomment-5511429524).
 
 ## Critical Requirements
 
@@ -48,6 +55,16 @@ Each test scenario in the report MUST have:
 - **Screenshot Evidence**: Before/after screenshots with explanations
 
 ## State Manipulation for Realistic Testing
+
+**Billing-test trap — this one produces a false pass, not a visible failure.**
+LLM block cost filters key on the *platform-owned* credential id. A run made
+with the test user's own API key bills nothing by design, so a credits
+before/after assertion silently passes on zero deltas either way. Any test
+that verifies credit reconciliation MUST use the system credential, not a
+user-supplied key. Related: Ollama models have `MODEL_COST` set but
+`TOKEN_COST=None`, so pre/post-flight cost deltas are always 0 for them
+regardless of credential — never use an Ollama model to test credit
+reconciliation, pick any hosted model billed through the system credential.
 
 When testing features that depend on specific states (rate limits, credits, quotas):
 
@@ -337,6 +354,22 @@ cp $REPO_ROOT/autogpt_platform/backend/.env $BACKEND_DIR/.env
 cp $REPO_ROOT/autogpt_platform/frontend/.env $FRONTEND_DIR/.env
 ```
 
+**A copy from the root worktree is no longer sufficient on a recent `dev`** —
+auth moved from Supabase to Better Auth (see 3h) and two vars are easy to
+miss because nothing fails loudly without them, it just 401s later:
+
+- `$BACKEND_DIR/.env` needs `JWT_JWKS_URL` — the Better Auth JWKS endpoint the
+  backend verifies tokens against. Value shape: `backend/.env.default:42`
+  (`http://localhost:3000/api/auth/jwks` for native/local runs).
+- `$FRONTEND_DIR/.env` needs its **own** `DATABASE_URL` — Better Auth runs
+  inside the Next.js app and talks to Postgres directly, it does not go
+  through the backend. See `frontend/.env.default` for the local shape.
+
+```bash
+grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env
+grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env || grep '^DATABASE_URL=' $FRONTEND_DIR/.env.default >> $FRONTEND_DIR/.env
+```
+
 ### 3b. Configure copilot authentication
 
 The copilot needs an LLM API to function. Two approaches (try subscription first):
@@ -394,17 +427,24 @@ done
 
 **Native mode also:** when running the app natively (see 3e-native), kill any stray host processes and free the app ports before starting — otherwise `poetry run app` and `pnpm dev` will fail to bind.
 
-```bash
-# Kill stray native app processes from prior runs
-pkill -9 -f "python.*backend" 2>/dev/null || true
-pkill -9 -f "poetry run app" 2>/dev/null || true
-pkill -9 -f "next-server|next dev" 2>/dev/null || true
+**Kill by port, not by broad process pattern.** A pattern-based
+`pkill -f "python.*backend"` (or anything matching by worktree cwd) is too
+coarse on a host running several worktrees — it has taken out the frontend
+and a mock server sitting on other ports along with the intended backend
+process. Target the pid actually holding each port instead:
 
-# Free app ports (errors per port are ignored — port may simply be unused)
+```bash
+# Free app ports one at a time — errors per port are ignored (port may simply
+# be unused). This only kills the process holding that specific port, so it
+# can't collide with an unrelated sibling worktree's processes.
 for port in 3000 8006 8001 8002 8005 8008; do
   lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
 done
 ```
+
+Killing the process on :3000 restarts the frontend and therefore rotates the
+Better Auth JWKS keypair (see 3h) — re-fetch `$TOKEN` after this step, not
+just after starting services back up.
 
 ### 3e-native. Run the app natively (PREFERRED for iterative dev)
 
@@ -504,38 +544,42 @@ done
 
 ### 3h. Create test user and get auth token
 
+The platform moved off Supabase auth to Better Auth, embedded in the
+Next.js app at `/api/auth/*`. Signup and sign-in both go through the frontend
+now, not Kong on :8000 — and `/api/auth/token` mints a backend-API JWT from a
+**session cookie**, it does not accept credentials directly, so sign-in has to
+happen first to get that cookie.
+
 ```bash
-ANON_KEY=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | sed 's/.*NEXT_PUBLIC_SUPABASE_ANON_KEY=//' | tr -d '[:space:]')
+COOKIE_JAR=$(mktemp)
+SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p,name:"PR Test User"}')
 
-# Signup (idempotent — returns "User already registered" if exists)
-SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p}')
-RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
-  -H "apikey: $ANON_KEY" \
+# Signup (idempotent — returns an error body if the account already exists;
+# treat that as success and fall through to sign-in)
+curl -s -X POST 'http://localhost:3000/api/auth/sign-up/email' \
   -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD")
+  -d "$SIGNUP_PAYLOAD" > /dev/null
 
-# If "Database error finding user", restart supabase-auth and retry —
-# capture the retry result back into $RESULT so the token step below
-# reads the post-retry state, not the original failure.
-if echo "$RESULT" | grep -q "Database error"; then
-  docker restart supabase-auth && sleep 5
-  RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
-    -H "apikey: $ANON_KEY" \
-    -H 'Content-Type: application/json' \
-    -d "$SIGNUP_PAYLOAD")
-fi
-
-# Get auth token
-TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
-  -H "apikey: $ANON_KEY" \
+# Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR
+curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
   -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD" | jq -r '.access_token // ""')
+  -d "$SIGNUP_PAYLOAD" > /dev/null
+
+# Mint a backend-API JWT from the session cookie
+TOKEN=$(curl -s -b "$COOKIE_JAR" 'http://localhost:3000/api/auth/token' | jq -r '.token // ""')
+rm -f "$COOKIE_JAR"
 ```
 
 **Use this token for ALL API calls:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 ```
+
+**Restarting the frontend mid-run rotates the Better Auth JWKS keypair and
+invalidates every JWT already issued** — the backend verifies tokens against
+whatever `JWT_JWKS_URL` currently serves (see 3a), so a stale `$TOKEN` starts
+401ing right after a frontend restart with no other symptom. Re-run the token
+fetch above after any frontend restart, not just after a backend one.
 
 ### 3i. Disable onboarding for test user
 
@@ -621,7 +665,46 @@ echo "After: $AFTER_STATE"
 echo "Expected change: {describe what should have changed}"
 ```
 
+### Mock-provider pattern (deterministic, $0)
+
+For timeout/latency/error-handling behavior that would otherwise need a real
+LLM call, point the OpenAI SDK at a local mock instead — it honours
+`OPENAI_BASE_URL`, so a small local Responses-API server can stand in for the
+provider while everything downstream (executor, credentials, billing) still
+runs for real. This proved out 4/4 test items at $0 in this run.
+
+```bash
+# In $BACKEND_DIR/.env, point the OpenAI provider at a local mock server
+# that implements the subset of the Responses API you need (e.g. delayed
+# responses to test timeout handling, or a 500 to test error surfacing):
+OPENAI_BASE_URL=http://localhost:{mock_port}/v1
+```
+
+Only the transport is faked — the credential lookup, execution graph, and
+billing path are exercised unmodified, so this is safe to use for anything
+that isn't itself testing model *output* quality.
+
 ### Browser testing with agent-browser
+
+**If `agent-browser` isn't installed on the host, don't let `npx` download it.**
+Use `@playwright/test` against the Chromium already installed in the
+frontend's `node_modules` instead — zero downloads, and it gives finer
+control over timing (`waitForSelector`, explicit timeouts) than agent-browser's
+CLI. Keep agent-browser as the primary tool wherever it's already present;
+this is a proven fallback, not a replacement:
+
+```bash
+cd $FRONTEND_DIR && node -e "
+const { chromium } = require('@playwright/test');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto('http://localhost:3000/login');
+  await page.screenshot({ path: '$RESULTS_DIR/01-login.png' });
+  await browser.close();
+})();
+"
+```
 
 ```bash
 # Close any existing session
