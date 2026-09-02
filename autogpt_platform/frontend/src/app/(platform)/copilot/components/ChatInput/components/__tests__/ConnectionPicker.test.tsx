@@ -210,6 +210,36 @@ describe("ConnectionPicker", () => {
     );
   });
 
+  it("moves and selects between connections with the arrow keys", async () => {
+    mockOffers([offer(), chatgpt()]);
+    render(<ConnectionPicker />);
+
+    await userEvent.click(await openPicker());
+    const connections = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    const platform = within(connections).getByRole("radio", {
+      name: /AutoGPT Platform/,
+    });
+    const linked = within(connections).getByRole("radio", {
+      name: /ChatGPT/,
+    });
+
+    platform.focus();
+    await userEvent.keyboard("x");
+    expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+
+    await userEvent.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "codex",
+        credentialId: "cred-1",
+      });
+      expect(document.activeElement).toBe(linked);
+    });
+  });
+
   it("is one tab stop, and the arrow keys move and select within it", async () => {
     // A radio group is not a list of buttons that say role="radio". Tab moves
     // past the whole group; the arrows move within it and select as they go.
