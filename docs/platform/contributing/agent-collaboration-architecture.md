@@ -1239,7 +1239,7 @@ a required field.
 
 ### 12.1 Are the two grounding facts exploitable on `dev` today?
 
-The orchestrator asked the question the auto-mode gate's retraction taught: a finding is a
+Asking the question the auto-mode gate's retraction taught: a finding is a
 hypothesis until someone traces reachability. Traced against `dev`:
 
 **Fact A — delegation passes permissions equal to the parent's, with no
