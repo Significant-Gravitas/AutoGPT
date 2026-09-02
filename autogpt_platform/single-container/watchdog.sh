@@ -8,34 +8,98 @@ source "${AUTOGPT_ASSET_DIR:-/opt/autogpt/single-container}/common.sh"
 readonly SUPERVISOR_PID_FILE="${AUTOGPT_RUNTIME_DIR}/supervisord.pid"
 readonly WATCHDOG_ARMED_FILE="${AUTOGPT_RUNTIME_DIR}/watchdog-armed"
 readonly FAILURE_LIMIT=3
+readonly INITIAL_CHECK_INTERVAL=1
 readonly CHECK_INTERVAL=30
 readonly CHECK_TIMEOUT=60
 readonly INITIAL_HEALTH_TIMEOUT=600
 
+CHECK_TIMER_PID=
+FORCED_CHECK_PENDING=false
+CHECK_TRIGGER=scheduled
+WATCHDOG_OUTPUT=
+
 main() {
   local failures=0
-  local output
   rm -f "${WATCHDOG_ARMED_FILE}"
-  output="$(mktemp "${AUTOGPT_RUNTIME_DIR}/watchdog-health.XXXXXX")"
-  trap 'rm -f "${output}" "${WATCHDOG_ARMED_FILE}"' EXIT
+  WATCHDOG_OUTPUT="$(mktemp "${AUTOGPT_RUNTIME_DIR}/watchdog-health.XXXXXX")"
+  trap 'rm -f "${WATCHDOG_OUTPUT}" "${WATCHDOG_ARMED_FILE}"' EXIT
+  trap queue_forced_check USR1
 
   wait_for_ready_file
-  wait_for_initial_health "${output}"
+  wait_for_initial_health "${WATCHDOG_OUTPUT}"
   while true; do
-    sleep "${CHECK_INTERVAL}"
-    if run_healthcheck "${output}"; then
+    wait_for_next_check
+    if run_healthcheck "${WATCHDOG_OUTPUT}"; then
       failures=0
+      if [[ "${CHECK_TRIGGER}" == forced ]]; then
+        log "watchdog health check passed trigger=forced"
+      fi
       continue
     fi
 
     ((failures += 1))
-    log "watchdog health failure ${failures}/${FAILURE_LIMIT}" >&2
-    sed -n '1,120p' "${output}" >&2
+    log "watchdog health failure ${failures}/${FAILURE_LIMIT} trigger=${CHECK_TRIGGER}" >&2
+    sed -n '1,120p' "${WATCHDOG_OUTPUT}" >&2
     if ((failures >= FAILURE_LIMIT)); then
       stop_appliance \
         "watchdog stopping the unhealthy appliance; a Docker restart policy is required to restart it automatically"
     fi
   done
+}
+
+queue_forced_check() {
+  # USR1 advances one cadence slot; the normal healthcheck and failure limit
+  # below remain the only path that can stop the appliance.
+  FORCED_CHECK_PENDING=true
+  if [[ -n "${CHECK_TIMER_PID}" ]]; then
+    if ! kill -TERM "${CHECK_TIMER_PID}" 2>/dev/null; then
+      :
+    fi
+  fi
+}
+
+wait_for_next_check() {
+  local timer_pid
+  local timer_status
+  CHECK_TRIGGER=scheduled
+
+  if [[ "${FORCED_CHECK_PENDING}" == true ]]; then
+    FORCED_CHECK_PENDING=false
+    CHECK_TRIGGER=forced
+    return 0
+  fi
+
+  sleep "${CHECK_INTERVAL}" &
+  timer_pid=$!
+  CHECK_TIMER_PID="${timer_pid}"
+  if [[ "${FORCED_CHECK_PENDING}" == true ]]; then
+    if ! kill -TERM "${timer_pid}" 2>/dev/null; then
+      :
+    fi
+  fi
+  if wait "${timer_pid}"; then
+    timer_status=0
+  else
+    timer_status=$?
+  fi
+  CHECK_TIMER_PID=
+
+  if [[ "${FORCED_CHECK_PENDING}" == true ]]; then
+    FORCED_CHECK_PENDING=false
+    CHECK_TRIGGER=forced
+    if kill -0 "${timer_pid}" 2>/dev/null; then
+      if ! kill -TERM "${timer_pid}" 2>/dev/null; then
+        :
+      fi
+    fi
+    # Reap the timer if the signal interrupted `wait` before TERM completed.
+    if ! wait "${timer_pid}" 2>/dev/null; then
+      :
+    fi
+    return 0
+  fi
+
+  ((timer_status == 0)) || fatal "watchdog check timer failed with status ${timer_status}"
 }
 
 run_healthcheck() {
@@ -55,7 +119,7 @@ wait_for_initial_health() {
     fi
     log "watchdog waiting for initial healthy state" >&2
     sed -n '1,120p' "${output}" >&2
-    sleep "${CHECK_INTERVAL}"
+    sleep "${INITIAL_CHECK_INTERVAL}"
   done
   stop_appliance \
     "watchdog did not observe a healthy appliance within ${INITIAL_HEALTH_TIMEOUT}s"
@@ -69,4 +133,6 @@ stop_appliance() {
   exit 0
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

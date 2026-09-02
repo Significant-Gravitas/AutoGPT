@@ -340,7 +340,7 @@ ensure_immutable_manifest() {
 
 ensure_release_tag() {
   local manifest_digest="$1"
-  local state raw_manifest
+  local state raw_manifest published_release_version
 
   release_manifest_digest="$manifest_digest"
   [[ -n "$release_ref" ]] || return 0
@@ -354,7 +354,11 @@ ensure_release_tag() {
   release_manifest_digest="$(inspect_manifest "$release_ref")"
   verify_manifest "$release_ref" "${expected_rows[@]}"
   raw_manifest="$(docker buildx imagetools inspect --raw "$release_ref")"
-  if [[ "$(release_version_from_manifest <<<"$raw_manifest")" != "$release_version" ]]; then
+  if ! published_release_version="$(release_version_from_manifest <<<"$raw_manifest")"; then
+    echo "could not read the immutable release-version annotation from $release_ref" >&2
+    return 1
+  fi
+  if [[ "$published_release_version" != "$release_version" ]]; then
     echo "$release_ref is missing its immutable release-version annotation" >&2
     return 1
   fi
@@ -402,10 +406,11 @@ latest_update_allowed() {
     return
   fi
 
-  set +e
-  semver_is_newer "$current_version" "$target_version"
-  compare_status=$?
-  set -e
+  if semver_is_newer "$current_version" "$target_version"; then
+    compare_status=0
+  else
+    compare_status=$?
+  fi
   if ((compare_status == 0)); then
     echo "refusing to move latest backward from $current_version to $target_version" >&2
     return 1
@@ -442,13 +447,22 @@ publish_latest_tag() {
   fi
 }
 
+list_digest_files() {
+  find "$DIGEST_DIR" -maxdepth 1 -type f -print | sort
+}
+
 load_verified_digests() {
   local digest_file descriptor expected_arch digest_hex image_ref actual_platform raw_manifest expected_row
   local runnable_digest image_json source_revision
+  local digest_listing
   local -a digest_files=()
   declare -A seen_platforms=()
 
-  mapfile -t digest_files < <(find "$DIGEST_DIR" -maxdepth 1 -type f -print | sort)
+  if ! digest_listing="$(list_digest_files)"; then
+    echo "could not enumerate verified platform digests" >&2
+    return 1
+  fi
+  mapfile -t digest_files <<<"$digest_listing"
   if ((${#digest_files[@]} != 2)); then
     echo "expected exactly two verified platform digests" >&2
     return 1
@@ -853,6 +867,32 @@ JSON
     echo "invalid release-version annotation was accepted" >&2
     return 1
   fi
+  if (
+    release_ref=docker.io/significantgravitas/autogpt:v0.7.1
+    release_version=v0.7.1
+    expected_rows=()
+    tag_state() {
+      printf 'present\n'
+    }
+    inspect_manifest() {
+      printf 'sha256:%064d\n' 0
+    }
+    verify_manifest() {
+      :
+    }
+    docker() {
+      printf '{}\n'
+    }
+    release_version_from_manifest() {
+      printf 'v0.7.1\n'
+      return 1
+    }
+    ensure_release_tag sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      >/dev/null 2>&1
+  ); then
+    echo "failed release-version extraction was accepted" >&2
+    return 1
+  fi
 
   semver_is_newer v0.7.2 v0.7.1
   semver_is_newer v1.0.0 v0.99.99
@@ -874,6 +914,19 @@ JSON
   fi
   if latest_update_allowed v0.7.1 sha256:first v0.7.1 sha256:second 2>/dev/null; then
     echo "same-version digest replacement was accepted" >&2
+    return 1
+  fi
+
+  if (
+    list_digest_files() {
+      printf '%s\n' \
+        /tmp/amd64-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+        /tmp/arm64-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      return 1
+    }
+    DIGEST_DIR=/tmp load_verified_digests >/dev/null 2>&1
+  ); then
+    echo "failed digest enumeration was accepted" >&2
     return 1
   fi
 
