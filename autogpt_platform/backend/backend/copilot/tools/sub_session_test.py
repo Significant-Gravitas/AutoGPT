@@ -1070,3 +1070,26 @@ class TestActorParameter:
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
         assert "Sub-AutoPilot" not in (result.message or "")
+
+
+class TestSpawnEnvelopeArguments:
+    """The spawn shape each tool asks for is a security property, not a
+    detail: flipping shares_memory to False silently regrants an isolate
+    memory_store under the parent's identity, and allow_queue=True lets a
+    prompt run under another turn's envelope. Neither was asserted anywhere.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_sub_session_spawns_a_memory_sharing_isolate_and_never_queues(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1"),
+            prompt="do it",
+            wait_for_result=0,
+        )
+        kwargs = mock_waiter.await_args.kwargs
+        assert kwargs["allow_queue"] is False
+        assert kwargs["spawn"].shares_memory is True
+        assert kwargs["spawn"].may_spawn is True

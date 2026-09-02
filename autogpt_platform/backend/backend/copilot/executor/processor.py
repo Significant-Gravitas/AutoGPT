@@ -42,6 +42,7 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
+    from backend.copilot.tree import TurnEnvelope
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
@@ -130,6 +131,21 @@ def sync_fail_close_session(
         future.cancel()
     except Exception as e:
         log.warning(f"sync fail-close mark_session_completed failed: {e}")
+
+
+def taint_for_source_platform(
+    envelope: "TurnEnvelope | None", session: "ChatSession"
+) -> "TurnEnvelope | None":
+    """Mark a turn tainted when its prompt came from a chat platform.
+
+    Those prompts are authored off-platform by someone who need not be the
+    account owner, so anything the turn spawns must inherit the bit. Taint
+    only ever rises, and a turn with no envelope stays that way rather than
+    having one invented for it.
+    """
+    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
 
 
 # ============ Mode Routing ============ #
@@ -618,14 +634,7 @@ class CoPilotProcessor:
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
-            envelope = entry.envelope
-            if (
-                envelope is not None
-                and session.metadata.source_platform
-                and not envelope.tainted
-            ):
-                # A chat-platform session's prompt is authored off-platform.
-                envelope = envelope.model_copy(update={"tainted": True})
+            envelope = taint_for_source_platform(entry.envelope, session)
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,

@@ -22,6 +22,7 @@ from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
     SpawnRequest,
+    TreeRefusal,
     TurnEnvelope,
     admit_turn,
     derive_child_envelope,
@@ -530,6 +531,18 @@ async def _admitted_turn_envelope(
     root by construction rather than by declaration.
     """
     spawner = get_current_envelope()
+    if spawn is not None and spawner is None:
+        # A caller that passed a SpawnRequest is by construction a spawn tool
+        # running inside a turn, so a missing spawner envelope means the
+        # context was lost — a pre-deploy queue entry, or a refactor that
+        # dropped it. Minting a root there would hand the child FULL
+        # authority, which is the opposite of what the caller asked for, so
+        # refuse instead. This also makes the stream_heartbeat task boundary
+        # belt-and-braces rather than load-bearing.
+        raise TreeRefusal(
+            "This task's context was lost, so its limits cannot be carried "
+            "over. Start it again from the top."
+        )
     if spawner is None:
         envelope = root_envelope(turn_id)
     else:

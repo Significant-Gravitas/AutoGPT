@@ -437,6 +437,10 @@ class AutoPilotBlock(Block):
                 permissions=effective_permissions,
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
+                # Never ride an in-flight turn: the prompt would execute under
+                # THAT turn's envelope and permissions, dropping this block's
+                # own filter. Same hole the three spawn tools close.
+                allow_queue=False,
             )
             if outcome == "rejected_concurrent_turn_cap":
                 # No session record / transcript was created — the slot
