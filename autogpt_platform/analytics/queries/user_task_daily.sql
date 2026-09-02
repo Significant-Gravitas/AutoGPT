@@ -17,8 +17,10 @@
 --
 --   Sub-graph runs (parentGraphExecutionId set) and dry runs are
 --   excluded from run counts: they are part of the parent task.
---   Runs created before triggerSource existed show up in
---   agent_runs_untagged and cannot be split by start method.
+--   Runs created before triggerSource existed cannot be split by
+--   start method; they are counted as human (same rule as
+--   user_lifecycle and retention_task_weekly) and also reported
+--   separately in agent_runs_untagged.
 --
 -- SOURCE TABLES
 --   platform.AgentGraphExecution — agent runs (triggerSource, expertId, stats)
@@ -34,10 +36,10 @@
 --   tasks_human                  BIGINT   agent_runs_human + autopilot_turns + expert_turns
 --   tasks_automated              BIGINT   scheduled + webhook runs + scheduled follow-up turns
 --   agent_runs                   BIGINT   All root, non-dry agent runs created that day
---   agent_runs_human             BIGINT   triggerSource IN (manual, api, copilot)
+--   agent_runs_human             BIGINT   triggerSource IN (manual, api, copilot) or NULL
 --   agent_runs_scheduled         BIGINT   triggerSource = schedule
 --   agent_runs_webhook           BIGINT   triggerSource = webhook
---   agent_runs_untagged          BIGINT   triggerSource IS NULL (pre-deploy rows)
+--   agent_runs_untagged          BIGINT   triggerSource IS NULL (pre-deploy rows; already inside agent_runs_human)
 --   agent_runs_completed         BIGINT   Terminal status COMPLETED (as of query time)
 --   agent_runs_failed            BIGINT   Terminal status FAILED
 --   agent_runs_no_credits        BIGINT   FAILED with failure_reason insufficient_balance
@@ -82,7 +84,8 @@ WITH runs AS (
     ge."userId"                                          AS user_id,
     DATE_TRUNC('day', ge."createdAt")::date              AS day,
     COUNT(*)                                             AS agent_runs,
-    COUNT(*) FILTER (WHERE ge."triggerSource" IN ('manual', 'api', 'copilot'))
+    COUNT(*) FILTER (WHERE ge."triggerSource" IS NULL
+                        OR ge."triggerSource" IN ('manual', 'api', 'copilot'))
                                                          AS agent_runs_human,
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'schedule')
                                                          AS agent_runs_scheduled,
