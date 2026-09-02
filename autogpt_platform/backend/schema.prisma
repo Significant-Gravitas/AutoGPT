@@ -1052,6 +1052,10 @@ model AgentGraphExecution {
   SharedExecutionFiles SharedExecutionFile[]
   ChatLinkedShares     ChatLinkedShare[]
 
+  // REL-002 durable cancellation: authoritative cancel request surving executor restart
+  cancelRequestedAt DateTime?
+  cancelRequestedBy String?
+
   // Tenancy (nullable until cutover migration backfills existing data)
   organizationId String?
   teamId         String?

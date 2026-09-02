@@ -57,7 +57,7 @@ def _get_log_semaphore() -> asyncio.Semaphore:
     return sem
 
 
-async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
+async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
     """Await all in-flight cost log tasks with a timeout.
 
     Drains both the executor cost log tasks (_pending_log_tasks in this module,
@@ -68,6 +68,9 @@ async def drain_pending_cost_logs(timeout: float = 5.0) -> None:
     Call this during graceful shutdown to flush pending INSERT tasks before
     the process exits. Tasks that don't complete within `timeout` seconds are
     abandoned and their failures are already logged by _safe_log.
+
+    REL-006: 5s → 30s and drain global registry (not just current loop) so
+    deploy-time pending logs survive loop mismatch.
     """
     # asyncio.wait() requires all tasks to belong to the running event loop.
     # _pending_log_tasks is shared across executor worker threads (each with

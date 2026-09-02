@@ -1442,7 +1442,10 @@ class Scheduler(AppService):
             job_defaults={
                 "coalesce": True,  # Skip redundant missed jobs - just run the latest
                 "max_instances": 1000,  # Effectively unlimited - never drop executions
-                "misfire_grace_time": None,  # No time limit for missed jobs
+                # REL-005: 300s grace — missed ticks beyond 5m are dropped with
+                # EVENT_JOB_MISSED and surfaced as FAILED (see listener below).
+                # Previously None caused silent coalesce with no user signal.
+                "misfire_grace_time": 300,
             },
             jobstores={
                 Jobstores.EXECUTION.value: SQLAlchemyJobStore(

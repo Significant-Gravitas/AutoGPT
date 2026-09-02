@@ -212,7 +212,8 @@ export const auth = betterAuth({
         // audience Supabase GoTrue used, so old and new tokens are
         // interchangeable during the migration window.
         audience: "authenticated",
-        expirationTime: "1h",
+        // REL-001: shorten replay window from 1h → 5m. Short-lived tokens bound logout/revocation semantics; refresh is via getServerAuthToken per-request cache.
+        expirationTime: "5m",
         definePayload: ({ user }) => ({
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
