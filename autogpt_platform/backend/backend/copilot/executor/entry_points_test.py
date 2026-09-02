@@ -97,11 +97,11 @@ def _passes_a_real_envelope(node: ast.Call) -> bool:
     to prevent, so it does not count as deciding. ``**kwargs`` forwarding does
     — the decision is then the caller's."""
     for kw in node.keywords:
-        if kw.arg is None:
-            return True
         if kw.arg == "envelope":
             return not (isinstance(kw.value, ast.Constant) and kw.value.value is None)
-    return False
+    # Only once no explicit envelope= was found: ``f(**kw, envelope=None)`` is
+    # still the unenforced call, whatever ``kw`` happens to hold.
+    return any(kw.arg is None for kw in node.keywords)
 
 
 def test_chat_platform_turns_are_rooted_and_born_tainted() -> None:

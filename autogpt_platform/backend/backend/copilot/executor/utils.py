@@ -566,9 +566,14 @@ def _narrow_permissions(
         return narrowed
     # The caller's ``_parent`` is dropped on purpose: it belongs to the
     # spawner's turn, and the envelope is already the narrower bound.
+    #
+    # ``tools_exclude`` is carried, never hardcoded: an empty envelope encodes
+    # deny-all as a blacklist of every tool, and forcing ``False`` here would
+    # reread that as a whitelist of every tool — the exact inversion the
+    # encoding exists to prevent.
     return CopilotPermissions(
         tools=narrowed.tools,
-        tools_exclude=False,
+        tools_exclude=narrowed.tools_exclude,
         blocks=permissions.blocks,
         blocks_exclude=permissions.blocks_exclude,
     )

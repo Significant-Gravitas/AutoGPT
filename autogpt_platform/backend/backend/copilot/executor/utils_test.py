@@ -15,6 +15,8 @@ from backend.copilot.executor.utils import (
     CoPilotLogMetadata,
     create_copilot_queue_config,
 )
+from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
 
 
 @pytest.mark.asyncio
@@ -160,3 +162,37 @@ class TestCoPilotLogMetadata:
             base_logger, session_id="s1", user_id=None, turn_id="t1"
         )
         assert log is not None
+
+
+class TestNarrowPermissions:
+    """The envelope's tool set becomes the turn's whitelist. The encoding of
+    "no tools at all" is the trap: it is a blacklist of every tool, and a
+    merge that hardcodes the whitelist flag reads it back as its opposite.
+    """
+
+    def test_a_locked_envelope_stays_locked_when_merged_with_a_block_filter(
+        self,
+    ) -> None:
+        locked = root_envelope("t").model_copy(update={"tools": frozenset()})
+        caller = CopilotPermissions(blocks=["some-block"], blocks_exclude=False)
+
+        merged = utils._narrow_permissions(caller, locked)
+
+        assert merged is not None
+        # Deny-all is encoded as "blacklist everything"; flipping the flag
+        # would turn the same list into "whitelist everything".
+        assert merged.tools_exclude is True
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == set()
+        assert merged.blocks == ["some-block"]
+
+    def test_a_narrowed_envelope_merges_as_a_whitelist(self) -> None:
+        narrowed = root_envelope("t").model_copy(
+            update={"tools": frozenset({"read_workspace_file"})}
+        )
+        caller = CopilotPermissions(blocks=["some-block"], blocks_exclude=False)
+
+        merged = utils._narrow_permissions(caller, narrowed)
+
+        assert merged is not None
+        assert merged.tools_exclude is False
+        assert merged.effective_allowed_tools(ALL_TOOL_NAMES) == {"read_workspace_file"}

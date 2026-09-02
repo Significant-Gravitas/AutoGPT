@@ -466,7 +466,7 @@ report shape it promises, and whether its frame is fixed or identity-borne.
 
 | edge type | envelope preset | required brief slots | report | frame |
 |---|---|---|---|---|
-| **#1 consult** (the reviewer-check design, shipped) | `tools = ∅`, leaf, no session, one completion | `content`, `authority`, `task` | `done` + `findings` / `needs_input` + `asked` | fixed; target's boundaries as policy |
+| **#1 consult** (designed, not built — the tool lives in an open PR) | `tools = ∅`, leaf, no session, one completion | `content`, `authority`, `task` | `done` + `findings` / `needs_input` + `asked` | fixed; target's boundaries as policy |
 | **#2 quarantine read** (the §3.5 leaf) | `tools = {read_workspace_file}`, leaf, born-tainted | `artefacts`, `acceptance` | `done` + `findings` with quotes; `tainted = true` | fixed |
 | **#3 delegate / isolate** (exists) | `ALL − DESCENT_DENIED`, `may_spawn` optional | `task`, `acceptance` | any status; `artefacts` | identity-borne (delegate) / spawner's (isolate) |
 | **#4 handoff** (exists) | as #3, re-roots | `task` | none to the spawner | identity-borne |

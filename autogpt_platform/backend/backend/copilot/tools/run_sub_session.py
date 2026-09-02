@@ -268,14 +268,15 @@ class RunSubSessionTool(BaseTool):
             allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
-        if opened_here:
-            await discard_unused_sub_session(inner_session_id, user_id, outcome)
+        discarded = opened_here and await discard_unused_sub_session(
+            inner_session_id, user_id, outcome
+        )
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
             else None
         )
-        return response_from_outcome(
+        outcome_response = response_from_outcome(
             outcome=outcome,
             result=result,
             inner_session_id=inner_session_id,
@@ -283,6 +284,14 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+        if discarded:
+            # The row is gone, so its id and link would send the model to poll
+            # a sub-session that no longer exists. Keep the reason, drop the
+            # handles — the same shape handoff_to_expert returns on refusal.
+            return ErrorResponse(
+                message=outcome_response.message, session_id=session.session_id
+            )
+        return outcome_response
 
 
 def apply_delegated_expert(
@@ -440,22 +449,27 @@ _NOTHING_QUEUED: frozenset[SessionOutcome] = frozenset(
 
 async def discard_unused_sub_session(
     session_id: str, user_id: str, outcome: SessionOutcome
-) -> None:
-    """Drop a thread opened for a turn that was then refused.
+) -> bool:
+    """Drop a thread opened for a turn that was then refused, reporting
+    whether it is gone.
 
     A tree refusal or the concurrent-turn cap rejects the turn after the
     session row exists, leaving an empty conversation the user can open from
-    their history. Best-effort by contract: a failed cleanup must not turn a
-    refusal into an error.
+    their history. Callers use the return value to withhold the sub-session
+    handles, which would otherwise point at a row that no longer exists.
+    Best-effort by contract: a failed cleanup must not turn a refusal into an
+    error, so it reports False and the handles stay valid.
     """
     if outcome not in _NOTHING_QUEUED:
-        return
+        return False
     try:
         await delete_chat_session(session_id, user_id)
     except Exception:
         logger.warning(
             "Failed to clean up unused sub-session %s", session_id, exc_info=True
         )
+        return False
+    return True
 
 
 def response_from_outcome(

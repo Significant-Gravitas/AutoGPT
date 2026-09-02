@@ -200,8 +200,17 @@ class DelegateToExpertTool(BaseTool):
             allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
-        if not delegated_session_id.strip():
-            await discard_unused_sub_session(inner_session_id, user_id, outcome)
+        discarded = (
+            not delegated_session_id.strip()
+            and await discard_unused_sub_session(inner_session_id, user_id, outcome)
+        )
+        if discarded:
+            # The thread is gone; handing back its id would send the model to
+            # poll a delegation that no longer exists.
+            return self._error(
+                result.refusal or f"{target.name} could not start this task.",
+                session,
+            )
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
