@@ -127,6 +127,16 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # Copilot tree attribution. A graph started by an agent turn runs in the
+    # executor process, where the turn's envelope contextvar cannot reach, so
+    # the tree identity travels in the execution payload the same way
+    # ``expert_id`` does. ``AutoPilotBlock`` rebuilds a spawner envelope from
+    # these, which keeps a nested agent turn inside the tree that started it
+    # instead of rooting a fresh, unbounded one. None = not started by a turn.
+    copilot_tree_id: Optional[str] = None
+    copilot_tree_depth: int = 0
+    copilot_tree_tainted: bool = False
+
 
 # -------------------------- Models -------------------------- #
 
