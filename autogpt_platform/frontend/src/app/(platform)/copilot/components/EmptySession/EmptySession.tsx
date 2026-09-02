@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import {
   getGreetingName,
   getInputPlaceholder,
@@ -29,7 +29,6 @@ import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
-  inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (
@@ -46,7 +45,6 @@ interface Props {
 }
 
 export function EmptySession({
-  inputLayoutId,
   isCreatingSession,
   onSend,
   isUploadingFiles,
@@ -81,7 +79,12 @@ export function EmptySession({
     getInputPlaceholder(),
   );
 
-  useEffect(() => {
+  // Layout effect (not a regular effect) so the width-dependent placeholder
+  // is swapped in before the browser paints — otherwise the shorter default
+  // string flashes on screen first and visibly reflows into the longer one,
+  // which is what caused the placeholder to jump between wrapping above the
+  // icons and sitting next to them.
+  useLayoutEffect(() => {
     function handleResize() {
       setInputPlaceholder(getInputPlaceholder(window.innerWidth));
     }
@@ -155,9 +158,7 @@ export function EmptySession({
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-              <motion.div
-                layoutId={inputLayoutId}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+              <div
                 className={cn(
                   isBrainDumpEnabled
                     ? "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out"
@@ -204,7 +205,7 @@ export function EmptySession({
                     ) : undefined
                   }
                 />
-              </motion.div>
+              </div>
             </div>
           )}
 
