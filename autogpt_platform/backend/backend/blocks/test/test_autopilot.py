@@ -282,11 +282,15 @@ class TestRecoveryEnqueue:
                 outputs[name] = value
 
         assert "network error" in outputs.get("error", "")
+        # The 5th argument is the spawning turn's envelope, so recovery
+        # re-derives a child of it rather than re-rooting with full authority.
+        # A test context carries no tree, so it is None here.
         mock_enqueue.assert_awaited_once_with(
             "sess-recover",
             ctx.user_id,
             "do work",
             False,
+            None,
         )
 
     @pytest.mark.asyncio
