@@ -58,7 +58,7 @@ def _mock_session(session_id: str = "s1", title: str | None = "T") -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
-    """Non-message dispatch params (file_ids, mode, model, permissions,
+    """Non-message dispatch params (file_ids, model, permissions,
     context, request_arrival_at) land in the ChatMessage row's
     ``metadata`` JSONB so the dispatcher can replay the original turn
     shape later."""
@@ -79,7 +79,6 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
             message_metadata={"hidden": True, "kind": "expert_kickoff"},
             context={"url": "https://example.com"},
             file_ids=["f1", "f2"],
-            mode="extended_thinking",
             model="advanced",
             permissions={"tool_filter": "allow"},
             request_arrival_at=123.45,
@@ -90,7 +89,7 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
     metadata = kwargs["metadata"]
     assert metadata["context"] == {"url": "https://example.com"}
     assert metadata["file_ids"] == ["f1", "f2"]
-    assert metadata["mode"] == "extended_thinking"
+    assert "mode" not in metadata
     assert metadata["model"] == "advanced"
     assert metadata["llm_auth_provider"] == "platform"
     assert metadata["permissions"] == {"tool_filter": "allow"}

@@ -56,9 +56,6 @@ export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 /** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
 export const PANEL_RESERVED_WIDTH = 440;
 
-/** Autopilot response mode. */
-export type CopilotMode = "extended_thinking" | "fast";
-
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
@@ -205,13 +202,6 @@ interface CopilotUIState {
   setAutoOpenReady: () => void;
   markUserClosedForAutoOpen: () => void;
   resetAutoOpenState: () => void;
-
-  /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
-  copilotChatMode: CopilotMode;
-  setCopilotChatMode: (mode: CopilotMode) => void;
-  copilotModePinned: boolean;
-  applyServerModeChange: (mode: CopilotMode) => void;
-  clearCopilotModePin: () => void;
 
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
@@ -520,22 +510,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     _autoOpenUserClosed = false;
   },
 
-  copilotChatMode: (() => {
-    const saved = isClient ? storage.get(Key.COPILOT_MODE) : null;
-    return saved === "fast" ? "fast" : "extended_thinking";
-  })(),
-  setCopilotChatMode: (mode) => {
-    storage.set(Key.COPILOT_MODE, mode);
-    set({ copilotChatMode: mode });
-  },
-  copilotModePinned: false,
-  applyServerModeChange: (mode) => {
-    set({ copilotChatMode: mode, copilotModePinned: true });
-  },
-  clearCopilotModePin: () => {
-    set({ copilotModePinned: false });
-  },
-
   copilotLlmModel: (() => {
     const saved = isClient ? storage.get(Key.COPILOT_MODEL) : null;
     return saved === "advanced" ? "advanced" : "standard";
@@ -575,6 +549,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
+    // Retired key — still cleaned so a user who set it before the control
+    // was removed does not keep a dead entry forever.
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
     set({
@@ -591,7 +567,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         lastArtifact: null,
       },
-      copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
       copilotLlmAuth: null,
       isDryRun: false,

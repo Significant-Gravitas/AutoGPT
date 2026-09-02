@@ -10,7 +10,7 @@ text column:
 
 The user's pending message itself is just a normal ChatMessage row (no
 status of its own).  The dispatcher's submit-time payload (``file_ids``,
-``mode``, ``model``, ``permissions``, ``context``, ``request_arrival_at``)
+``model``, ``permissions``, ``context``, ``request_arrival_at``)
 is stashed in that row's ``metadata`` JSONB so a later promotion can
 replay the turn faithfully.
 
@@ -104,7 +104,6 @@ async def try_enqueue_turn(
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
-    mode: str | None = None,
     model: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -130,7 +129,6 @@ async def try_enqueue_turn(
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
@@ -149,7 +147,6 @@ async def enqueue_turn(
     is_user_message: bool = True,
     context: Mapping[str, str] | None = None,
     file_ids: list[str] | None = None,
-    mode: str | None = None,
     model: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -170,8 +167,6 @@ async def enqueue_turn(
         metadata["context"] = dict(context)
     if file_ids is not None:
         metadata["file_ids"] = list(file_ids)
-    if mode is not None:
-        metadata["mode"] = mode
     if model is not None:
         metadata["model"] = model
     metadata["llm_auth_provider"] = llm_auth_provider
@@ -371,7 +366,6 @@ async def dispatch_next_for_user(user_id: str) -> bool:
             # org context on promotion.
             organization_id=head.organization_id,
             team_id=head.team_id,
-            mode=metadata.get("mode"),
             model=metadata.get("model"),
             llm_auth_provider=head.metadata.llm_auth_provider,
             llm_credential_id=head.metadata.llm_credential_id,
