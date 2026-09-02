@@ -1250,20 +1250,14 @@ async def _execute_webhook_preset_trigger(
             )
             return
 
-    # Read-authorization must not decide this: `None` would then also mean
-    # "not allowed to read", and the write below would silently kill a live
-    # trigger. add_graph_execution() is the authorization gate for this path.
     graph = await get_graph(
-        preset.graph_id,
-        preset.graph_version,
-        user_id=webhook.user_id,
-        skip_access_check=True,
+        preset.graph_id, preset.graph_version, user_id=webhook.user_id
     )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
             f"#{preset.graph_id} v{preset.graph_version}, "
-            "but the graph version does not exist."
+            "but no access to the graph itself."
         )
         logger.info(f"Automatically deactivating broken preset #{preset.id}")
         await update_preset(preset.user_id, preset.id, is_active=False)

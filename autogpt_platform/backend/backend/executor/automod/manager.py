@@ -53,16 +53,30 @@ class AutoModManager:
             return None
 
         # Get graph model and collect all inputs
-        # The execution is already authorized; without this, a graph the user
-        # may run but not read reads back as None and skips moderation.
         graph_model = await db_client.get_graph(
             graph_exec.graph_id,
             user_id=graph_exec.user_id,
             version=graph_exec.graph_version,
-            skip_access_check=True,
         )
 
-        if not graph_model or not graph_model.nodes:
+        # No graph means the inputs can't be collected at all — that is
+        # moderation failing to run, not content passing it.
+        if not graph_model:
+            logger.warning(
+                f"Cannot moderate inputs for graph execution "
+                f"{graph_exec.graph_exec_id}: graph #{graph_exec.graph_id} "
+                f"v{graph_exec.graph_version} is gone or not readable by its runner"
+            )
+            if self.config.fail_open:
+                return None
+            return ModerationError(
+                message="Execution failed due to input content moderation error",
+                user_id=graph_exec.user_id,
+                graph_exec_id=graph_exec.graph_exec_id,
+                moderation_type="input",
+            )
+
+        if not graph_model.nodes:
             return None
 
         all_inputs = []
