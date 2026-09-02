@@ -286,6 +286,40 @@ def test_temporary_home_rejects_root_when_private_mode_cannot_be_set(
         temporary_home._prepare_root(root)
 
 
+def test_schedule_reap_tolerates_marker_removed_between_open_and_chmod(
+    tmp_path, monkeypatch
+):
+    root = temporary_home._prepare_root(tmp_path)
+    target = root / f"{temporary_home._HOME_PREFIX}race"
+    target.mkdir(mode=0o700)
+    real_chmod = os.chmod
+
+    def chmod_racing_a_concurrent_reap(path, mode) -> None:
+        # Simulates another _schedule_reap call's reaper thread deleting the
+        # marker between our os.close and os.chmod on the same path: delete
+        # it out from under the real chmod so it raises FileNotFoundError.
+        if Path(path).name.startswith(temporary_home._REAPER_MARKER_PREFIX):
+            os.remove(path)
+        real_chmod(path, mode)
+
+    monkeypatch.setattr(temporary_home.os, "chmod", chmod_racing_a_concurrent_reap)
+
+    try:
+        temporary_home._schedule_reap(root, target)  # must not raise
+
+        deadline = time.monotonic() + 2
+        while target.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        assert not target.exists()
+    finally:
+        with temporary_home._REAPER_LOCK:
+            temporary_home._REAPER_TARGETS.clear()
+            reaper = temporary_home._REAPER_THREAD
+        if reaper is not None:
+            reaper.join(timeout=2)
+
+
 def test_reaper_recovers_a_marked_quarantine_after_restart(tmp_path):
     root = temporary_home._prepare_root(tmp_path)
     quarantined = root / ".quarantine-autogpt-codex-stale"

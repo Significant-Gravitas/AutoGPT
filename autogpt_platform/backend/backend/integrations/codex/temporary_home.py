@@ -205,7 +205,11 @@ def _schedule_reap(root: Path, target: Path) -> None:
     marker = root / f"{_REAPER_MARKER_PREFIX}{target.name}"
     descriptor = os.open(marker, os.O_CREAT | os.O_WRONLY, 0o600)
     os.close(descriptor)
-    os.chmod(marker, 0o600)
+    # A concurrent _schedule_reap for the same target (e.g. two overlapping
+    # glob passes in _schedule_existing_reaps) can have its reaper thread
+    # already reap and unlink this marker here; that just means "reaped".
+    with suppress(FileNotFoundError):
+        os.chmod(marker, 0o600)
 
     global _REAPER_THREAD
     with _REAPER_LOCK:
