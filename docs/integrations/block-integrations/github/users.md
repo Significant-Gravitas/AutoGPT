@@ -1,6 +1,6 @@
 # GitHub Users
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+A block for looking up a GitHub user's public profile, or the profile of the account the supplied credentials belong to.
 <!-- END MANUAL -->
 
 ## Github Get User Info
@@ -10,7 +10,7 @@ This block fetches information about a GitHub user, or about the authenticated u
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Calls `/users/{username}` when a username is given, and the authenticated-user endpoint `/user` when it is left empty — which is how one block answers both "who is this person" and "who am I". The commonly used fields are pulled out as discrete outputs, and the untouched response is emitted as `user` as well, because GitHub returns roughly forty fields and which ones matter depends on the caller. The two endpoints do not return the same object: for the authenticated user the payload additionally carries private account details such as plan, email and private repository counts, so route `user` with that in mind.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +32,7 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+A graph resolves the operating account once at the start of a run — no username, so it hits `/user` — and reuses the returned login to filter issues, pull requests and review requests to that person's own, instead of hardcoding a username into every downstream block.
 <!-- END MANUAL -->
 
 ---
