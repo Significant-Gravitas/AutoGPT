@@ -90,13 +90,14 @@ jobs:
   knip:
     runs-on: ubuntu-latest
     needs: setup
-    # Reports unused files, exports and dependencies. Informational for now:
-    # the codebase has a backlog of findings, so a failure must not block PRs.
-    continue-on-error: true
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -117,7 +118,11 @@ jobs:
       - name: Generate API client
         run: pnpm generate:api
 
+      # Reports unused files, exports and dependencies. Informational for now:
+      # the codebase has a backlog of findings, so they must not block PRs.
+      # Scoped to this step so install/generate failures still fail the job.
       - name: Run knip
+        continue-on-error: true
         run: pnpm knip --no-progress --reporter markdown | tee -a "$GITHUB_STEP_SUMMARY"
 
   chromatic:

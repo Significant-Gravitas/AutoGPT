@@ -81,7 +81,7 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
 - `pnpm types` - Run TypeScript type checking
-- `pnpm knip` - Report unused files, exports and dependencies
+- `pnpm knip` - Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` - Run the Vitest integration and unit suite with coverage
 - `pnpm test` - Run the Playwright E2E suite used in CI
 - `pnpm test-ui` - Run the same Playwright E2E suite with UI
