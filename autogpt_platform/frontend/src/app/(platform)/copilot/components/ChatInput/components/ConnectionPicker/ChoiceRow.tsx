@@ -16,6 +16,8 @@ interface Props {
    * its own line, so the name a screen reader announces stays complete.
    */
   label?: string;
+  /** Shown beside the title, e.g. "Connected". */
+  badge?: string;
   /** Why this cannot be chosen, and where to go to change that. */
   lock?: { reason: string; href: string | null };
 }
@@ -28,9 +30,12 @@ export function ChoiceRow({
   onSelect,
   label,
   lock,
+  badge,
 }: Props) {
   if (lock) {
-    return <LockedRow title={title} subtitle={subtitle} lock={lock} />;
+    return (
+      <LockedRow title={title} subtitle={subtitle} notes={notes} lock={lock} />
+    );
   }
 
   return (
@@ -58,7 +63,14 @@ export function ChoiceRow({
         )}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="text-xs font-medium text-foreground">{title}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-foreground">{title}</span>
+          {badge && (
+            <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
+              {badge}
+            </span>
+          )}
+        </span>
         {subtitle && (
           <span className="break-words text-[11px] leading-snug text-muted-foreground">
             {subtitle}
@@ -80,6 +92,7 @@ export function ChoiceRow({
 interface LockedProps {
   title: string;
   subtitle?: string;
+  notes?: string[];
   lock: { reason: string; href: string | null };
 }
 
@@ -88,7 +101,7 @@ interface LockedProps {
  * click that cannot do anything. It states what the connection is, why it is
  * unavailable, and the one action that changes that.
  */
-function LockedRow({ title, subtitle, lock }: LockedProps) {
+function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
   return (
     <div className="flex items-start gap-2.5 px-3 py-2">
       <LockIcon
@@ -105,6 +118,14 @@ function LockedRow({ title, subtitle, lock }: LockedProps) {
             {subtitle}
           </span>
         )}
+        {notes?.map((note) => (
+          <span
+            key={note}
+            className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80"
+          >
+            {note}
+          </span>
+        ))}
         <span className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">
           {lock.reason}
         </span>

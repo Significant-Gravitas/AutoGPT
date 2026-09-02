@@ -48,6 +48,9 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.markers import append_error_marker
+from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
@@ -124,6 +127,7 @@ from ..response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
+    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
     StreamReasoningDelta,
@@ -796,6 +800,13 @@ async def _consume_sdk_until_done(
                     ),
                 ):
                     continue
+                # The envelope goes out just ahead of the error it explains,
+                # so a client acting on it has it in hand before the turn is
+                # reported failed. Same contract as the baseline path.
+                if isinstance(dispatched, StreamError):
+                    codex_failure = _provider_failure_for(ctx)
+                    if codex_failure is not None:
+                        yield StreamProviderFailure(failure=codex_failure.as_part())
                 yield dispatched
 
             # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -1354,6 +1365,11 @@ class _StreamContext:
     attachments: "PreparedAttachments"
     compaction: CompactionTracker
     lock: AsyncClusterLock
+    # The Codex gateway for this turn, when the route is a ChatGPT
+    # subscription. Carried here so the error path can ask it what actually
+    # failed: by the time a provider failure reaches this layer it is CLI
+    # text, and the gateway holds the last point at which it was typed.
+    codex_gateway: "CodexAnthropicGateway | None" = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1499,14 +1515,30 @@ def _append_error_marker(
     display_msg: str,
     *,
     retryable: bool = False,
+    failure: dict[str, Any] | None = None,
 ) -> None:
-    """Append a copilot error marker to *session* so it persists across refresh."""
-    if session is None:
-        return
-    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
-    session.messages.append(
-        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
-    )
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Delegates to the shared writer so both engines produce the same row: the
+    frontend's rendering contract lives in one place, and a failure recorded
+    on a Codex turn carries the same envelope a baseline turn would.
+    """
+    append_error_marker(session, display_msg, retryable=retryable, failure=failure)
+
+
+def _provider_failure_for(ctx: "_StreamContext") -> ProviderFailure | None:
+    """What the Codex gateway last named, if it named anything.
+
+    The gateway is the last point where a provider failure is still a typed
+    exception; downstream it is an HTTP status, then CLI text. Reading it
+    here is what lets a Codex turn say "your ChatGPT login expired" rather
+    than "the assistant ran into an error".
+
+    ``None`` on the platform route, and on a Codex turn whose failure the
+    gateway declined to name -- the caller keeps its existing behaviour.
+    """
+    gateway = ctx.codex_gateway
+    return gateway.last_failure if gateway is not None else None
 
 
 def _is_error_marker(msg: ChatMessage) -> bool:
@@ -1598,6 +1630,7 @@ class _InterruptedAttempt:
         display_msg: str,
         *,
         retryable: bool,
+        failure: dict[str, Any] | None = None,
     ) -> list[StreamBaseResponse]:
         """Re-attach partial + synthetic tool_result rows + error marker.
 
@@ -1616,7 +1649,12 @@ class _InterruptedAttempt:
             session.messages.extend(self.partial)
             self.partial = []
         events = _flush_orphan_tool_uses_to_session(session, state)
-        _append_error_marker(session, display_msg, retryable=retryable)
+        _append_error_marker(
+            session,
+            display_msg,
+            retryable=retryable,
+            failure=failure,
+        )
         return events
 
 
@@ -3603,10 +3641,16 @@ def _dispatch_response(
             response.errorText,
             response.code,
         )
+        failure = _provider_failure_for(ctx)
         _append_error_marker(
             ctx.session,
-            response.errorText,
-            retryable=response.code in _RETRYABLE_STREAM_ERROR_CODES,
+            failure.message if failure else response.errorText,
+            retryable=(
+                failure.retryable
+                if failure
+                else response.code in _RETRYABLE_STREAM_ERROR_CODES
+            ),
+            failure=failure.as_part() if failure else None,
         )
 
     if isinstance(response, StreamReasoningStart):
@@ -4590,6 +4634,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     codex_gateway: CodexAnthropicGateway | None = None
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
+    turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -5244,6 +5289,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             attachments=attachments,
             compaction=compaction,
             lock=lock,
+            codex_gateway=codex_gateway,
         )
 
         # ---------------------------------------------------------------
@@ -5632,6 +5678,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 interrupted, attempts_exhausted, transient_exhausted, stream_err
             )
             if failure is not None:
+                provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
                     state.adapter._end_text_if_open(cleanup_events)
@@ -5641,6 +5688,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         state,
                         failure.display_msg,
                         retryable=failure.retryable,
+                        failure=(
+                            provider_failure.as_part() if provider_failure else None
+                        ),
                     )
                 )
                 for response in cleanup_events:
@@ -5738,7 +5788,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # so this is a no-op for those and only kicks in for unhandled errors
         # that bypass the retry-loop handlers entirely.
         if not ended_with_stream_error:
-            interrupted.finalize(session, state, display_msg, retryable=is_transient)
+            interrupted.finalize(
+                session,
+                state,
+                display_msg,
+                retryable=is_transient,
+                failure=(
+                    codex_gateway.last_failure.as_part()
+                    if codex_gateway and codex_gateway.last_failure
+                    else None
+                ),
+            )
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
@@ -5966,6 +6026,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
+            )
+            # What this turn ran on, recorded on the turn rather than read
+            # back off the session later, so a route change cannot rewrite it.
+            stamp_segment(
+                session.messages,
+                pre_turn_message_count,
+                turn_segment,
             )
             try:
                 await asyncio.shield(upsert_chat_session(session))
@@ -6292,6 +6359,19 @@ def _canonical_model(model: str) -> str:
 
 def _same_model(a: str, b: str | None) -> bool:
     return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _sdk_serving_segment(
+    credential_lease: CredentialLease | PooledCodexRuntimeLease | None,
+) -> Segment:
+    """The immutable route that actually serves this SDK turn."""
+    if credential_lease is None:
+        return Segment("platform", None, is_segment_zero=False)
+    return Segment(
+        "codex",
+        credential_lease.credentials.id,
+        is_segment_zero=False,
+    )
 
 
 def _stamp_turn_messages(
