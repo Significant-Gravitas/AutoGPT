@@ -182,7 +182,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=600,
         ge=30,
         # Literal rather than an import of DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
-        # (1800): util must not import blocks. test_llm.py pins 1500 < that cap.
+        # (1800): util must not import blocks. test_llm.py asserts this bound
+        # stays under that cap, whatever it is set to.
         le=1500,
         description=(
             "Wall-clock cap on a single LLM provider request. The block path is "
@@ -192,7 +193,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "the ~10 min ceiling those APIs impose on non-streaming requests. Capped "
             "at 1500s so it stays under the per-node wall-clock cap "
             "(DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS, 30 min); past that the node "
-            "cap fires first and replaces the provider/model error with a generic one."
+            "cap fires first and replaces the provider/model error with a generic one. "
+            "Raising it also lengthens how long a stalled provider holds one of "
+            "`num_graph_workers` slots, so a higher value trades drain rate under an "
+            "incident for tolerance of slow generations."
         ),
     )
     enable_auth: bool = Field(

@@ -74,13 +74,15 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-# Non-streaming calls emit no bytes until the completion is done, so this has
-# to cover the whole generation — a slow long answer is not a stalled socket.
+# Non-streaming calls emit no bytes until the completion is done, so this
+# budget has to span the entire generation, not time-to-first-byte.
 DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
-# Matches the OpenAI/Anthropic SDK defaults. Only the read phase needs the
-# generation budget; a scalar would also stretch connect, so a blackholed SYN
-# would park an executor worker for the full deadline.
+# Matches the OpenAI/Anthropic SDK defaults. read/write/pool carry the
+# generation budget; only connect is pinned, because no generation happens
+# while a SYN goes unanswered and a scalar would park a worker there for the
+# whole deadline. Pool waits are not a concern on the block path — every
+# provider branch builds its own client, so the pool is never contended.
 CONNECT_TIMEOUT_SECONDS = 5.0
 
 
@@ -287,8 +289,8 @@ async def call_provider(
     except asyncio.TimeoutError as exc:
         raise TimeoutError(
             f"LLM request to {provider}/{model} exceeded {timeout_seconds}s and "
-            "was cancelled. If the model was still generating, lower `max_tokens`, "
-            "shorten the prompt, or pick a faster model."
+            "was cancelled. If the model was still generating, shorten the prompt "
+            "or pick a faster model, or lower the advanced Max Tokens setting."
         ) from exc
 
 
@@ -1065,7 +1067,19 @@ async def call_provider_openai_compat_sync(
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
         create_kwargs["extra_headers"] = extra_headers
-    return await client.chat.completions.create(**create_kwargs)
+    # Same total-duration guarantee as ``call_provider``: the per-request httpx
+    # timeout alone is per ATTEMPT, and the SDK's own max_retries multiplies it.
+    try:
+        return await asyncio.wait_for(
+            client.chat.completions.create(**create_kwargs),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise TimeoutError(
+            f"LLM request to {model} exceeded {timeout_seconds}s and was "
+            "cancelled. If the model was still generating, shorten the prompt "
+            "or pick a faster model."
+        ) from exc
 
 
 # ---------------------------------------------------------------------------

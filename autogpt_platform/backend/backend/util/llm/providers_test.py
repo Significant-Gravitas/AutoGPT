@@ -9,6 +9,7 @@ fields each provider exposes.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,6 +26,7 @@ from backend.util.llm.providers import (
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
     call_provider,
+    call_provider_openai_compat_sync,
     request_timeout,
 )
 from backend.util.settings import Config, Settings
@@ -1408,6 +1410,129 @@ class TestUtf8Sanitization:
 # ---------------------------------------------------------------------------
 
 
+class TestTimeoutThreading:
+    """Every SDK call site must receive the bounded ``httpx.Timeout``.
+
+    A site that silently loses it reverts to the SDK default. On Anthropic
+    that is worse than slow: ``_calculate_nonstreaming_timeout`` raises
+    ``ValueError("Streaming is required ...")`` above ~21333 max_tokens when
+    no explicit timeout is passed, so high-``max_tokens`` calls hard-fail.
+    """
+
+    @pytest.mark.asyncio
+    async def test_anthropic_receives_bounded_timeout(self):
+        fake_response = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="ok")],
+            usage=SimpleNamespace(
+                input_tokens=1,
+                output_tokens=1,
+                cache_read_input_tokens=0,
+                cache_creation_input_tokens=0,
+            ),
+            stop_reason="end_turn",
+        )
+        async_create = AsyncMock(return_value=fake_response)
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=SimpleNamespace(messages=SimpleNamespace(create=async_create)),
+        ):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=42.0,
+            )
+        assert async_create.call_args.kwargs["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_groq_receives_bounded_timeout(self):
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        with patch("groq.AsyncGroq", return_value=fake_client):
+            await call_provider(
+                provider="groq",
+                model="llama-3.3-70b",
+                api_key="gsk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=42.0,
+            )
+        assert captured["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_openai_compat_receives_bounded_timeout(self):
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        with patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI", return_value=fake_client
+        ):
+            await call_provider(
+                provider="open_router",
+                model="anthropic/claude-sonnet-4.6",
+                api_key="sk-or",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=42.0,
+            )
+        assert captured["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_openai_compat_sync_helper_receives_bounded_timeout(self):
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        await call_provider_openai_compat_sync(
+            model="gpt-4.1",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            client=fake_client,
+            timeout_seconds=42.0,
+        )
+        assert captured["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_sync_helper_bounds_total_duration(self):
+        """The httpx timeout is per ATTEMPT and the SDK retries on top of it,
+        so the helper needs its own wall-clock bound like ``call_provider``."""
+
+        async def hang(**kwargs):
+            await asyncio.sleep(60)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=hang))
+        )
+        with pytest.raises(TimeoutError):
+            await call_provider_openai_compat_sync(
+                model="gpt-4.1",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                client=fake_client,
+                timeout_seconds=0.2,
+            )
+
+
 class TestDefaults:
     def test_default_timeout_tracks_the_setting(self):
         assert (
@@ -1422,24 +1547,37 @@ class TestDefaults:
 
     @pytest.mark.parametrize("bad", [29, 1501])
     def test_timeout_outside_the_supported_band_is_rejected(self, bad):
-        # Below the band a healthy long call dies; at/above the 1800s node cap
-        # the node timeout fires first and hides the provider/model error.
-        with pytest.raises(ValidationError):
+        # Below 30 a healthy long call dies; above 1500 the deadline no longer
+        # clears the per-node cap with margin, so the node timeout can fire
+        # first and hide the provider/model error.
+        with pytest.raises(ValidationError) as exc:
             Config(llm_request_timeout_seconds=bad)
+        assert any(
+            e["loc"] == ("llm_request_timeout_seconds",) for e in exc.value.errors()
+        ), "a different field's validation error would otherwise green this"
+
+    @pytest.mark.parametrize("ok", [30, 600, 1500])
+    def test_supported_band_boundaries_are_accepted(self, ok):
+        assert Config(llm_request_timeout_seconds=ok).llm_request_timeout_seconds == ok
 
     def test_block_and_provider_layers_share_one_deadline(self):
-        # The whole point of routing both through the setting: a call bounded
-        # at one layer and not the other reintroduces the drift this replaced.
+        # A call bounded at one layer and not the other is the drift that
+        # routing both through one setting exists to prevent.
+        # Local import: util deliberately avoids importing blocks at module
+        # scope (see settings.py), and this assertion is the one place that
+        # has to observe both sides.
         from backend.blocks.llm import LLM_REQUEST_TIMEOUT_SECONDS
 
         assert LLM_REQUEST_TIMEOUT_SECONDS == DEFAULT_REQUEST_TIMEOUT_SECONDS
 
-    def test_request_timeout_bounds_connect_separately(self):
-        # A scalar would stretch every httpx phase, so a blackholed SYN would
-        # park a worker for the whole generation budget.
+    def test_request_timeout_pins_connect_and_budgets_the_rest(self):
+        # No generation happens while a SYN goes unanswered, so connect is
+        # pinned; read/write/pool carry the generation budget.
         t = request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
         assert t.connect == CONNECT_TIMEOUT_SECONDS
         assert t.read == DEFAULT_REQUEST_TIMEOUT_SECONDS
+        assert t.write == DEFAULT_REQUEST_TIMEOUT_SECONDS
+        assert t.pool == DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------

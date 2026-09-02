@@ -1473,10 +1473,14 @@ class TestLLMRequestTimeout:
         # deployment unguarded. Past the node cap the node timeout fires first
         # and replaces the provider/model error with a generic one.
         bound = next(
-            m.le
-            for m in Config.model_fields["llm_request_timeout_seconds"].metadata
-            if getattr(m, "le", None) is not None
+            (
+                m.le
+                for m in Config.model_fields["llm_request_timeout_seconds"].metadata
+                if getattr(m, "le", None) is not None
+            ),
+            None,
         )
+        assert bound is not None, "llm_request_timeout_seconds lost its upper bound"
         assert bound < DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
@@ -1504,7 +1508,7 @@ class TestLLMRequestTimeout:
             msg = str(exc_info.value)
             assert "0.2s" in msg and "exceeded" in msg
             # The remediation hint is the user-visible half of this error.
-            assert "max_tokens" in msg
+            assert "shorten the prompt" in msg
 
     @pytest.mark.asyncio
     async def test_llm_call_passes_timeout_to_openai_sdk(self):

@@ -545,6 +545,11 @@ class TestGenerateSessionTitle:
             )
         assert title == "Clean Me"
         assert response is resp
+        # A 20-token title must not inherit the block-sized LLM default: it
+        # runs in a background task holding a slot in the shared aux pool.
+        from backend.copilot.service import _TITLE_TIMEOUT_SECONDS
+
+        assert helper.await_args.kwargs["timeout_seconds"] == _TITLE_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
     async def test_long_title_truncated_with_ellipsis(self):

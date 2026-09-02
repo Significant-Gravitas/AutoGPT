@@ -59,8 +59,8 @@ fmt = TextFormatter(autoescape=False)
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
-# Non-streaming calls emit no bytes until the completion is done, so this has
-# to cover the whole generation — a slow long answer is not a stalled socket.
+# Non-streaming calls emit no bytes until the completion is done, so this
+# budget has to span the entire generation, not time-to-first-byte.
 LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
 LLMProviderName = Literal[
@@ -251,8 +251,8 @@ async def llm_call(
         raise TimeoutError(
             f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
             f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled. If the "
-            "model was still generating, lower `max_tokens`, shorten the prompt, "
-            "or pick a faster model."
+            "model was still generating, shorten the prompt or pick a faster "
+            "model, or lower the advanced Max Tokens setting."
         ) from e
 
 
