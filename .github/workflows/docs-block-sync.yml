@@ -15,6 +15,7 @@ on:
       - "docs/integrations/**"
       - "autogpt_platform/backend/scripts/generate_block_docs.py"
       - ".github/workflows/docs-block-sync.yml"
+  workflow_dispatch:
 
 jobs:
   check-docs-sync:
