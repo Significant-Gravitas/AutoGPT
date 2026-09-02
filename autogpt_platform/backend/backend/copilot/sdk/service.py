@@ -6209,6 +6209,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
+                    # Same turn continuing, so it keeps its envelope. Omitting
+                    # it would default to None and clear the contextvar for the
+                    # remainder of the turn: tool enforcement off, spend
+                    # uncharged, and the next spawn minted as an unbounded root.
+                    envelope=envelope,
                     mode=mode,
                     model=model,
                     organization_id=organization_id,
