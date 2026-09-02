@@ -348,7 +348,11 @@ class TestEnvelopeDoesNotEscapeItsTurn:
             yield 1
 
         assert get_current_envelope() is None
-        await self._drive(driver())
-        leaked = get_current_envelope()
-        assert leaked is not None and leaked.tree_id == "leaked"
-        set_execution_context(None, None, envelope=None)  # reset for other tests
+        try:
+            await self._drive(driver())
+            leaked = get_current_envelope()
+            assert leaked is not None and leaked.tree_id == "leaked"
+        finally:
+            # An assertion failure here must not cascade into the sibling
+            # test: this generator leaks the contextvar deliberately.
+            set_execution_context(None, None, envelope=None)

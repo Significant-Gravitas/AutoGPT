@@ -560,8 +560,12 @@ def _narrow_permissions(
     filter the caller passed. Hides the tools from the model; the refusal
     itself lives in ``BaseTool.execute``."""
     narrowed = envelope.as_permissions()
-    if narrowed is None or permissions is None:
-        return narrowed or permissions
+    if narrowed is None:
+        return permissions
+    if permissions is None:
+        return narrowed
+    # The caller's ``_parent`` is dropped on purpose: it belongs to the
+    # spawner's turn, and the envelope is already the narrower bound.
     return CopilotPermissions(
         tools=narrowed.tools,
         tools_exclude=False,

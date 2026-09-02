@@ -50,10 +50,7 @@ def test_no_call_site_enqueues_a_turn_without_an_envelope() -> None:
             )
             if name != "enqueue_copilot_turn":
                 continue
-            passes_envelope = any(
-                kw.arg == "envelope" or kw.arg is None for kw in node.keywords
-            )
-            if not passes_envelope:
+            if not _passes_a_real_envelope(node):
                 offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
     assert not offenders, (
         "these call sites start a turn with no envelope, which leaves it "
@@ -87,12 +84,24 @@ def test_no_engine_re_entry_drops_the_envelope() -> None:
             )
             if name not in targets:
                 continue
-            if not any(kw.arg == "envelope" or kw.arg is None for kw in node.keywords):
+            if not _passes_a_real_envelope(node):
                 offenders.append(f"{path.relative_to(_PACKAGE_ROOT)}:{node.lineno}")
     assert not offenders, (
         "these engine calls omit envelope=, which defaults to None and leaves "
         f"the rest of the turn unenforced: {offenders}"
     )
+
+
+def _passes_a_real_envelope(node: ast.Call) -> bool:
+    """A literal ``envelope=None`` is the unenforced turn these sweeps exist
+    to prevent, so it does not count as deciding. ``**kwargs`` forwarding does
+    — the decision is then the caller's."""
+    for kw in node.keywords:
+        if kw.arg is None:
+            return True
+        if kw.arg == "envelope":
+            return not (isinstance(kw.value, ast.Constant) and kw.value.value is None)
+    return False
 
 
 def test_chat_platform_turns_are_rooted_and_born_tainted() -> None:

@@ -254,9 +254,17 @@ class TreeLedger:
 
     Admission is increment-then-check with rollback, the same non-locked
     pattern ``acquire_turn_slot`` uses: two racing spawns can both pass by
-    one, and that over-admit is the bound's stated slack. Spend is compared
-    against a counter charged after each turn, so the overshoot per tree is
-    one turn's cost — the SDK per-query cap on the platform transport.
+    one, and that over-admit is the bound's stated slack.
+
+    Spend is metered, not reserved: ``spent`` only advances when a turn ends
+    (``token_tracking``), so children dispatched in one round all read the
+    same figure and are all admitted. The ceiling therefore bounds how much a
+    tree may *start* spending against, not its total — the worst case is
+    ``(max_nodes - 1) x`` the per-turn cap, i.e. every remaining node
+    admitted at ``spent == 0`` and each running to its own limit. The node
+    cap is what keeps that finite. Reserving at admit and reconciling at
+    charge is the fix, and needs the SDK to report a per-query spend the
+    Codex transport does not currently expose.
     """
 
     def __init__(self, redis: AsyncRedisClient) -> None:

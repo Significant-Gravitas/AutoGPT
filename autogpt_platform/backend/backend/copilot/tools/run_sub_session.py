@@ -104,7 +104,7 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    "description": ("Continue/queue-into a prior sub; empty = new."),
+                    "description": "Continue a prior sub; empty = new.",
                     "default": "",
                 },
                 "wait_for_result": {
@@ -233,9 +233,9 @@ class RunSubSessionTool(BaseTool):
                 # Provenance doubles as the resume capability above and as
                 # the poll capability in get_sub_session_result. It also makes
                 # subs visible to ``chain_refusal``'s walk, which is intended:
-                # a sub hop now spends delegation budget like any other hop
-                # (both bounds refuse the same 4th hop), and a sub delegating
-                # back to its own parent expert is correctly seen as a loop.
+                # a sub hop spends delegation budget like any other hop (both
+                # bounds refuse the same 4th hop), and a sub delegating back
+                # to its own parent expert is seen as the loop it is.
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 # A sub is machine-driven whatever opened it: its prompt is

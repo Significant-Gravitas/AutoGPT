@@ -271,8 +271,8 @@ def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
     ownership for good (the caller gets no result back), so it grants no
     such capability: only the receiving expert's own scope can read it.
 
-    ``run_sub_session`` now records provenance too, but scope equality stays
-    the first test: a same-scope sub is the caller's own assistant, and the
+    Subs carry the same provenance, but scope equality stays the first
+    test: a same-scope sub is the caller's own assistant, and the
     receiving expert must be able to read a task handed to it. The creator
     restriction that stops a session steering a sub it did not open lives on
     the resume path in ``run_sub_session``, where the prompt is written.

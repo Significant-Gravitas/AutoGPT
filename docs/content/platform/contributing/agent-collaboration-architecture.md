@@ -288,7 +288,6 @@ SpawnRequest:
   may_spawn: bool = False       # default: the child is a leaf (and gets no roster — §3.4)
   max_seconds: int              # deadline request — clamped, never raised
   tools: list[str] | None       # exact set (a quarantine preset) — intersected, never widened
-  grant: list[str]              # descent-denied tools to hand down — intersected with what the spawner holds
   shares_memory: bool           # the child writes the spawner's namespace (an isolate) — memory writes withheld
 ```
 
@@ -522,7 +521,7 @@ already carries the taint bit of the tree it is in.
 | taint | ceiling | `spawner.tainted or born_tainted`; **up** via report | ✔ (never clears) | **new**: turn envelope; the auto-mode gate's gate reads it as a source; chat-platform sessions born tainted |
 | tools | ceiling | `(spawner or ALL) ∩ (requested or ALL − DESCENT_DENIED)` | ✔ | **new**: derived at `schedule_turn`; **enforced in `BaseTool.execute`** so both engines refuse, not just hide (§11.1 finding 5) |
 | blocks | ceiling | spawner's filters + requested, all must pass | ✔ | **new**: serialisable `block_filters` list replaces the `_parent` PrivateAttr the queue drops (finding 6) |
-| budget | ceiling | one metered counter per tree; a turn is admitted iff `spent < ceiling` | ✔ (Σ tree ≤ ceiling + one turn's overshoot) | **new**: Redis tree ledger, `admit` at `schedule_turn`, `charge` from `token_tracking` |
+| budget | ceiling | one metered counter per tree; a turn is admitted iff `spent < ceiling` | ✔ (Σ tree ≤ ceiling + (max_nodes − 1) × the per-turn cap) | **new**: Redis tree ledger, `admit` at `schedule_turn`, `charge` from `token_tracking` |
 | fan-out | ceiling | one counter per tree; `nodes < max_nodes` at admit | ✔ | **new**: same ledger key — per-tree, not per-node-per-turn, because only the former is representable |
 | depth | ceiling | `spawner + 1 ≤ MAX_DEPTH` | ✔ | **new**: turn envelope; applies to isolate and resume, which today it does not |
 | deadline | ceiling | `min(spawner.deadline, now + requested)` | ✔ | **new field + new watcher** — `enqueue_cancel_task` exists, nothing calls it on a timer today (finding 14) |
@@ -610,8 +609,9 @@ Ops *cannot* delegate onward (leaf), *cannot* schedule anything or post
 outward (descent-denied), *cannot* start a turn once the tree has spent its
 $1.00, *cannot* run past the parent's deadline, and *knows* it may not
 promise a refund because the brief said so. The ToolChain card shows the
-envelope next to the delegate row. Total spend ≤ $1.00 plus at most one
-turn's overshoot. Note the numbers: the default daily cap is $1.00
+envelope next to the delegate row. Total spend ≤ $1.00 plus the overshoot
+bound below (§8.2) — with a two-node tree, at most one turn's. Note the
+numbers: the default daily cap is $1.00
 (`config.py:361`), which is why the first draft's "$2 lease with a $0.60 and
 an $0.80 child" could not exist (§11.1 finding 9) — a ledger that meters
 actual spend has no such problem; four small turns fit where two reserved
@@ -636,8 +636,8 @@ hundred schedules firing across the day, plus graphs with `AutoPilotBlock`s.
 - Spend: every root ceiling is clamped to the user's remaining daily/weekly
   cap (exists); every turn in the tree is admitted against the tree's
   metered counter; therefore `Σ spend over the org ≤ Σ over users of their
-  caps + one turn's overshoot per tree`, with no component ever summing
-  across trees.
+  caps + the per-tree overshoot bound of §8.2`, with no component ever
+  summing across trees.
 - Concurrency: per-user in-flight cap of 15 on every spawn path (exists).
   3000 experts is 3000 *rows*; the number of live sessions is bounded by
   users × cap.
@@ -661,14 +661,20 @@ hundred schedules firing across the day, plus graphs with `AutoPilotBlock`s.
   envelope's `user_id` rule has to become "the spawning user is a member of
   the expert's team", which is a one-line change in `resolve_target_expert`.
 
-What is *not* scale-invariant and I am saying so: the overshoot. A tree's
-ceiling is checked at turn start, and a turn that is admitted may spend up
-to the SDK per-query cap (floored at $0.50, times up to three stream
-attempts) before the ledger sees the charge. At the default $1.00 daily cap
-that overshoot is the same order as the ceiling. The ledger makes the
-*bound* honest; it does not make the *granularity* fine, and on Codex —
-where there is no USD cap in the SDK at all — the only per-turn stop is
-`agent_max_turns`. §8.2.
+What is *not* scale-invariant and I am saying so: the overshoot. Spend is
+metered, not reserved — `spent` only advances when a turn *ends* — so the
+ceiling is checked against a figure that a wave of concurrent children all
+read before any of them has charged anything. Every one of them is
+admitted. The honest bound is therefore `(max_nodes − 1) × the per-turn
+cap`, not one turn's: the node cap, not the ceiling, is what makes it
+finite. A turn's own spend is capped by the SDK per-query cap (floored at
+$0.50, times up to three stream attempts); at the default $1.00 daily cap
+one such turn is already the same order as the whole ceiling. The ledger
+makes the *bound* honest; it does not make the *granularity* fine, and on
+Codex — where there is no USD cap in the SDK at all — the only per-turn
+stop is `agent_max_turns`. Reserving at admit and reconciling at charge is
+the fix; it needs a per-query spend figure the Codex transport does not
+expose. §8.2.
 
 ### 3.5 What N agents can do under this design that one agent cannot
 
@@ -765,8 +771,10 @@ the root) over ~three waves for thirty children, each leaf with
 line of "every match carries a verbatim quote"; every turn admitted against
 one tree ledger. The root merges thirty typed reports and is the only node
 that can act — and it is tainted when it does, so the auto-mode gate's gate asks before it
-does. Wall-clock ≈ 1/14 of serial; spend ≤ the tree's ceiling plus one
-turn's overshoot; injection blast radius = one report, checkable
+does. Wall-clock ≈ 1/14 of serial; spend ≤ the tree's ceiling plus the §8.2
+overshoot bound — and this is the shape where that bound is widest, because
+a wide wave admits every node against the same unadvanced counter;
+injection blast radius = one report, checkable
 against its own quotes (an earlier internal experiment).
 
 I am confident in the *structure* of that claim and I have not run it. The
@@ -803,10 +811,9 @@ DESCENT_DENIED_TOOLS = {
 child.tools = (parent.tools or ALL) ∩ (request.tools or (ALL − DESCENT_DENIED))
 ```
 
-A parent *may* grant a denied tool explicitly — a root that wants a child to
-post to Slack cannot: the denial is absolute and the request is a
-human-approval case instead.
-it never widens. What changes is the default: **a child, unless told
+A denial is absolute: a root that wants a child to post to Slack cannot
+hand that down, because there is no grant. The request is a human-approval
+case instead. The derivation only ever narrows; it never widens. What changes is the default: **a child, unless told
 otherwise, cannot create persistent, outward or irreversible effects.**
 
 Memory writes are governed by a second, narrower rule keyed on the
@@ -827,7 +834,7 @@ expert from learning, which the laundering argument never required.
 | # | invariant (from the brief) | holds by | enforcement seam |
 |---|---|---|---|
 | 1 | Authority never widens on descent; cannot be obtained from a third party | `tools = (spawner or ALL) ∩ (request or ALL − DESCENT_DENIED)`; the envelope is derived from the **running turn's** envelope in the executor's contextvar, never from a row or from the model; there is no tool that grants permissions; a resumed child runs under the caller's *current* envelope; the queued-into-in-flight path is refused for spawns; `expert_admin` is denied to every expert session (exists) | `derive_child_envelope` at `schedule_turn`; **`BaseTool.execute` refuses a tool outside the turn's set on both engines** (hiding in the schema is not enforcement — §11.1 finding 5); `execute_tool` re-checks groups (exists) |
-| 2 | Budget is bounded per tree: a turn is admitted iff the tree's metered spend is under its ceiling; Σ tree ≤ ceiling + one turn's overshoot | one Redis key per tree, Lua `admit` at turn start, `charge` on turn end from the existing cost-recording path; fail closed for depth > 0 when Redis is unavailable | `schedule_turn`; `token_tracking.py` |
+| 2 | Budget is bounded per tree: a turn is admitted iff the tree's metered spend is under its ceiling; Σ tree ≤ ceiling + (max_nodes − 1) × the per-turn cap | one Redis key per tree, Lua `admit` at turn start, `charge` on turn end from the existing cost-recording path; fail closed for depth > 0 when Redis is unavailable | `schedule_turn`; `token_tracking.py` |
 | 3 | Taint propagates downward and never launders; and upward by report | `tainted = spawner.tainted or born`; a new session id no longer means a clean bit because the bit is on the turn, not the session; a report carries its author's bit | `derive_child_envelope`; report model; the auto-mode gate's `is_tainted()` reads `envelope.tainted` as a source |
 | 4 | Locality | every bound is a field on the turn or one key per tree; no fan-in, no traversal, no global set; leaves get no roster; spawning nodes get a pod-scoped one | by construction; `_team_context` |
 
@@ -940,7 +947,11 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 2. **Budget is metered, not reserved, and the overshoot is coarse.** A turn
    admitted under the ceiling may spend up to the SDK per-query cap
    (floored at $0.50, up to three stream attempts) before the charge lands
-   — the same order as the default $1.00 daily cap. On the Codex transport
+   — the same order as the default $1.00 daily cap. Worse under fan-out:
+   `spent` advances only at turn end, so children dispatched in one round
+   all read the same figure and are all admitted. The bound is
+   `(max_nodes − 1) × the per-turn cap`, held finite by the node cap rather
+   than by the ceiling. On the Codex transport
    there is no USD cap at all and the only per-turn stop is
    `agent_max_turns`. Graph runs a child starts with `run_agent` are
    charged in credits to the user's wallet and the expert's weekly budget
@@ -948,11 +959,10 @@ Neither integration is built here. Both are one-boolean / one-field seams.
    the ledger bounds LLM spend across the tree; the wallet and weekly
    budget bound graph spend; the two are not yet one number.
 3. **Memory and workspace are not tree-scoped and this design does not
-   make them so.** Children lose the write side by default; a child that is
-   explicitly granted `memory_store` by a parent that holds it can still
-   write into a namespace its parent reads next turn. The grant is the
-   parent's decision and it is visible in the envelope; it is not a
-   laundering path the platform opened by itself.
+   make them so.** Isolates lose the write side outright. A delegate keeps
+   `memory_store` — it writes into its *own* expert's namespace, not the
+   spawner's — so memory crossing between teammates is bounded by who was
+   delegated to, not by the tree.
 4. **A descent-denied child is not an outward-safe child.** The default
    narrowing removes the named outward tools, but it leaves `run_agent`,
    and `run_block`/`run_agent` reach ~78 outward blocks plus arbitrary HTTP

@@ -488,10 +488,10 @@ def apply_tool_permissions(
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below
-            # pick the one this mode actually registers: outside E2B only
-            # ``read_file`` has an MCP wrapper, so mapping Write/Edit solely
-            # to their MCP names silently dropped them from every filtered
-            # turn (they are not in ``base_allowed`` to survive the filter).
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
             names.append(short)
         else:

@@ -109,14 +109,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # No single session sees them all (hire/raise/confirm and handoff/soul gate on
 # opposite sides of session.expert_id), but the registry total counts every
 # tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
-# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
-# same confirm gate) and raise_expert's color palette enum + persona-name
-# guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-# NOT bumped for the spawn tools: the grant_tools parameter that pushed the
-# registry over 61k was removed as dead code, taking ~640 chars with it.
-# Registry measures 60280; ~720 headroom. Measure the way this test does —
-# json.dumps over the whole list — not by summing per-tool lengths, which
-# misses ~142 chars of array separators and overstates headroom.
+# The registry measures 60280 chars against this budget, so ~720 headroom.
+# Measure it the way this test does — one json.dumps over the whole list —
+# not by summing per-tool lengths, which misses ~142 chars of array
+# separators and overstates the headroom.
 _CHAR_BUDGET = 61_000
 
 
