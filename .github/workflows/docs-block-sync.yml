@@ -19,6 +19,7 @@ on:
       # Block display names come from _CAMELCASE_EXCEPTIONS here; editing it renames blocks.
       - "autogpt_platform/backend/backend/util/text.py"
       - ".github/workflows/docs-block-sync.yml"
+  workflow_dispatch:
 
 jobs:
   check-docs-sync:
@@ -79,4 +80,4 @@ jobs:
           poetry run python scripts/generate_block_docs.py
           echo ""
           echo "Changes detected:"
-          git diff ../../docs/integrations/ || true
+          git diff ../../docs/integrations/
