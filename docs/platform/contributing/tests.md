@@ -1,12 +1,40 @@
 # Testing
 
-We use [Playwright](https://playwright.dev/) for our testing framework.
+The AutoGPT Platform uses several test frameworks at different layers:
+
+- Backend tests use pytest.
+- Frontend integration tests use Vitest, React Testing Library, and MSW. These
+  are the primary frontend tests.
+- End-to-end browser tests use [Playwright](https://playwright.dev/).
+- Design system components use Storybook stories for visual coverage.
+
+Run these Bash commands from the repository root after installing dependencies:
+
+Backend tests require Docker running and `autogpt_platform/.env` (copy from
+`.env.default`). Playwright requires the backend running; `pnpm test` builds
+and starts the frontend, reusing an existing server when available.
+
+```bash
+(cd autogpt_platform/backend && poetry run test)
+(cd autogpt_platform/autogpt_libs && poetry run pytest)
+(cd autogpt_platform/frontend && pnpm test:unit) # no servers required
+(cd autogpt_platform/frontend && pnpm test) # E2E: start the backend first
+```
+
+For the frontend's fast edit/test loop, run `pnpm test:unit:watch` from its workspace.
+
+See the backend [testing guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/backend/TESTING.md)
+and frontend [testing guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/TESTING.md)
+for patterns, commands, and guidance on choosing integration or end-to-end
+coverage.
 
 ## Before you start
 
-Almost all of the tests require that you are running the frontend and backend servers. You will hit strange and hard to debug errors if you don't have them running because the tests will try to interact with the application when it's not running in an interactable state.
+Playwright tests require the backend server. `pnpm test` builds and starts the
+frontend for you, or reuses an existing server. Wait for the backend to be ready
+before running browser tests.
 
-## Running the tests
+## Running the Playwright tests
 
 To run the tests, you can use the following commands:
 
@@ -28,9 +56,91 @@ You can also pass `--debug` to the test command to open the browsers in view mod
 pnpm test --debug
 ```
 
-In CI, we run the tests in headless mode, with multiple browsers, and retry a failed test up to 2 times.
+In CI, the [full-stack workflow](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/workflows/platform-fullstack-ci.yml)
+runs the Chromium project headlessly with `--retries=0 --trace=retain-on-failure`,
+overriding the shared config's CI defaults. Its JSON validator requires every test to have exactly one successful
+attempt and rejects skipped, flaky, unexpected, or missing results and top-level
+errors. See the shared settings in
+[playwright.config.ts](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/playwright.config.ts).
 
-You can find the full configuration in [playwright.config.ts](https://github.com/Significant-Gravitas/Autogpt/blob/master/autogpt_platform/frontend/playwright.config.ts).
+Failure traces and test artifacts may contain requests, cookies, and session
+state. Use isolated test accounts, never production accounts, and avoid exposing
+credentials in traced requests or application output.
+
+## Continuous integration
+
+### Sharding
+
+The [backend workflow](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/workflows/platform-backend-ci.yml)
+and [frontend workflow](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/workflows/platform-frontend-ci.yml)
+define the shard matrix. CI divides the backend and frontend integration suites into disjoint parallel
+shards. Backend shards select data, copilot, and util/executor paths; the
+remainder uses normal workspace discovery excluding those paths, including new
+top-level test files and directories. All shards explicitly load the backend's
+pytest configuration. Backend shards use real PostgreSQL, RabbitMQ, and Redis,
+with an isolated database, virtual host, and Redis cluster for each shard.
+Each shard pays its own service-startup cost, so adding shards also multiplies setup work.
+
+### Caching
+
+Dependency and browser caches are keyed to their lockfiles. Browser caches can
+fall back to a previous cache for the same runner OS, then install missing versions.
+Docker builds reuse unchanged layers. Full-stack cache export is limited to trusted `dev` pushes or an
+explicit cache-publishing dispatch. Single-container builds use GHCR caches per
+architecture instead of the repository Actions cache, except on pull requests,
+which do not read or write registry caches. Manual dispatches read and update a
+branch-specific cache, with the trusted `dev` cache as a read-only fallback.
+Only a push to `dev` writes the trusted cache used by release builds.
+The generated E2E seed-data cache is keyed to the exact commit under test. Warm
+caches may avoid repeated dependency downloads, seed generation, or cache
+export, but they never bypass tests, linting, type checks, coverage collection, image builds, image
+smoke tests, or security scans.
+
+### Test reports
+
+Every test job in the validation workflows uploads a JUnit XML or JSON report,
+plus coverage artifacts where applicable; this does not describe release-only
+publication jobs. The [JUnit validator](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/scripts/validate_junit.py)
+and [Playwright validator](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/scripts/validate_playwright_json.py)
+fail validation on missing or malformed reports,
+zero discovered tests, count mismatches, failures, and errors. Frontend
+integration and Playwright reports also reject skipped tests; the
+[single-container appliance workflow](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/workflows/platform-single-container-docker.yml)
+allows one exact test ID to skip when Bash 3 is unavailable. The
+[unittest reporter](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/scripts/run_unittest_junit.py)
+enforces this policy, including class, module, and subtest skips. Backend skips must match exact test IDs in
+`.github/scripts/backend-allowed-skips.json`, seeded from the 136 existing skips
+per Python version in run 33918906861; a new skip fails validation. Do not add an
+ID merely to make CI green: investigate and review the changed skip policy.
+An entirely skipped backend shard also fails.
+Wrapped commands and malformed backend/frontend reports produce a synthetic
+machine-readable error. Single-container validation instead uploads its original
+reports and leaves `status.json` marked `validated: false` if verification fails.
+
+### Manual dispatch
+
+These CI workflows have no required manual-dispatch inputs. Backend
+dispatches can refresh a stacked PR's backend coverage with
+`gh workflow run platform-backend-ci.yml --ref <branch> -f pr_number=<PR-number>`;
+the optional `pr_number` only selects the Codecov upload target. Full-stack
+dispatches import caches by default; set `publish_build_cache` only when a test
+commit should deliberately refresh them. A manually dispatched single-container
+run builds, smoke-tests, and scans the image but cannot publish it; publication
+jobs are reachable only from a release event. Single-container validation also
+runs on every `dev` push and release, while pull requests trigger it only when
+appliance packaging inputs change.
+
+### When CI fails
+
+Open the failed Actions run and download its test-report and coverage artifacts
+from the run summary. JUnit failures identify the test and traceback; validator
+errors identify missing, malformed, or unexpected skipped results. Do not treat
+a successful upload as proof the tests passed.
+
+To reproduce a backend shard after configuring the same local services, run
+`poetry run pytest -c pyproject.toml backend/copilot` from the backend workspace
+(substitute the failing shard's paths). For a frontend shard, run
+`pnpm test:unit --shard=1/4` from the frontend workspace, using its CI shard number.
 
 ### Debugging tests
 
@@ -79,6 +189,14 @@ pnpm gentests --load-storage .auth/gentest-user.json
 
 Tests are composed of page objects and test files.
 
+Do not commit skipped or todo Vitest/Playwright tests. Fix the prerequisite or
+ask maintainers to review an explicit policy exception; do not hide a failing
+test behind an environment check.
+
+The current Playwright config discovers `*-happy-path.spec.ts` files under
+`autogpt_platform/frontend/src/playwright/`. Other filenames are not collected;
+follow that naming pattern for tests intended to run in CI.
+
 A page object is a class that contains methods for interacting with a page.
 
 A test file is a file that contains tests for a page or a set of pages.
@@ -99,14 +217,14 @@ This is a shortened example of a page object for the profile page:
 
 <!-- I know there's a floating } but it closes the imported code block and makes this a valid copy-able block -->
 
-```typescript title="frontend/src/tests/pages/profile.page.ts"
---8<-- "autogpt_platform/frontend/src/tests/pages/profile.page.ts:ProfilePageExample"
+```typescript title="frontend/src/playwright/pages/profile.page.ts"
+--8<-- "autogpt_platform/frontend/src/playwright/pages/profile.page.ts:ProfilePageExample"
 }
 ```
 
 ### Making a new Test File
 
-For tests, we use our page objects to create tests. Each test file should be in the `tests` folder and be named like `test-name.spec.ts`. A test file can contain multiple tests. Each of which should be related to the same conceptual function. For example, a test file for the build page could have tests for building agents, creating inputs and outputs, and connecting blocks. If you wanted to specifically test building agents, you could make a new test called `building-agents.spec.ts`.
+For tests, we use our page objects to create tests. Each test file should be in `autogpt_platform/frontend/src/playwright/` and be named like `test-name-happy-path.spec.ts`. A test file can contain multiple tests. Each of which should be related to the same conceptual function. For example, a test file for the build page could have tests for building agents, creating inputs and outputs, and connecting blocks. If you wanted to specifically test building agents, you could make a new test called `building-agents-happy-path.spec.ts`.
 
 Tests can inherit from one or more page objects, have pre-actions, and have post-actions, as well as many other features. You can learn more about the different features and how to use them [here](https://playwright.dev/docs/test-actions).
 
@@ -125,41 +243,43 @@ A good non-focused (`integration` or `multiple concepts`) test will:
 
 A good test suite will have a healthy mix of focused and non-focused tests.
 
-### Example Focused Test & Explanation
+### Example focused test
 
-```typescript title="frontend/src/tests/build.spec.ts"
---8<-- "autogpt_platform/frontend/src/tests/build.spec.ts:BuildPageExample"
+This uses the current coverage fixture and builder page object. Save new cases
+under `autogpt_platform/frontend/src/playwright/` using the
+`*-happy-path.spec.ts` filename pattern.
+
+```typescript title="frontend/src/playwright/building-agents-happy-path.spec.ts"
+import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
+import { BuildPage } from "./pages/build.page";
+
+test.use({ storageState: E2E_AUTH_STATES.builder });
+
+test("builder saves an agent", async ({ page }) => {
+  const buildPage = new BuildPage(page);
+  await buildPage.createAndSaveSimpleAgent("Example Agent");
+
+  await expect(page).toHaveURL(/flowID=/);
+  expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
 ```
 
-1. The `test.describe` is used to group tests together. In this case, it's used to group all the tests for the build page together.
-2. The `let buildPage: BuildPage;` is used to create a new instance of the build page.
-3. The `test.beforeEach` is used to run code before each test. In this case, it's used to login the user before each test. `page` is the page object that is passed in from the fixture, `loginPage` is the page object for the login page, and `testUser` is the user object that is passed in from the fixture. The fixture is used to handle authentication and other common shared state tasks.
-4. The `await page.goto("/login");` is used to navigate to the login page.
-5. The `await test.expect(page).toHaveURL("/");` is used to check that the page has navigated to the home page (and are therefore logged in).
-6. The `test("user can add a block", async ({ page }) => {` is used to define a new test.
-7. The `await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();` is used to check that the build page has loaded. This could reasonably done in the `test.beforeEach` but is done here for clarity due to other tests in this suite.
-8. The `await test.expect(page).toHaveURL(new RegExp("/.*build"));` is used to check that the page has navigated to the build page.
-9. The `await buildPage.closeTutorial();` is used to close the tutorial on the build page, noticibly this wrapping funciton doesn't actually care if its open or not, it ensures that it **will** be closed. This is a useful and common pattern for ensuring that something will be done, without caring if it is already done. It could be used for things like toggling a setting, closing/opening a sidebar, etc.
-10. The `await buildPage.openBlocksPanel();` is used to open the blocks panel on the build page, in the same way described for the `closeTutorial` function.
-11. The `await buildPage.addBlock(block);` is used to add a specific block to the build page. It's another utility function that could be done in line, but due to how the Page Object pattern works, we should keep them in the page object. (It's also useful for keeping the test code cleaner and is used in other tests)
-12. The `await buildPage.closeBlocksPanel();` is used to close the blocks panel on the build page.
-13. The `await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();` is used to check that the block has been added to the build page.
+The coverage fixture preserves coverage collection. The storage state supplies
+an isolated test account, the page object encapsulates UI interactions, and the
+assertions verify both navigation and the saved agent's runnable state.
+See the current
+[builder tests](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/src/playwright/builder-happy-path.spec.ts)
+for full scenarios and timeout choices.
 
-### Passing information between tests
+### Passing information within a test
 
-You can pass information between tests using the `testInfo` object. This is useful for things like passing the id of an agent between beforeAll so that you can have a shared setup for multiple tests.
-
-```typescript title="frontend/src/tests/monitor.spec.ts"
---8<-- "autogpt_platform/frontend/src/tests/monitor.spec.ts:AttachAgentId"
-
-  test("test can read the agent id", async ({ page }, testInfo) => {
-    --8<-- "autogpt_platform/frontend/src/tests/monitor.spec.ts:ReadAgentId"
-    /// ... Do something with the agent id here
-  });
-});
-```
-
+Keep tests independent: do not make one test consume an ID created by another.
+Use local variables or fixtures to share setup within a test, and use
+`testInfo.attach` for safe diagnostics. Avoid attaching credentials or session
+state. See Playwright's
+[fixtures guide](https://playwright.dev/docs/test-fixtures)
+and [TestInfo API](https://playwright.dev/docs/api/class-testinfo).
 
 ## See Also
 
