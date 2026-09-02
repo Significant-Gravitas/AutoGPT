@@ -5,9 +5,11 @@ import re
 from typing import Any
 
 from backend.api.features.library import model as library_model
+from backend.blocks.mcp.helpers import normalize_mcp_url
 from backend.data.db_accessors import library_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
@@ -516,16 +518,31 @@ def _credential_is_for_mcp_server(
     credential: Credentials,
     requirements: CredentialsFieldInfo,
 ) -> bool:
-    """Check if an MCP OAuth credential matches the required server URL."""
+    """Check if an MCP credential matches the required server URL.
+
+    Covers both OAuth2 tokens and static API-key / bearer tokens — the latter
+    is how servers that don't support OAuth (e.g. a token issued in the
+    vendor's dashboard) store their credential.
+    """
     if not requirements.discriminator_values:
         return True
 
     server_url = (
         credential.metadata.get("mcp_server_url")
-        if isinstance(credential, OAuth2Credentials)
+        if isinstance(credential, (OAuth2Credentials, APIKeyCredentials))
         else None
     )
-    return server_url in requirements.discriminator_values if server_url else False
+    if not server_url:
+        return False
+    # Normalized on both sides, like `is_mcp_credential_for_server`: a node
+    # whose `server_url` carries a trailing slash must still match the
+    # credential stored under the normalized URL, or CoPilot reports a
+    # connected server as missing its credential.
+    normalized = normalize_mcp_url(server_url)
+    return any(
+        normalize_mcp_url(value) == normalized
+        for value in requirements.discriminator_values
+    )
 
 
 async def check_user_has_required_credentials(

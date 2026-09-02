@@ -262,6 +262,11 @@ function APIKeyTabContent({
               />
             )}
           />
+          {form.formState.errors.root && (
+            <p role="alert" className="text-sm text-red-500">
+              {form.formState.errors.root.message}
+            </p>
+          )}
           <Button
             type="submit"
             className="min-w-68"

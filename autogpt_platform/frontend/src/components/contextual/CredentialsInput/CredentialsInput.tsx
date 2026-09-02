@@ -155,6 +155,7 @@ export function CredentialsInput({
               displayName={displayName}
               open={isConnectDialogOpen}
               onClose={() => setConnectDialogOpen(false)}
+              siblingInputs={siblingInputs}
             />
           )}
           {hasMultipleCredentialTypes && (

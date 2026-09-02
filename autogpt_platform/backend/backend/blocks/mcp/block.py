@@ -20,7 +20,9 @@ from backend.blocks._base import (
 )
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
+    MCPCredential,
     auto_lookup_mcp_credential,
+    mcp_auth_token,
     normalize_mcp_url,
     parse_mcp_content,
 )
@@ -52,7 +54,9 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-MCPCredentials = CredentialsMetaInput[Literal[ProviderName.MCP], Literal["oauth2"]]
+MCPCredentials = CredentialsMetaInput[
+    Literal[ProviderName.MCP], Literal["oauth2", "api_key"]
+]
 
 
 class MCPToolBlock(Block):
@@ -75,7 +79,7 @@ class MCPToolBlock(Block):
         )
         credentials: MCPCredentials = CredentialsField(
             discriminator="server_url",
-            description="MCP server OAuth credentials",
+            description="MCP server credentials (OAuth token or API key / bearer token)",
             default={},
         )
         selected_tool: str = SchemaField(
@@ -191,23 +195,12 @@ class MCPToolBlock(Block):
 
         return parse_mcp_content(result.content)
 
-    @staticmethod
-    async def _auto_lookup_credential(
-        user_id: str, server_url: str
-    ) -> "OAuth2Credentials | None":
-        """Auto-lookup stored MCP credential for a server URL.
-
-        Delegates to :func:`~backend.blocks.mcp.helpers.auto_lookup_mcp_credential`.
-        The caller should pass a normalized URL.
-        """
-        return await auto_lookup_mcp_credential(user_id, server_url)
-
     async def run(
         self,
         input_data: Input,
         *,
         user_id: str,
-        credentials: OAuth2Credentials | None = None,
+        credentials: MCPCredential | None = None,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.server_url:
@@ -232,17 +225,23 @@ class MCPToolBlock(Block):
                 )
                 return
 
-        # If no credentials were injected by the executor (e.g. legacy nodes
-        # that don't have the credentials field set), try to auto-lookup
-        # the stored MCP credential for this server URL.
+        # `credentials is None` reaches here for three different reasons and
+        # the executor collapses them all into the same value: the user picked
+        # "None (skip this credential)", the node never had one configured, or
+        # the node's credential ID points at a row that has since been deleted
+        # (executor/manager.py runs the block anyway because the field has a
+        # default). Reconnecting a server replaces its credential with a new
+        # ID, so that last case is a normal flow, not an edge case — without
+        # this fallback every subsequent run goes out unauthenticated and 401s.
+        # Falling back therefore fixes a broken run at the cost of possibly
+        # overriding an explicit "None" on a server the user also has a token
+        # for, which is the far milder failure of the two.
         if credentials is None:
-            credentials = await self._auto_lookup_credential(
+            credentials = await auto_lookup_mcp_credential(
                 user_id, normalize_mcp_url(input_data.server_url)
             )
 
-        auth_token = (
-            credentials.access_token.get_secret_value() if credentials else None
-        )
+        auth_token = mcp_auth_token(credentials) if credentials else None
 
         try:
             result = await self._call_mcp_tool(

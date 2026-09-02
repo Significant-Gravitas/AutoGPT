@@ -1,4 +1,5 @@
 import { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { normalizeMCPUrl } from "@/lib/utils/url";
 import { filterSystemCredentials, getSystemCredentials } from "../../helpers";
 
 export type CredentialField = [string, any];
@@ -28,12 +29,20 @@ function matchesDiscriminatorValues(
   credential: { host?: string | null; provider: string; type: string },
   discriminatorValues?: string[],
 ) {
-  // MCP OAuth2 credentials must match by server URL
-  if (credential.type === "oauth2" && credential.provider === "mcp") {
+  // MCP credentials (OAuth2 tokens and static API-key / bearer tokens) must
+  // match by server URL — otherwise a token for one server would be treated
+  // as valid for every server.
+  if (
+    (credential.type === "oauth2" || credential.type === "api_key") &&
+    credential.provider === "mcp"
+  ) {
     if (!discriminatorValues || discriminatorValues.length === 0) return false;
-    return (
-      credential.host != null && discriminatorValues.includes(credential.host)
-    );
+    // Normalized on both sides, matching `classifyCredentials`: the builder
+    // picker and this auto-assign path must agree, or a node whose
+    // `server_url` carries a trailing slash matches in one and not the other.
+    if (credential.host == null) return false;
+    const host = normalizeMCPUrl(credential.host);
+    return discriminatorValues.some((v) => normalizeMCPUrl(v) === host);
   }
   // Host-scoped credentials match by host
   if (credential.type === "host_scoped" && credential.host) {

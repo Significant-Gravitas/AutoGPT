@@ -6,9 +6,11 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
+from backend.data.model import APIKeyCredentials
 from backend.util.test import execute_block_test
 
 # ── SSE parsing unit tests ───────────────────────────────────────────
@@ -595,6 +597,39 @@ class TestMCPToolBlock:
         assert captured_tokens == ["resolved-token"]
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_run_with_api_key_credentials(self):
+        """Verify the block accepts a static API-key / bearer token and pulls
+        the token from ``api_key`` (not ``access_token``)."""
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url="https://mcp.example.com/mcp",
+            selected_tool="test_tool",
+        )
+
+        captured_tokens: list[str | None] = []
+
+        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+            captured_tokens.append(auth_token)
+            return "ok"
+
+        block._call_mcp_tool = mock_call  # type: ignore
+
+        test_creds = APIKeyCredentials(
+            id="cred-apikey-1",
+            provider="mcp",
+            api_key=SecretStr("static-bearer-token"),
+            title="MCP: mcp.example.com",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+
+        async for _ in block.run(
+            input_data, user_id=MOCK_USER_ID, credentials=test_creds
+        ):
+            pass
+
+        assert captured_tokens == ["static-bearer-token"]
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_run_without_credentials(self):
         """Verify the block works without credentials (public server)."""
         block = MCPToolBlock()
@@ -617,3 +652,46 @@ class TestMCPToolBlock:
 
         assert captured_tokens == [None]
         assert outputs == [("result", "ok")]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_run_without_credentials_falls_back_to_stored_token(self):
+        """No injected credential must fall back to the stored one.
+
+        The executor nulls the field for three different reasons — the user
+        picked "None", the node never had one, or its credential ID points at
+        a row that has since been deleted (which is what reconnecting a server
+        does). Without the fallback that last case sends no Authorization
+        header and 401s on every run.
+        """
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url="https://mcp.example.com/mcp",
+            selected_tool="test_tool",
+        )
+
+        captured_tokens: list[str | None] = []
+
+        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+            captured_tokens.append(auth_token)
+            return "ok"
+
+        block._call_mcp_tool = mock_call  # type: ignore
+
+        stored = APIKeyCredentials(
+            provider="mcp",
+            api_key=SecretStr("stored-token"),
+            title="MCP: mcp.example.com",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        mgr = AsyncMock()
+        mgr.store.get_creds_by_provider = AsyncMock(return_value=[stored])
+
+        with patch(
+            "backend.blocks.mcp.helpers.IntegrationCredentialsManager",
+            return_value=mgr,
+        ):
+            async for _ in block.run(input_data, user_id=MOCK_USER_ID):
+                pass
+
+        assert captured_tokens == ["stored-token"]
+        mgr.store.get_creds_by_provider.assert_awaited()
