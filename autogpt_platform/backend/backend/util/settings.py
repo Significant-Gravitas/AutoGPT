@@ -623,6 +623,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    scheduler_startup_embedding_backfill: bool = Field(
+        default=True,
+        description=(
+            "Run the search embedding coverage backfill synchronously when the "
+            "scheduler starts"
+        ),
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,

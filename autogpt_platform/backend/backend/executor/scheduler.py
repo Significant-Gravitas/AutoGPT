@@ -1914,7 +1914,7 @@ class Scheduler(AppService):
         # Run embedding backfill immediately on startup
         # This ensures blocks/docs are searchable right away, not after 6 hours
         # Safe to run on multiple pods - uses upserts and checks for existing embeddings
-        if self.register_system_tasks:
+        if self.register_system_tasks and config.scheduler_startup_embedding_backfill:
             logger.info("Running embedding backfill on startup...")
             try:
                 result = ensure_embeddings_coverage()
