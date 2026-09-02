@@ -5,6 +5,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
@@ -79,10 +80,11 @@ export const useRunGraph = () => {
       mutation: {
         onSuccess: (response: any) => {
           clearAllNodeErrors();
-          const { id } = response.data as GraphExecutionMeta;
+          const { id, graph_id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
+          trackAgentRunGoal({ id: graph_id }, "builder");
         },
         onError: (error: any) => {
           setIsGraphRunning(false);
