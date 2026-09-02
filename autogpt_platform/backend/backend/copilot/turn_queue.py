@@ -45,6 +45,7 @@ from backend.copilot.model import (
     _get_session_lock,
     invalidate_session_cache,
 )
+from backend.copilot.offers import EntitlementUnavailable, advanced_tier_entitled
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -267,7 +268,8 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
     head = queued[0]
 
-    if head.metadata.llm_auth_provider == "codex":
+    route_provider = head.metadata.llm_auth_provider
+    if route_provider == "codex":
         if not await has_codex_access(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s lacks Codex entitlement, "
@@ -276,7 +278,7 @@ async def dispatch_next_for_user(user_id: str) -> bool:
                 head.session_id,
             )
             return False
-    else:
+    elif route_provider == "platform":
         if await is_user_paywalled(user_id):
             logger.info(
                 "dispatch_next_for_user: user=%s paywalled, leaving session=%s queued",
@@ -340,6 +342,35 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         return False
 
     metadata = pending.metadata or {}
+
+    # A turn can sit in the queue long enough for the plan that bought it to
+    # lapse. The tier was checked when the turn was accepted, but promoting it
+    # is a second, later decision to spend, so it gets its own check --
+    # otherwise a downgrade between the two buys a free Advanced run. The turn
+    # goes back to queued rather than quietly re-running on Standard: nothing
+    # in this feature changes what a turn runs on without being asked. It
+    # promotes itself once entitlement returns, and can be cancelled meanwhile.
+    if route_provider == "platform" and metadata.get("model") == "advanced":
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            entitled = False
+            logger.warning(
+                "dispatch_next_for_user: could not resolve the Advanced "
+                "entitlement for user=%s; leaving session=%s queued",
+                user_id,
+                head.session_id,
+                exc_info=True,
+            )
+        if not entitled:
+            await chat_db().update_chat_session_status(
+                session_id=head.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_QUEUED,
+            )
+            await invalidate_session_cache(head.session_id)
+            return False
+
     turn_id = str(uuid.uuid4())
     try:
         # The user's message is already persisted AND the session is

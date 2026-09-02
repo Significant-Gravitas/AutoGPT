@@ -501,6 +501,40 @@ async def update_chat_session_pinned(
     return result > 0
 
 
+async def update_chat_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: str,
+    llm_credential_id: str | None,
+) -> bool:
+    """Point an existing session at a different connection, from now on.
+
+    Atomically merges only the two route keys into stored metadata: everything
+    else in there -- including a pending question written concurrently --
+    belongs to other features and must survive a connection change.
+
+    Always filters by (session_id, user_id) so callers cannot re-route another
+    user's chat even knowing the id. Past turns keep the stamps they were
+    written with; this only decides where the next one runs.
+
+    Returns True if a row was updated, False otherwise (not found, wrong user).
+    """
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object("
+        "'llm_auth_provider', $3::text, "
+        "'llm_credential_id', $4::text"
+        '), "updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        llm_auth_provider,
+        llm_credential_id,
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,

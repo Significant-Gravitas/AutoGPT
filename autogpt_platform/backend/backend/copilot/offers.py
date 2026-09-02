@@ -15,12 +15,11 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
-from backend.copilot.engine import resolve_use_sdk
-from backend.copilot.model_router import (
-    ROUTE_SURFACE_CODEX,
-    ModelMode,
-    catalog_lookup,
-    resolve_model_route,
+from backend.copilot.provider_tiers import (
+    TIER_LABELS,
+    codex_tier_models,
+    platform_tier_models,
+    resolve_engine_mode,
 )
 from backend.copilot.transports import (
     ChatTransportResponse,
@@ -28,20 +27,12 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     settings,
 )
-from backend.data import llm_registry
 from backend.integrations.codex.access import CODEX_MINIMUM_PLAN_ERROR, has_codex_access
 from backend.util.entitlements import Entitlement, has_entitlement
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
 logger = logging.getLogger(__name__)
-
-# Product vocabulary. "Fast" and "Thinking" are execution paths, not tiers a
-# user picks between; the two labels below are what the product exposes.
-TIER_LABELS: dict[CopilotLLMModel, str] = {
-    "standard": "Balanced",
-    "advanced": "Advanced",
-}
 
 
 class ConnectionTier(BaseModel):
@@ -98,18 +89,10 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     pick.
     """
     config = ChatConfig()
-    # One engine decision for the whole response: it is a property of the
-    # deployment and the user, not of which connection they pick.
-    use_sdk = await resolve_use_sdk(
-        user_id,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    mode = "thinking" if use_sdk else "fast"
-    models = await _platform_tier_models(mode, user_id, config)
-    codex_models = _codex_tier_models(mode)
-    advanced_allowed = await _advanced_tier_allowed(user_id)
+    mode = await resolve_engine_mode(user_id, config)
+    models = await platform_tier_models(mode, user_id, config)
+    codex_models = codex_tier_models(mode)
+    advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
         for transport in await get_chat_transports(user_id)
@@ -190,32 +173,6 @@ async def _locked_codex_offer(
     )
 
 
-async def _platform_tier_models(
-    mode: ModelMode, user_id: str, config: ChatConfig
-) -> dict[CopilotLLMModel, str | None]:
-    """Resolve each tier against the engine this user's turns will run on.
-
-    Answerable at all only because nothing can name an engine per request
-    any more — the decision is the server's, so it can be made before a turn
-    exists rather than during one.
-    """
-    resolved: dict[CopilotLLMModel, str | None] = {}
-    for tier in TIER_LABELS:
-        try:
-            route = await resolve_model_route(mode, tier, user_id, config=config)
-            resolved[tier] = _display_name(route.model)
-        except Exception:
-            # A tier that cannot be resolved is described without a name
-            # rather than failing the whole list.
-            logger.warning(
-                "Could not resolve the %s model for the platform connection",
-                tier,
-                exc_info=True,
-            )
-            resolved[tier] = None
-    return resolved
-
-
 def offer_id_for(transport: ChatTransportResponse) -> str:
     """Stable across requests, and unique per account.
 
@@ -228,61 +185,47 @@ def offer_id_for(transport: ChatTransportResponse) -> str:
 ADVANCED_TIER_LOCK_REASON = "A Max plan or higher is required for Advanced."
 
 
-async def _advanced_tier_allowed(user_id: str) -> bool:
-    """Whether this user may pick the Advanced tier.
+class EntitlementUnavailable(Exception):
+    """The entitlement service could not answer.
 
-    A failure to resolve the entitlement leaves the tier open rather than
-    locked: a billing hiccup should not silently downgrade someone's model.
+    Raised only on the enforcement path, where "we do not know" has to be
+    refused rather than guessed at.
+    """
+
+
+async def advanced_tier_entitled(user_id: str) -> bool:
+    """Whether this user actually holds the Advanced entitlement.
+
+    This is the enforcement answer, so it never invents one: a lookup that
+    fails raises rather than returning a verdict. The presentation answer
+    lives in ``advanced_tier_allowed`` and is deliberately more forgiving --
+    the two must not be the same function, because a billing hiccup that
+    should merely leave a control enabled must not also authorize spend.
     """
     try:
         return await has_entitlement(user_id, Entitlement.ADVANCED_MODEL_TIER)
-    except Exception:
+    except Exception as exc:
+        raise EntitlementUnavailable(str(exc)) from exc
+
+
+async def advanced_tier_allowed(user_id: str) -> bool:
+    """Whether to offer this user the Advanced tier in the picker.
+
+    Presentation only. A failure to resolve the entitlement leaves the tier
+    on offer rather than locked: a billing hiccup should not make someone's
+    model quietly disappear from the menu. The turn itself is still checked
+    by ``advanced_tier_entitled``, which refuses when it cannot tell -- so
+    being generous here costs nothing.
+    """
+    try:
+        return await advanced_tier_entitled(user_id)
+    except EntitlementUnavailable:
         logger.warning(
-            "Could not resolve the Advanced tier entitlement; leaving it open",
+            "Could not resolve the Advanced tier entitlement; leaving it on "
+            "offer. The turn is still enforced separately.",
             exc_info=True,
         )
         return True
-
-
-def _display_name(slug: str | None) -> str | None:
-    """What the catalog calls this model, rather than its slug.
-
-    The PRD labels tiers "Balanced · 5.6 Terra", not
-    "Balanced · gpt-5.6-terra": the slug is a routing key and reads as one.
-
-    Goes through the router's lookup rather than the catalog directly,
-    because the slug arrives in whatever spelling configured it. The default
-    configuration routes through OpenRouter, whose provider-prefixed forms
-    (``anthropic/claude-sonnet-5``) the catalog does not use as keys -- so a
-    direct read misses on exactly the setup most deployments run.
-
-    Falls back to the slug when nothing resolves, which is better than
-    showing nothing for a model the catalog has never heard of -- minus the
-    vendor prefix, which is how the transport addresses the model and carries
-    nothing for the reader. Keeping it costs ten characters in a control that
-    has to fit two of these side by side, and spends them on the one part of
-    the string that cannot tell anyone anything.
-    """
-    if not slug:
-        return None
-    model = catalog_lookup(slug)
-    if model:
-        return model.display_name
-    return slug.split("/", 1)[1] if "/" in slug else slug
-
-
-def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:
-    """The models the catalog pins for the Codex cells of this engine.
-
-    A registry read, so it costs nothing and needs no credential. The router
-    validates the pinned slug against what the account actually advertises
-    when the turn runs, and falls back if it is gone -- so this names the
-    routed model, not a promise about the account.
-    """
-    return {
-        tier: _display_name(llm_registry.get_route(ROUTE_SURFACE_CODEX, mode, tier))
-        for tier in TIER_LABELS
-    }
 
 
 def _offer(

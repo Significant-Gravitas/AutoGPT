@@ -22,6 +22,13 @@ interface Props {
   badge?: string;
   /** Why this cannot be chosen, and where to go to change that. */
   lock?: { reason: string; href: string | null };
+  /** Identifies the row to the group's arrow-key handler. */
+  offerId?: string;
+  /**
+   * A radio group is one tab stop; only the active row takes it. Supplied by
+   * the group so Tab skips past the whole set rather than through it.
+   */
+  tabIndex?: number;
 }
 
 export function ChoiceRow({
@@ -33,6 +40,8 @@ export function ChoiceRow({
   label,
   lock,
   badge,
+  offerId,
+  tabIndex,
 }: Props) {
   if (lock) {
     return (
@@ -46,6 +55,8 @@ export function ChoiceRow({
       role="radio"
       aria-checked={isSelected}
       aria-label={label}
+      data-offer={offerId}
+      tabIndex={tabIndex}
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors",

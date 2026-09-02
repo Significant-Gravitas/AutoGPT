@@ -14,6 +14,7 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
@@ -3816,3 +3817,225 @@ def test_resolve_session_permissions_blocks_out_of_scope_tools() -> None:
     # enforce scope per-tool via the builder_graph_id guard.
     assert "edit_agent" not in perms.tools
     assert "run_agent" not in perms.tools
+
+
+# ─── Change the connection an existing chat runs on ────────────────────
+
+
+def _transport(auth_provider: str, credential_id: str | None, available: bool = True):
+    from backend.copilot.transports import ChatTransportResponse
+
+    return ChatTransportResponse(
+        auth_provider=auth_provider,  # type: ignore[arg-type]
+        credential_id=credential_id,
+        label="Test",
+        available=available,
+        default=False,
+    )
+
+
+def _mock_route_change(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    transports: list,
+    success: bool = True,
+):
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_transports",
+        new_callable=AsyncMock,
+        return_value=transports,
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.update_session_llm_route",
+        new_callable=AsyncMock,
+        return_value=success,
+    )
+
+
+def test_change_connection_moves_the_chat(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """The continue-path after a provider stops accepting turns: the run keeps
+    going on a connection the user picked, rather than ending."""
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_called_once_with("sess-1", test_user_id, "platform", None)
+
+
+def test_change_connection_refuses_a_route_the_user_does_not_have(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Otherwise this endpoint would be a way to route a turn down a
+    connection the entitlement checks already refused."""
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-nope"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "codex_credential_not_found"
+    mock_update.assert_not_called()
+
+
+def test_change_connection_refuses_an_unavailable_transport(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(
+        mocker, transports=[_transport("platform", None, available=False)]
+    )
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 503
+    mock_update.assert_not_called()
+
+
+def test_change_connection_rejects_a_credential_on_the_platform_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(mocker, transports=[_transport("platform", None)])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "platform", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_called()
+
+
+def test_change_connection_requires_a_credential_for_codex(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = _mock_route_change(mocker, transports=[_transport("codex", "cred-1")])
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex"},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_called()
+
+
+def test_change_connection_on_someone_elses_session_is_a_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """update_session_llm_route filters on the owning user, so a session that
+    is not theirs reports as missing rather than as forbidden."""
+    _mock_route_change(mocker, transports=[_transport("platform", None)], success=False)
+
+    response = client.put(
+        "/sessions/not-mine/connection",
+        json={"llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 404
+
+
+# ─── Advanced tier is enforced where a turn starts, not just in the picker ──
+
+
+def test_advanced_tier_is_refused_without_the_entitlement(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Found by a blue-team review of this stack: the Advanced tier was
+    declared Max-only but checked only where the picker decides what to grey
+    out, so posting model="advanced" directly was served on platform credits."""
+    mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    validate = mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "advanced_tier_not_entitled"
+    # Refused before the session is even loaded, so nothing is left behind.
+    validate.assert_not_called()
+
+
+def test_advanced_tier_is_refused_when_entitlement_cannot_be_resolved(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Not knowing is not permission.
+
+    The picker deliberately stays generous when the entitlement service is
+    down, because a billing hiccup should not make someone's model vanish
+    from the menu. Spending is the other way round: a second blue-team pass
+    found the endpoint reusing that generous helper, so an outage handed
+    Advanced to anyone who asked. It refuses now, and says so as a 503 rather
+    than a 403 -- the account may well be entitled; we simply cannot tell.
+    """
+    mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        side_effect=EntitlementUnavailable("billing down"),
+    )
+    validate = mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "advanced"},
+    )
+
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert detail == "advanced_tier_unavailable"
+    # The underlying failure is not handed to the client.
+    assert "billing down" not in str(detail)
+    validate.assert_not_called()
+
+
+def test_standard_tier_is_not_gated(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The gate is on the paid tier only — Balanced must stay open to everyone
+    even when the entitlement lookup says no."""
+    allowed = mocker.patch(
+        "backend.api.features.chat.routes.advanced_tier_entitled",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_writable_session",
+        new_callable=AsyncMock,
+        # Stops the handler right after the gate with something the test
+        # client turns into a response rather than re-raising.
+        side_effect=fastapi.HTTPException(status_code=418, detail="stop here"),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "model": "standard"},
+    )
+
+    assert response.status_code == 418
+
+    # Short-circuits on the tier, so the entitlement is never consulted for
+    # Balanced. The request goes on to fail for unrelated reasons in this
+    # harness; what matters is that it was not refused for entitlement.
+    allowed.assert_not_called()
