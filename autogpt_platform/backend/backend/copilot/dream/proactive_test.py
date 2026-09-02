@@ -117,6 +117,19 @@ async def test_zero_cap_is_a_zero_credit_limit(server: SpinTestServer):
     assert row.status == prisma.enums.DelegatedTaskStatus.FAILED
 
 
+async def test_zero_cap_proposes_nothing(server: SpinTestServer):
+    user = await _create_seed_user()
+    await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.AUTONOMOUS)
+
+    result = await run_proactive_pass(
+        user.id,
+        dream_pass_id="pass-zero-cap",
+        config=ChatConfig(dream_task_budget_cap=0),
+    )
+
+    assert result.created == []
+
+
 async def test_suggest_expert_gets_proposal_that_never_executes(
     server: SpinTestServer,
 ):

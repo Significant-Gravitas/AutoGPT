@@ -56,9 +56,15 @@ async def run_proactive_pass(
     dream_pass_id: str,
     config: ChatConfig | None = None,
 ) -> ProactivePassResult:
-    """One sweep: enforce the budget cap, then propose work for idle experts."""
+    """One sweep: enforce the budget cap, then propose work for idle experts.
+
+    A cap of zero is a real zero-credit limit: open dream tasks are stopped
+    and no new work is proposed, so the pass cannot create tasks only to
+    fail them on the next sweep."""
     config = config or ChatConfig()
     capped = await enforce_task_budget_caps(user_id, config.dream_task_budget_cap)
+    if config.dream_task_budget_cap == 0:
+        return ProactivePassResult(budget_capped_task_count=capped)
 
     created = [
         await _propose_task(user_id, expert, dream_pass_id)
