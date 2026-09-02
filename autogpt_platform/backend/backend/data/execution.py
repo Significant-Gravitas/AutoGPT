@@ -2,7 +2,7 @@ import logging
 import queue
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import (
     Annotated,
     Any,
@@ -147,6 +147,29 @@ class BlockErrorStats(BaseModel):
 
 
 ExecutionStatus = AgentExecutionStatus
+
+
+class ExecutionTrigger(StrEnum):
+    """How a graph execution was started. Persisted on the execution row.
+
+    ``manual``   a person clicked run (UI surface in triggerRef) or ran a preset
+    ``api``      external API key (key id in triggerRef)
+    ``schedule`` a cron/one-shot schedule fired (schedule id in triggerRef)
+    ``webhook``  an integration webhook fired (webhook id in triggerRef)
+    ``copilot``  the copilot run_agent tool (chat session id in triggerRef)
+    ``subgraph`` nested run started by an AgentExecutorBlock (parent exec id)
+    ``admin``    admin recovery path
+    """
+
+    MANUAL = "manual"
+    API = "api"
+    SCHEDULE = "schedule"
+    WEBHOOK = "webhook"
+    COPILOT = "copilot"
+    SUBGRAPH = "subgraph"
+    ADMIN = "admin"
+
+
 NodeInputMask = Mapping[str, JsonValue]
 NodesInputMasks = Mapping[str, NodeInputMask]
 
@@ -214,6 +237,11 @@ class GraphExecutionMeta(BaseDbModel):
     # Expert attribution, surfaced from the DB row for the same
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
+
+    # How the run was started (ExecutionTrigger value) and by what. Null on
+    # rows created before the columns existed.
+    trigger_source: Optional[str] = None
+    trigger_ref: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -366,6 +394,8 @@ class GraphExecutionMeta(BaseDbModel):
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
             expert_id=_graph_exec.expertId,
+            trigger_source=_graph_exec.triggerSource,
+            trigger_ref=_graph_exec.triggerRef,
         )
 
 
@@ -919,6 +949,8 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    trigger_source: Optional[ExecutionTrigger] = None,
+    trigger_ref: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -973,6 +1005,8 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"expertId": expert_id} if expert_id else {}),
+            **({"triggerSource": trigger_source.value} if trigger_source else {}),
+            **({"triggerRef": trigger_ref} if trigger_ref else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),

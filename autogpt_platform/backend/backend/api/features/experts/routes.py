@@ -24,6 +24,7 @@ from backend.api.features.experts.models import (
     RaiseResult,
     validate_avatar_url,
 )
+from backend.util import product_analytics
 
 router = APIRouter(
     prefix="/experts",
@@ -121,7 +122,9 @@ async def hire_expert(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> HireResult:
     try:
-        return await experts_db.hire_expert(user_id, request.template_id, request.name)
+        result = await experts_db.hire_expert(
+            user_id, request.template_id, request.name
+        )
     except experts_db.ExpertTemplateNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     except experts_db.ExpertNotFoundError as e:
@@ -141,6 +144,13 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
+    product_analytics.track_expert_hired(
+        user_id=user_id,
+        expert_id=result.expert.id,
+        template_id=request.template_id,
+        name=result.expert.name,
+    )
+    return result
 
 
 @router.post(

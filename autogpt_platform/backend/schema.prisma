@@ -150,6 +150,8 @@ model User {
   ChatSessions         ChatSession[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
+  ExperimentAssignments ExperimentAssignment[]
+  Attribution          UserAttribution?
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -365,6 +367,58 @@ model ActivityEvent {
   @@index([userId, category, createdAt])
   @@index([sessionId])
   @@index([expertId, createdAt])
+}
+
+// One row per (user, experiment): the arm a user was bucketed into the first
+// time the experiment was evaluated for them. Written once and never
+// overwritten, so analytics can join a stable arm to every later event
+// (runs, retention, spend) without depending on the flag provider's history.
+model ExperimentAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  experimentKey String
+  variant       String
+  // "posthog" when the frontend reports a PostHog-evaluated flag,
+  // "backend" when the server bucketed the user itself.
+  source        String
+
+  @@unique([userId, experimentKey])
+  @@index([experimentKey, variant])
+}
+
+// Where a user came from, captured once around signup. Holds the identities
+// the analytics tools know the user by before they had a user id, so the
+// database can join marketing attribution (DataFast), product analytics
+// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
+// anonymous id) to activation and revenue. Fields are filled at most once.
+model UserAttribution {
+  userId    String   @id
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  anonymousId       String?
+  // PostHog $device_id at the time of reporting, when it differs.
+  posthogDistinctId String?
+  datafastVisitorId String?
+  datafastSessionId String?
+
+  // First landing on the site, as seen by the browser that later signed up.
+  landingPath String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  // "email" | "google" when the account was created in this browser session.
+  signupMethod String?
+
+  @@index([anonymousId])
+  @@index([datafastVisitorId])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1260,6 +1314,15 @@ model AgentGraphExecution {
   // soft delete, mirroring ChatSession.expertId semantics.
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  // How the run was started (values: backend.data.execution.ExecutionTrigger).
+  // Persisted so analytics can separate human-initiated runs from schedule,
+  // webhook, API and copilot-initiated ones instead of inferring it from the
+  // preset / expert / parent columns. Null for rows that predate the column.
+  triggerSource String?
+  // What started the run, for that source: schedule id, webhook id, chat
+  // session id, API key id, or the UI surface for manual runs.
+  triggerRef    String?
 
   inputs           Json?
   credentialInputs Json?

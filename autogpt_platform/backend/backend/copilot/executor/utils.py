@@ -480,6 +480,8 @@ async def schedule_chat_turn(
     message_metadata: dict[str, Any] | None = None,
     message_already_persisted: bool = False,
     is_user_message: bool = True,
+    expert_id: str | None = None,
+    session_origin: str | None = None,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
@@ -536,6 +538,9 @@ async def schedule_chat_turn(
                     user_id=user_id,
                     session_id=session_id,
                     message_length=len(message),
+                    expert_id=expert_id,
+                    origin=session_origin,
+                    surface="chat",
                 )
 
         if is_duplicate:

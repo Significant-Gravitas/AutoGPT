@@ -31,6 +31,7 @@ from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
+    ExecutionTrigger,
     GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
@@ -45,6 +46,7 @@ from backend.data.model import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.integrations.credentials_store import is_system_credential
+from backend.util import product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -1245,6 +1247,8 @@ async def add_graph_execution(
     *,
     expert_id: Optional[str] = None,
     bypass_paywall: bool = False,
+    trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
+    trigger_ref: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1271,6 +1275,11 @@ async def add_graph_execution(
         bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
             recovery paths (requeueing stuck executions on behalf of a user
             who may be on NO_TIER) — never for user-initiated runs.
+        trigger: How the run was started. Persisted on the execution row and
+            used to decide which activation event (if any) to emit. Ignored
+            in REQUEUE mode, where the original row is authoritative.
+        trigger_ref: Identifier of what started the run for that trigger
+            (schedule id, webhook id, chat session id, API key id, UI surface).
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1293,6 +1302,7 @@ async def add_graph_execution(
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
+    is_new_execution = graph_exec_id is None
     context_expert_id = execution_context.expert_id if execution_context else None
     if expert_id is not None and context_expert_id not in (None, expert_id):
         raise ValueError(
@@ -1444,6 +1454,8 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            trigger_source=trigger,
+            trigger_ref=trigger_ref,
         )
 
         logger.info(
@@ -1592,6 +1604,18 @@ async def add_graph_execution(
         )
     except Exception as e:
         logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+
+    if is_new_execution:
+        product_analytics.track_agent_run_started(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec.id,
+            trigger=trigger,
+            trigger_ref=trigger_ref,
+            expert_id=expert_id,
+            preset_id=preset_id,
+            is_dry_run=dry_run,
+        )
 
     return graph_exec
 

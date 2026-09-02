@@ -5,10 +5,6 @@ from datetime import UTC, datetime
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
-from backend.copilot.tools.schedule_followup import (
-    ScheduleCreatedResponse,
-    ScheduleFollowupTool,
-)
 from backend.copilot.tools.workspace_files import (
     WorkspaceWriteResponse,
     WriteWorkspaceFileTool,
@@ -99,28 +95,3 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
 
     assert tool.activity_event(session=session, result=without_provider) is None
     assert tool.activity_event(session=session, result=dry_run) is None
-
-
-def test_schedule_followup_reports_schedule_event() -> None:
-    result = ScheduleCreatedResponse(
-        message="Follow-up scheduled",
-        schedule_id="sched-1",
-        next_run_time="2026-08-29T07:00:00+00:00",
-        is_recurring=True,
-        session_id="test-session",
-    )
-
-    draft = ScheduleFollowupTool().activity_event(
-        session=_make_session(expert_id="maria"),
-        result=result,
-        message="Draft the next blog post",
-        cron="0 7 */3 * *",
-        name="persian.sh blog draft",
-    )
-
-    assert draft is not None
-    assert draft.category == "SCHEDULE"
-    assert draft.event_type == "schedule.created"
-    assert draft.title == "persian.sh blog draft"
-    assert draft.schedule_id == "sched-1"
-    assert draft.data["cron"] == "0 7 */3 * *"

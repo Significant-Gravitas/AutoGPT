@@ -51,7 +51,7 @@ from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.util import json
+from backend.util import json, product_analytics
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
@@ -1085,6 +1085,7 @@ class ExecutionProcessor:
             activity_events.handle_run_completed(
                 db_client, graph_exec, exec_meta, exec_stats
             )
+            product_analytics.handle_run_finished(graph_exec, exec_meta, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,

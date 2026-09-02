@@ -2119,6 +2119,8 @@ async def execute_graph(
             dry_run=dry_run,
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
+            trigger=execution_db.ExecutionTrigger.MANUAL,
+            trigger_ref=source,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)

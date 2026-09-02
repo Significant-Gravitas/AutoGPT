@@ -40,8 +40,9 @@ from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
-from backend.data.execution import GraphExecutionWithNodes
+from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
+from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     flush_matured_alerts,
@@ -50,6 +51,7 @@ from backend.monitoring import (
     report_late_executions,
     send_due_briefings,
 )
+from backend.util import product_analytics
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -211,8 +213,20 @@ async def _execute_graph(**kwargs):
             organization_id=args.organization_id,
             team_id=args.team_id,
             expert_id=args.expert_id,
+            trigger=ExecutionTrigger.SCHEDULE,
+            trigger_ref=args.schedule_id,
         )
         await db.increment_onboarding_runs(args.user_id)
+        product_analytics.track_schedule_fired(
+            user_id=args.user_id,
+            schedule_id=args.schedule_id,
+            target=product_analytics.schedule_target(
+                expert_id=args.expert_id, is_copilot_turn=False
+            ),
+            expert_id=args.expert_id,
+            graph_id=args.graph_id,
+            graph_exec_id=graph_exec.id,
+        )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id} "
@@ -454,6 +468,15 @@ async def _execute_copilot_turn(**kwargs):
             team_id=args.team_id,
             llm_auth_provider=target_session.metadata.llm_auth_provider,
             llm_credential_id=target_session.metadata.llm_credential_id,
+        )
+        product_analytics.track_schedule_fired(
+            user_id=args.user_id,
+            schedule_id=args.schedule_id,
+            target=product_analytics.schedule_target(
+                expert_id=args.expert_id, is_copilot_turn=True
+            ),
+            expert_id=args.expert_id,
+            session_id=target_session_id,
         )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
@@ -1490,6 +1513,53 @@ def _next_run_time_iso(job_obj: JobObj) -> str:
     return job_obj.next_run_time.isoformat() if job_obj.next_run_time else ""
 
 
+def _record_graph_schedule_created(
+    job_args: GraphExecutionJobArgs, job_obj: JobObj, *, title: str
+) -> None:
+    """Record a new agent/expert schedule. See ``schedule_events``."""
+    if not job_args.schedule_id:
+        return
+    schedule_events.record_schedule_created(
+        schedule_events.ScheduleCreatedRecord(
+            user_id=job_args.user_id,
+            schedule_id=job_args.schedule_id,
+            title=title,
+            target=product_analytics.schedule_target(
+                expert_id=job_args.expert_id, is_copilot_turn=False
+            ),
+            expert_id=job_args.expert_id,
+            organization_id=job_args.organization_id or None,
+            cron=job_args.cron,
+            graph_id=job_args.graph_id,
+            next_run_time=_next_run_time_iso(job_obj) or None,
+        )
+    )
+
+
+def _record_copilot_turn_schedule_created(
+    job_args: CopilotTurnJobArgs, job_obj: JobObj, *, title: str
+) -> None:
+    """Record a new Autopilot/expert follow-up schedule. See ``schedule_events``."""
+    if not job_args.schedule_id:
+        return
+    schedule_events.record_schedule_created(
+        schedule_events.ScheduleCreatedRecord(
+            user_id=job_args.user_id,
+            schedule_id=job_args.schedule_id,
+            title=title,
+            target=product_analytics.schedule_target(
+                expert_id=job_args.expert_id, is_copilot_turn=True
+            ),
+            expert_id=job_args.expert_id,
+            organization_id=job_args.organization_id or None,
+            cron=job_args.cron,
+            run_at=job_args.run_at,
+            session_id=job_args.session_id,
+            next_run_time=_next_run_time_iso(job_obj) or None,
+        )
+    )
+
+
 def _job_info_fields(job_obj: JobObj) -> dict[str, str]:
     """The id/name/next_run_time/timezone block both JobInfo classes need.
 
@@ -2003,6 +2073,9 @@ class Scheduler(AppService):
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
             f"{user_timezone}"
         )
+        _record_graph_schedule_created(
+            job_args, job, title=name or "Scheduled agent run"
+        )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
@@ -2072,6 +2145,9 @@ class Scheduler(AppService):
         logger.info(
             f"Added copilot-turn job {job.id} ({trigger.__class__.__name__}) "
             f"for session {session_label} in timezone {user_timezone}"
+        )
+        _record_copilot_turn_schedule_created(
+            job_args, job, title=name or message[:80] or "Follow-up"
         )
         return CopilotTurnJobInfo.from_db(job_args, job)
 
