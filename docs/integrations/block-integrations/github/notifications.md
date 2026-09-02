@@ -57,7 +57,7 @@ _Add technical explanation here._
 | include_read | Whether to include notifications that are already marked as read | bool | No |
 | participating_only | Whether to only include notifications in which you are directly participating or mentioned | bool | No |
 | limit | Maximum number of notifications to fetch | int | No |
-| repo | Repository to list notifications for. Leave empty to list notifications for all repositories. | str | No |
+| repo | Repository to list notifications for, as '{owner}/{repo}' or a full repository URL. Leave empty to list notifications for all repositories. | str | No |
 | since | Only show notifications updated after the given ISO 8601 timestamp | str | No |
 | before | Only show notifications updated before the given ISO 8601 timestamp | str | No |
 
@@ -150,7 +150,7 @@ _Add technical explanation here._
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| repo | Repository to mark notifications as read for. Leave empty to mark notifications for all repositories. | str | No |
+| repo | Repository to mark notifications as read for, as '{owner}/{repo}' or a full repository URL. Leave empty to mark notifications for all repositories. | str | No |
 | last_read_at | Only mark notifications updated before the given ISO 8601 timestamp as read. Defaults to the current time. | str | No |
 
 ### Outputs

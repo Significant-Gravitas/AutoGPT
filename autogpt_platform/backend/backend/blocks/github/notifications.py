@@ -17,6 +17,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import normalize_repo_path
 
 GITHUB_WEB_URL = "https://github.com"
 
@@ -67,7 +68,8 @@ class GithubListNotificationsBlock(Block):
             le=1000,
         )
         repo: str = SchemaField(
-            description="Repository to list notifications for. "
+            description="Repository to list notifications for, "
+            "as '{owner}/{repo}' or a full repository URL. "
             "Leave empty to list notifications for all repositories.",
             placeholder="{owner}/{repo}",
             default="",
@@ -252,7 +254,8 @@ class GithubMarkNotificationsAsReadBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("notifications")
         repo: str = SchemaField(
-            description="Repository to mark notifications as read for. "
+            description="Repository to mark notifications as read for, "
+            "as '{owner}/{repo}' or a full repository URL. "
             "Leave empty to mark notifications for all repositories.",
             placeholder="{owner}/{repo}",
             default="",
@@ -476,11 +479,9 @@ class GithubUnsubscribeNotificationThreadBlock(Block):
 
 
 def _notifications_url(repo: str) -> str:
-    return (
-        f"{GITHUB_API_URL}/repos/{repo}/notifications"
-        if repo
-        else f"{GITHUB_API_URL}/notifications"
-    )
+    if not repo:
+        return f"{GITHUB_API_URL}/notifications"
+    return f"{GITHUB_API_URL}/repos/{normalize_repo_path(repo)}/notifications"
 
 
 def _to_notification_item(thread: dict) -> NotificationItem:

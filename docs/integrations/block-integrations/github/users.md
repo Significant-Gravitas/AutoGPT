@@ -28,7 +28,7 @@ _Add technical explanation here._
 | name | Display name of the user | str |
 | profile_url | URL of the user's GitHub profile | str |
 | avatar_url | URL of the user's avatar image | str |
-| user | The full user object from the API | Dict[str, Any] |
+| user | The full user object from the API. For the authenticated user (i.e. when no username is given) this also includes private account details such as plan, email and private repository counts. | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

@@ -21,6 +21,7 @@ from backend.blocks.github._api import (
     get_paginated,
 )
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.github._utils import normalize_repo_path
 from backend.blocks.github.commits import (
     FileOperation,
     GithubListCommitsBlock,
@@ -272,6 +273,80 @@ class TestNotificationsUrl:
         assert (
             _notifications_url("owner/repo")
             == "https://api.github.com/repos/owner/repo/notifications"
+        )
+
+    def test_repo_url_is_accepted_too(self):
+        assert (
+            _notifications_url("https://github.com/owner/repo")
+            == "https://api.github.com/repos/owner/repo/notifications"
+        )
+
+    def test_malformed_repo_is_rejected(self):
+        with pytest.raises(ValueError):
+            _notifications_url("owner/repo/../../secrets")
+
+
+# ── normalize_repo_path tests ──
+# The `repo` input on the notification blocks accepts both the bare
+# {owner}/{repo} form and a full repo URL, so both are normalised here.
+
+
+class TestNormalizeRepoPath:
+    def test_bare_owner_repo(self):
+        assert normalize_repo_path("owner/repo") == "owner/repo"
+
+    def test_https_url(self):
+        assert normalize_repo_path("https://github.com/owner/repo") == "owner/repo"
+
+    def test_http_url(self):
+        assert normalize_repo_path("http://github.com/owner/repo") == "owner/repo"
+
+    def test_www_host(self):
+        assert normalize_repo_path("https://www.github.com/owner/repo") == "owner/repo"
+
+    def test_schemeless_url(self):
+        assert normalize_repo_path("github.com/owner/repo") == "owner/repo"
+
+    def test_trailing_slash(self):
+        assert normalize_repo_path("https://github.com/owner/repo/") == "owner/repo"
+
+    def test_git_suffix_is_dropped(self):
+        assert normalize_repo_path("https://github.com/owner/repo.git") == "owner/repo"
+
+    def test_surrounding_whitespace(self):
+        assert normalize_repo_path("  owner/repo  ") == "owner/repo"
+
+    def test_dots_and_dashes_in_repo_name(self):
+        assert normalize_repo_path("my-org/my.repo_v2") == "my-org/my.repo_v2"
+
+    def test_deep_link_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("https://github.com/owner/repo/tree/main")
+
+    def test_traversal_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("owner/../../notifications")
+
+    def test_extra_path_segment_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("owner/repo/notifications")
+
+    def test_bare_owner_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("owner")
+
+    def test_empty_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("")
+
+    def test_non_github_host_is_rejected(self):
+        with pytest.raises(ValueError, match="Not a github.com repository URL"):
+            normalize_repo_path("https://evil.example.com/owner/repo")
+
+    def test_query_string_is_not_smuggled_into_the_path(self):
+        assert (
+            normalize_repo_path("https://github.com/owner/repo?tab=readme")
+            == "owner/repo"
         )
 
 

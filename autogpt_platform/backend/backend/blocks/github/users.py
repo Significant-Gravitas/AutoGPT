@@ -40,7 +40,11 @@ class GithubGetUserInfoBlock(Block):
         name: str = SchemaField(description="Display name of the user")
         profile_url: str = SchemaField(description="URL of the user's GitHub profile")
         avatar_url: str = SchemaField(description="URL of the user's avatar image")
-        user: dict = SchemaField(description="The full user object from the API")
+        user: dict = SchemaField(
+            description="The full user object from the API. For the authenticated "
+            "user (i.e. when no username is given) this also includes private "
+            "account details such as plan, email and private repository counts."
+        )
         error: str = SchemaField(
             description="Error message if fetching the user info failed"
         )
