@@ -20,6 +20,12 @@ The ledger meters; it does not reserve. That is deliberate: the SDK's
 on the Codex transport, so a reservation could never be enforced — a counter
 checked at the one seam every turn passes through can.
 
+What that costs, stated accurately: admission reads spend recorded by turns
+that have *finished*, so turns admitted concurrently do not see each other's
+cost. A tree can therefore overshoot its ceiling by up to ``max_nodes``
+in-flight turns, not by one. The node cap is what bounds it — which is the
+reason the two limits are enforced together and why ``max_nodes`` is small.
+
 Reachable surface, stated plainly so nobody reads more into this module than
 it currently does. Live today: ``depth``, ``tools`` via the descent/isolate
 defaults and ``grant``, the node cap and the spend ceiling. Carried but not
@@ -106,6 +112,22 @@ GRANT_TOOLS_DESCRIPTION = (
 )
 
 _LEDGER_KEY_PREFIX = "copilot:tree:"
+
+# All-or-nothing tree creation. ``HSETNX`` per field is not equivalent: it
+# leaves a window where another caller sees some fields and not others, and
+# ``admit`` cannot tell that from a tree that has closed.
+_OPEN_TREE_SCRIPT = """
+if redis.call("EXISTS", KEYS[1]) == 0 then
+    redis.call("HSET", KEYS[1],
+        "ceiling", ARGV[1],
+        "max_nodes", ARGV[2],
+        "nodes", ARGV[3],
+        "spent", 0)
+    redis.call("EXPIRE", KEYS[1], ARGV[4])
+    return 1
+end
+return 0
+"""
 
 
 class TreeRefusal(Exception):
@@ -247,17 +269,27 @@ class TreeLedger:
         max_nodes: int,
         initial_nodes: int = 0,
     ) -> None:
-        """Idempotent: two first-children racing to open the same tree both
-        land on one set of fields."""
-        key = self.key(tree_id)
-        for field, value in (
-            ("ceiling", max(0, ceiling_microdollars)),
-            ("spent", 0),
-            ("nodes", max(0, initial_nodes)),
-            ("max_nodes", max(1, max_nodes)),
-        ):
-            await self._hsetnx(key, field, value)
-        await cast(Awaitable[bool], self._redis.expire(key, MAX_TURN_LIFETIME_SECONDS))
+        """Open the tree, all fields and the TTL or none of them.
+
+        Field-by-field ``HSETNX`` left a window where a second first-child
+        could see ``ceiling`` written but ``spent``/``max_nodes`` still
+        missing, and ``admit`` reads a partial hash as a closed tree — a
+        spurious refusal of a perfectly valid spawn. One script closes it,
+        and stays idempotent: the racing loser finds the key populated and
+        changes nothing.
+        """
+        await cast(
+            Awaitable[int],
+            self._redis.eval(
+                _OPEN_TREE_SCRIPT,
+                1,
+                self.key(tree_id),
+                str(max(0, ceiling_microdollars)),
+                str(max(1, max_nodes)),
+                str(max(0, initial_nodes)),
+                str(MAX_TURN_LIFETIME_SECONDS),
+            ),
+        )
 
     async def admit(self, envelope: TurnEnvelope) -> None:
         key = self.key(envelope.tree_id)
@@ -268,7 +300,9 @@ class TreeLedger:
         if ceiling is None or spent is None or max_nodes is None:
             raise TreeRefusal("This task's tree has closed; nothing more can start.")
         # A root is gated by the per-user rate limit before it gets here; the
-        # spend check is for what the root spawns.
+        # spend check is for what the root spawns. It reads settled spend only,
+        # so concurrent admits can overshoot by up to ``max_nodes`` turns — see
+        # the module docstring; the node cap is the bound that holds.
         if envelope.depth > 0 and int(spent) >= int(ceiling):
             raise TreeRefusal(
                 "This task has spent its budget; report what you have instead "

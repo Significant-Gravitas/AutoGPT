@@ -462,7 +462,6 @@ async def dispatch_turn(
     envelope = await _admitted_turn_envelope(
         turn_id, user_id, permissions, spawn, spawner_envelope
     )
-    permissions = _narrow_permissions(permissions, envelope)
 
     # Everything after the admit above runs inside the try: the tree's node
     # counter is already incremented, so an exception from ``create_session``
@@ -478,6 +477,10 @@ async def dispatch_turn(
     # happy path from any failure / cancellation.
     committed = False
     try:
+        # Inside the try on purpose: the admit above already incremented the
+        # tree's node count, so anything that can raise between there and the
+        # finally must be covered by ``release_turn``.
+        permissions = _narrow_permissions(permissions, envelope)
         await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,

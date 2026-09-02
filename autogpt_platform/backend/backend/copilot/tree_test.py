@@ -67,6 +67,21 @@ class FakeRedis:
         self.ttls[key] = seconds
         return 1
 
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        """Emulate the one Lua script the ledger uses (all-or-nothing open)."""
+        key = str(args[0])
+        ceiling, max_nodes, nodes, ttl = (str(a) for a in args[1:5])
+        if key in self.hashes:
+            return 0
+        self.hashes[key] = {
+            "ceiling": ceiling,
+            "max_nodes": max_nodes,
+            "nodes": nodes,
+            "spent": "0",
+        }
+        self.ttls[key] = int(ttl)
+        return 1
+
 
 class BrokenRedis:
     def __getattr__(self, name: str):
@@ -496,3 +511,38 @@ def test_a_spawner_may_still_grant_a_non_denied_tool() -> None:
     child = derive_child_envelope(root, SpawnRequest(grant=["post_to_chat_platform"]))
     assert child.permits("post_to_chat_platform")
     assert not child.permits("delete_preset")
+
+
+@pytest.mark.asyncio
+async def test_two_first_children_racing_to_open_do_not_refuse_each_other() -> None:
+    """Opening must be all-or-nothing.
+
+    With field-by-field writes, a second first-child could observe ``ceiling``
+    already written while ``spent``/``max_nodes`` were not yet — and ``admit``
+    reads a partial hash as a closed tree, refusing a perfectly valid spawn.
+    """
+    redis = FakeRedis()
+    ledger = TreeLedger(cast(AsyncRedisClient, redis))
+    root = root_envelope("t")
+
+    async def open_then_admit() -> str:
+        if not await ledger.exists("t"):
+            await ledger.open(
+                "t", ceiling_microdollars=1_000_000, max_nodes=8, initial_nodes=1
+            )
+        try:
+            await ledger.admit(_child(root))
+            return "admitted"
+        except TreeRefusal as refused:
+            return refused.message
+
+    results = await asyncio.gather(*(open_then_admit() for _ in range(6)))
+    assert all(r == "admitted" for r in results), results
+    snapshot = await ledger.snapshot("t")
+    # One open, one root node, six admitted children.
+    assert snapshot == {
+        "ceiling": 1_000_000,
+        "spent": 0,
+        "nodes": 7,
+        "max_nodes": 8,
+    }

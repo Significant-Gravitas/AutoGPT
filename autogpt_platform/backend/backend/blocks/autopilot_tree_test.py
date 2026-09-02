@@ -146,3 +146,32 @@ def test_an_unrestricted_root_stays_unrestricted_across_the_boundary() -> None:
     rebuilt = _cross_the_boundary(root_envelope("t"))
     assert rebuilt is not None
     assert rebuilt.tools is None
+
+
+def test_recovery_re_derives_a_child_rather_than_an_unrestricted_root() -> None:
+    """Retrying an orphaned sub-agent must not widen its authority.
+
+    The orphaned turn's own envelope died with its worker, but the tree that
+    spawned it is recoverable from the execution context. Re-rooting instead
+    would hand the retry the full registry — a restricted child coming back
+    unrestricted purely because its worker crashed.
+    """
+    spawner = derive_child_envelope(
+        root_envelope("t"), SpawnRequest(shares_memory=True, may_spawn=True)
+    )
+    context = ExecutionContext(
+        copilot_tree_id=spawner.tree_id,
+        copilot_tree_depth=spawner.depth,
+        copilot_tree_tainted=spawner.tainted,
+        copilot_tree_tools=sorted(spawner.tools or ()),
+    )
+    rebuilt = _spawner_envelope_from(context)
+    assert rebuilt is not None
+
+    recovery = derive_child_envelope(rebuilt, SpawnRequest(may_spawn=True))
+    assert recovery.tree_id == spawner.tree_id
+    assert recovery.depth == spawner.depth + 1
+    assert recovery.tools is not None
+    assert recovery.tools <= (spawner.tools or frozenset())
+    # It is emphatically not a root: None is the root sentinel.
+    assert recovery.tools is not None
