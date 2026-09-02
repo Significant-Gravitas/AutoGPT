@@ -135,6 +135,7 @@ jobs:
           python3 .github/scripts/run_unittest_junit.py
           --start-directory autogpt_platform/single-container/tests
           --pattern 'test_*.py'
+          --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
           --output "$REPORT_DIR/runtime-helpers.xml"
 
       - name: Test publication helpers

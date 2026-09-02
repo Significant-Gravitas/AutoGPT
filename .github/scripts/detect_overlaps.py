@@ -9,11 +9,16 @@ by checking for file overlap, line overlap, and actual merge conflicts.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
+
+
+class OverlapInfrastructureError(RuntimeError):
+    """Raised when overlap detection cannot produce a complete result."""
 
 
 # =============================================================================
@@ -58,7 +63,6 @@ def parse_args(argv=None):
 
     if args.git_ref:
         args.dry_run = True
-        args.skip_merge_test = True
 
     return args
 
@@ -77,7 +81,7 @@ def main():
         print(f"Resolved commit: {current_pr.title}")
     else:
         print(f"Checking PR #{args.pr_number} in {owner}/{repo}")
-        current_pr = fetch_pr_details(args.pr_number)
+        current_pr = fetch_pr_details(args.pr_number, owner=owner, repo=repo)
         base_branch = args.base or current_pr.base_ref
         print(f"PR #{current_pr.number}: {current_pr.title}")
 
@@ -120,7 +124,7 @@ def main():
 # =============================================================================
 
 
-def fetch_pr_details(pr_number: int) -> "PullRequest":
+def fetch_pr_details(pr_number: int, owner: str, repo: str) -> "PullRequest":
     """Fetch details for a specific PR including its diff."""
     result = run_gh(
         [
@@ -128,11 +132,18 @@ def fetch_pr_details(pr_number: int) -> "PullRequest":
             "view",
             str(pr_number),
             "--json",
-            "number,title,url,author,headRefName,baseRefName,files",
+            "number,title,url,author,headRefName,headRefOid,baseRefName,changedFiles",
         ]
     )
     data = json.loads(result.stdout)
 
+    inventory = get_pr_files(
+        owner,
+        repo,
+        pr_number,
+        data["changedFiles"],
+        expected_head_sha=data["headRefOid"],
+    )
     pr = PullRequest(
         number=data["number"],
         title=data["title"],
@@ -140,12 +151,18 @@ def fetch_pr_details(pr_number: int) -> "PullRequest":
         url=data["url"],
         head_ref=data["headRefName"],
         base_ref=data["baseRefName"],
-        files=[f["path"] for f in data["files"]],
+        files=inventory.paths,
         changed_ranges={},
+        file_aliases=inventory.aliases,
+        head_sha=data["headRefOid"],
     )
 
     # Get detailed diff
-    diff = get_pr_diff(pr_number)
+    diff = get_pr_diff(
+        pr_number,
+        pr.base_ref,
+        expected_head_sha=pr.head_sha,
+    )
     pr.changed_ranges = parse_diff_ranges(diff)
 
     return pr
@@ -171,7 +188,14 @@ def fetch_ref_details(
         sys.exit(1)
 
     diff_result = run_git(
-        ["diff", "--no-ext-diff", "--unified=0", diff_range, "--"],
+        [
+            "diff",
+            "--no-ext-diff",
+            "--unified=0",
+            "--find-renames",
+            diff_range,
+            "--",
+        ],
         check=False,
     )
     if diff_result.returncode != 0:
@@ -181,6 +205,7 @@ def fetch_ref_details(
         )
         sys.exit(1)
 
+    changed_ranges = parse_diff_ranges(diff_result.stdout)
     return PullRequest(
         number=0,
         title=resolved_ref,
@@ -189,7 +214,13 @@ def fetch_ref_details(
         head_ref=git_ref,
         base_ref=base_branch,
         files=[path for path in files_result.stdout.splitlines() if path],
-        changed_ranges=parse_diff_ranges(diff_result.stdout),
+        changed_ranges=changed_ranges,
+        file_aliases=[
+            change.old_path
+            for change in changed_ranges.values()
+            if change.old_path is not None
+        ],
+        head_sha=resolved_ref,
     )
 
 
@@ -229,12 +260,20 @@ def find_overlapping_prs(
     """Find all PRs that overlap with the current PR."""
     # Query other open PRs
     all_prs = query_open_prs(owner, repo, base_branch)
-    other_prs = [p for p in all_prs if p["number"] != current_pr_number]
+    other_prs = [
+        p
+        for p in all_prs
+        if p["number"] != current_pr_number
+        and (current_pr_number != 0 or p["head_sha"] != current_pr.title)
+    ]
 
     print(f"Found {len(other_prs)} other open PRs targeting {base_branch}")
 
     # Find file overlaps (excluding ignored files, filtering by age)
-    candidates = find_file_overlap_candidates(current_pr.files, other_prs)
+    candidates = find_file_overlap_candidates(
+        current_pr.files + current_pr.file_aliases,
+        other_prs,
+    )
 
     print(f"Found {len(candidates)} PRs with file overlap (excluding ignored files)")
 
@@ -260,7 +299,7 @@ def find_overlapping_prs(
             overlaps.append(overlap)
             all_changes[pr_data["number"]] = pr_changes
             # Track PRs that need merge testing
-            if overlap.line_overlaps and not skip_merge_test:
+            if overlap.needs_merge_test and not skip_merge_test:
                 prs_needing_merge_test.append(overlap)
 
     # Second pass: batch merge testing with shared clone
@@ -281,28 +320,36 @@ def run_batch_merge_tests(
 ):
     """Run merge tests for multiple PRs using a shared clone."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Clone once
-        if not clone_repo(owner, repo, base_branch, tmpdir):
-            return
-
+        clone_repo(owner, repo, base_branch, tmpdir)
         configure_git(tmpdir)
 
-        # Fetch current PR branch once
-        result = run_git(
-            [
-                "fetch",
-                "origin",
-                f"pull/{current_pr.number}/head:pr-{current_pr.number}",
-            ],
-            cwd=tmpdir,
-            check=False,
+        current_local_ref = "current-overlap-source"
+        if current_pr.number:
+            current_source = "origin"
+            current_refspec = f"pull/{current_pr.number}/head:{current_local_ref}"
+            current_label = f"PR #{current_pr.number}"
+        else:
+            current_source = require_git_success(
+                run_git(["rev-parse", "--show-toplevel"], check=False),
+                "resolve checked-out repository for overlap source failed",
+            ).stdout.strip()
+            current_refspec = f"{current_pr.title}:{current_local_ref}"
+            current_label = current_pr.title
+
+        require_git_success(
+            run_git(
+                ["fetch", current_source, current_refspec],
+                cwd=tmpdir,
+                check=False,
+            ),
+            f"fetch current source {current_label} failed",
         )
-        if result.returncode != 0:
-            print(
-                f"Warning: Could not fetch current PR #{current_pr.number}",
-                file=sys.stderr,
-            )
-            return
+        verify_fetched_ref(
+            tmpdir,
+            current_local_ref,
+            current_pr.head_sha,
+            current_label,
+        )
 
         for overlap in overlaps:
             other_pr = (
@@ -312,73 +359,59 @@ def run_batch_merge_tests(
             )
             print(f"Testing merge conflict with PR #{other_pr.number}...", flush=True)
 
-            # Clean up any in-progress merge from previous iteration
-            run_git(["merge", "--abort"], cwd=tmpdir, check=False)
-
-            # Reset to base branch
-            run_git(["checkout", base_branch], cwd=tmpdir, check=False)
-            run_git(
-                ["reset", "--hard", f"origin/{base_branch}"], cwd=tmpdir, check=False
+            require_git_success(
+                run_git(
+                    ["checkout", "-B", "overlap-base", f"origin/{base_branch}"],
+                    cwd=tmpdir,
+                    check=False,
+                ),
+                f"reset overlap worktree to origin/{base_branch} failed",
             )
-            run_git(["clean", "-fdx"], cwd=tmpdir, check=False)
-
-            # Fetch the other PR branch
-            result = run_git(
-                [
-                    "fetch",
-                    "origin",
-                    f"pull/{other_pr.number}/head:pr-{other_pr.number}",
-                ],
-                cwd=tmpdir,
-                check=False,
+            require_git_success(
+                run_git(["clean", "-fdx"], cwd=tmpdir, check=False),
+                "clean overlap worktree failed",
             )
-            if result.returncode != 0:
-                print(
-                    f"Warning: Could not fetch PR #{other_pr.number}: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
-                continue
 
-            # Try merging current PR first
-            result = run_git(
-                ["merge", "--no-commit", "--no-ff", f"pr-{current_pr.number}"],
-                cwd=tmpdir,
-                check=False,
+            require_git_success(
+                run_git(
+                    [
+                        "fetch",
+                        "origin",
+                        f"pull/{other_pr.number}/head:pr-{other_pr.number}",
+                    ],
+                    cwd=tmpdir,
+                    check=False,
+                ),
+                f"fetch PR #{other_pr.number} for merge test failed",
             )
-            if result.returncode != 0:
-                # Current PR conflicts with base
-                conflict_files, conflict_details = extract_conflict_info(
-                    tmpdir, result.stderr
-                )
+            verify_fetched_ref(
+                tmpdir,
+                f"pr-{other_pr.number}",
+                other_pr.head_sha,
+                f"PR #{other_pr.number}",
+            )
+
+            conflict_result = try_merge_ref(
+                tmpdir,
+                current_local_ref,
+                current_label,
+            )
+            if conflict_result:
                 overlap.has_merge_conflict = True
-                overlap.conflict_files = conflict_files
-                overlap.conflict_details = conflict_details
+                overlap.conflict_files = conflict_result[0]
+                overlap.conflict_details = conflict_result[1]
                 overlap.conflict_type = "pr_a_conflicts_base"
-                run_git(["merge", "--abort"], cwd=tmpdir, check=False)
                 continue
 
-            # Commit and try merging other PR
-            run_git(
-                ["commit", "-m", f"Merge PR #{current_pr.number}"],
-                cwd=tmpdir,
-                check=False,
+            conflict_result = try_merge_pr(
+                tmpdir,
+                other_pr.number,
             )
-
-            result = run_git(
-                ["merge", "--no-commit", "--no-ff", f"pr-{other_pr.number}"],
-                cwd=tmpdir,
-                check=False,
-            )
-            if result.returncode != 0:
-                # Conflict between PRs
-                conflict_files, conflict_details = extract_conflict_info(
-                    tmpdir, result.stderr
-                )
+            if conflict_result:
                 overlap.has_merge_conflict = True
-                overlap.conflict_files = conflict_files
-                overlap.conflict_details = conflict_details
+                overlap.conflict_files = conflict_result[0]
+                overlap.conflict_details = conflict_result[1]
                 overlap.conflict_type = "conflict"
-                run_git(["merge", "--abort"], cwd=tmpdir, check=False)
 
 
 def analyze_pr_overlap(
@@ -405,11 +438,17 @@ def analyze_pr_overlap(
         base_ref=other_pr_data["base_ref"],
         files=other_pr_data["files"],
         changed_ranges={},
+        file_aliases=other_pr_data.get("file_aliases", []),
+        head_sha=other_pr_data["head_sha"],
         updated_at=other_pr_data.get("updated_at"),
     )
 
     # Get diff for other PR
-    other_diff = get_pr_diff(other_pr.number)
+    other_diff = get_pr_diff(
+        other_pr.number,
+        base_branch,
+        expected_head_sha=other_pr.head_sha,
+    )
     other_pr.changed_ranges = parse_diff_ranges(other_diff)
 
     # Check line overlaps
@@ -422,10 +461,16 @@ def analyze_pr_overlap(
         pr_b=other_pr,
         overlapping_files=non_ignored_shared,
         line_overlaps=line_overlaps,
+        needs_merge_test=bool(line_overlaps)
+        or requires_authoritative_merge_test(
+            current_pr.changed_ranges,
+            other_pr.changed_ranges,
+            non_ignored_shared,
+        ),
     )
 
     # Test for actual merge conflicts if we have line overlaps
-    if line_overlaps and not skip_merge_test:
+    if overlap.needs_merge_test and not skip_merge_test:
         print(f"Testing merge conflict with PR #{other_pr.number}...", flush=True)
         (
             has_conflict,
@@ -463,7 +508,11 @@ def find_file_overlap_candidates(
                 # If we can't parse date, include the PR (safe fallback)
                 print(f"Warning: Could not parse date for PR: {e}", file=sys.stderr)
 
-        other_files = set(f for f in pr_data["files"] if not should_ignore_file(f))
+        other_files = set(
+            f
+            for f in pr_data["files"] + pr_data.get("file_aliases", [])
+            if not should_ignore_file(f)
+        )
         shared = current_files_set & other_files
 
         if shared:
@@ -504,7 +553,8 @@ def format_comment(
     lines = ["## 🔍 PR Overlap Detection"]
     lines.append("")
     lines.append(
-        "This check compares your PR against all other open PRs targeting the same branch to detect potential merge conflicts early."
+        "This check compares your PR against open PRs targeting the same branch "
+        "that were updated in the last 14 days."
     )
     lines.append("")
 
@@ -534,7 +584,8 @@ def format_comment(
         f"\n**Summary:** {len(conflicts)} conflict(s), {len(medium_risk)} medium risk, {len(low_risk)} low risk (out of {total} PRs with file overlap)"
     )
     lines.append(
-        "\n---\n*Auto-generated on push. Ignores: `openapi.json`, lock files.*"
+        "\n---\n*Auto-generated on push. Window: 14 days. "
+        "Ignores: `openapi.json`, lock files.*"
     )
 
     return "\n".join(lines)
@@ -598,8 +649,8 @@ def format_medium_risk_section(
 
         # Note if rename is involved
         for file_path in o.overlapping_files:
-            file_a = changes_current.get(file_path)
-            file_b = other_changes.get(file_path)
+            file_a = resolve_changed_file(changes_current, file_path)
+            file_b = resolve_changed_file(other_changes, file_path)
             if (file_a and file_a.is_rename) or (file_b and file_b.is_rename):
                 lines.append(f"  - ⚠️ `{file_path}` is being renamed/moved")
                 break
@@ -749,9 +800,11 @@ def classify_overlap_risk(
         return "conflict"
 
     has_rename = any(
-        (changes_a.get(f) and changes_a[f].is_rename)
-        or (changes_b.get(f) and changes_b[f].is_rename)
-        for f in overlap.overlapping_files
+        (file_a := resolve_changed_file(changes_a, file_path)) is not None
+        and file_a.is_rename
+        or (file_b := resolve_changed_file(changes_b, file_path)) is not None
+        and file_b.is_rename
+        for file_path in overlap.overlapping_files
     )
 
     if overlap.line_overlaps:
@@ -771,6 +824,18 @@ def classify_overlap_risk(
         return "medium"
 
     return "low"
+
+
+def resolve_changed_file(
+    changes: dict[str, "ChangedFile"], path: str
+) -> Optional["ChangedFile"]:
+    """Resolve change metadata by its current path or previous rename path."""
+    direct = changes.get(path)
+    if direct is not None:
+        return direct
+    return next(
+        (change for change in changes.values() if change.old_path == path), None
+    )
 
 
 def find_line_overlaps(
@@ -808,6 +873,36 @@ def find_line_overlaps(
             overlaps[file_path] = merge_ranges(file_overlaps)
 
     return overlaps
+
+
+def requires_authoritative_merge_test(
+    changes_a: dict[str, "ChangedFile"],
+    changes_b: dict[str, "ChangedFile"],
+    shared_files: list[str],
+) -> bool:
+    """Return whether line ranges cannot safely rule out a merge conflict."""
+    for file_path in shared_files:
+        if should_ignore_file(file_path):
+            continue
+
+        file_a = changes_a.get(file_path)
+        file_b = changes_b.get(file_path)
+        if file_a is None or file_b is None:
+            return True
+
+        ranges_a = file_a.additions + file_a.deletions
+        ranges_b = file_b.additions + file_b.deletions
+        if (
+            file_a.is_rename
+            or file_b.is_rename
+            or file_a.is_deleted
+            or file_b.is_deleted
+            or not ranges_a
+            or not ranges_b
+        ):
+            return True
+
+    return False
 
 
 def find_range_overlaps(
@@ -857,22 +952,13 @@ def test_merge_conflict(
 ) -> tuple[bool, list[str], list["ConflictInfo"], str]:
     """Test if merging both PRs would cause a conflict."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Clone repo
-        if not clone_repo(owner, repo, base_branch, tmpdir):
-            return False, [], [], None
-
+        clone_repo(owner, repo, base_branch, tmpdir)
         configure_git(tmpdir)
-        if not fetch_pr_branches(tmpdir, pr_a.number, pr_b.number):
-            # Fetch failed for one or both PRs - can't test merge
-            return False, [], [], None
+        fetch_pr_branches(tmpdir, pr_a, pr_b)
 
-        # Try merging PR A first
         conflict_result = try_merge_pr(tmpdir, pr_a.number)
         if conflict_result:
             return True, conflict_result[0], conflict_result[1], "pr_a_conflicts_base"
-
-        # Commit and try merging PR B
-        run_git(["commit", "-m", f"Merge PR #{pr_a.number}"], cwd=tmpdir, check=False)
 
         conflict_result = try_merge_pr(tmpdir, pr_b.number)
         if conflict_result:
@@ -881,60 +967,106 @@ def test_merge_conflict(
         return False, [], [], None
 
 
-def clone_repo(owner: str, repo: str, branch: str, tmpdir: str) -> bool:
+def clone_repo(owner: str, repo: str, branch: str, tmpdir: str) -> None:
     """Clone the repository."""
     clone_url = f"https://github.com/{owner}/{repo}.git"
-    result = run_git(
-        ["clone", "--depth=50", "--branch", branch, clone_url, tmpdir], check=False
+    require_git_success(
+        run_git(
+            [
+                "clone",
+                "--single-branch",
+                "--branch",
+                branch,
+                clone_url,
+                tmpdir,
+            ],
+            check=False,
+        ),
+        "clone repository failed",
     )
-    if result.returncode != 0:
-        print(f"Failed to clone: {result.stderr}", file=sys.stderr)
-        return False
-    return True
 
 
 def configure_git(tmpdir: str):
     """Configure git for commits."""
-    run_git(
+    for args in (
         ["config", "user.email", "github-actions[bot]@users.noreply.github.com"],
-        cwd=tmpdir,
-        check=False,
-    )
-    run_git(["config", "user.name", "github-actions[bot]"], cwd=tmpdir, check=False)
+        ["config", "user.name", "github-actions[bot]"],
+        ["config", "commit.gpgsign", "false"],
+    ):
+        require_git_success(
+            run_git(args, cwd=tmpdir, check=False),
+            f"configure Git setting {args[1]} failed",
+        )
 
 
-def fetch_pr_branches(tmpdir: str, pr_a: int, pr_b: int) -> bool:
-    """Fetch both PR branches. Returns False if any fetch fails."""
-    success = True
-    for pr_num in (pr_a, pr_b):
-        result = run_git(
-            ["fetch", "origin", f"pull/{pr_num}/head:pr-{pr_num}"],
+def fetch_pr_branches(tmpdir: str, pr_a: "PullRequest", pr_b: "PullRequest") -> None:
+    """Fetch both PR branches or fail when either cannot be resolved."""
+    for pr in (pr_a, pr_b):
+        require_git_success(
+            run_git(
+                ["fetch", "origin", f"pull/{pr.number}/head:pr-{pr.number}"],
+                cwd=tmpdir,
+                check=False,
+            ),
+            f"fetch PR #{pr.number} for merge test failed",
+        )
+        verify_fetched_ref(
+            tmpdir,
+            f"pr-{pr.number}",
+            pr.head_sha,
+            f"PR #{pr.number}",
+        )
+
+
+def verify_fetched_ref(
+    tmpdir: str,
+    git_ref: str,
+    expected_head_sha: str | None,
+    label: str,
+) -> None:
+    """Fail if a merge-test fetch no longer matches inventoried PR metadata."""
+    actual_head_sha = require_git_success(
+        run_git(
+            ["rev-parse", "--verify", f"{git_ref}^{{commit}}"],
             cwd=tmpdir,
             check=False,
-        )
-        if result.returncode != 0:
-            print(
-                f"Warning: Could not fetch PR #{pr_num}: {result.stderr.strip()}",
-                file=sys.stderr,
-            )
-            success = False
-    return success
+        ),
+        f"resolve fetched {label} failed",
+    ).stdout.strip()
+    if expected_head_sha is not None and actual_head_sha != expected_head_sha:
+        raise OverlapInfrastructureError(f"{label} head changed before merge testing")
 
 
 def try_merge_pr(
     tmpdir: str, pr_number: int
 ) -> Optional[tuple[list[str], list["ConflictInfo"]]]:
-    """Try to merge a PR. Returns conflict info if conflicts, None if success."""
+    """Merge a PR, returning only genuine unmerged-index conflicts."""
+    return try_merge_ref(tmpdir, f"pr-{pr_number}", f"PR #{pr_number}")
+
+
+def try_merge_ref(
+    tmpdir: str,
+    git_ref: str,
+    label: str,
+) -> Optional[tuple[list[str], list["ConflictInfo"]]]:
+    """Merge a ref and fail closed if Git fails without an actual conflict."""
     result = run_git(
-        ["merge", "--no-commit", "--no-ff", f"pr-{pr_number}"], cwd=tmpdir, check=False
+        ["merge", "--no-ff", "--no-edit", git_ref], cwd=tmpdir, check=False
     )
 
     if result.returncode == 0:
         return None
 
-    # Conflict detected
     conflict_files, conflict_details = extract_conflict_info(tmpdir, result.stderr)
-    run_git(["merge", "--abort"], cwd=tmpdir, check=False)
+    if not conflict_files:
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()
+        raise OverlapInfrastructureError(
+            f"merge {label} failed without unmerged files: {detail}"
+        )
+    require_git_success(
+        run_git(["merge", "--abort"], cwd=tmpdir, check=False),
+        f"abort conflicted merge for {label} failed",
+    )
 
     return conflict_files, conflict_details
 
@@ -942,8 +1074,25 @@ def try_merge_pr(
 def extract_conflict_info(
     tmpdir: str, stderr: str
 ) -> tuple[list[str], list["ConflictInfo"]]:
-    """Extract conflict information from git status."""
-    status_result = run_git(["status", "--porcelain"], cwd=tmpdir, check=False)
+    """Extract conflict information from Git's unmerged index."""
+    unmerged_result = require_git_success(
+        run_git(
+            ["diff", "--name-only", "--diff-filter=U", "--"],
+            cwd=tmpdir,
+            check=False,
+        ),
+        "read unmerged index failed",
+    )
+    conflict_files = list(
+        dict.fromkeys(path for path in unmerged_result.stdout.splitlines() if path)
+    )
+    if not conflict_files:
+        return [], []
+
+    status_result = require_git_success(
+        run_git(["status", "--porcelain"], cwd=tmpdir, check=False),
+        "read conflict status failed",
+    )
 
     status_types = {
         "UU": "content",
@@ -955,29 +1104,16 @@ def extract_conflict_info(
         "UA": "added_by_them",
     }
 
-    conflict_files = []
     conflict_details = []
-
-    for line in status_result.stdout.split("\n"):
-        if len(line) >= 3 and line[0:2] in status_types:
-            status_code = line[0:2]
-            file_path = line[3:].strip()
-            conflict_files.append(file_path)
-
-            info = analyze_conflict_markers(file_path, tmpdir)
-            info.conflict_type = status_types.get(status_code, "unknown")
-            conflict_details.append(info)
-
-    # Fallback to stderr parsing
-    if not conflict_files and stderr:
-        for line in stderr.split("\n"):
-            if "CONFLICT" in line and ":" in line:
-                parts = line.split(":")
-                if len(parts) > 1:
-                    file_part = parts[-1].strip()
-                    if file_part and not file_part.startswith("Merge"):
-                        conflict_files.append(file_part)
-                        conflict_details.append(ConflictInfo(path=file_part))
+    status_by_path = {
+        line[3:].strip(): line[0:2]
+        for line in status_result.stdout.splitlines()
+        if len(line) >= 3
+    }
+    for file_path in conflict_files:
+        info = analyze_conflict_markers(file_path, tmpdir)
+        info.conflict_type = status_types.get(status_by_path.get(file_path), "unknown")
+        conflict_details.append(info)
 
     return conflict_files, conflict_details
 
@@ -1023,36 +1159,50 @@ def parse_diff_ranges(diff: str) -> dict[str, "ChangedFile"]:
     """Parse a unified diff and extract changed line ranges per file."""
     files = {}
     current_file = None
-    pending_rename_from = None
-    is_rename = False
+    header_old_path = None
+
+    def set_current_path(path: str) -> None:
+        nonlocal current_file
+        if current_file is None:
+            current_file = ChangedFile(path=path, additions=[], deletions=[])
+        elif current_file.path != path:
+            if files.get(current_file.path) is current_file:
+                del files[current_file.path]
+            current_file.path = path
+        files[path] = current_file
 
     for line in diff.split("\n"):
-        # Reset rename state on new file diff header
         if line.startswith("diff --git "):
-            is_rename = False
-            pending_rename_from = None
+            current_file = None
+            header_old_path = None
+            try:
+                parts = shlex.split(line)
+            except ValueError:
+                parts = []
+            if (
+                len(parts) >= 4
+                and parts[2].startswith("a/")
+                and parts[3].startswith("b/")
+            ):
+                header_old_path = parts[2][2:]
+                set_current_path(parts[3][2:])
         elif line.startswith("rename from "):
-            pending_rename_from = line[12:]
-            is_rename = True
+            if current_file is not None:
+                current_file.old_path = line[12:]
+                current_file.is_rename = True
         elif line.startswith("rename to "):
-            pass  # rename target is captured via "+++ b/" line
+            set_current_path(line[10:])
+            current_file.is_rename = True
+            current_file.old_path = current_file.old_path or header_old_path
         elif line.startswith("similarity index"):
-            is_rename = True
+            if current_file is not None:
+                current_file.is_rename = True
+                current_file.old_path = current_file.old_path or header_old_path
         elif line.startswith("+++ b/"):
-            path = line[6:]
-            current_file = ChangedFile(
-                path=path,
-                additions=[],
-                deletions=[],
-                is_rename=is_rename,
-                old_path=pending_rename_from,
-            )
-            files[path] = current_file
-            pending_rename_from = None
-            is_rename = False
-        elif line.startswith("--- /dev/null"):
-            is_rename = False
-            pending_rename_from = None
+            set_current_path(line[6:])
+        elif line == "+++ /dev/null" and header_old_path:
+            set_current_path(header_old_path)
+            current_file.is_deleted = True
         elif line.startswith("@@") and current_file:
             parse_hunk_header(line, current_file)
 
@@ -1091,9 +1241,27 @@ def get_repo_info() -> tuple[str, str]:
 
 
 def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
+    """Query a consistent open-PR snapshot, retrying one transient page race."""
+    for attempt in range(2):
+        try:
+            return query_open_prs_once(owner, repo, base_branch)
+        except OverlapInfrastructureError as error:
+            if attempt:
+                raise
+            print(
+                f"Open PR inventory changed during pagination; retrying once: {error}",
+                file=sys.stderr,
+            )
+    raise AssertionError("unreachable")
+
+
+def query_open_prs_once(owner: str, repo: str, base_branch: str) -> list[dict]:
     """Query all open PRs targeting the specified base branch."""
     prs = []
     cursor = None
+    seen_cursors = set()
+    seen_pr_numbers = set()
+    expected_total = None
 
     while True:
         after_clause = f', after: "{cursor}"' if cursor else ""
@@ -1115,9 +1283,12 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
                             updatedAt
                             author {{ login }}
                             headRefName
+                            headRefOid
                             baseRefName
+                            changedFiles
                             files(first: 100) {{
-                                nodes {{ path }}
+                                totalCount
+                                nodes {{ path changeType }}
                                 pageInfo {{ hasNextPage }}
                             }}
                         }}
@@ -1139,39 +1310,308 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
             sys.exit(1)
 
         pr_data = data["data"]["repository"]["pullRequests"]
+        page_total = pr_data["totalCount"]
+        if expected_total is None:
+            expected_total = page_total
+        elif page_total != expected_total:
+            raise OverlapInfrastructureError(
+                "GraphQL open PR totalCount changed while paginating: "
+                f"expected {expected_total}, got {page_total}"
+            )
+
         for edge in pr_data["edges"]:
             node = edge["node"]
-            files_data = node["files"]
-            # Warn if PR has more than 100 files (API limit, we only fetch first 100)
-            if files_data.get("pageInfo", {}).get("hasNextPage"):
-                print(
-                    f"Warning: PR #{node['number']} has >100 files, overlap detection may be incomplete",
-                    file=sys.stderr,
+            pr_number = node["number"]
+            if pr_number in seen_pr_numbers:
+                raise OverlapInfrastructureError(
+                    f"GraphQL returned duplicate PR #{pr_number}"
                 )
+            seen_pr_numbers.add(pr_number)
+            inventory = get_complete_pr_files(owner, repo, node)
             prs.append(
                 {
-                    "number": node["number"],
+                    "number": pr_number,
                     "title": node["title"],
                     "url": node["url"],
                     "updated_at": node.get("updatedAt"),
                     "author": node["author"]["login"] if node["author"] else "unknown",
                     "head_ref": node["headRefName"],
+                    "head_sha": node["headRefOid"],
                     "base_ref": node["baseRefName"],
-                    "files": [f["path"] for f in files_data["nodes"]],
+                    "files": inventory.paths,
+                    "file_aliases": inventory.aliases,
                 }
             )
 
         if not pr_data["pageInfo"]["hasNextPage"]:
             break
-        cursor = pr_data["pageInfo"]["endCursor"]
+        next_cursor = pr_data["pageInfo"]["endCursor"]
+        if not next_cursor or next_cursor in seen_cursors:
+            raise OverlapInfrastructureError(
+                "GraphQL open PR pagination did not advance its cursor"
+            )
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+    expected_total = expected_total or 0
+    if len(prs) != expected_total:
+        raise OverlapInfrastructureError(
+            f"GraphQL reported {expected_total} open PRs but returned {len(prs)}"
+        )
 
     return prs
 
 
-def get_pr_diff(pr_number: int) -> str:
-    """Get the diff for a PR."""
-    result = run_gh(["pr", "diff", str(pr_number)])
-    return result.stdout
+def get_complete_pr_files(owner: str, repo: str, node: dict) -> "FileInventory":
+    """Use a complete embedded file page or fall back to paginated REST."""
+    pr_number = node["number"]
+    expected_count = node["changedFiles"]
+    files_data = node.get("files")
+    embedded_paths = []
+    has_rename = False
+    embedded_valid = isinstance(files_data, dict)
+    if embedded_valid:
+        nodes = files_data.get("nodes")
+        if not isinstance(nodes, list):
+            embedded_valid = False
+        else:
+            for file_data in nodes:
+                path = file_data.get("path") if isinstance(file_data, dict) else None
+                if not isinstance(path, str) or not path:
+                    embedded_valid = False
+                    break
+                embedded_paths.append(path)
+                change_type = file_data.get("changeType")
+                if not isinstance(change_type, str):
+                    embedded_valid = False
+                    break
+                has_rename = has_rename or change_type == "RENAMED"
+
+    if embedded_valid:
+        page_info = files_data.get("pageInfo")
+        embedded_valid = (
+            files_data.get("totalCount") == expected_count
+            and isinstance(page_info, dict)
+            and page_info.get("hasNextPage") is False
+            and len(embedded_paths) == expected_count
+            and len(set(embedded_paths)) == expected_count
+            and not has_rename
+        )
+
+    if embedded_valid:
+        return FileInventory(paths=embedded_paths, aliases=[])
+    return get_pr_files(
+        owner,
+        repo,
+        pr_number,
+        expected_count,
+        expected_head_sha=node["headRefOid"],
+    )
+
+
+def get_pr_files(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    expected_count: int,
+    expected_head_sha: str | None = None,
+) -> "FileInventory":
+    """Fetch and validate every changed filename for a PR."""
+    if not isinstance(expected_count, int) or expected_count < 0:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} returned invalid changedFiles count {expected_count!r}"
+        )
+
+    files = []
+    aliases = []
+    seen_files = set()
+    seen_aliases = set()
+    page = 1
+    while True:
+        endpoint = (
+            f"repos/{owner}/{repo}/pulls/{pr_number}/files?per_page=100&page={page}"
+        )
+        result = run_gh(["api", endpoint])
+        try:
+            page_data = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise OverlapInfrastructureError(
+                f"PR #{pr_number} files page {page} was not valid JSON"
+            ) from error
+        if not isinstance(page_data, list):
+            raise OverlapInfrastructureError(
+                f"PR #{pr_number} files page {page} was not a list"
+            )
+
+        for file_data in page_data:
+            filename = (
+                file_data.get("filename") if isinstance(file_data, dict) else None
+            )
+            if not isinstance(filename, str) or not filename:
+                raise OverlapInfrastructureError(
+                    f"PR #{pr_number} files page {page} contained an invalid filename"
+                )
+            if filename in seen_files:
+                raise OverlapInfrastructureError(
+                    f"PR #{pr_number} returned duplicate file {filename}"
+                )
+            seen_files.add(filename)
+            files.append(filename)
+            previous_filename = file_data.get("previous_filename")
+            if previous_filename is not None:
+                if not isinstance(previous_filename, str) or not previous_filename:
+                    raise OverlapInfrastructureError(
+                        f"PR #{pr_number} files page {page} contained an invalid "
+                        "previous filename"
+                    )
+                if (
+                    previous_filename not in seen_files
+                    and previous_filename not in seen_aliases
+                ):
+                    seen_aliases.add(previous_filename)
+                    aliases.append(previous_filename)
+
+        if len(files) > expected_count:
+            break
+        if len(page_data) < 100:
+            break
+        page += 1
+
+    if len(files) != expected_count:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} reported {expected_count} changed files "
+            f"but the files API returned {len(files)}"
+        )
+    if expected_head_sha is not None:
+        verify_pr_snapshot(
+            owner,
+            repo,
+            pr_number,
+            expected_count,
+            expected_head_sha,
+        )
+    return FileInventory(paths=files, aliases=aliases)
+
+
+def verify_pr_snapshot(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    expected_count: int,
+    expected_head_sha: str,
+) -> None:
+    """Verify a paginated REST inventory still matches its metadata snapshot."""
+    result = run_gh(["api", f"repos/{owner}/{repo}/pulls/{pr_number}"])
+    try:
+        data = json.loads(result.stdout)
+        actual_head_sha = data["head"]["sha"]
+        actual_count = data["changed_files"]
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} snapshot response was invalid"
+        ) from error
+    if actual_head_sha != expected_head_sha or actual_count != expected_count:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} changed while its file inventory was being fetched"
+        )
+
+
+def require_git_success(
+    result: subprocess.CompletedProcess,
+    context: str,
+) -> subprocess.CompletedProcess:
+    """Return a successful Git result or raise an infrastructure error."""
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()
+        raise OverlapInfrastructureError(f"{context}: {detail}")
+    return result
+
+
+def get_pr_diff(
+    pr_number: int,
+    base_branch: str,
+    expected_head_sha: str | None = None,
+) -> str:
+    """Get a complete PR diff, falling back to checked local Git plumbing."""
+    result = run_gh(["pr", "diff", str(pr_number)], check=False)
+    if result.returncode == 0:
+        if expected_head_sha is not None:
+            verify_pr_head_sha(pr_number, expected_head_sha)
+        return result.stdout
+
+    require_git_success(
+        run_git(
+            [
+                "fetch",
+                "--no-tags",
+                "origin",
+                f"+refs/heads/{base_branch}:refs/remotes/origin/{base_branch}",
+            ],
+            check=False,
+        ),
+        f"refresh origin/{base_branch} for PR #{pr_number} diff failed",
+    )
+    require_git_success(
+        run_git(
+            [
+                "fetch",
+                "--no-tags",
+                "origin",
+                f"pull/{pr_number}/head",
+            ],
+            check=False,
+        ),
+        f"fetch PR #{pr_number} for diff failed",
+    )
+    base = require_git_success(
+        run_git(
+            ["rev-parse", "--verify", f"origin/{base_branch}^{{commit}}"],
+            check=False,
+        ),
+        f"resolve origin/{base_branch} for PR #{pr_number} diff failed",
+    ).stdout.strip()
+    head = require_git_success(
+        run_git(["rev-parse", "--verify", "FETCH_HEAD^{commit}"], check=False),
+        f"resolve fetched PR #{pr_number} head failed",
+    ).stdout.strip()
+    if expected_head_sha is not None and head != expected_head_sha:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} head changed before its diff was fetched"
+        )
+    merge_base = require_git_success(
+        run_git(["merge-base", base, head], check=False),
+        f"find merge base for PR #{pr_number} failed",
+    ).stdout.strip()
+    return require_git_success(
+        run_git(
+            [
+                "diff",
+                "--no-ext-diff",
+                "--unified=0",
+                "--find-renames",
+                merge_base,
+                head,
+                "--",
+            ],
+            check=False,
+        ),
+        f"generate fallback diff for PR #{pr_number} failed",
+    ).stdout
+
+
+def verify_pr_head_sha(pr_number: int, expected_head_sha: str) -> None:
+    """Verify a CLI-generated diff still corresponds to inventoried metadata."""
+    result = run_gh(["pr", "view", str(pr_number), "--json", "headRefOid"])
+    try:
+        actual_head_sha = json.loads(result.stdout)["headRefOid"]
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} head verification response was invalid"
+        ) from error
+    if actual_head_sha != expected_head_sha:
+        raise OverlapInfrastructureError(
+            f"PR #{pr_number} head changed while its diff was being fetched"
+        )
 
 
 def post_or_update_comment(pr_number: int, body: str):
@@ -1234,7 +1674,7 @@ def post_or_update_comment(pr_number: int, body: str):
         """
         result = run_gh(["api", "graphql", "-f", f"query={mutation}"], check=False)
         if result.returncode == 0:
-            print(f"Updated existing overlap comment")
+            print("Updated existing overlap comment")
         else:
             # Fallback to posting new comment
             print(
@@ -1310,7 +1750,13 @@ def send_discord_notification(
 
 def run_gh(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
     """Run a gh CLI command."""
-    result = subprocess.run(["gh"] + args, capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["gh"] + args,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     if check and result.returncode != 0:
         print(f"Error running gh {' '.join(args)}: {result.stderr}", file=sys.stderr)
         sys.exit(1)
@@ -1322,10 +1768,16 @@ def run_git(
 ) -> subprocess.CompletedProcess:
     """Run a git command."""
     result = subprocess.run(
-        ["git"] + args, capture_output=True, text=True, cwd=cwd, check=False
+        ["git"] + args,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+        check=False,
     )
     if check and result.returncode != 0:
-        print(f"Error running git {' '.join(args)}: {result.stderr}", file=sys.stderr)
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()
+        raise OverlapInfrastructureError(f"git {' '.join(args)} failed: {detail}")
     return result
 
 
@@ -1388,6 +1840,14 @@ def format_relative_time(iso_timestamp: str) -> str:
 
 
 @dataclass
+class FileInventory:
+    """Canonical changed paths plus previous-filename aliases for renames."""
+
+    paths: list[str]
+    aliases: list[str]
+
+
+@dataclass
 class ChangedFile:
     """Represents a file changed in a PR."""
 
@@ -1396,6 +1856,7 @@ class ChangedFile:
     deletions: list[tuple[int, int]]
     is_rename: bool = False
     old_path: str = None
+    is_deleted: bool = False
 
 
 @dataclass
@@ -1410,6 +1871,8 @@ class PullRequest:
     base_ref: str
     files: list[str]
     changed_ranges: dict[str, ChangedFile]
+    file_aliases: list[str] = field(default_factory=list)
+    head_sha: str = None
     updated_at: str = None
 
 
@@ -1431,6 +1894,7 @@ class Overlap:
     pr_b: PullRequest
     overlapping_files: list[str]
     line_overlaps: dict[str, list[tuple[int, int]]]
+    needs_merge_test: bool = False
     has_merge_conflict: bool = False
     conflict_files: list[str] = None
     conflict_details: list[ConflictInfo] = None
