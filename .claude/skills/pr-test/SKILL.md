@@ -182,7 +182,7 @@ fi
 : "${PR_TEST_USER_PASSWORD:?PR_TEST_USER_PASSWORD is empty after env+prompt — supply a value before re-running}"
 ```
 
-For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's Supabase — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default).
+For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's hosted auth backend — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default). **`PR_TEST_USER_PASSWORD` should always be a throwaway/test-only credential, never a real account's password** — the auth requests in 3h go over plain HTTP on `localhost:3000` for local runs, which has no transport encryption. If a dev-preview run's target isn't on `localhost`, confirm it's HTTPS before sending credentials to it.
 
 ## Step 1: Understand the PR
 
@@ -386,7 +386,9 @@ miss because nothing fails loudly without them, it just 401s later:
 ```bash
 grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
 
-if grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env; then
+if [ -n "$(grep '^DATABASE_URL=' $FRONTEND_DIR/.env | cut -d= -f2-)" ]; then
+  # grep -q alone matches a present-but-empty DATABASE_URL= too, which would
+  # otherwise skip derivation and leave Better Auth pointed at nothing.
   echo "Frontend DATABASE_URL: already set (not touching it)"
 else
   # cut -f2 (not -f2-) truncates any value containing '=' (base64 secrets do); -f2- keeps the rest.
@@ -397,8 +399,9 @@ else
   : "${DB_USER:?}" "${DB_PASS:?}" "${DB_PORT:?}" "${DB_NAME:?}"  # fail loudly, not with a silently-empty URL
   # Percent-encode user/pass — a raw '@', '#', '?', '%', or ':' in either would
   # otherwise be misparsed as URL structure instead of credential content.
-  DB_USER_ENC=$(jq -rn --arg s "$DB_USER" '$s|@uri')
-  DB_PASS_ENC=$(jq -rn --arg s "$DB_PASS" '$s|@uri')
+  # Via env vars, not `jq --arg`, which would put DB_PASS in the process arglist.
+  DB_USER_ENC=$(DB_USER_VAL="$DB_USER" jq -rn '$ENV.DB_USER_VAL|@uri')
+  DB_PASS_ENC=$(DB_PASS_VAL="$DB_PASS" jq -rn '$ENV.DB_PASS_VAL|@uri')
   echo "DATABASE_URL=postgresql://${DB_USER_ENC}:${DB_PASS_ENC}@localhost:${DB_PORT}/${DB_NAME}" >> $FRONTEND_DIR/.env
   # Reconstructed, not regex-redacted — a password containing '@' would otherwise
   # leak its tail past a naive "redact up to the first @" pattern.
@@ -595,19 +598,23 @@ silently into an empty token unless you check for it.
 ```bash
 COOKIE_JAR=$(mktemp)
 trap 'rm -f "$COOKIE_JAR"' EXIT  # cleans up on early exit too, not just the happy path
-AUTH_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p,name:"PR Test User"}')
+# Via env vars, not `jq --arg`, which would put the password in the process arglist.
+AUTH_PAYLOAD=$(PR_TEST_USER_EMAIL="$PR_TEST_USER_EMAIL" PR_TEST_USER_PASSWORD="$PR_TEST_USER_PASSWORD" \
+  jq -nc '{email:$ENV.PR_TEST_USER_EMAIL,password:$ENV.PR_TEST_USER_PASSWORD,name:"PR Test User"}')
 
 # Signup (idempotent — a real error body means "already exists" only if you
 # check; -d passes the payload as an argument, which leaks the password into
-# process listings, so pipe it through stdin with --data-binary @- instead).
-SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s -X POST 'http://localhost:3000/api/auth/sign-up/email' \
+# process listings, so pipe it through stdin with --data-binary @- instead.
+# --noproxy guards against an inherited proxy env var routing the password
+# through a proxy).
+SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --noproxy localhost,127.0.0.1,::1 -X POST 'http://localhost:3000/api/auth/sign-up/email' \
   -H 'Content-Type: application/json' --data-binary @-)
 echo "$SIGNUP_RESULT" | grep -qi '"code"' && echo "Signup: $SIGNUP_RESULT"  # log it — "already exists" and "password too short" look identical downstream otherwise
 
 # Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR.
 # Capture the body: a failure here (e.g. account exists with a different
 # password) otherwise only shows up as an empty $TOKEN with no explanation.
-SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
+SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --noproxy localhost,127.0.0.1,::1 -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
   -H 'Content-Type: application/json' --data-binary @-)
 echo "$SIGNIN_RESULT" | grep -qi '"code"' && echo "Sign-in: $SIGNIN_RESULT"
 
@@ -802,7 +809,11 @@ fails looking for an executable, then use it for finer control over timing
 
 ```bash
 cd $FRONTEND_DIR  # required — @playwright/test is only declared here, not at the repo root
-pnpm exec playwright install chromium 2>&1 | grep -v "^$"  # no-op if already installed
+# Check the installer's own exit status, not grep's — piping through grep to
+# drop blank lines would otherwise swallow a real install failure and let
+# chromium.launch() below fail later with a much less clear error.
+pnpm exec playwright install chromium
+[ $? -eq 0 ] || { echo "ERROR: playwright install chromium failed"; exit 1; }
 
 node -e "
 const { chromium } = require('@playwright/test');
