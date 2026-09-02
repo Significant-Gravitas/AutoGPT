@@ -116,7 +116,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
           />
         </StackSection>
       )}
-      <SessionActivityCard sessionId={sessionId} />
+      <SessionActivityCard runs={runs} schedules={schedules} tasks={tasks} />
     </motion.div>
   );
 }

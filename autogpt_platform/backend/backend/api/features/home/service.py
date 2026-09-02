@@ -88,13 +88,36 @@ async def build_home_dashboard(
     library_refs, graph_names, persisted_briefing, session_titles = (
         await asyncio.gather(
             library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
-            _graph_names(user_id=user_id, graph_ids=graph_ids),
+            _graph_names(
+                user_id=user_id, graph_ids=graph_ids, organization_id=organization_id
+            ),
             _persisted_briefing(
                 user_id=user_id, timezone_name=data.timezone_name, now=now
             ),
             _get_session_titles(user_id=user_id, session_ids=work_session_ids),
         )
     )
+    # A stored briefing can carry a run older than the live window, whose
+    # graph the lookup above never saw; resolve those so the card still
+    # names the agent instead of the placeholder.
+    persisted_graph_ids = (
+        [
+            graph_id
+            for graph_id in {item.graph_id for item in persisted_briefing.run_items}
+            if graph_id not in set(graph_ids)
+        ]
+        if persisted_briefing
+        else []
+    )
+    if persisted_graph_ids:
+        graph_names = {
+            **graph_names,
+            **await _graph_names(
+                user_id=user_id,
+                graph_ids=persisted_graph_ids,
+                organization_id=organization_id,
+            ),
+        }
 
     return compose_home_dashboard(
         now=now,
@@ -116,14 +139,18 @@ async def build_home_dashboard(
     )
 
 
-async def _graph_names(*, user_id: str, graph_ids: list[str]) -> dict[str, str]:
+async def _graph_names(
+    *, user_id: str, graph_ids: list[str], organization_id: str | None
+) -> dict[str, str]:
     """Graph-level names, the fallback for runs with no library row.
 
     Fail-soft like schedules: losing this costs a headline its agent name, not
     the page.
     """
     try:
-        return await graph_db.get_graph_names_by_ids(user_id, graph_ids)
+        return await graph_db.get_graph_names_by_ids(
+            user_id, graph_ids, organization_id=organization_id
+        )
     except Exception:
         logger.warning(
             "Home could not load graph names for user %s", user_id[:_LOG_ID_CHARS]

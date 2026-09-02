@@ -20,8 +20,8 @@ export function useHireOfficeGallery() {
     : [];
 
   const hireMutation = useHireOfficeMutation({
-    onSuccess: (result) => {
-      setHireResult(result);
+    onSuccess: (result, variables) => {
+      if (variables.template_id === selectedId) setHireResult(result);
       void queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });

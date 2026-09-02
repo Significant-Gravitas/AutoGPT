@@ -1971,7 +1971,11 @@ async def stream_chat_completion_baseline(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
-            task_ctx=await task_spine.build_task_context(user_id, session),
+            task_ctx=(
+                await task_spine.build_task_context(user_id, session)
+                if task_management_enabled
+                else ""
+            ),
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not

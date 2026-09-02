@@ -1,7 +1,7 @@
 import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { DelegatedTask } from "@/app/api/__generated__/models/delegatedTask";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { expect, test } from "vitest";
 import { ProactiveSection } from "../components/ProactiveSection/ProactiveSection";
 
@@ -67,10 +67,16 @@ test("renders dream proposals and outcomes, hiding other origins", async () => {
 });
 
 test("renders nothing when no dream tasks exist", async () => {
-  server.use(getListTasksMockHandler([makeTask({ created_by_type: "USER" })]));
+  let requested = false;
+  server.use(
+    getListTasksMockHandler(() => {
+      requested = true;
+      return [makeTask({ created_by_type: "USER" })];
+    }),
+  );
 
   const { container } = render(<ProactiveSection />);
 
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitFor(() => expect(requested).toBe(true));
   expect(container.textContent).toBe("");
 });

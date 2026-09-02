@@ -204,7 +204,6 @@ class TaskReviewResult(BaseModel):
     user is asked to clarify in chat instead."""
 
     task: DelegatedTask
-    revision_task: "DelegatedTask | None" = None
     escalated: bool = False
     message: str
 

@@ -1257,6 +1257,7 @@ model DelegatedTask {
   Executions AgentGraphExecution[]
 
   @@index([ownerId, status])
+  @@index([parentTaskId])
   @@index([rootTaskId])
   @@index([originSessionId])
   @@index([userId, status])

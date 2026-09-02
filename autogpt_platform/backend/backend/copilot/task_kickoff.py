@@ -18,7 +18,7 @@ than being stranded again.
 import logging
 
 from backend.copilot.executor.utils import schedule_chat_turn
-from backend.copilot.model import create_chat_session
+from backend.copilot.model import create_chat_session, delete_chat_session
 from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ async def start_task_in_new_session(
     client = get_database_manager_async_client()
     if not await client.claim_task_for_session(user_id, task_id, session.session_id):
         logger.info("Task #%s was already claimed; dropping the kickoff", task_id)
+        await _discard_session(session.session_id, user_id)
         return None
 
     try:
@@ -73,6 +74,17 @@ async def start_task_in_new_session(
             exc_info=True,
         )
     return session.session_id
+
+
+async def _discard_session(session_id: str, user_id: str) -> None:
+    """A session that lost the claim has no task and never ran a turn —
+    leaving it would show the user an empty thread. Best-effort."""
+    try:
+        await delete_chat_session(session_id, user_id)
+    except Exception:
+        logger.warning(
+            "Could not discard unused worker session #%s", session_id, exc_info=True
+        )
 
 
 def _kickoff_message(task_id: str, title: str) -> str:

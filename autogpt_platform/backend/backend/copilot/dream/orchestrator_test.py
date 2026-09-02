@@ -1816,3 +1816,18 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     delete_bundle.assert_awaited_once_with("p-lock-lost")
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
+
+
+@pytest.mark.asyncio
+async def test_emit_failure_does_not_propagate(mocker) -> None:
+    """``apply_operations`` and the marker stamp are already done when the
+    operations event goes out, so a broken emit must be logged, not raised —
+    raising would report a completed pass as failed."""
+    mocker.patch(
+        "backend.copilot.dream.orchestrator.emit_dream_operations_event",
+        AsyncMock(side_effect=RuntimeError("stream closed")),
+    )
+
+    await orchestrator_mod._emit_operations_safe(
+        AsyncMock(), mocker.MagicMock(), "pass-1", "user-1"
+    )

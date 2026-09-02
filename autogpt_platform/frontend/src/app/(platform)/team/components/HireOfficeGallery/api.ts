@@ -56,12 +56,16 @@ export function useOfficeTemplatesQuery() {
   });
 }
 
+interface HireOfficeBody {
+  template_id: string;
+}
+
 export function useHireOfficeMutation(options?: {
-  onSuccess?: (result: HireOfficeResponse) => void;
+  onSuccess?: (result: HireOfficeResponse, variables: HireOfficeBody) => void;
   onError?: (error: unknown) => void;
 }) {
   return useMutation({
-    mutationFn: async (body: { template_id: string }) => {
+    mutationFn: async (body: HireOfficeBody) => {
       const res = await customMutator<ApiResponse<HireOfficeResponse>>(
         HIRE_OFFICE_URL,
         { method: "POST", body: JSON.stringify(body) },

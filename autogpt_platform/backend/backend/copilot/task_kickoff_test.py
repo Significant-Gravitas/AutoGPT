@@ -21,6 +21,7 @@ def _patches(*, claimed: bool = True, session_id: str = "sess-new"):
             f"{_MODULE}.get_database_manager_async_client", return_value=client
         ),
         "schedule": patch(f"{_MODULE}.schedule_chat_turn", AsyncMock()),
+        "delete": patch(f"{_MODULE}.delete_chat_session", AsyncMock()),
     }
 
 
@@ -29,12 +30,13 @@ async def test_kickoff_claims_the_task_then_dispatches_a_turn():
     client, patches = _patches()
     with patches["create"] as create, patches["client"], patches[
         "schedule"
-    ] as schedule:
+    ] as schedule, patches["delete"] as delete:
         session_id = await start_task_in_new_session(
             "user-1", task_id="task-1", title="Map your client accounts", expert_id="e1"
         )
 
     assert session_id == "sess-new"
+    delete.assert_not_awaited()
     assert create.call_args.kwargs["expert_id"] == "e1"
     assert create.call_args.kwargs["delegated_task_id"] == "task-1"
     client.claim_task_for_session.assert_awaited_once_with(
@@ -49,13 +51,31 @@ async def test_kickoff_losing_the_claim_dispatches_nothing():
     """Two kickoffs can race the same task (a hire and the overseer sweep).
     Only the one that wins the QUEUED→WORKING flip gets to run a turn."""
     _, patches = _patches(claimed=False)
-    with patches["create"], patches["client"], patches["schedule"] as schedule:
+    with patches["create"], patches["client"], patches["schedule"] as schedule, patches[
+        "delete"
+    ] as delete:
         session_id = await start_task_in_new_session(
             "user-1", task_id="task-1", title="Map your client accounts", expert_id="e1"
         )
 
     assert session_id is None
     schedule.assert_not_awaited()
+    # The session persisted before the claim was lost; it has no task and no
+    # turn, so it is discarded rather than left as an empty thread.
+    delete.assert_awaited_once_with("sess-new", "user-1")
+
+
+@pytest.mark.asyncio
+async def test_kickoff_survives_a_failed_session_discard():
+    _, patches = _patches(claimed=False)
+    with patches["create"], patches["client"], patches["schedule"], patch(
+        f"{_MODULE}.delete_chat_session", AsyncMock(side_effect=RuntimeError("db"))
+    ):
+        session_id = await start_task_in_new_session(
+            "user-1", task_id="task-1", title="Map your client accounts", expert_id="e1"
+        )
+
+    assert session_id is None
 
 
 @pytest.mark.asyncio

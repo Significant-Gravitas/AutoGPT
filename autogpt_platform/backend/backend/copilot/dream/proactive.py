@@ -7,13 +7,16 @@ DREAM-created task whose behaviour follows ``Expert.autonomyLevel``:
 * ``SUGGEST`` — proposal only. The task is QUEUED with acceptance PENDING
   and the pass never starts any execution for it; it exists so the morning
   briefing and Tasks tab can surface the suggestion for the user to accept.
-* ``ASK_FIRST`` / ``AUTONOMOUS`` — a real task (acceptance ACCEPTED),
-  bounded by the hard ``ChatConfig.dream_task_budget_cap``: any open
-  DREAM-created task whose ``spendTotal`` reaches the cap is failed here.
+* ``ASK_FIRST`` / ``AUTONOMOUS`` — a real task (acceptance ACCEPTED) that
+  is put to work immediately: the overseer deliberately leaves DREAM tasks
+  alone, so nothing else would ever start it. It is bounded by the hard
+  ``ChatConfig.dream_task_budget_cap``: any open DREAM-created task whose
+  ``spendTotal`` reaches the cap is failed here.
 
-``originSessionId`` stays null on every task this pass creates, so the
-outcome path (``executor.task_outcomes``) never posts into a chat session —
-outcomes reach the user through the briefing only.
+A proposal has no ``originSessionId``, so the outcome path
+(``executor.task_outcomes``) never posts into a chat session for it; an
+accepted task is claimed into its own worker session, the same way an
+office pack's intro task is.
 """
 
 import logging
@@ -28,6 +31,7 @@ from backend.api.features.tasks.models import (
     TASK_OUTCOME_MAX_LENGTH,
 )
 from backend.copilot.config import ChatConfig
+from backend.copilot.task_kickoff import start_task_in_new_session
 
 logger = logging.getLogger(__name__)
 
@@ -149,17 +153,38 @@ async def _propose_task(
     if not proposal_only:
         # ASK_FIRST / AUTONOMOUS tasks are real work, not proposals — mark
         # them accepted so the review flow doesn't hold them for a nod the
-        # autonomy level already granted.
+        # autonomy level already granted, then open the worker that the
+        # overseer's DREAM exclusion would otherwise never provide.
         await prisma.models.DelegatedTask.prisma().update_many(
             where={"id": task.id, "userId": user_id},
             data={"acceptance": prisma.enums.DelegatedTaskAcceptance.ACCEPTED},
         )
+        await _kick_off(user_id, task_id=task.id, title=task.title, expert=expert)
     return ProactiveTask(
         task_id=task.id,
         expert_id=expert.id,
         autonomy=str(expert.autonomyLevel),
         proposal_only=proposal_only,
     )
+
+
+async def _kick_off(
+    user_id: str, *, task_id: str, title: str, expert: prisma.models.Expert
+) -> None:
+    """Best-effort: a kickoff that fails leaves the task QUEUED with the
+    acceptance already granted, which is exactly what the proposal path
+    produces — the user can still start it from the board."""
+    try:
+        await start_task_in_new_session(
+            user_id, task_id=task_id, title=title, expert_id=expert.id
+        )
+    except Exception:
+        logger.warning(
+            "Dream proactive: could not start task #%s for expert %s",
+            task_id,
+            expert.id,
+            exc_info=True,
+        )
 
 
 def _task_title(expert: prisma.models.Expert) -> str:

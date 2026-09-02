@@ -423,6 +423,43 @@ async def test_stored_placeholder_name_is_resolved_again_on_read(
 
 
 @pytest.mark.asyncio
+async def test_persisted_only_run_still_resolves_its_graph_name(
+    mocker: MockerFixture, home_dependencies
+) -> None:
+    """A stored briefing can hold a run whose graph is outside the live
+    execution window; its name must come from a second lookup, not the
+    placeholder."""
+    mocker.patch(
+        "backend.api.features.executions.activity_gate.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.is_feature_enabled",
+        AsyncMock(return_value=True),
+    )
+    names = {"graph-1": "Flight booker", "graph-old": "Inbox triage"}
+    lookup = mocker.patch(
+        "backend.api.features.home.service.graph_db.get_graph_names_by_ids",
+        AsyncMock(
+            side_effect=lambda _user, ids, **_: {
+                graph_id: names[graph_id] for graph_id in ids if graph_id in names
+            }
+        ),
+    )
+    stored = _stored_briefing()
+    stored.run_items[0].graph_id = "graph-old"
+    stored.run_items[0].agent_name = "Agent task"
+    stored.run_items[0].title = ""
+    _patch_stored_briefing(mocker, stored.model_dump(mode="json"))
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    titles = [outcome.title for outcome in dashboard.briefing.outcomes]
+    assert "Inbox triage finished" in titles
+    assert lookup.await_args_list[1].args[1] == ["graph-old"]
+
+
+@pytest.mark.asyncio
 async def test_schedules_stay_owner_scoped_inside_an_organization(
     mocker: MockerFixture, home_dependencies
 ) -> None:

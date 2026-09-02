@@ -82,7 +82,12 @@ export function ExpertSettingsSection({ expert, onEditSoul, onFire }: Props) {
   );
 }
 
-function SoulEntry({ label, value }: { label: string; value: string | null }) {
+interface SoulEntryProps {
+  label: string;
+  value: string | null;
+}
+
+function SoulEntry({ label, value }: SoulEntryProps) {
   return (
     <div>
       <dt className="text-xs font-medium uppercase tracking-[0.12em] text-purple-600">

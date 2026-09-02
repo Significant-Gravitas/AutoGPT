@@ -54,16 +54,20 @@ class SpinTestServer:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # The managers only terminate and join their processes, so they must
+        # run even when the Redis or DB disconnect raises — otherwise a
+        # cleanup failure leaks every service process into the next test.
         try:
-            await redis_client.disconnect_async()
+            try:
+                await redis_client.disconnect_async()
+            finally:
+                await db.disconnect()
         finally:
-            await db.disconnect()
-
-        self.scheduler.__exit__(exc_type, exc_val, exc_tb)
-        self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
-        self.agent_server.__exit__(exc_type, exc_val, exc_tb)
-        self.db_api.__exit__(exc_type, exc_val, exc_tb)
-        self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
+            self.scheduler.__exit__(exc_type, exc_val, exc_tb)
+            self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
+            self.agent_server.__exit__(exc_type, exc_val, exc_tb)
+            self.db_api.__exit__(exc_type, exc_val, exc_tb)
+            self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
 
         # Give services time to fully shut down
         #  This prevents event loop issues where services haven't fully cleaned up

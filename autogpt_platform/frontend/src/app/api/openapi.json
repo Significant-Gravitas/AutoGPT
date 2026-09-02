@@ -27651,12 +27651,6 @@
       "TaskReviewResult": {
         "properties": {
           "task": { "$ref": "#/components/schemas/DelegatedTask" },
-          "revision_task": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/DelegatedTask" },
-              { "type": "null" }
-            ]
-          },
           "escalated": {
             "type": "boolean",
             "title": "Escalated",

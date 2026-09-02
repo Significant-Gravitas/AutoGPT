@@ -8,10 +8,12 @@ root task cannot pretend it has a manager.
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.tasks.models import TaskEscalationTarget
 from backend.util.exceptions import TaskDelegationRefusedError
 
 from .escalate_task import EscalateTaskTool
@@ -171,7 +173,7 @@ async def test_invalid_target_is_rejected_before_any_write():
             session=_session(),
             task_id="t-child",
             question="Hm?",
-            **{"target": "ceo"},
+            target=cast(TaskEscalationTarget, "ceo"),
         )
 
     assert isinstance(result, ErrorResponse)

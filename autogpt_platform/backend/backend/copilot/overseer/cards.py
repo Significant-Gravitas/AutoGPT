@@ -22,6 +22,7 @@ MERGE_SIMILARITY_THRESHOLD = 0.75
 
 _MAX_NUDGE_ITEMS = 5
 _MAX_MERGE_ITEMS = 3
+_MAX_MERGE_CANDIDATES = 40
 
 
 def compose_nudge_items(
@@ -52,7 +53,14 @@ def compose_nudge_items(
 def compose_merge_items(tasks: list[DelegatedTask]) -> list[BriefingMergeItem]:
     """Pairs of open root tasks whose titles look like the same ask — a
     "merge?" suggestion only; nothing is ever merged automatically."""
-    roots = [task for task in tasks if task.parent_task_id is None]
+    # ``_MAX_MERGE_ITEMS`` caps the output, not the work: bound the pairwise
+    # scan too so a board of many dissimilar tasks stays cheap. Newest
+    # first, so the cut is deterministic and favours live work.
+    roots = sorted(
+        (task for task in tasks if task.parent_task_id is None),
+        key=lambda task: task.updated_at,
+        reverse=True,
+    )[:_MAX_MERGE_CANDIDATES]
     suggested: set[str] = set()
     items: list[BriefingMergeItem] = []
     for a, b in combinations(roots, 2):

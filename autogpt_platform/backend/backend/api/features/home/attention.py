@@ -216,7 +216,7 @@ def _escalation_attention(
         task_id=task.id,
         options=escalation.options,
         primary_action=HomeAction(
-            label="View task", href=f"/team?task={quote(task.id)}"
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
         ),
     )
 

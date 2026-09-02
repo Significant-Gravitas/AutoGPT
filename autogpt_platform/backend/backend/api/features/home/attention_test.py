@@ -468,7 +468,7 @@ def test_task_escalation_becomes_an_answerable_card() -> None:
     assert item.options == ["Staging", "Prod"]
     assert "Ship to staging or prod?" in item.description
     assert item.expert is not None and item.expert.name == "Ada"
-    assert item.primary_action.href == "/team?task=task-1"
+    assert item.primary_action.href == "/team/tasks/task-1"
 
 
 def test_stale_task_with_escalation_yields_one_card_and_escalation_wins() -> None:

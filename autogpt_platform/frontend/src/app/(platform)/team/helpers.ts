@@ -212,7 +212,7 @@ export function getAutopilotSummary({
 }: AutopilotSummaryArgs) {
   const allSchedules = experts.flatMap(schedulesForExpert);
   const nextSchedule = allSchedules
-    .filter((schedule) => Boolean(schedule.next_run_time))
+    .filter((schedule) => Number.isFinite(nextRunMs(schedule)))
     .sort((a, b) => nextRunMs(a) - nextRunMs(b))[0];
 
   const pausedCount = experts.filter((expert) =>

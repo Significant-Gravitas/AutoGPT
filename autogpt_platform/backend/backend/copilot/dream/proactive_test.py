@@ -6,6 +6,7 @@ DREAM-created task at the budget cap is stopped dead.
 """
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import prisma.enums
 import prisma.models
@@ -136,10 +137,14 @@ async def test_suggest_expert_gets_proposal_that_never_executes(
     user = await _create_seed_user()
     expert = await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.SUGGEST)
 
-    result = await run_proactive_pass(
-        user.id, dream_pass_id="pass-suggest", config=ChatConfig()
-    )
+    with patch(
+        "backend.copilot.dream.proactive.start_task_in_new_session", AsyncMock()
+    ) as kickoff:
+        result = await run_proactive_pass(
+            user.id, dream_pass_id="pass-suggest", config=ChatConfig()
+        )
 
+    kickoff.assert_not_awaited()
     assert len(result.created) == 1
     created = result.created[0]
     assert created.expert_id == expert.id
@@ -165,16 +170,49 @@ async def test_suggest_expert_gets_proposal_that_never_executes(
     )
 
 
-async def test_ask_first_expert_gets_accepted_task(server: SpinTestServer):
+async def test_ask_first_expert_gets_accepted_task_and_a_worker(
+    server: SpinTestServer,
+):
+    """Accepted work must be started here: the overseer leaves DREAM tasks
+    alone, so a task this pass merely accepts would sit QUEUED forever."""
     user = await _create_seed_user()
-    await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.ASK_FIRST)
+    expert = await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.ASK_FIRST)
 
-    result = await run_proactive_pass(
-        user.id, dream_pass_id="pass-ask", config=ChatConfig()
-    )
+    with patch(
+        "backend.copilot.dream.proactive.start_task_in_new_session",
+        AsyncMock(return_value="sess-worker"),
+    ) as kickoff:
+        result = await run_proactive_pass(
+            user.id, dream_pass_id="pass-ask", config=ChatConfig()
+        )
 
     assert len(result.created) == 1
     assert result.created[0].proposal_only is False
+    task = await prisma.models.DelegatedTask.prisma().find_unique(
+        where={"id": result.created[0].task_id}
+    )
+    assert task is not None
+    assert task.acceptance == prisma.enums.DelegatedTaskAcceptance.ACCEPTED
+    kickoff.assert_awaited_once_with(
+        user.id, task_id=task.id, title=task.title, expert_id=expert.id
+    )
+
+
+async def test_failed_kickoff_leaves_the_accepted_task_queued(
+    server: SpinTestServer,
+):
+    user = await _create_seed_user()
+    await _seed_expert(user.id, prisma.enums.ExpertAutonomyLevel.AUTONOMOUS)
+
+    with patch(
+        "backend.copilot.dream.proactive.start_task_in_new_session",
+        AsyncMock(side_effect=RuntimeError("scheduler down")),
+    ):
+        result = await run_proactive_pass(
+            user.id, dream_pass_id="pass-auto", config=ChatConfig()
+        )
+
+    assert len(result.created) == 1
     task = await prisma.models.DelegatedTask.prisma().find_unique(
         where={"id": result.created[0].task_id}
     )

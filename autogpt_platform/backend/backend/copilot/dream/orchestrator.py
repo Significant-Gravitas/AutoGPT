@@ -998,7 +998,7 @@ async def _execute_dream_pass_async(
             raw_session_id = apply_stats.get("session_id")
 
             if emit is not None and isinstance(snapshot, DreamOperationsSnapshot):
-                await emit_dream_operations_event(emit, snapshot, pass_id, user_id)
+                await _emit_operations_safe(emit, snapshot, pass_id, user_id)
 
             def _as_int(key: str) -> int:
                 v = apply_stats.get(key, 0)
@@ -1077,6 +1077,19 @@ def _failure_result(
         error=error,
         usage=usage,
     )
+
+
+async def _emit_operations_safe(
+    emit: EmitFn, snapshot: DreamOperationsSnapshot, pass_id: str, user_id: str
+) -> None:
+    """The pass is applied and its marker stamped by the time this runs, so
+    a dead stream must not turn a completed pass into a failed result."""
+    try:
+        await emit_dream_operations_event(emit, snapshot, pass_id, user_id)
+    except Exception:
+        logger.warning(
+            "Dream pass %s: could not emit the operations event", pass_id, exc_info=True
+        )
 
 
 async def _run_proactive_pass_safe(

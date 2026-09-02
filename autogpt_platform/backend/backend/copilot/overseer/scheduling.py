@@ -37,13 +37,16 @@ async def ensure_task_overseer_scheduled(user_id: str) -> None:
             Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
         ):
             return
-        if await _marker_present(user_id):
+        if not await _claim_marker(user_id):
             return
 
         from backend.util.clients import get_scheduler_client
 
-        await get_scheduler_client().add_task_overseer_schedule(user_id=user_id)
-        await _write_marker(user_id)
+        try:
+            await get_scheduler_client().add_task_overseer_schedule(user_id=user_id)
+        except Exception:
+            await _release_marker(user_id)
+            raise
         logger.info("Task overseer: registered cron for user %s", user_id[:12])
     except Exception:
         logger.warning(
@@ -53,31 +56,43 @@ async def ensure_task_overseer_scheduled(user_id: str) -> None:
         )
 
 
-async def _marker_present(user_id: str) -> bool:
+async def _claim_marker(user_id: str) -> bool:
+    """Atomically take the registration slot for *user_id*.
+
+    ``SET NX`` makes the check-and-write one Redis op, so two chat turns
+    racing the first registration produce one scheduler call — a second
+    ``add_task_overseer_schedule`` would replace the job and reset its
+    pending ``next_run_time``. A Redis failure reads as "unclaimed" so an
+    outage never silently leaves a user without the cron.
+    """
     try:
         redis = await get_redis_async()
-        return await redis.get(f"{OVERSEER_REGISTRATION_PREFIX}:{user_id}") is not None
+        claimed = await redis.set(
+            f"{OVERSEER_REGISTRATION_PREFIX}:{user_id}",
+            "1",
+            ex=REGISTRATION_TTL_SECONDS,
+            nx=True,
+        )
+        return bool(claimed)
     except Exception:
         logger.debug(
-            "Redis read failed for %s:%s; treating as not-registered",
+            "Redis claim failed for %s:%s; treating as not-registered",
             OVERSEER_REGISTRATION_PREFIX,
             user_id[:12],
             exc_info=True,
         )
-        return False
+        return True
 
 
-async def _write_marker(user_id: str) -> None:
+async def _release_marker(user_id: str) -> None:
+    """Give the slot back when registration failed after the claim, so the
+    next turn retries instead of waiting out the TTL."""
     try:
         redis = await get_redis_async()
-        await redis.set(
-            f"{OVERSEER_REGISTRATION_PREFIX}:{user_id}",
-            "1",
-            ex=REGISTRATION_TTL_SECONDS,
-        )
+        await redis.delete(f"{OVERSEER_REGISTRATION_PREFIX}:{user_id}")
     except Exception:
         logger.debug(
-            "Redis write failed for %s:%s; lazy path will re-register later",
+            "Redis release failed for %s:%s; marker expires with its TTL",
             OVERSEER_REGISTRATION_PREFIX,
             user_id[:12],
             exc_info=True,

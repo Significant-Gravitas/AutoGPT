@@ -178,8 +178,8 @@ async def build_task_context(user_id: str | None, session: ChatSession) -> str:
     if task is None or task.status not in ("QUEUED", "WORKING"):
         return ""
     lines = [
-        f"You are working delegated task '{task.title}' "
-        f"(task_id: {task.id}, status: {task.status}).",
+        "You are working delegated task "
+        f"'{task.title}' (task_id: {task.id}, status: {task.status}).",
         f"Spec: {task.spec}",
     ]
     instructions = [a for a in task.amendments if a.kind == "note" and a.by == "user"]

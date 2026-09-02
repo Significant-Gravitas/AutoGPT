@@ -5143,7 +5143,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
                 expert_id=session.expert_id,
-                task_ctx=await task_spine.build_task_context(user_id, session),
+                task_ctx=(
+                    await task_spine.build_task_context(user_id, session)
+                    if task_management_enabled
+                    else ""
+                ),
             )
             if prefixed_message is not None:
                 current_message = prefixed_message

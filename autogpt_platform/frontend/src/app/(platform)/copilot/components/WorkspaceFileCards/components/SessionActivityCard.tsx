@@ -1,12 +1,14 @@
 "use client";
 
 import { Clock01Icon, PlayIcon, Task01Icon } from "@hugeicons/core-free-icons";
-import { useSessionActivity } from "../useSessionActivity";
+import type { SessionRun, SessionSchedule, SessionTask } from "../helpers";
 import { RunsList, SchedulesList, TasksList } from "./SessionActivityContent";
 import { StackSection } from "./StackSection";
 
 interface Props {
-  sessionId: string | null;
+  runs: SessionRun[];
+  schedules: SessionSchedule[];
+  tasks: SessionTask[];
 }
 
 /**
@@ -14,9 +16,7 @@ interface Props {
  * per concern — tasks it delegated, runs it triggered, schedules it created —
  * so a single card doesn't read as one list.
  */
-export function SessionActivityCard({ sessionId }: Props) {
-  const { runs, schedules, tasks } = useSessionActivity(sessionId);
-
+export function SessionActivityCard({ runs, schedules, tasks }: Props) {
   return (
     <>
       {tasks.length > 0 && (

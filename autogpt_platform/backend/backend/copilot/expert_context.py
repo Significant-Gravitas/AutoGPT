@@ -312,14 +312,22 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
     )
 
 
+def quote_prompt_data(value: str) -> str:
+    """Render a user- or marketplace-authored string that lands inside a
+    prompt line as one quoted token: newlines collapse so the value cannot
+    open a new line of instructions, and the quotes mark it as data."""
+    flat = " ".join(escape_prompt_xml_tags(value).split())
+    return '"' + flat.replace('"', '\\"') + '"'
+
+
 def _team_line(expert: Expert) -> str:
     workflow_names = ", ".join(
-        escape_prompt_xml_tags(w.name or "Unnamed workflow") for w in expert.workflows
+        quote_prompt_data(w.name or "Unnamed workflow") for w in expert.workflows
     )
     if not workflow_names:
         workflow_names = "none installed"
     skills = ", ".join(
-        escape_prompt_xml_tags(skill) for skill in expert.skills if skill.strip()
+        quote_prompt_data(skill) for skill in expert.skills if skill.strip()
     )
     skills_part = f"; skills: {skills}" if skills else ""
     return (

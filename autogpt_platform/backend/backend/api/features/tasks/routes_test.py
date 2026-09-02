@@ -342,6 +342,29 @@ def test_answer_task_injects_into_a_running_turn_without_scheduling(
     mock_schedule.assert_not_awaited()
 
 
+def test_answer_task_survives_a_failed_delivery(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The answer is already on the receipt; a dead worker session degrades
+    to the owner finding it next turn, not to a 500 for the user."""
+    mocker.patch(
+        "backend.api.features.tasks.routes.task_actions.answer_delegated_task",
+        new_callable=AsyncMock,
+        return_value=(_make_task(status="WORKING"), "worker-session-1"),
+    )
+    mocker.patch(
+        "backend.api.features.tasks.routes.queue_user_message",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("session gone"),
+    )
+
+    response = client.post("/tasks/task-1/answer", json={"answer": "Staging"})
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "task-1"
+    assert response.json()["status"] == "WORKING"
+
+
 def test_answer_task_404s_when_the_task_is_missing(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -452,6 +475,29 @@ def test_reject_task_reopens_it_and_nudges_the_owner_session(
     assert "report_task" in schedule_kwargs["message"]
 
 
+def test_reject_task_survives_a_failed_revision_delivery(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    reopened = _make_task(status="WORKING", origin_session_id="worker-session-1")
+    mocker.patch(
+        "backend.api.features.tasks.routes.task_review.reject_delegated_task",
+        new_callable=AsyncMock,
+        return_value=(reopened, True),
+    )
+    mocker.patch(
+        "backend.api.features.tasks.routes.queue_user_message",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("session gone"),
+    )
+
+    response = client.post("/tasks/task-1/reject", json={"note": "Use Q3 numbers"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["escalated"] is False
+    assert data["task"]["status"] == "WORKING"
+
+
 def test_reject_task_at_the_cap_escalates_without_scheduling(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -471,7 +517,7 @@ def test_reject_task_at_the_cap_escalates_without_scheduling(
     assert response.status_code == 200
     data = response.json()
     assert data["escalated"] is True
-    assert data["revision_task"] is None
+    assert "revision_task" not in data
     assert "clarify" in data["message"]
     mock_schedule.assert_not_awaited()
 
