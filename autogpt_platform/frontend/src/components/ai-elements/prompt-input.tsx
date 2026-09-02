@@ -98,10 +98,10 @@ export function PromptInput({
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea
 > & {
-  /** Reports whether the content now spans more than one line, so a host can
-   *  switch between single-row and stacked composer layouts. Derived from the
-   *  box's own line-height rather than a shared pixel constant, which cannot
-   *  survive hosts that restyle the textarea. */
+  /** Reports whether the content needs more than one line of the host's
+   *  single-row layout, so the host can switch to a stacked one. Derived from
+   *  the box's own line-height rather than a shared pixel constant, which
+   *  cannot survive hosts that restyle the textarea. */
   onMultilineChange?: (isMultiline: boolean) => void;
 };
 
@@ -119,6 +119,19 @@ function isWrapped(el: HTMLTextAreaElement, contentHeight: number): boolean {
   return contentHeight > lineHeight + padding + 1;
 }
 
+/** scrollHeight of the content alone, leaving the box at height:auto. A host
+ *  min-height floors scrollHeight (the hero composer sets 4.5rem), so an empty
+ *  box would report its minimum and read as already wrapped; the floor is
+ *  lifted for the read and handed back. */
+function measureContentHeight(el: HTMLTextAreaElement): number {
+  const ownMinHeight = el.style.minHeight;
+  el.style.height = "auto";
+  el.style.minHeight = "0";
+  const contentHeight = el.scrollHeight;
+  el.style.minHeight = ownMinHeight;
+  return contentHeight;
+}
+
 export function PromptInputTextarea({
   onKeyDown,
   onChange,
@@ -134,18 +147,33 @@ export function PromptInputTextarea({
   // still reaching the latest callback.
   const onMultilineChangeRef = useRef(onMultilineChange);
   onMultilineChangeRef.current = onMultilineChange;
+  // Wrapping is judged at the width the box has in the host's single row,
+  // remembered from the last time it sat there. Judging it at whatever width
+  // the box has right now lets the layout argue with itself: text that wraps
+  // in the narrow row but fits the full-width one would flip the host between
+  // the two layouts on every frame.
+  const isMultilineRef = useRef(false);
+  const singleRowWidthRef = useRef<number | null>(null);
 
   function autoResize(el: HTMLTextAreaElement) {
-    el.style.height = "auto";
-    // A host min-height floors scrollHeight (the hero composer sets 4.5rem),
-    // so an empty box would report its minimum and read as already wrapped.
-    // Measure the content with the floor lifted, then hand the box back.
-    const ownMinHeight = el.style.minHeight;
-    el.style.minHeight = "0";
-    const contentHeight = el.scrollHeight;
-    el.style.minHeight = ownMinHeight;
+    const contentHeight = measureContentHeight(el);
     el.style.height = `${contentHeight}px`;
-    onMultilineChangeRef.current?.(isWrapped(el, contentHeight));
+
+    let wrapped: boolean;
+    if (isMultilineRef.current && singleRowWidthRef.current !== null) {
+      const ownWidth = el.style.width;
+      el.style.width = `${singleRowWidthRef.current}px`;
+      wrapped = isWrapped(el, measureContentHeight(el));
+      el.style.width = ownWidth;
+      el.style.height = `${contentHeight}px`;
+    } else {
+      const width = parseFloat(getComputedStyle(el).width);
+      singleRowWidthRef.current = Number.isFinite(width) ? width : null;
+      wrapped = isWrapped(el, contentHeight);
+    }
+    if (wrapped === isMultilineRef.current) return;
+    isMultilineRef.current = wrapped;
+    onMultilineChangeRef.current?.(wrapped);
   }
 
   // Resize when value changes externally (e.g. a guided prompt dropped in,
