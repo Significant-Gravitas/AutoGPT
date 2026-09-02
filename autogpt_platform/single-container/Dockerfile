@@ -238,6 +238,7 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FORCE_FLAG_GRAPHITI_MEMORY=true \
+    SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
 WORKDIR /app/autogpt_platform/backend
