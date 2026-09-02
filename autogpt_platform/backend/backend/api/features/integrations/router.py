@@ -77,6 +77,7 @@ from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import (
     ExpertRunPausedError,
+    GraphNotAccessibleError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -1314,11 +1315,19 @@ async def _execute_webhook_preset_trigger(
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+            f"deleted graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
             preset.graph_id, webhook.user_id, webhook_id
+        )
+    except GraphNotAccessibleError as e:
+        # Permanent, unlike the transient failures below: every future
+        # delivery fails the same way while the preset still reads as Active.
+        logger.error(
+            f"Webhook #{webhook_id} preset #{preset.id} is permanently blocked: "
+            f"user #{webhook.user_id} may not execute graph "
+            f"#{preset.graph_id} v{preset.graph_version}: {e}"
         )
     except Exception:
         logger.exception(

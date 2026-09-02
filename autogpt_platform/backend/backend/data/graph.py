@@ -1353,8 +1353,8 @@ async def get_graph(
     themselves: the executor, and the marketplace install/download paths,
     which validate the StoreListingVersion instead.
 
-    See also: `get_graph_as_admin()` which bypasses ownership and marketplace
-    checks for admin-only routes.
+    See also: `get_graph_as_admin()`, which bypasses this check entirely for
+    admin-only routes.
 
     Returns `None` if the record is not found or not accessible.
     """
@@ -1423,6 +1423,7 @@ SUBMITTED_TO_MARKETPLACE: Final = (
     SubmissionStatus.APPROVED,
     SubmissionStatus.REJECTED,
 )
+_SUBMITTED_STATUSES: Final = list(SUBMITTED_TO_MARKETPLACE)
 
 
 def graph_in_library_filter(
@@ -1443,7 +1444,13 @@ def graph_in_library_filter(
         "AgentGraph": {
             "is": {
                 "StoreListingVersions": {
-                    "some": {"submissionStatus": {"in": list(SUBMITTED_TO_MARKETPLACE)}}
+                    # agentGraphId is redundant -- the relation already pins
+                    # (id, version) -- but it gives the subquery an indexed
+                    # predicate instead of a scan over every listing version.
+                    "some": {
+                        "agentGraphId": graph_id,
+                        "submissionStatus": {"in": _SUBMITTED_STATUSES},
+                    }
                 }
             }
         },
@@ -1672,12 +1679,14 @@ async def delete_graph(
 
 
 async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
+    # Same membership question as the authorization predicates: an archived
+    # agent still runs, and falling back to defaults here would silently turn
+    # the user's sensitive_action_safe_mode back off.
     lib = await LibraryAgent.prisma().find_first(
         where={
             "userId": user_id,
             "agentGraphId": graph_id,
             "isDeleted": False,
-            "isArchived": False,
         },
         order={"agentGraphVersion": "desc"},
     )
@@ -1709,7 +1718,7 @@ async def validate_graph_execution_permissions(
        version was submitted to the marketplace (`graph_in_library_filter()`)
     3. It is published in the marketplace and is executed as a sub-agent.
        This is the only case where execute is allowed without read; see
-       SECRT-1125 and the invariant note at step 3.
+       SECRT-1125 and the INVARIANT comment in the body below.
 
     Args:
         graph_id: The ID of the graph to check
@@ -1723,7 +1732,7 @@ async def validate_graph_execution_permissions(
         GraphNotInLibraryError: If the graph is not in the user's library (deleted).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
-    graph, library_agent = await asyncio.gather(
+    graph, library_agent, any_live_library_entry = await asyncio.gather(
         AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
         ),
@@ -1732,6 +1741,16 @@ async def validate_graph_execution_permissions(
         LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, graph_version)
         ),
+        # Only the owner branch reads this, but an owner running their own
+        # unpublished agent never matches the filter above, so fetching it
+        # here keeps the common case at one round trip instead of two.
+        LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            }
+        ),
     )
 
     # Step 1: Check if user owns this graph
@@ -1739,21 +1758,11 @@ async def validate_graph_execution_permissions(
 
     # Step 2: Check if the exact graph version is readable from the library.
     version_readable_from_library = library_agent is not None
-    owner_has_live_library_entry = version_readable_from_library
-    if user_owns_graph and not version_readable_from_library:
-        # Owners are allowed to execute a new version as long as some live
-        # library entry still exists for the graph. Non-owners stay
-        # version-specific.
-        owner_has_live_library_entry = (
-            await LibraryAgent.prisma().find_first(
-                where={
-                    "userId": user_id,
-                    "agentGraphId": graph_id,
-                    "isDeleted": False,
-                }
-            )
-            is not None
-        )
+    # Owners may execute a new version while some live entry for the graph
+    # remains; non-owners stay version-specific.
+    owner_has_live_library_entry = version_readable_from_library or (
+        bool(user_owns_graph) and any_live_library_entry is not None
+    )
 
     # Step 3: Apply permission logic
     # INVARIANT: execution must never be more permissive than read access
@@ -1776,7 +1785,7 @@ async def validate_graph_execution_permissions(
     ):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
-    # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
     # 2. Check if graph is suspended/disabled (future)

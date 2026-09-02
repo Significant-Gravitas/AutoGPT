@@ -1690,6 +1690,11 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 # 2. Runnable graph: that readable entry OR owner fallback to any live library
 #    entry for the graph OR sub-graph exception
 #
+# Both library lookups are issued in one asyncio.gather, so LibraryAgent
+# find_first is awaited twice on every call: [0] is the strict read predicate,
+# [1] the loose owner fallback. The fallback is only consulted for owners --
+# reading it for a non-owner would grant cross-version execution.
+#
 # INVARIANT: gate 1 must never be looser than get_graph()'s read rule. The one
 # exception is SECRT-1125 -- a marketplace-published graph runs as a sub-agent
 # without read, so the caller can't reconstruct a non-public graph from it.
@@ -1742,7 +1747,9 @@ async def test_validate_graph_execution_permissions_library_member_same_version_
         )
 
     mock_is_published.assert_not_awaited()
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
     # The alignment itself: execute queries the read gate's own predicate, so
     # it cannot be looser than read. Everything the read tests prove about
@@ -1754,9 +1761,9 @@ async def test_validate_graph_execution_permissions_library_member_same_version_
 async def test_validate_graph_execution_permissions_library_member_never_submitted_denied() -> (
     None
 ):
-    """Library membership alone no longer grants execution. This is the gap the
-    alignment closes: before, a never-submitted version 404'd on read but still
-    ran, and the user paid for a run whose results they could never open."""
+    """Library membership alone does not grant execution: the version must also
+    have been submitted. Execution is never more permissive than read, so a
+    version the user cannot open is a version they cannot run."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
     graph_version = 2
@@ -1814,7 +1821,9 @@ async def test_validate_graph_execution_permissions_owner_same_version_in_librar
         )
 
     mock_is_published.assert_not_awaited()
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
 
 
@@ -1948,6 +1957,42 @@ async def test_validate_graph_execution_permissions_owner_previous_archived_libr
         "agentGraphId": graph_id,
         "isDeleted": False,
     }, "archiving hides an agent, it must not revoke the owner's run rights"
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_non_owner_other_version_denied() -> (
+    None
+):
+    """The owner fallback is fetched for everyone but must be read only for
+    owners. A non-owner holding a live entry for a *different* version of a
+    marketplace graph stays version-specific and is denied."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    graph_version = 2
+    mock_graph = MagicMock(userId="creator-user-id")
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
+        # Strict predicate misses this version; the loose fallback finds the
+        # user's entry for another version of the same graph.
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[None, MagicMock(name="OtherVersionLibraryAgent")]
+        )
+
+        with pytest.raises(GraphNotInLibraryError):
+            await validate_graph_execution_permissions(
+                user_id=requester_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            )
 
 
 @pytest.mark.asyncio
@@ -2104,7 +2149,9 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
             )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
 
 
