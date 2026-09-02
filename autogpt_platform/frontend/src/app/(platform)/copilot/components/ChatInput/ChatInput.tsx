@@ -32,8 +32,7 @@ import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
-import { ModelToggleButton } from "./components/ModelToggleButton";
-import { LLMRouteSelector } from "./components/LlmRouteSelector";
+import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
@@ -94,8 +93,7 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
 }: Props) {
-  const { copilotLlmModel, setCopilotLlmModel, isDryRun, setIsDryRun } =
-    useCopilotUIStore();
+  const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
   // Fast/Thinking control it was created for is gone. Renaming it means an
   // LaunchDarkly change, so it is left until the combined picker restructures
@@ -106,21 +104,6 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
-
-  function handleToggleModel() {
-    const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
-    setCopilotLlmModel(next);
-    toast({
-      title:
-        next === "advanced"
-          ? "Switched to Advanced model"
-          : "Switched to Balanced model",
-      description:
-        next === "advanced"
-          ? "Using the highest-capability model."
-          : "Using the balanced default model.",
-    });
-  }
 
   function handleToggleDryRun() {
     const next = !isDryRun;
@@ -238,7 +221,6 @@ export function ChatInput({
 
   // Narrows to string, so the render site needn't re-test sessionId.
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
-
   const canSend =
     !disabled &&
     (!!value.trim() || hasAttachments) &&
@@ -315,7 +297,11 @@ export function ChatInput({
               disabled={isBusy}
             />
             {recipientPicker}
-            {!hasSession && <LLMRouteSelector />}
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. */}
+            {(!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
@@ -350,12 +336,6 @@ export function ChatInput({
             align="inline-end"
             className="order-none ml-auto gap-1 py-1 pr-1.5"
           >
-            {showAdvancedComposerControls && !isStreaming && (
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
-            )}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
