@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # Manual E2E Test
@@ -18,6 +18,11 @@ a billing-test trap that produces false passes, safer process cleanup, and a
 mock-provider pattern for deterministic $0 testing. Learned on
 [#14206](https://github.com/Significant-Gravitas/AutoGPT/pull/14206) — see the
 [evidence comment](https://github.com/Significant-Gravitas/AutoGPT/pull/14206#issuecomment-5511429524).
+**2.2.1** — corrects two claims from 2.2.0 that didn't survive live-stack
+verification (JWKS does **not** rotate on a frontend restart; the local
+Postgres port is `5432`, not `54322`) and hardens the auth setup (explicit
+password-length/allowlist/rate-limit failure modes, fail-fast on an empty
+token, password kept out of process args).
 
 ## Critical Requirements
 
@@ -61,10 +66,12 @@ LLM block cost filters key on the *platform-owned* credential id. A run made
 with the test user's own API key bills nothing by design, so a credits
 before/after assertion silently passes on zero deltas either way. Any test
 that verifies credit reconciliation MUST use the system credential, not a
-user-supplied key. Related: Ollama models have `MODEL_COST` set but
-`TOKEN_COST=None`, so pre/post-flight cost deltas are always 0 for them
-regardless of credential — never use an Ollama model to test credit
-reconciliation, pick any hosted model billed through the system credential.
+user-supplied key. Related: Ollama block entries are configured with an
+explicit `$0` run-based cost (`BlockCostType.RUN, cost_amount=0` in
+`block_cost_config.py`), not a token-metered one — so pre/post-flight cost
+deltas are always 0 for them regardless of credential. Never use an Ollama
+model to test credit reconciliation; pick any hosted model billed through the
+system credential instead.
 
 When testing features that depend on specific states (rate limits, credits, quotas):
 
@@ -359,15 +366,35 @@ auth moved from Supabase to Better Auth (see 3h) and two vars are easy to
 miss because nothing fails loudly without them, it just 401s later:
 
 - `$BACKEND_DIR/.env` needs `JWT_JWKS_URL` — the Better Auth JWKS endpoint the
-  backend verifies tokens against. Value shape: `backend/.env.default:42`
-  (`http://localhost:3000/api/auth/jwks` for native/local runs).
+  backend verifies tokens against. The `localhost:3000` value below is for
+  **native mode only**. In docker mode it's harmless to have it in `.env`
+  because `docker-compose.platform.yml` overrides it with the
+  Compose-reachable `http://frontend:3000/api/auth/jwks` — but if you ever run
+  the backend against this `.env` value directly (bypassing Compose), a
+  `localhost` value inside a container resolves to itself, not the frontend,
+  and every call 401s with no other symptom.
 - `$FRONTEND_DIR/.env` needs its **own** `DATABASE_URL` — Better Auth runs
   inside the Next.js app and talks to Postgres directly, it does not go
-  through the backend. See `frontend/.env.default` for the local shape.
+  through the backend. **Derive it from `$BACKEND_DIR/.env`'s `DB_USER` /
+  `DB_PASS` / `DB_PORT` / `DB_NAME` rather than copying
+  `frontend/.env.default`'s placeholder verbatim** — the placeholder happens
+  to match the stock local defaults, but if `backend/.env`'s `DB_PASS` was
+  ever customized (rotated secret, non-default port), copying the placeholder
+  silently points Better Auth at the wrong database instead of the one the
+  rest of the stack actually uses.
 
 ```bash
-grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env
-grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env || grep '^DATABASE_URL=' $FRONTEND_DIR/.env.default >> $FRONTEND_DIR/.env
+grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
+
+if ! grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env; then
+  DB_USER=$(grep '^DB_USER=' $BACKEND_DIR/.env | cut -d= -f2)
+  DB_PASS=$(grep '^DB_PASS=' $BACKEND_DIR/.env | cut -d= -f2)
+  DB_PORT=$(grep '^DB_PORT=' $BACKEND_DIR/.env | cut -d= -f2)
+  DB_NAME=$(grep '^DB_NAME=' $BACKEND_DIR/.env | cut -d= -f2)
+  : "${DB_USER:?}" "${DB_PASS:?}" "${DB_PORT:?}" "${DB_NAME:?}"  # fail loudly, not with a silently-empty URL
+  echo "DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:${DB_PORT}/${DB_NAME}" >> $FRONTEND_DIR/.env
+fi
+echo "Frontend DATABASE_URL: $(grep '^DATABASE_URL=' $FRONTEND_DIR/.env | sed -E 's#(://[^:]+:)[^@]+#\1***#')"  # redacted — a bad host/port/db should be obvious here without echoing the password into the run log
 ```
 
 ### 3b. Configure copilot authentication
@@ -431,20 +458,22 @@ done
 `pkill -f "python.*backend"` (or anything matching by worktree cwd) is too
 coarse on a host running several worktrees — it has taken out the frontend
 and a mock server sitting on other ports along with the intended backend
-process. Target the pid actually holding each port instead:
+process. Target the pid actually holding each port instead — this only kills
+whoever is bound to that specific port, which is narrower than a pattern
+match, but **it is not worktree isolation**: if a sibling worktree's own dev
+server happens to be using one of these ports (e.g. its frontend also on
+:3000), this kills that too. `lsof` tells you who holds the port, not who
+owns it — a `docker-proxy` pid there means a compose stack owns it.
 
 ```bash
 # Free app ports one at a time — errors per port are ignored (port may simply
-# be unused). This only kills the process holding that specific port, so it
-# can't collide with an unrelated sibling worktree's processes.
+# be unused). `xargs -r` is GNU-only (macOS xargs rejects -r); the `[ -n ]`
+# guard below is the portable equivalent.
 for port in 3000 8006 8001 8002 8005 8008; do
-  lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
+  pids=$(lsof -ti :$port -sTCP:LISTEN 2>/dev/null)
+  [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
 done
 ```
-
-Killing the process on :3000 restarts the frontend and therefore rotates the
-Better Auth JWKS keypair (see 3h) — re-fetch `$TOKEN` after this step, not
-just after starting services back up.
 
 ### 3e-native. Run the app natively (PREFERRED for iterative dev)
 
@@ -550,36 +579,35 @@ now, not Kong on :8000 — and `/api/auth/token` mints a backend-API JWT from a
 **session cookie**, it does not accept credentials directly, so sign-in has to
 happen first to get that cookie.
 
+Better Auth's default minimum password length is **12 characters** — shorter
+values fail signup with `PASSWORD_TOO_SHORT` and every step below degrades
+silently into an empty token unless you check for it.
+
 ```bash
 COOKIE_JAR=$(mktemp)
-SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p,name:"PR Test User"}')
+trap 'rm -f "$COOKIE_JAR"' EXIT  # cleans up on early exit too, not just the happy path
+AUTH_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p,name:"PR Test User"}')
 
-# Signup (idempotent — returns an error body if the account already exists;
-# treat that as success and fall through to sign-in)
-curl -s -X POST 'http://localhost:3000/api/auth/sign-up/email' \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD" > /dev/null
+# Signup (idempotent — a real error body means "already exists" only if you
+# check; -d passes the payload as an argument, which leaks the password into
+# process listings, so pipe it through stdin with --data-binary @- instead).
+SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s -X POST 'http://localhost:3000/api/auth/sign-up/email' \
+  -H 'Content-Type: application/json' --data-binary @-)
+echo "$SIGNUP_RESULT" | grep -qi '"code"' && echo "Signup: $SIGNUP_RESULT"  # log it — "already exists" and "password too short" look identical downstream otherwise
 
 # Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR
-curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD" > /dev/null
+printf '%s' "$AUTH_PAYLOAD" | curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
+  -H 'Content-Type: application/json' --data-binary @- > /dev/null
 
 # Mint a backend-API JWT from the session cookie
 TOKEN=$(curl -s -b "$COOKIE_JAR" 'http://localhost:3000/api/auth/token' | jq -r '.token // ""')
-rm -f "$COOKIE_JAR"
+[ -n "$TOKEN" ] || { echo "ERROR: auth setup failed — TOKEN is empty. Check password length (min 12 chars), AUTH_ALLOW_NEW_ACCOUNTS, AUTH_SIGNUP_ALLOWLIST, and rate limiting on /api/auth/*."; exit 1; }
 ```
 
 **Use this token for ALL API calls:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 ```
-
-**Restarting the frontend mid-run rotates the Better Auth JWKS keypair and
-invalidates every JWT already issued** — the backend verifies tokens against
-whatever `JWT_JWKS_URL` currently serves (see 3a), so a stale `$TOKEN` starts
-401ing right after a frontend restart with no other symptom. Re-run the token
-fetch above after any frontend restart, not just after a backend one.
 
 ### 3i. Disable onboarding for test user
 
@@ -671,40 +699,41 @@ For timeout/latency/error-handling behavior that would otherwise need a real
 LLM call, point the OpenAI SDK at a local mock instead — it honours
 `OPENAI_BASE_URL`, so a small local Responses-API server can stand in for the
 provider while everything downstream (executor, credentials, billing) still
-runs for real. This proved out 4/4 test items at $0 in this run.
+runs for real. This proved out 4/4 test items at $0 in this run. **This
+covers LLM blocks (`providers.py`) and the Codex block** — the copilot's own
+LLM calls go through `backend/util/clients.py`, which passes `base_url`
+explicitly and does not read `OPENAI_BASE_URL`, so this trick doesn't reach
+copilot chat.
 
 ```bash
 # In $BACKEND_DIR/.env, point the OpenAI provider at a local mock server
 # that implements the subset of the Responses API you need (e.g. delayed
-# responses to test timeout handling, or a 500 to test error surfacing):
+# responses to test timeout handling, or a 500 to test error surfacing).
+# Restart the backend after changing this — it's read at startup.
 OPENAI_BASE_URL=http://localhost:{mock_port}/v1
 ```
 
-Only the transport is faked — the credential lookup, execution graph, and
-billing path are exercised unmodified, so this is safe to use for anything
-that isn't itself testing model *output* quality.
+**Use a throwaway/dummy provider credential with the mock, never the system
+credential** — only the transport is faked, so the credential lookup still
+runs for real and whatever key you configure gets sent as a header to your
+local mock server. A dummy key also means the mock server's logs (which may
+end up pasted into a PR comment) can't leak a real one. Aside from the
+credential, this is safe to use for anything that isn't itself testing model
+*output* quality.
+
+In **docker mode**, `localhost` inside the backend container isn't reachable
+from your host-side mock server — point `OPENAI_BASE_URL` at a
+Compose-reachable hostname instead (or `host.docker.internal` with a
+`host-gateway` entry), and set it before `docker compose up` or restart the
+affected services after changing `$BACKEND_DIR/.env`.
+
+Keep the mock server's own response timeout short — the OpenAI SDK's default
+client timeout is 600s, so a hung mock stalls every LLM-backed block for that
+long instead of failing fast.
 
 ### Browser testing with agent-browser
 
-**If `agent-browser` isn't installed on the host, don't let `npx` download it.**
-Use `@playwright/test` against the Chromium already installed in the
-frontend's `node_modules` instead — zero downloads, and it gives finer
-control over timing (`waitForSelector`, explicit timeouts) than agent-browser's
-CLI. Keep agent-browser as the primary tool wherever it's already present;
-this is a proven fallback, not a replacement:
-
-```bash
-cd $FRONTEND_DIR && node -e "
-const { chromium } = require('@playwright/test');
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  await page.goto('http://localhost:3000/login');
-  await page.screenshot({ path: '$RESULTS_DIR/01-login.png' });
-  await browser.close();
-})();
-"
-```
+Primary tool — use this wherever `agent-browser` is installed:
 
 ```bash
 # Close any existing session
@@ -749,6 +778,33 @@ agent-browser --session-name pr-test snapshot | grep "text:"
 - `/library` — Agent library (for testing listing/import features)
 - `/library/agents/{id}` — Agent detail with run history
 - `/marketplace` — Marketplace
+
+**Fallback — if `agent-browser` isn't installed on the host, don't let `npx`
+download it.** Use `@playwright/test` instead — the package is already in the
+frontend's `node_modules`, but **the Chromium binary itself is not**;
+Playwright caches browser binaries separately (`~/.cache/ms-playwright/` by
+default) and nothing installs them automatically. Run
+`pnpm exec playwright install chromium` once per host if `chromium.launch()`
+fails looking for an executable, then use it for finer control over timing
+(`waitForSelector`, explicit timeouts) than agent-browser's CLI gives you:
+
+```bash
+pnpm exec playwright install chromium 2>&1 | grep -v "^$"  # no-op if already installed
+
+cd $FRONTEND_DIR && node -e "
+const { chromium } = require('@playwright/test');
+(async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('http://localhost:3000/login');
+    await page.screenshot({ path: '$RESULTS_DIR/01-login.png' });
+  } finally {
+    await browser.close();  // otherwise a goto timeout leaks a headless Chromium process
+  }
+})();
+"
+```
 
 ### Checking logs
 
@@ -1196,9 +1252,14 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 
 ## Known issues and workarounds
 
-### Problem: "Database error finding user" on signup
-**Cause:** Supabase auth service schema cache is stale after migration.
-**Fix:** `docker restart supabase-auth && sleep 5` then retry signup.
+### Problem: Signup/sign-in fails with no useful error
+**Cause:** Better Auth's default minimum password length is 12 characters, or
+`AUTH_ALLOW_NEW_ACCOUNTS=false` / `AUTH_SIGNUP_ALLOWLIST` is blocking new
+accounts, or you're rate-limited after repeated signup attempts (`429 Too many
+requests`) — all three degrade into an empty `$TOKEN` further down if you
+don't check the raw response (see 3h).
+**Fix:** Log the raw signup/sign-in response body before minting the token,
+not just the token itself.
 
 ### Problem: Copilot returns auth errors in subscription mode
 **Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but `CLAUDE_CODE_OAUTH_TOKEN` is not set or expired.
@@ -1226,7 +1287,7 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 **Fix:** `pkill -9 -f "agent-browser|chromium|Chrome for Testing" && sleep 2`, then reopen the browser with a fresh `--session-name`. If still failing, verify via `agent-browser eval` + `agent-browser snapshot` (DOM state) instead of relying on PNGs — the feature under test is the same.
 
 ### Problem: Services not starting after `docker compose up`
-**Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.
+**Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If the `db` container isn't healthy: `docker restart autogpt_platform-db-1 && sleep 10`.
 
 ### Problem: Docker uses cached layers with old code (PR changes not visible)
 **Cause:** `docker compose up --build` reuses cached `COPY` layers from previous builds. If the PR branch changes Python files but the previous build already cached that layer from `dev`, the container runs `dev` code.
@@ -1235,7 +1296,3 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 ### Problem: `agent-browser open` loses login session
 **Cause:** Without session persistence, `agent-browser open` starts fresh.
 **Fix:** Use `--session-name pr-test` on ALL agent-browser commands. This auto-saves/restores cookies and localStorage across navigations. Alternatively, use `agent-browser eval "window.location.href = '...'"` to navigate within the same context.
-
-### Problem: Supabase auth returns "Database error querying schema"
-**Cause:** The database schema changed (migration ran) but supabase-auth has a stale schema cache.
-**Fix:** `docker restart supabase-db && sleep 10 && docker restart supabase-auth && sleep 8`. If user data was lost, re-signup.
