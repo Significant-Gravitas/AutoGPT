@@ -21,14 +21,19 @@ from typing import Optional
 # =============================================================================
 
 
-def main():
-    """Main entry point for PR overlap detection."""
+def parse_args(argv=None):
+    """Parse command-line arguments."""
     import argparse
 
     parser = argparse.ArgumentParser(
         description="Detect PR overlaps and potential merge conflicts"
     )
-    parser.add_argument("pr_number", type=int, help="PR number to check")
+    parser.add_argument("pr_number", nargs="?", type=int, help="PR number to check")
+    parser.add_argument(
+        "--ref",
+        dest="git_ref",
+        help="Git ref to compare with the base branch without posting comments",
+    )
     parser.add_argument(
         "--base", default=None, help="Base branch (default: auto-detect from PR)"
     )
@@ -46,22 +51,42 @@ def main():
         "--dry-run", action="store_true", help="Don't post comments, just print"
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if (args.pr_number is None) == (args.git_ref is None):
+        parser.error("provide exactly one of pr_number or --ref")
+
+    if args.git_ref:
+        args.dry_run = True
+        args.skip_merge_test = True
+
+    return args
+
+
+def main():
+    """Main entry point for PR overlap detection."""
+    args = parse_args()
 
     owner, repo = get_repo_info()
-    print(f"Checking PR #{args.pr_number} in {owner}/{repo}")
+    if args.git_ref:
+        base_branch = args.base or "dev"
+        current_pr = fetch_ref_details(
+            args.git_ref, base_branch, owner=owner, repo=repo
+        )
+        print(f"Checking ref {current_pr.head_ref} in {owner}/{repo}")
+        print(f"Resolved commit: {current_pr.title}")
+    else:
+        print(f"Checking PR #{args.pr_number} in {owner}/{repo}")
+        current_pr = fetch_pr_details(args.pr_number)
+        base_branch = args.base or current_pr.base_ref
+        print(f"PR #{current_pr.number}: {current_pr.title}")
 
-    # Get current PR info
-    current_pr = fetch_pr_details(args.pr_number)
-    base_branch = args.base or current_pr.base_ref
-
-    print(f"PR #{current_pr.number}: {current_pr.title}")
     print(f"Base branch: {base_branch}")
     print(f"Files changed: {len(current_pr.files)}")
 
     # Find overlapping PRs
     overlaps, all_changes = find_overlapping_prs(
-        owner, repo, base_branch, current_pr, args.pr_number, args.skip_merge_test
+        owner, repo, base_branch, current_pr, current_pr.number, args.skip_merge_test
     )
 
     if not overlaps:
@@ -70,12 +95,12 @@ def main():
 
     # Generate and post report
     comment = format_comment(
-        overlaps, args.pr_number, current_pr.changed_ranges, all_changes
+        overlaps, current_pr.number, current_pr.changed_ranges, all_changes
     )
 
     if args.dry_run:
         print("\n" + "=" * 60)
-        print("COMMENT PREVIEW:")
+        print("OVERLAP REPORT:" if args.git_ref else "COMMENT PREVIEW:")
         print("=" * 60)
         print(comment)
     else:
@@ -124,6 +149,73 @@ def fetch_pr_details(pr_number: int) -> "PullRequest":
     pr.changed_ranges = parse_diff_ranges(diff)
 
     return pr
+
+
+def fetch_ref_details(
+    git_ref: str, base_branch: str, owner: str, repo: str
+) -> "PullRequest":
+    """Build pull-request-like details for a local Git ref."""
+    resolved_ref = resolve_git_commit(git_ref)
+    resolved_base = resolve_base_commit(base_branch)
+    diff_range = f"{resolved_base}...{resolved_ref}"
+
+    files_result = run_git(
+        ["diff", "--name-only", "--diff-filter=ACDMRTUXB", diff_range, "--"],
+        check=False,
+    )
+    if files_result.returncode != 0:
+        print(
+            f"Could not list changes for {git_ref}: {files_result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    diff_result = run_git(
+        ["diff", "--no-ext-diff", "--unified=0", diff_range, "--"],
+        check=False,
+    )
+    if diff_result.returncode != 0:
+        print(
+            f"Could not diff {git_ref}: {diff_result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return PullRequest(
+        number=0,
+        title=resolved_ref,
+        author="workflow_dispatch",
+        url=f"https://github.com/{owner}/{repo}/commit/{resolved_ref}",
+        head_ref=git_ref,
+        base_ref=base_branch,
+        files=[path for path in files_result.stdout.splitlines() if path],
+        changed_ranges=parse_diff_ranges(diff_result.stdout),
+    )
+
+
+def resolve_git_commit(git_ref: str) -> str:
+    """Resolve a Git ref to a commit SHA or exit with a useful error."""
+    result = run_git(["rev-parse", "--verify", f"{git_ref}^{{commit}}"], check=False)
+    if result.returncode != 0:
+        print(
+            f"Could not resolve Git ref {git_ref}: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result.stdout.strip()
+
+
+def resolve_base_commit(base_branch: str) -> str:
+    """Resolve the base branch, preferring the remote-tracking ref."""
+    for candidate in (f"origin/{base_branch}", base_branch):
+        result = run_git(
+            ["rev-parse", "--verify", f"{candidate}^{{commit}}"], check=False
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+
+    print(f"Could not resolve base branch {base_branch}", file=sys.stderr)
+    sys.exit(1)
 
 
 def find_overlapping_prs(
@@ -335,9 +427,12 @@ def analyze_pr_overlap(
     # Test for actual merge conflicts if we have line overlaps
     if line_overlaps and not skip_merge_test:
         print(f"Testing merge conflict with PR #{other_pr.number}...", flush=True)
-        has_conflict, conflict_files, conflict_details, error_type = (
-            test_merge_conflict(owner, repo, base_branch, current_pr, other_pr)
-        )
+        (
+            has_conflict,
+            conflict_files,
+            conflict_details,
+            error_type,
+        ) = test_merge_conflict(owner, repo, base_branch, current_pr, other_pr)
         overlap.has_merge_conflict = has_conflict
         overlap.conflict_files = conflict_files
         overlap.conflict_details = conflict_details

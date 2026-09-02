@@ -6,6 +6,7 @@ on:
     branches:
       - dev
       - master
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,7 +34,12 @@ jobs:
       - name: Run overlap detection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Always succeed - this check informs contributors, it shouldn't block merging
-        continue-on-error: true
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          python .github/scripts/detect_overlaps.py ${{ github.event.pull_request.number }}
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python .github/scripts/detect_overlaps.py "$PR_NUMBER"
+          else
+            python .github/scripts/detect_overlaps.py --ref "$TARGET_SHA" --base dev --dry-run --skip-merge-test
+          fi

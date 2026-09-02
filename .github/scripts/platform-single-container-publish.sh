@@ -173,10 +173,6 @@ resolve_publication() {
   publish_latest=false
   publication_name="Single-container SHA image published"
 
-  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" == "refs/heads/dev" ]]; then
-    return
-  fi
-
   if [[ "$GITHUB_EVENT_NAME" == "release" && "$GITHUB_REF" == "refs/tags/${RELEASE_TAG}" ]]; then
     if [[ ! "$RELEASE_TAG" =~ ^autogpt-platform-beta-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
       echo "refusing unsupported release tag: $RELEASE_TAG" >&2
@@ -194,18 +190,6 @@ resolve_publication() {
 }
 
 publication_allowed() {
-  if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-    if [[ "$PUBLISH_REQUESTED" != "true" ]]; then
-      printf 'false\n'
-      return
-    fi
-    if ! resolve_publication; then
-      return 1
-    fi
-    printf 'true\n'
-    return
-  fi
-
   if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
     if [[ "$RELEASE_PRERELEASE" != "false" ]]; then
       printf 'false\n'
@@ -695,12 +679,12 @@ self_test() {
   assert_equal 3 "$actual" "confirmed absent retry count"
   rm -f "$tag_retry_state"
 
-  DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
+  if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-    RELEASE_TAG='' resolve_publication
-  assert_equal docker.io/significantgravitas/autogpt:sha-abc123 "$immutable_ref" "dev immutable tag"
-  assert_equal '' "$release_ref" "dev release tag"
-  assert_equal false "$publish_latest" "dev latest policy"
+    RELEASE_TAG='' resolve_publication 2>/dev/null; then
+    echo "workflow dispatch publication was accepted" >&2
+    return 1
+  fi
 
   release_manifest_digest=""
   ensure_release_tag sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -726,26 +710,20 @@ self_test() {
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-      PUBLISH_REQUESTED=true RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
+      RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
   )"
-  assert_equal true "$actual" "dev publication authorization"
-  actual="$(
-    DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
-      GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-      PUBLISH_REQUESTED=false RELEASE_PRERELEASE='' RELEASE_TAG='' publication_allowed
-  )"
-  assert_equal false "$actual" "validation-only dispatch authorization"
+  assert_equal false "$actual" "dispatch publication authorization"
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
-      GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+      GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
       RELEASE_TAG=autogpt-platform-beta-v0.7.1 publication_allowed
   )"
   assert_equal true "$actual" "release publication authorization"
   actual="$(
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
       GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7.1 \
-      GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=true \
+      GITHUB_SHA=abc123 RELEASE_PRERELEASE=true \
       RELEASE_TAG=autogpt-platform-beta-v0.7.1 publication_allowed
   )"
   assert_equal false "$actual" "prerelease publication authorization"
@@ -754,9 +732,9 @@ self_test() {
   GITHUB_OUTPUT="$authorization_output" \
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/dev GITHUB_SHA=abc123 \
-    PUBLISH_REQUESTED=true RELEASE_PRERELEASE='' RELEASE_TAG='' authorize
+    RELEASE_PRERELEASE='' RELEASE_TAG='' authorize
   actual="$(<"$authorization_output")"
-  assert_equal allowed=true "$actual" "authorization output"
+  assert_equal allowed=false "$actual" "dispatch authorization output"
   : >"$authorization_output"
 
   if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
@@ -767,7 +745,7 @@ self_test() {
   fi
   if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7 \
-    GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+    GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
     RELEASE_TAG=autogpt-platform-beta-v0.7 publication_allowed 2>/dev/null; then
     echo "malformed release tag was authorized" >&2
     return 1
@@ -775,7 +753,7 @@ self_test() {
   if GITHUB_OUTPUT="$authorization_output" \
     DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=release GITHUB_REF=refs/tags/autogpt-platform-beta-v0.7 \
-    GITHUB_SHA=abc123 PUBLISH_REQUESTED='' RELEASE_PRERELEASE=false \
+    GITHUB_SHA=abc123 RELEASE_PRERELEASE=false \
     RELEASE_TAG=autogpt-platform-beta-v0.7 authorize 2>/dev/null; then
     echo "malformed release tag produced an authorization output" >&2
     return 1
