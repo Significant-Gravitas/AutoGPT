@@ -8,10 +8,8 @@ import {
   postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import {
-  getGetV1ListCredentialsQueryKey,
-  useGetV1ListCredentials,
-} from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOAuthLoginResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
@@ -22,9 +20,10 @@ import {
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
 import { openOAuthPopup } from "@/lib/oauth-popup";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
 interface Props {
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 type Phase = "form" | "manual-token";
@@ -68,9 +67,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
   }, [authSchemeTouched, savedAuthScheme, trimmedToken]);
 
   async function invalidateCredentials() {
-    await queryClient.invalidateQueries({
-      queryKey: getGetV1ListCredentialsQueryKey(),
-    });
+    await invalidateConnectionQueries(queryClient);
   }
 
   async function handleConnect() {
@@ -115,19 +112,16 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
       const result = await promise;
 
-      const callbackResponse = await postV2ExchangeOauthCodeForMcpTokens({
+      const exchanged = await postV2ExchangeOauthCodeForMcpTokens({
         code: result.code,
         state_token,
       });
-      if (callbackResponse.status !== 200) {
-        throw getAPIResponseError(
-          callbackResponse.status,
-          callbackResponse.data,
-        );
+      if (exchanged.status !== 200) {
+        throw getAPIResponseError(exchanged.status, exchanged.data);
       }
 
       await invalidateCredentials();
-      onSuccess();
+      onSuccess(exchanged.data);
     } catch (e: unknown) {
       const message = getErrorMessage(e);
       if (message === "OAuth flow timed out") {
@@ -147,16 +141,16 @@ export function McpConnectPanel({ onSuccess }: Props) {
     setIsSubmitting(true);
 
     try {
-      const response = await postV2StoreABearerTokenForAnMcpServer({
+      const stored = await postV2StoreABearerTokenForAnMcpServer({
         server_url: trimmedUrl,
         token: prepareMCPAuthCredential(trimmedToken, authScheme),
       });
-      if (response.status !== 200) {
-        throw getAPIResponseError(response.status, response.data);
+      if (stored.status !== 200) {
+        throw getAPIResponseError(stored.status, stored.data);
       }
 
       await invalidateCredentials();
-      onSuccess();
+      onSuccess(stored.data);
     } catch (e: unknown) {
       setError(getErrorMessage(e));
     } finally {

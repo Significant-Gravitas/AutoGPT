@@ -1,0 +1,159 @@
+"use client";
+
+import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { LockIcon } from "@hugeicons/core-free-icons";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
+
+interface Props {
+  title: string;
+  subtitle?: string;
+  notes?: string[];
+  isSelected: boolean;
+  onSelect: () => void;
+  /**
+   * The accessible name, when the visible title alone would not identify the
+   * choice — a tier reads as "Balanced · sonnet-5" while showing the model on
+   * its own line, so the name a screen reader announces stays complete.
+   */
+  label?: string;
+  /** Shown beside the title, e.g. "Connected". */
+  badge?: string;
+  /** Why this cannot be chosen, and where to go to change that. */
+  lock?: { reason: string; href: string | null };
+  /** Identifies the row to the group's arrow-key handler. */
+  offerId?: string;
+  /**
+   * A radio group is one tab stop; only the active row takes it. Supplied by
+   * the group so Tab skips past the whole set rather than through it.
+   */
+  tabIndex?: number;
+}
+
+export function ChoiceRow({
+  title,
+  subtitle,
+  notes,
+  isSelected,
+  onSelect,
+  label,
+  lock,
+  badge,
+  offerId,
+  tabIndex,
+}: Props) {
+  if (lock) {
+    return (
+      <LockedRow title={title} subtitle={subtitle} notes={notes} lock={lock} />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={isSelected}
+      aria-label={label}
+      data-offer={offerId}
+      tabIndex={tabIndex}
+      onClick={onSelect}
+      className={cn(
+        "flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors",
+        "focus-visible:bg-muted focus-visible:outline-none",
+        isSelected ? "bg-muted/60" : "hover:bg-muted/40",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-[3px] flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border",
+          isSelected ? "border-primary" : "border-muted-foreground/50",
+        )}
+      >
+        {isSelected && (
+          <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="flex items-center gap-1.5">
+          <span className="text-[13px] font-semibold text-foreground">
+            {title}
+          </span>
+          {badge && (
+            <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
+              {badge}
+            </span>
+          )}
+        </span>
+        {subtitle && (
+          <span className="break-words text-[11px] leading-snug text-muted-foreground">
+            {subtitle}
+          </span>
+        )}
+        {notes?.map((note) => (
+          <span
+            key={note}
+            className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80"
+          >
+            {note}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+interface LockedProps {
+  title: string;
+  subtitle?: string;
+  notes?: string[];
+  lock: { reason: string; href: string | null };
+}
+
+/**
+ * Not a radio: this is not a choice, and offering it as one would invite a
+ * click that cannot do anything. It states what the connection is, why it is
+ * unavailable, and the one action that changes that.
+ */
+function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
+  return (
+    <div className="flex items-start gap-2.5 px-3 py-2">
+      <Icon
+        icon={LockIcon}
+        size={14}
+        aria-hidden
+        className="mt-[3px] flex-none text-muted-foreground/70"
+      />
+      <span className="flex min-w-0 flex-col">
+        <span className="text-[13px] font-semibold text-muted-foreground">
+          {title}
+        </span>
+        {subtitle && (
+          <span className="break-words text-[11px] leading-snug text-muted-foreground/80">
+            {subtitle}
+          </span>
+        )}
+        {notes?.map((note) => (
+          <span
+            key={note}
+            className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80"
+          >
+            {note}
+          </span>
+        ))}
+        <span className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">
+          {lock.reason}
+        </span>
+        {lock.href && (
+          <Link
+            href={lock.href}
+            className="mt-1 w-fit text-[11px] font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            See plans
+          </Link>
+        )}
+      </span>
+    </div>
+  );
+}

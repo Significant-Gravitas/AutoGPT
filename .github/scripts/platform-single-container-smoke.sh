@@ -580,41 +580,28 @@ assert_codex_runtime_contract() {
     --workdir /app/autogpt_platform/backend \
     "${CONTAINER_NAME}" \
     /app/autogpt_platform/backend/.venv/bin/python - <<'PY'
+import importlib.util
 import os
-import subprocess
 from pathlib import Path
 
-from backend.integrations.codex.runtime import (
-    CODEX_RUNTIME_VERSION,
-    assert_pinned_versions,
-    build_runtime_config,
-)
-from backend.integrations.codex.temporary_home import TemporaryCodexHome
+from backend.integrations.codex.http_client import API_BASE
+from backend.integrations.codex.http_session import CodexHttpSession  # noqa: F401
+from backend.integrations.oauth import DEVICE_HANDLERS_BY_NAME
 
 root = Path(os.environ["CODEX_TEMP_ROOT"])
 assert root == Path("/dev/shm/autogpt-codex")
-assert_pinned_versions()
-before = set(root.iterdir())
-with TemporaryCodexHome.create(root) as home:
-    config = build_runtime_config(home)
-    launch_args = config.launch_args_override
-    assert launch_args is not None
-    completed = subprocess.run(
-        [*launch_args[:3], "--version"],
-        env=config.env,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    output = completed.stdout + completed.stderr
-    assert completed.returncode == 0, output
-    assert CODEX_RUNTIME_VERSION in output, output
-    home_path = home.path
 
-assert not home_path.exists()
-assert set(root.iterdir()) == before
-print("codex-sdk-runtime-ok")
+# Codex reaches ChatGPT over HTTPS now. The bundled CLI was ~391 MB and the
+# single biggest thing this image carried for it, so assert it is really
+# absent rather than merely unused -- a transitive dependency could quietly
+# drag it back in.
+for banned in ("openai_codex", "codex_cli_bin"):
+    assert importlib.util.find_spec(banned) is None, banned
+
+assert API_BASE.startswith("https://"), API_BASE
+assert "codex" in DEVICE_HANDLERS_BY_NAME, sorted(DEVICE_HANDLERS_BY_NAME)
+
+print("codex-http-runtime-ok")
 PY
 }
 

@@ -6,9 +6,14 @@ import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
 import { PainPointsStep } from "./steps/PainPointsStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
+import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
 import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
-import { PAYWALL_FIRST_STEPS, useOnboardingWizardStore } from "./store";
+import {
+  PAYWALL_FIRST_STEPS,
+  SELF_HOST_STEPS,
+  useOnboardingWizardStore,
+} from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -19,6 +24,7 @@ export default function OnboardingPage() {
     isLoading,
     handlePreparingComplete,
     isPaymentEnabled,
+    isSelfHostConnectEnabled,
     isBrainDumpEnabled,
     steps,
     preparingStep,
@@ -64,6 +70,8 @@ export default function OnboardingPage() {
           currentStep === PAYWALL_FIRST_STEPS.subscription && (
             <SubscriptionStep />
           )}
+        {isSelfHostConnectEnabled &&
+          currentStep === SELF_HOST_STEPS.connect && <ConnectStep />}
         {currentStep === steps.welcome && <WelcomeStep />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints &&
