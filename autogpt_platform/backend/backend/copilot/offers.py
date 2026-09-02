@@ -19,6 +19,7 @@ from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
     ModelMode,
+    catalog_lookup,
     resolve_model_route,
 )
 from backend.copilot.transports import (
@@ -248,13 +249,26 @@ def _display_name(slug: str | None) -> str | None:
 
     The PRD labels tiers "Balanced · 5.6 Terra", not
     "Balanced · gpt-5.6-terra": the slug is a routing key and reads as one.
-    Falls back to the slug when the registry has no entry, which is better
-    than showing nothing.
+
+    Goes through the router's lookup rather than the catalog directly,
+    because the slug arrives in whatever spelling configured it. The default
+    configuration routes through OpenRouter, whose provider-prefixed forms
+    (``anthropic/claude-sonnet-5``) the catalog does not use as keys -- so a
+    direct read misses on exactly the setup most deployments run.
+
+    Falls back to the slug when nothing resolves, which is better than
+    showing nothing for a model the catalog has never heard of -- minus the
+    vendor prefix, which is how the transport addresses the model and carries
+    nothing for the reader. Keeping it costs ten characters in a control that
+    has to fit two of these side by side, and spends them on the one part of
+    the string that cannot tell anyone anything.
     """
     if not slug:
         return None
-    model = llm_registry.get_model(slug)
-    return model.display_name if model else slug
+    model = catalog_lookup(slug)
+    if model:
+        return model.display_name
+    return slug.split("/", 1)[1] if "/" in slug else slug
 
 
 def _codex_tier_models(mode: str) -> dict[CopilotLLMModel, str | None]:

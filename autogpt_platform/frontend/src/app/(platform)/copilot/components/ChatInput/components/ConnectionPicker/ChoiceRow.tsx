@@ -2,7 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { PiLockSimple as LockIcon } from "react-icons/pi";
+import { LockIcon } from "@hugeicons/core-free-icons";
+
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   title: string;
@@ -64,7 +66,9 @@ export function ChoiceRow({
       </span>
       <span className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-foreground">{title}</span>
+          <span className="text-[13px] font-semibold text-foreground">
+            {title}
+          </span>
           {badge && (
             <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
               {badge}
@@ -104,13 +108,14 @@ interface LockedProps {
 function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
   return (
     <div className="flex items-start gap-2.5 px-3 py-2">
-      <LockIcon
+      <Icon
+        icon={LockIcon}
         size={14}
         aria-hidden
         className="mt-[3px] flex-none text-muted-foreground/70"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-[13px] font-semibold text-muted-foreground">
           {title}
         </span>
         {subtitle && (

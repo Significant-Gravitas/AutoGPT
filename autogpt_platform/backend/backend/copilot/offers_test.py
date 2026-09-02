@@ -9,6 +9,7 @@ import pytest_mock
 from backend.copilot import offers, transports
 from backend.copilot.offers import get_connection_offers, offer_id_for
 from backend.copilot.transports import ChatTransportResponse
+from backend.data.llm_registry import registry
 from backend.util.settings import BehaveAs
 
 USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -450,3 +451,76 @@ async def test_a_locked_chatgpt_offer_still_names_the_models(
     # Naming them must not read as offering them.
     assert all(t.selectable is False for t in locked.tiers)
     assert locked.selectable is False
+
+
+@pytest.fixture
+def real_catalog():
+    """The other tests here run against an empty registry and assert the
+    slug fallback. These two are about resolution, so they need the catalog
+    actually loaded -- and must put it back, since it is process state."""
+    old = (
+        registry._dynamic_models,
+        registry._date_stripped_models,
+        registry._routes,
+        registry._loaded,
+    )
+    registry.load_catalog()
+    yield
+    (
+        registry._dynamic_models,
+        registry._date_stripped_models,
+        registry._routes,
+        registry._loaded,
+    ) = old
+
+
+@pytest.mark.asyncio
+async def test_a_platform_tier_names_a_model_configured_in_transport_spelling(
+    real_catalog,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The default configuration routes through OpenRouter, whose slugs carry a
+    provider prefix the catalog does not use. Naming the model has to survive
+    that, or the row reads as a routing key on every deployment that took the
+    default."""
+    _mock_transports(mocker, [_transport(default=True)])
+    mocker.patch.object(
+        offers,
+        "resolve_model_route",
+        new=AsyncMock(
+            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
+                model="anthropic/claude-sonnet-5", source="config"
+            )
+        ),
+    )
+
+    offer = (await get_connection_offers(USER_ID))[0]
+
+    assert [tier.display_model for tier in offer.tiers] == [
+        "Claude Sonnet 5",
+        "Claude Sonnet 5",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_model_the_catalog_does_not_know_is_named_by_its_slug(
+    real_catalog,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A deployment may point a tier at anything. Showing the slug is worse than
+    showing a name and better than showing nothing -- without the vendor
+    prefix, which is addressing rather than identity."""
+    _mock_transports(mocker, [_transport(default=True)])
+    mocker.patch.object(
+        offers,
+        "resolve_model_route",
+        new=AsyncMock(
+            side_effect=lambda mode, tier, user_id, *, config: SimpleNamespace(
+                model="acme/a-model-nobody-has-heard-of", source="config"
+            )
+        ),
+    )
+
+    offer = (await get_connection_offers(USER_ID))[0]
+
+    assert offer.tiers[0].display_model == "a-model-nobody-has-heard-of"

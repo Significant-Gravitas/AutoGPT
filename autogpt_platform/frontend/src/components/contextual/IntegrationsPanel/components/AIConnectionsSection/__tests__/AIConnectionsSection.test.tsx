@@ -1,5 +1,5 @@
 import {
-  getGetV2ListChatTransportsMockHandler200,
+  getGetV2ListChatConnectionsMockHandler200,
   getPutV2SetDefaultChatTransportMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
@@ -8,7 +8,7 @@ import {
   getGetV1CodexAccountMockHandler200,
   getGetV1ListCredentialsMockHandler200,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
-import type { ChatTransportResponse } from "@/app/api/__generated__/models/chatTransportResponse";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
@@ -16,33 +16,88 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AIConnectionsSection } from "../AIConnectionsSection";
 
-function platform(isDefault: boolean): ChatTransportResponse {
+function platform(isDefault: boolean): AIConnectionOffer {
   return {
+    offer_id: "platform:deployment",
     auth_provider: "platform",
+    provider_family: "autogpt",
+    display_name: "Self-hosted chat",
+    auth_method: "deployment",
     credential_id: null,
-    label: "Self-hosted chat",
-    available: true,
-    default: isDefault,
-  };
+    backed_by_label: "This server's chat provider",
+    description:
+      "New chats are backed by the chat provider configured on this server.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [
+      {
+        tier: "standard",
+        label: "Balanced",
+        selectable: true,
+        display_model: "Sonnet 5",
+      },
+      {
+        tier: "advanced",
+        label: "Advanced",
+        selectable: true,
+        display_model: "Opus 5",
+      },
+    ],
+    limitations: [],
+  } as AIConnectionOffer;
 }
 
-function chatgpt(isDefault: boolean, id = "cred-1"): ChatTransportResponse {
+function chatgpt(isDefault: boolean, id = "cred-1"): AIConnectionOffer {
   return {
+    offer_id: `codex:${id}`,
     auth_provider: "codex",
+    provider_family: "openai",
+    display_name: "ChatGPT",
+    auth_method: "chatgpt_oauth",
     credential_id: id,
-    label: "ChatGPT",
-    available: true,
-    default: isDefault,
+    backed_by_label: "Your ChatGPT plan",
+    description:
+      "New chats are backed by your ChatGPT plan, and spend no AutoGPT credits.",
+    state: "ready",
+    selectable: true,
+    is_default: isDefault,
+    tiers: [
+      {
+        tier: "standard",
+        label: "Balanced",
+        selectable: true,
+        display_model: "GPT-5.6 Terra",
+      },
+      {
+        tier: "advanced",
+        label: "Advanced",
+        selectable: true,
+        display_model: "GPT-5.6 Sol",
+      },
+    ],
+    limitations: [],
+  } as AIConnectionOffer;
+}
+
+function lockedChatgpt(): AIConnectionOffer {
+  return {
+    ...chatgpt(false),
+    offer_id: "codex:locked",
+    credential_id: null,
+    state: "locked",
+    selectable: false,
+    lock_reason: "Connect ChatGPT to use this subscription",
   };
 }
 
 function mockTransports(
-  transports: ChatTransportResponse[],
+  offers: AIConnectionOffer[],
   credentials: { id: string; username: string }[] = [],
 ) {
   server.use(
-    getGetV2ListChatTransportsMockHandler200({ transports }),
-    getPutV2SetDefaultChatTransportMockHandler200({ transports }),
+    getGetV2ListChatConnectionsMockHandler200({ offers }),
+    getPutV2SetDefaultChatTransportMockHandler200({ transports: [] }),
     getGetV1ListCredentialsMockHandler200(
       credentials.map((credential) => ({
         id: credential.id,
@@ -78,6 +133,16 @@ describe("AIConnectionsSection", () => {
     render(<AIConnectionsSection />);
 
     expect(await screen.findByText("nick@example.com")).toBeDefined();
+  });
+
+  it("does not call an unlinked ChatGPT offer connected", async () => {
+    mockTransports([platform(true), lockedChatgpt()]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("ChatGPT")).toBeDefined();
+    expect(screen.queryByText("Connected")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
   });
 
   it("treats a disconnected account snapshot as requiring reconnect", async () => {
@@ -233,5 +298,54 @@ describe("AIConnectionsSection", () => {
 
     expect(await screen.findByText("GitHub Copilot and Grok")).toBeDefined();
     expect(screen.getByText("Coming soon")).toBeDefined();
+  });
+
+  it("names the models each connection runs", async () => {
+    // The reason for reading /connections rather than /transports: transports
+    // carries no tiers, so this line could not exist before.
+    mockTransports([platform(true), chatgpt(false)]);
+
+    render(<AIConnectionsSection />);
+
+    expect(
+      await screen.findByText(
+        "Balanced: GPT-5.6 Terra · Advanced: GPT-5.6 Sol",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText("Balanced: Sonnet 5 · Advanced: Opus 5"),
+    ).toBeDefined();
+  });
+
+  it("takes its copy from the server rather than deciding it here", async () => {
+    // describeTransport used to compose this sentence client-side, which
+    // drifts from the server that enforces the billing it describes.
+    mockTransports([{ ...chatgpt(true), description: "Server said this." }]);
+
+    render(<AIConnectionsSection />);
+
+    expect(await screen.findByText("Server said this.")).toBeDefined();
+  });
+
+  it("shows a connection the plan excludes, with what unlocks it", async () => {
+    mockTransports([
+      platform(true),
+      {
+        ...chatgpt(false),
+        state: "locked",
+        selectable: false,
+        lock_reason: "A Max plan or higher is required to use ChatGPT.",
+      } as AIConnectionOffer,
+    ]);
+
+    render(<AIConnectionsSection />);
+
+    expect(
+      await screen.findByText(
+        "A Max plan or higher is required to use ChatGPT.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 });
