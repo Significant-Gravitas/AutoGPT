@@ -1391,8 +1391,8 @@ async def get_graph(
 
     # The only non-owner path. A store listing on its own must not grant
     # access, so there is deliberately no marketplace lookup beside this one.
-    # Deliberately stricter than validate_graph_execution_permissions(): read
-    # and execute disagree until that one is aligned (see PR #14205, note 1).
+    # validate_graph_execution_permissions() reuses this same filter, so
+    # execute can never be looser than read. See the invariant note there.
     if graph is None and user_id is not None and not skip_access_check:
         library_agent = await LibraryAgent.prisma().find_first(
             where=graph_in_library_filter(user_id, graph_id, version),
