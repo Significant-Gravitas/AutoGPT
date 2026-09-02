@@ -9,6 +9,7 @@ import {
   postV2StoreABearerTokenForAnMcpServer,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { MCPOAuthLoginResponse } from "@/app/api/__generated__/models/mCPOAuthLoginResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
@@ -16,7 +17,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 
 interface Props {
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 type Phase = "form" | "manual-token";
@@ -83,13 +84,13 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
       const result = await promise;
 
-      await postV2ExchangeOauthCodeForMcpTokens({
+      const exchanged = await postV2ExchangeOauthCodeForMcpTokens({
         code: result.code,
         state_token,
       });
 
       await invalidateCredentials();
-      onSuccess();
+      onSuccess(exchanged.status === 200 ? exchanged.data : undefined);
     } catch (e: unknown) {
       const message = getErrorMessage(e);
       if (message === "OAuth flow timed out") {
@@ -109,13 +110,13 @@ export function McpConnectPanel({ onSuccess }: Props) {
     setIsSubmitting(true);
 
     try {
-      await postV2StoreABearerTokenForAnMcpServer({
+      const stored = await postV2StoreABearerTokenForAnMcpServer({
         server_url: trimmedUrl,
         token: trimmedToken,
       });
 
       await invalidateCredentials();
-      onSuccess();
+      onSuccess(stored.status === 200 ? stored.data : undefined);
     } catch (e: unknown) {
       setError(getErrorMessage(e));
     } finally {

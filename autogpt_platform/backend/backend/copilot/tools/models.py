@@ -123,8 +123,11 @@ class ResponseType(str, Enum):
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
 
-    # Experts (soul edits)
+    # Experts (soul edits, hire/raise)
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
+    EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
+    EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    TEAM_ROSTER = "team_roster"
 
 
 # Base response model
@@ -364,6 +367,21 @@ class WorkspaceFileInfoData(BaseModel):
     size_bytes: int
 
 
+class DelegatedExpertInfo(BaseModel):
+    """Identity of the expert a delegated sub-session runs as.
+
+    Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
+    both the model and the ToolChain card can name who is doing the work
+    instead of rendering a generic "Sub-AutoPilot".
+    """
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
 
@@ -373,12 +391,17 @@ class SubSessionStatusResponse(ToolResponseBase):
     """
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
-    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+    status: Literal[
+        "running", "completed", "cancelled", "error", "queued", "transferred"
+    ] = Field(
         description=(
             "Current state of the sub-AutoPilot run.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
-            "existing turn on its next drain."
+            "existing turn on its next drain.  ``transferred`` is terminal "
+            "for the caller: ``handoff_to_expert`` gave the task away, so no "
+            "result is coming back and there is nothing to poll — the "
+            "receiving expert now owns it and reports to the user directly."
         ),
     )
     sub_session_id: str = Field(
@@ -405,6 +428,13 @@ class SubSessionStatusResponse(ToolResponseBase):
             "Relative URL the user can click to open the sub-AutoPilot "
             "conversation in the CoPilot UI. Always set when "
             "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    expert: DelegatedExpertInfo | None = Field(
+        default=None,
+        description=(
+            "Teammate the work was delegated to. Set only for "
+            "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
     )
     tool_calls: list[dict[str, Any]] | None = Field(
@@ -515,6 +545,79 @@ class ExpertSoulUpdatedResponse(ToolResponseBase):
     confirmation_id: str | None = None
 
 
+ExpertChangeKind = Literal["hire", "raise", "update"]
+
+
+class ExpertChangePreview(BaseModel):
+    """The expert a hire/raise proposal would create, exactly as previewed.
+
+    One shape covers both kinds: ``template_id`` is set only for a hire, and
+    the charter fields (``about`` / ``boundaries``) only for a raise.
+    """
+
+    kind: ExpertChangeKind
+    name: str
+    role: str = ""
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
+    template_id: str | None = None
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ExpertSummary(BaseModel):
+    """Identity of an expert created by ``confirm_expert_change``."""
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class TeamExpertInfo(BaseModel):
+    """One roster row returned by ``list_team``."""
+
+    id: str
+    name: str
+    role: str
+    color: str = ""
+    avatar_url: str | None = None
+    is_paused: bool = False
+
+
+class TeamRosterResponse(ToolResponseBase):
+    """The user's current expert roster, straight from the DB."""
+
+    type: ResponseType = ResponseType.TEAM_ROSTER
+    experts: list[TeamExpertInfo] = Field(default_factory=list)
+
+
+class ExpertChangeProposedResponse(ToolResponseBase):
+    """Preview returned by ``hire_expert`` / ``raise_expert`` — never a write.
+
+    ``applied`` is always False here; the one-time ``confirmation_id``
+    references the proposal stored server-side until the user approves.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_PROPOSED
+    applied: bool = False
+    preview: ExpertChangePreview
+    confirmation_id: str
+
+
+class ExpertChangeAppliedResponse(ToolResponseBase):
+    """The expert ``confirm_expert_change`` actually created."""
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_APPLIED
+    applied: bool = True
+    kind: ExpertChangeKind
+    expert: ExpertSummary
+    failed_workflows: list[str] = Field(default_factory=list)
+
+
 # Agent generation models
 class ClarifyingQuestion(BaseModel):
     """A question that needs user clarification."""
@@ -522,6 +625,7 @@ class ClarifyingQuestion(BaseModel):
     question: str
     keyword: str
     example: str | None = None
+    options: list[str] = Field(default_factory=list)
 
 
 class AgentPreviewResponse(ToolResponseBase):

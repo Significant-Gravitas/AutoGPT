@@ -83,7 +83,7 @@ export function toDisplayName(provider: string): string {
     .join(" ");
 }
 
-export function isCredentialFieldSchema(schema: any): boolean {
+export function isCredentialFieldSchema(schema: unknown): boolean {
   return (
     typeof schema === "object" &&
     schema !== null &&
@@ -134,21 +134,24 @@ export const providerIcons: Partial<Record<string, IconSvgElement>> = {
 };
 
 export const getDiscriminatorValue = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ): string | undefined => {
   const discriminator = schema.discriminator;
   const discriminatorValues = schema.discriminator_values;
 
-  return [
+  const value = [
     discriminator ? formData[discriminator] : null,
     ...(discriminatorValues || []),
   ].find(Boolean);
+
+  return value === undefined || value === null ? undefined : String(value);
 };
 
 export const getCredentialProviderFromSchema = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
 ) => {
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
@@ -159,6 +162,15 @@ export const getCredentialProviderFromSchema = (
   const discriminatedProvider = discriminatorMapping
     ? discriminatorMapping[discriminatorValue ?? ""]
     : null;
+
+  const legacySelectedProvider = providers.find(
+    (provider) =>
+      discriminator &&
+      discriminatorMapping &&
+      discriminatorValue === undefined &&
+      provider === selectedProvider,
+  );
+  if (legacySelectedProvider) return legacySelectedProvider;
 
   if (providers.length > 1) {
     if (!discriminator) {
@@ -174,7 +186,36 @@ export const getCredentialProviderFromSchema = (
       return null;
     }
     return discriminatedProvider;
-  } else {
-    return providers[0];
   }
+
+  // Single-provider fields used to return their one provider unconditionally,
+  // ignoring the discriminator. That is wrong when a field declares a mapping:
+  // an unmapped value means "this choice needs no credential" — AutoPilot's
+  // `platform` transport, which is deliberately absent from the mapping — and
+  // the input must hide rather than ask for a credential nothing will use.
+  if (discriminator && discriminatorMapping) {
+    return discriminatedProvider ?? null;
+  }
+
+  return providers[0];
+};
+
+/**
+ * True when the field has no usable credential route for the current state.
+ *
+ * An unmapped value needs no credential. An unset discriminator also has no
+ * actionable control unless a saved provider identifies a legacy selection.
+ */
+export const credentialNotApplicable = (
+  formData: Record<string, unknown>,
+  schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
+): boolean => {
+  const mapping = schema.discriminator_mapping;
+  if (!schema.discriminator || !mapping) return false;
+
+  const value = getDiscriminatorValue(formData, schema);
+  if (value === undefined || value === null) return !selectedProvider;
+
+  return !Object.hasOwn(mapping, String(value));
 };

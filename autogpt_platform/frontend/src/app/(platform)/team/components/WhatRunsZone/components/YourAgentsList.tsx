@@ -39,16 +39,16 @@ export function YourAgentsList({
   onAdopt,
 }: Props) {
   return (
-    <section aria-label="Your agents" className="flex flex-col gap-2">
-      <Text variant="small-medium" className="text-zinc-500">
-        Your agents
-      </Text>
+    <section aria-label="Your workflows" className="!mt-8 flex flex-col gap-2">
+      <div className="mb-4 border-b border-zinc-100 pb-4">
+        <Text variant="h4">Your workflows</Text>
+      </div>
       {agents.length === 0 ? (
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
             {libraryAgentCount === 0
-              ? "No available agents to adopt."
-              : "Every agent is already on your team."}
+              ? "No available workflows to adopt."
+              : "Every workflow is already on your team."}
           </Text>
         ) : null
       ) : (
@@ -114,7 +114,7 @@ export function YourAgentsList({
       {isErrorLoadingMoreAgents ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2">
           <Text variant="small" className="text-zinc-500">
-            We could not load more agents.
+            We could not load more workflows.
           </Text>
           <Button variant="secondary" size="small" onClick={onLoadMore}>
             Retry loading more
@@ -128,7 +128,7 @@ export function YourAgentsList({
           onClick={onLoadMore}
           className="self-start"
         >
-          Load more agents
+          Load more workflows
         </Button>
       ) : null}
     </section>

@@ -9,8 +9,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { CARD, HALF, StatusPill } from "./ResultCards";
-import { inline, resultItemKey, str } from "./resultHelpers";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { cn } from "@/lib/utils";
+import { CARD, HALF, RESULT_GRID, StatusPill } from "./ResultCards";
+import { asObject, inline, resultItemKey, str } from "./resultHelpers";
+import { SubSessionLive, useSubSessionEffectiveStatus } from "./SubSessionLive";
 
 function agentHref(agent: Record<string, unknown>): string | null {
   const id = str(agent, "id");
@@ -49,7 +52,7 @@ function CardLink({ href, label }: CardLinkProps) {
 
 export function AgentListCard({ agents }: AgentListCardProps) {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className={RESULT_GRID}>
       {agents.map((agent, i) => {
         const href = agentHref(agent);
         const runs = typeof agent.runs === "number" ? agent.runs : null;
@@ -168,20 +171,34 @@ export function AgentPreviewCard({ output }: OutputCardProps) {
   );
 }
 
-export function SubSessionCard({ output }: OutputCardProps) {
-  const status = str(output, "status");
+interface SubSessionCardProps extends OutputCardProps {
+  minimal?: boolean;
+}
+
+export function SubSessionCard({
+  output,
+  minimal = false,
+}: SubSessionCardProps) {
+  const frozenStatus = str(output, "status");
   const response = str(output, "response");
   const link = str(output, "sub_autopilot_session_link");
+  const subSessionId = str(output, "sub_session_id");
+  const status = useSubSessionEffectiveStatus(subSessionId, frozenStatus);
   const elapsed =
     typeof output.elapsed_seconds === "number" ? output.elapsed_seconds : null;
+  const expert = asObject(output.expert);
+  const avatarUrl = expert && str(expert, "avatar_url");
+  const role = expert && str(expert, "role");
+  const name = (expert && str(expert, "name")) ?? "Sub-AutoPilot";
   return (
-    <div className={`${CARD} ${HALF} p-2.5`}>
+    <div className={cn(CARD, "w-full rounded-2xl p-2.5")}>
       <div className="flex items-center gap-2.5">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-          <Icon icon={Robot01Icon} size={15} className="text-zinc-600" />
-        </div>
+        <ExpertAvatar name={name} avatarUrl={avatarUrl ?? null} size={28} />
         <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">
-          Sub-AutoPilot
+          {name}
+          {role && (
+            <span className="ml-1.5 font-normal text-zinc-400">{role}</span>
+          )}
         </p>
         {elapsed !== null && (
           <span className="shrink-0 text-[11px] text-zinc-400">
@@ -193,10 +210,21 @@ export function SubSessionCard({ output }: OutputCardProps) {
         {status && <StatusPill status={status} />}
         {link && <CardLink href={link} label="Open sub-session" />}
       </div>
-      {response && (
+      {!minimal && response && (
         <p className="mt-1.5 line-clamp-2 pl-9 text-xs text-zinc-500">
           {response}
         </p>
+      )}
+      {/* Keyed to the FROZEN status on purpose: once mounted for a running
+          output, the live view stays up after completion showing the final
+          steps + answer (it stops polling on its own). */}
+      {!minimal && subSessionId && (
+        <SubSessionLive
+          subSessionId={subSessionId}
+          active={["running", "queued"].includes(
+            frozenStatus?.toLowerCase() ?? "",
+          )}
+        />
       )}
     </div>
   );

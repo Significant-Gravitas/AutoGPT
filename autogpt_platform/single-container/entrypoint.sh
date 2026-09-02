@@ -166,7 +166,18 @@ configure_environment() {
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
-  export APP_ENV=dev BEHAVE_AS=local ENABLE_AUTH=true
+  # BEHAVE_AS defaults to local (self-hosted product behavior) but stays
+  # overridable: entitlement policies with allow_local=True grant every user
+  # access under `local`, so gating cannot be exercised without injecting
+  # `cloud`. APP_ENV stays dev to keep LOCAL-only API docs and asyncio debug
+  # mode off the public REST process.
+  #
+  # ⚠️ OPERATORS: `local` disables entitlement gating for EVERY user — the
+  # allow_local carve-out grants plan-gated features (e.g. the ChatGPT/Codex
+  # transport) regardless of subscription tier. That is correct for a
+  # single-tenant self-hosted install. Any multi-tenant or hosted deployment
+  # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
 
   export BETTER_AUTH_URL="${AUTOGPT_PUBLIC_URL}"
   export BETTER_AUTH_INTERNAL_URL=http://127.0.0.1:3001

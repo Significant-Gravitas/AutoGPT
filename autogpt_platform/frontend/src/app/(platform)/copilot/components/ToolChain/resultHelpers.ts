@@ -1,3 +1,5 @@
+export { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
+
 export function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "string") {
     try {
@@ -20,15 +22,6 @@ export function safeHostname(url: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function integrationIconSrc(provider: string): string | null {
-  const slug = provider
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-  return slug ? `/integrations/${slug}.png` : null;
 }
 
 // Every backend tool response carries these envelope fields; cards read the
@@ -137,4 +130,24 @@ export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
+}
+
+interface TruncatedOutput {
+  totalChars: number;
+  preview: string;
+}
+
+const TRUNCATED_RE =
+  /^<tool-output-truncated total_chars=(\d+)[^>]*>\n([\s\S]*)\n<\/tool-output-truncated>$/;
+
+/** Unwrap the `<tool-output-truncated>` envelope the backend wraps oversized
+ *  tool output in, dropping the read_workspace_file instructions meant for the
+ *  model rather than the reader. */
+export function parseTruncatedOutput(value: string): TruncatedOutput | null {
+  const match = TRUNCATED_RE.exec(value.trim());
+  if (!match) return null;
+  return {
+    totalChars: Number(match[1]),
+    preview: match[2].split("\nFull output (")[0].trim(),
+  };
 }

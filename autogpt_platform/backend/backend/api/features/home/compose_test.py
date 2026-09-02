@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
 from backend.data.execution_cost_summary import (
     UserExecutionCostSummary,
     UserExpertCostRollup,
@@ -104,3 +105,53 @@ def test_expert_spend_reaches_the_agent_rows_and_the_team_total() -> None:
     spend = {agent.expert.id: agent.spend_cents for agent in dashboard.agents}
     assert spend == {"hired": 730, "quiet": 0}
     assert dashboard.team.spend_cents == 730
+
+
+def _pending_question_session(session_id: str = "sess-1") -> ChatSessionInfo:
+    return ChatSessionInfo(
+        session_id=session_id,
+        user_id="user-1",
+        usage=[],
+        started_at=NOW,
+        updated_at=NOW,
+        metadata=ChatSessionMetadata(
+            pending_question=PendingQuestion(text="Which vendor?", asked_at=NOW)
+        ),
+    )
+
+
+def test_pending_question_reaches_the_attention_list() -> None:
+    """A chat session with a pending question must surface on Home's
+    "Needs You" surface — not merely be accepted as an argument."""
+    dashboard = compose_home_dashboard(
+        now=NOW,
+        experts=[],
+        executions=[],
+        reviews=[],
+        schedules=[],
+        library_refs=[],
+        cost_summary=_cost_summary(),
+        credits_balance=100,
+        timezone_name="UTC",
+        questions=[_pending_question_session("sess-1")],
+    )
+
+    assert [item.id for item in dashboard.attention] == ["question-sess-1"]
+    assert dashboard.attention[0].kind == "question"
+
+
+def test_no_questions_means_no_question_attention_items() -> None:
+    dashboard = compose_home_dashboard(
+        now=NOW,
+        experts=[],
+        executions=[],
+        reviews=[],
+        schedules=[],
+        library_refs=[],
+        cost_summary=_cost_summary(),
+        credits_balance=100,
+        timezone_name="UTC",
+        questions=[],
+    )
+
+    assert dashboard.attention == []

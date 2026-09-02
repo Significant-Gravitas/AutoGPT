@@ -1,14 +1,11 @@
 import {
-  PromptInputBody,
   PromptInputButton,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { InputGroup } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import {
   Tooltip,
   TooltipContent,
@@ -32,7 +29,6 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
-import { ComposerTray } from "./components/ComposerTray";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -43,6 +39,8 @@ import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import { getFilesFromClipboard } from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
@@ -72,6 +70,8 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Session id for the dev-only token badge in the tray. */
+  sessionId?: string | null;
   /** When true, the submit button is hidden until there is something to send. */
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
@@ -91,6 +91,7 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
 }: Props) {
@@ -108,6 +109,7 @@ export function ChatInput({
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   function handleToggleMode() {
     if (copilotModePinned) {
@@ -186,13 +188,21 @@ export function ChatInput({
   } = useChatInput({
     onSend: async (message: string) => {
       const { localFiles, workspaceFiles } = partitionAttachments(attachments);
-      await onSend(
-        message,
-        localFiles.length > 0 ? localFiles : undefined,
-        workspaceFiles.length > 0 ? workspaceFiles : undefined,
-      );
-      // Only clear after successful send (onSend throws on failure)
+      // Chips clear eagerly for the same reason the text does (see
+      // useChatInput.handleSend); a failed send restores them unless the
+      // user already attached new ones in the meantime.
+      const sent = attachments;
       setAttachments([]);
+      try {
+        await onSend(
+          message,
+          localFiles.length > 0 ? localFiles : undefined,
+          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+        );
+      } catch (error) {
+        setAttachments((prev) => (prev.length > 0 ? prev : sent));
+        throw error;
+      }
     },
     disabled: isTextareaDisabled,
     canSendEmpty: hasAttachments,
@@ -229,11 +239,6 @@ export function ChatInput({
     isTranscribing,
   });
 
-  // The composer restyle (flat card, chips relocated into the tray
-  // below) ships with the brain-dump experience; off keeps the original
-  // glowing composer with pill toggles in the footer.
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
@@ -259,8 +264,8 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
-  const hasTrayItems =
-    (showModeToggle && !isStreaming) || (showDryRunToggle && !hasSession);
+  // Narrows to string, so the render site needn't re-test sessionId.
+  const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
 
   const canSend =
     !disabled &&
@@ -311,18 +316,14 @@ export function ChatInput({
           onHighlight={mentions.setHighlightedIndex}
         />
       )}
+      {/* GPT-style composer: a single pill row — plus on the left, textarea
+          in the middle, quiet toggles + mic + send on the right. items-end
+          keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          isBrainDumpEnabled
-            ? "relative z-10 overflow-hidden border-neutral-200 shadow-none has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0"
-            : [
-                "overflow-hidden border-zinc-200 has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-                "shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_36px_-4px_rgba(99,102,241,0.45)]",
-              ],
+          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
           isRecording &&
-            (isBrainDumpEnabled
-              ? "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"
-              : "border-red-400 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(248,113,113,0.45)] has-[[data-slot=input-group-control]:focus-visible]:ring-red-400"),
+            "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
         <FileChips
@@ -330,34 +331,11 @@ export function ChatInput({
           onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
         />
-        <PromptInputBody className="relative block w-full">
-          <PromptInputTextarea
-            id={inputId}
-            aria-label="Chat message input"
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onBlur={mentions.close}
-            disabled={isInputDisabled}
-            placeholder={resolvedPlaceholder}
-          />
-          {isRecording && !value && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <RecordingIndicator
-                elapsedTime={elapsedTime}
-                audioStream={audioStream}
-              />
-            </div>
-          )}
-        </PromptInputBody>
-
-        <span id={`${inputId}-hint`} className="sr-only">
-          Press Enter to send, Shift+Enter for new line, Space to record voice
-        </span>
-
-        <PromptInputFooter>
-          <PromptInputTools>
+        <div className="flex w-full flex-wrap items-end">
+          <InputGroupAddon
+            align="inline-start"
+            className="order-none gap-1 py-1 pl-1.5"
+          >
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
@@ -366,31 +344,62 @@ export function ChatInput({
             />
             {recipientPicker}
             {!hasSession && <LLMRouteSelector />}
-            {!isBrainDumpEnabled && showModeToggle && !isStreaming && (
+          </InputGroupAddon>
+          {/* Must be a real flex item: `order`/`w-full` are ignored on a
+              `display: contents` box, which is what PromptInputBody was. */}
+          <div
+            className={cn(
+              "relative",
+              isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+            )}
+          >
+            <PromptInputTextarea
+              id={inputId}
+              aria-label="Chat message input"
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onBlur={mentions.close}
+              disabled={isInputDisabled}
+              placeholder={resolvedPlaceholder}
+              onMultilineChange={setIsMultiline}
+            />
+            {isRecording && !value && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <RecordingIndicator
+                  elapsedTime={elapsedTime}
+                  audioStream={audioStream}
+                />
+              </div>
+            )}
+          </div>
+          <InputGroupAddon
+            align="inline-end"
+            className="order-none ml-auto gap-1 py-1 pr-1.5"
+          >
+            {showModeToggle && !isStreaming && (
               <>
                 <ModeToggleButton
-                  variant="pill"
                   mode={copilotChatMode}
                   onToggle={handleToggleMode}
                   pinned={copilotModePinned}
                 />
                 <ModelToggleButton
-                  variant="pill"
                   model={copilotLlmModel}
                   onToggle={handleToggleModel}
                 />
               </>
             )}
-            {!isBrainDumpEnabled && showDryRunToggle && !hasSession && (
+            {showDryRunToggle && !hasSession && (
               <DryRunToggleButton
-                variant="pill"
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
               />
             )}
-          </PromptInputTools>
-
-          <div className="flex items-center gap-4">
+            {devtoolSessionId && (
+              <TokenDevtoolBadge sessionId={devtoolSessionId} />
+            )}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
@@ -438,39 +447,13 @@ export function ChatInput({
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit disabled={!canSend} />
             )}
-          </div>
-        </PromptInputFooter>
-      </InputGroup>
+          </InputGroupAddon>
+        </div>
 
-      {/* Mode and model are per-message settings sent with each stream request,
-          so they can be freely changed between turns in an existing session.
-          Hide only while actively streaming (too late to change for that turn).
-          DryRun is new-chat only: once a session exists its dry_run flag is
-          locked and read from session metadata (sessionDryRun in useCopilotPage),
-          with the banner in CopilotPage.tsx reflecting the actual state. */}
-      {Boolean(isBrainDumpEnabled) && hasTrayItems && (
-        <ComposerTray>
-          {showModeToggle && !isStreaming && (
-            <>
-              <ModeToggleButton
-                mode={copilotChatMode}
-                onToggle={handleToggleMode}
-                pinned={copilotModePinned}
-              />
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
-            </>
-          )}
-          {showDryRunToggle && !hasSession && (
-            <DryRunToggleButton
-              isDryRun={isDryRun}
-              onToggle={handleToggleDryRun}
-            />
-          )}
-        </ComposerTray>
-      )}
+        <span id={`${inputId}-hint`} className="sr-only">
+          Press Enter to send, Shift+Enter for new line, Space to record voice
+        </span>
+      </InputGroup>
 
       {showWorkspaceFiles && (
         <WorkspaceFilePicker

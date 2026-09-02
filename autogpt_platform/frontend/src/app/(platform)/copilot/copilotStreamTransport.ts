@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from "uuid";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
+import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
+import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
 export interface MutableValue<T> {
@@ -63,6 +65,11 @@ export function createCopilotTransport({
 
   return new SmoothedCopilotChatTransport({
     api: baseUrl,
+    // Dev-only: tee the raw SSE stream so `: usage {...}` comments (dropped
+    // by the AI SDK parser) feed the token devtool badge.
+    ...(isTokenDevtoolEnabled()
+      ? { fetch: createUsageCapturingFetch(sessionId) }
+      : {}),
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];
       const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);

@@ -188,22 +188,28 @@ export function useChatSession({
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const { hydratedMessages, historicalTurnStats } = useMemo(() => {
-    if (!freshSessionData || !sessionId)
+  const { hydratedMessages, historicalTurnStats, activeTurnStartMessageId } =
+    useMemo(() => {
+      if (!freshSessionData || !sessionId)
+        return {
+          hydratedMessages: undefined,
+          historicalTurnStats: new Map() as TurnStatsMap,
+          activeTurnStartMessageId: null,
+        };
+      const result = convertChatSessionMessagesToUiMessages(
+        sessionId,
+        freshSessionData.messages ?? [],
+        {
+          isComplete: !hasActiveStream,
+          activeTurnStartedAt: activeStreamStartedAt,
+        },
+      );
       return {
-        hydratedMessages: undefined,
-        historicalTurnStats: new Map() as TurnStatsMap,
+        hydratedMessages: result.messages,
+        historicalTurnStats: result.stats,
+        activeTurnStartMessageId: result.activeTurnStartId,
       };
-    const result = convertChatSessionMessagesToUiMessages(
-      sessionId,
-      freshSessionData.messages ?? [],
-      { isComplete: !hasActiveStream },
-    );
-    return {
-      hydratedMessages: result.messages,
-      historicalTurnStats: result.stats,
-    };
-  }, [freshSessionData, sessionId, hasActiveStream]);
+    }, [freshSessionData, sessionId, hasActiveStream, activeStreamStartedAt]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
     usePostV2CreateSession();
@@ -365,6 +371,7 @@ export function useChatSession({
     hydratedMessages,
     rawSessionMessages,
     historicalTurnStats,
+    activeTurnStartMessageId,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,

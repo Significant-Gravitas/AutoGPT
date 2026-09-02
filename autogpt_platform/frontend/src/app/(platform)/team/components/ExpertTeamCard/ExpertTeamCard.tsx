@@ -6,6 +6,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -22,11 +23,12 @@ import {
   Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
+import { creditsToUsdLabel } from "@/lib/credits";
 import Image from "next/image";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
-import { CreditsMeter } from "./components/CreditsMeter";
+import { SpendMeter } from "./components/SpendMeter";
 import {
   getNeedsSetupCount,
   getScheduleCountLabel,
@@ -141,7 +143,7 @@ export function ExpertTeamCard({
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
               <Text variant="small" className="text-zinc-500">
-                Credits this week
+                Spend this week
               </Text>
               <Text
                 variant="small"
@@ -149,11 +151,11 @@ export function ExpertTeamCard({
                 className="tabular-nums text-zinc-500"
               >
                 {weeklySpend
-                  ? `${weeklySpend.spent} / ${weeklySpend.budget}`
+                  ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
                   : "No budget"}
               </Text>
             </div>
-            <CreditsMeter
+            <SpendMeter
               spent={weeklySpend?.spent ?? 0}
               budget={weeklySpend?.budget ?? 1}
               muted={!weeklySpend}
@@ -167,10 +169,10 @@ export function ExpertTeamCard({
               {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
             </Text>
             {needsSetupCount > 0 ? (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
+              <Badge variant="warning" size="small">
                 {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"}{" "}
                 setup
-              </span>
+              </Badge>
             ) : null}
           </div>
         </Link>

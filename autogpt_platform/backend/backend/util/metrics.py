@@ -196,7 +196,8 @@ def _before_send(event, hint):
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
-        # Expected business logic — insufficient balance
+        # Expected business logic — exhausted wallet, or a plan that does
+        # not include the feature. Neither is a platform bug.
         if get_execution_failure_reason(exc_value) is not None:
             return None
 

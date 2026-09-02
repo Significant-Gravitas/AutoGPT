@@ -1,6 +1,6 @@
 import {
   quoted,
-  str,
+  strField,
   type ToolInput,
   type ToolMeta,
 } from "./toolCatalog.shared";
@@ -160,7 +160,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "docs",
     running: "Reading doc page",
     done: "Read doc page",
-    subject: (input) => str(input, "path"),
+    subject: (input) => strField(input, "path"),
   },
   store_skill: {
     category: "skill",
@@ -189,7 +189,7 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "integration",
     running: "Connecting",
     done: "Connected",
-    subject: (input) => str(input, "provider"),
+    subject: (input) => strField(input, "provider"),
   },
   search_feature_requests: {
     category: "feature",

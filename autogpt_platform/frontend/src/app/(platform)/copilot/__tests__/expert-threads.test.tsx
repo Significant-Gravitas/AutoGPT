@@ -110,12 +110,6 @@ vi.mock("../components/ChatMessagesContainer/components/CopyButton", () => ({
   CopyButton: () => null,
 }));
 vi.mock(
-  "../components/ChatMessagesContainer/components/CollapsedToolGroup",
-  () => ({
-    CollapsedToolGroup: () => null,
-  }),
-);
-vi.mock(
   "../components/ChatMessagesContainer/components/MessageAttachments",
   () => ({
     MessageAttachments: () => null,
@@ -131,26 +125,16 @@ vi.mock("../components/ChatMessagesContainer/components/QueueBadge", () => ({
   QueueBadge: () => null,
 }));
 vi.mock(
-  "../components/ChatMessagesContainer/components/ReasoningGroup",
-  () => ({
-    ReasoningGroup: () => null,
-  }),
-);
-vi.mock(
   "../components/ChatMessagesContainer/components/ThinkingIndicator",
   () => ({
     ThinkingIndicator: () => null,
   }),
 );
 vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  buildRenderSegments: () => [],
+  getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
+  isChainableToolPart: () => false,
   parseSpecialMarkers: () => ({ markerType: null }),
-  shouldShowTaskListNotice: () => false,
-  splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoning: [],
-    response: parts,
-  }),
 }));
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -660,23 +644,85 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("shows a scheduled-workflows button that opens the schedules drawer", async () => {
+  it("opens the session activity card when the chip is clicked", async () => {
+    flagState.values["artifacts"] = true;
     server.use(
       getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([
-        {
-          id: "sched-1",
-          name: "Content Calendar",
-          agent_name: "Content Calendar",
-          user_id: "user-1",
-          graph_id: "graph-1",
-          graph_version: 1,
-          cron: "40 7 * * *",
-          input_data: {},
-          next_run_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-          expert_id: "expert-maria",
-        },
-      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
+    }));
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+        sessionID="session-1"
+        canOpenActivity
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Open session activity/ }),
+    );
+
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(true);
+    expect(panel.activeTab).toBe("files");
+  });
+
+  it("stays a passive label in hosts that never mount the activity card", async () => {
+    flagState.values["artifacts"] = true;
+    let workspaceFileRequests = 0;
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      http.get("*/api/workspace/files", () => {
+        workspaceFileRequests += 1;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+    // Same live sessionId the builder and memory panels pass — only the host's
+    // canOpenActivity separates them from the copilot chat.
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+        sessionID="session-1"
+      />,
+    );
+
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(
+      within(header).queryByRole("button", { name: /Open session activity/ }),
+    ).toBeNull();
+    expect(workspaceFileRequests).toBe(0);
+  });
+
+  it("wears the Autopilot identity on plain sessions", () => {
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    expect(header.textContent).toContain("Autopilot");
+    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("keeps the passive chip keyboard-reachable, since the role only exists in its tooltip", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
     render(
       <ChatMessagesContainer
@@ -688,59 +734,12 @@ describe("ChatMessagesContainer — expert identity", () => {
       />,
     );
 
-    const button = await screen.findByTestId("expert-schedules-button");
-    expect(button.textContent).toContain("1 workflow scheduled");
+    const header = screen.getByTestId("expert-thread-header");
+    const chip = within(header).getByLabelText("Maria — Marketing Strategist");
 
-    fireEvent.click(button);
-    expect(
-      await screen.findByText("Maria's scheduled workflows"),
-    ).toBeDefined();
-    expect(await screen.findByTestId("schedule-row")).toBeDefined();
-  });
-
-  it("does not read the fired expert's detail record for the schedules button", async () => {
-    let expertDetailRequests = 0;
-    server.use(
-      http.get("*/api/experts/expert-maria", () => {
-        expertDetailRequests += 1;
-        return HttpResponse.json(
-          { detail: "Expert not found" },
-          { status: 404 },
-        );
-      }),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
-    );
-    render(
-      <ChatMessagesContainer
-        messages={[assistantMessage]}
-        status="ready"
-        error={undefined}
-        isLoading={false}
-        expertIdentity={{
-          ...mariaIdentity,
-          isArchived: true,
-          readOnlyReason: "fired",
-        }}
-      />,
-    );
-
-    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
-    expect(expertDetailRequests).toBe(0);
-  });
-
-  it("renders no expert header or identity for plain sessions", () => {
-    render(
-      <ChatMessagesContainer
-        messages={[assistantMessage]}
-        status="ready"
-        error={undefined}
-        isLoading={false}
-      />,
-    );
-
-    expect(screen.queryByTestId("expert-thread-header")).toBeNull();
-    expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+    // A tooltip opens on focus as well as hover; an unfocusable trigger
+    // hides the role from keyboard users entirely.
+    expect(chip.getAttribute("tabindex")).toBe("0");
   });
 });
 
