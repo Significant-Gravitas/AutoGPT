@@ -26,7 +26,10 @@ import { SelectedTriggerView } from "./components/selected-views/SelectedTrigger
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
+import {
+  AGENT_LIBRARY_SECTION_PADDING_X,
+  isNewAgentTaskDisabled,
+} from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -257,7 +260,11 @@ export function NewAgentLibraryView() {
                   variant="outline"
                   size="small"
                   className="w-full"
-                  disabled={isTemplateLoading && activeTab === "templates"}
+                  disabled={isNewAgentTaskDisabled({
+                    sidebarLoading,
+                    isTemplateLoading,
+                    activeTab,
+                  })}
                 >
                   <Icon icon={PlusSignIcon} size={16} /> New agent task
                 </Button>
