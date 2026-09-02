@@ -1,6 +1,5 @@
 // In this hook, I am only keeping websocket related code.
 
-import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useEffect } from "react";
@@ -12,6 +11,7 @@ import { useGraphStore } from "../../../stores/graphStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV1GetExecutionDetailsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { parseGraphExecutionID, parseGraphID } from "@/lib/graph-ids";
 
 export const useFlowRealtime = () => {
   const api = useBackendAPI();
@@ -32,10 +32,14 @@ export const useFlowRealtime = () => {
     useShallow((state) => state.resetEdgeBeads),
   );
 
-  const [{ flowExecutionID, flowID }] = useQueryStates({
-    flowExecutionID: parseAsString,
-    flowID: parseAsString,
-  });
+  const [{ flowExecutionID: rawFlowExecutionID, flowID: rawFlowID }] =
+    useQueryStates({
+      flowExecutionID: parseAsString,
+      flowID: parseAsString,
+    });
+
+  const flowExecutionID = parseGraphExecutionID(rawFlowExecutionID);
+  const flowID = parseGraphID(rawFlowID);
 
   useEffect(() => {
     const deregisterNodeExecutionEvent = api.onWebSocketMessage(
@@ -67,9 +71,11 @@ export const useFlowRealtime = () => {
     const deregisterGraphExecutionSubscription =
       flowID && flowExecutionID
         ? api.onWebSocketConnect(() => {
-            // Subscribe to execution updates
+            // Subscribe to execution updates — both IDs are validated UUIDs
+            // by this point (parseGraph* returns null for malformed values,
+            // which makes the `flowID && flowExecutionID` guard fail above).
             api
-              .subscribeToGraphExecution(flowExecutionID as GraphExecutionID) // TODO: We are currently using a manual type, we need to fix it in future
+              .subscribeToGraphExecution(flowExecutionID)
               .then(() => {
                 console.debug(
                   `Subscribed to updates for execution #${flowExecutionID}`,
@@ -80,7 +86,7 @@ export const useFlowRealtime = () => {
                 // executions like dry-runs / simulations.
                 void queryClient.invalidateQueries({
                   queryKey: getGetV1GetExecutionDetailsQueryKey(
-                    flowID!,
+                    flowID,
                     flowExecutionID,
                   ),
                 });

@@ -2,6 +2,7 @@
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
+import { parseGraphID } from "@/lib/graph-ids";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect, useRef } from "react";
 
@@ -40,11 +41,14 @@ export function useExecutionEvents({
   useEffect(() => {
     if (!enabled) return;
 
-    const idsToSubscribe = graphIds || (graphId ? [graphId] : []);
-    if (idsToSubscribe.length === 0) return;
+    const rawIds = graphIds || (graphId ? [graphId] : []);
+    if (rawIds.length === 0) return;
 
-    // Normalize IDs to strings for consistent comparison
-    const normalizedIds = idsToSubscribe.map((id) => String(id));
+    const validatedIds = rawIds
+      .map((id) => parseGraphID(String(id)))
+      .filter((v): v is GraphID => v !== null);
+    if (validatedIds.length === 0) return;
+    const normalizedIds = validatedIds.map((id) => String(id));
     const subscribedIds = new Set<string>();
 
     const handleExecutionEvent = (execution: GraphExecution) => {
@@ -58,12 +62,12 @@ export function useExecutionEvents({
     };
 
     const connectHandler = api.onWebSocketConnect(() => {
-      normalizedIds.forEach((id) => {
+      validatedIds.forEach((id) => {
         // Track subscriptions to avoid duplicate subscriptions
         if (subscribedIds.has(id)) return;
         subscribedIds.add(id);
 
-        api.subscribeToGraphExecutions(id as GraphID).catch((error) => {
+        api.subscribeToGraphExecutions(id).catch((error) => {
           console.error(
             `Failed to subscribe to execution updates for graph ${id}:`,
             error,

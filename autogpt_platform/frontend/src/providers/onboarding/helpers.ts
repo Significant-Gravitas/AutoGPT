@@ -1,9 +1,9 @@
 import {
-  GraphExecutionID,
   OnboardingStep,
   UserOnboarding,
 } from "@/lib/autogpt-server-api";
 import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
+import { parseGraphExecutionID } from "@/lib/graph-ids";
 
 export type LocalOnboardingStateUpdate = Omit<
   Partial<UserOnboarding>,
@@ -25,8 +25,9 @@ export function fromBackendUserOnboarding(
       onboarding.selectedStoreListingVersionId || null,
     agentInput:
       (onboarding.agentInput as Record<string, string | number>) || null,
-    onboardingAgentExecutionId:
-      (onboarding.onboardingAgentExecutionId as GraphExecutionID) || null,
+    onboardingAgentExecutionId: parseGraphExecutionID(
+      onboarding.onboardingAgentExecutionId,
+    ),
     lastRunAt: onboarding.lastRunAt ? new Date(onboarding.lastRunAt) : null,
   };
 }
