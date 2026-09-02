@@ -45,6 +45,9 @@ _RETRY_NOTE = (
 _FAILED_OUTCOME = (
     "Stalled with no progress after a retry; marked failed by the overseer."
 )
+_UNDISPATCHED_OUTCOME = (
+    "Stalled and the overseer could not dispatch a retry; marked failed."
+)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -145,20 +148,28 @@ async def _retry_task(client, user_id: str, task: DelegatedTask) -> bool:
 
     A task with no session never got a worker at all (its kickoff failed, or
     it was opened outside a conversation), so the retry opens one instead of
-    nudging. Returns False when the task closed under us — the amendment was
-    not saved, so nothing gets dispatched for it either."""
+    nudging. Returns False when the task closed under us (the amendment was
+    not saved, so nothing gets dispatched) or when the dispatch itself
+    failed (the task is closed with an accurate outcome instead)."""
     amended = await client.append_task_amendment(
         user_id, task.id, note=_RETRY_NOTE, by="overseer", kind="retry"
     )
     if amended is None:
         return False
     if task.origin_session_id is None:
-        await start_task_in_new_session(
-            user_id,
-            task_id=task.id,
-            title=task.title,
-            expert_id=task.owner.id if task.owner else None,
-        )
+        try:
+            await start_task_in_new_session(
+                user_id,
+                task_id=task.id,
+                title=task.title,
+                expert_id=task.owner.id if task.owner else None,
+            )
+        except Exception:
+            logger.warning(
+                "Overseer could not open a worker for task #%s", task.id, exc_info=True
+            )
+            await _fail_undispatched_retry(client, user_id, task)
+            return False
         return True
     message = (
         f"[Overseer] Task '{task.title}' (task_id: {task.id}) has stalled — "
@@ -185,4 +196,18 @@ async def _retry_task(client, user_id: str, task: DelegatedTask) -> bool:
             task.id,
             exc_info=True,
         )
+        await _fail_undispatched_retry(client, user_id, task)
+        return False
     return True
+
+
+async def _fail_undispatched_retry(client, user_id: str, task: DelegatedTask) -> None:
+    """The retry amendment is already on the timeline, so leaving the task
+    open would make the next sweep fail it as "stalled after retry" when no
+    retry ever reached the owner. Close it now with the accurate reason."""
+    await client.close_delegated_task(
+        user_id=user_id,
+        task_id=task.id,
+        succeeded=False,
+        outcome_summary=_UNDISPATCHED_OUTCOME,
+    )

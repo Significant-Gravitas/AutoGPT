@@ -1488,7 +1488,7 @@ async def stream_chat_post(
         # next model turn (and the drawer) can see it. Called only once
         # the message is admitted (queued or scheduled), so a retried
         # request that deduplicates never appends the amendment twice.
-        if not session.metadata.delegated_task_id:
+        if not request.is_user_message or not session.metadata.delegated_task_id:
             return
         spawn_background_task(
             record_mid_task_instruction(user_id, session, request.message),

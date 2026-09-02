@@ -52,7 +52,9 @@ def compose_attention_items(
     items.extend(
         _stale_task_attention(task)
         for task in tasks or []
-        if task.stale_at and task.id not in escalated_ids
+        if task.stale_at
+        and task.status == "WAITING_USER"
+        and task.id not in escalated_ids
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))

@@ -1493,7 +1493,7 @@ async def add_graph_execution(
             # Same recovery rule as org/team: explicit param on create,
             # persisted row on resume/requeue.
             expert_id=expert_id or graph_exec.expert_id,
-            delegated_task_id=delegated_task_id or graph_exec.delegated_task_id,
+            delegated_task_id=graph_exec.delegated_task_id,
         )
     elif expert_id:
         # Expert tenancy is authoritative even for caller-supplied contexts.
@@ -1517,11 +1517,17 @@ async def add_graph_execution(
             }
         )
 
-    # A caller-supplied context must settle the same receipt the row
-    # persisted, or the completion hook closes the wrong task. Only sync a
-    # non-null id: a sub-graph's row has none while its inherited context
-    # deliberately carries the parent's (see task_outcomes._close_task).
-    persisted_task_id = delegated_task_id or graph_exec.delegated_task_id
+    # The persisted row is the one receipt this run may settle: a stale or
+    # forged caller id on resume/requeue would let the completion hook close
+    # the wrong task. Only sync a non-null id into a caller-supplied context:
+    # a sub-graph's row has none while its inherited context deliberately
+    # carries the parent's (see task_outcomes._close_task).
+    persisted_task_id = graph_exec.delegated_task_id
+    if delegated_task_id and delegated_task_id != persisted_task_id:
+        raise ValueError(
+            f"Delegated task #{delegated_task_id} does not match execution "
+            f"#{graph_exec.id}"
+        )
     if persisted_task_id and execution_context.delegated_task_id != persisted_task_id:
         execution_context = execution_context.model_copy(
             update={"delegated_task_id": persisted_task_id}

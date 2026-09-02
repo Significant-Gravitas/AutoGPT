@@ -140,6 +140,48 @@ async def test_task_closed_under_the_pass_is_not_dispatched():
 
 
 @pytest.mark.asyncio
+async def test_failed_nudge_is_not_counted_as_a_retry():
+    """The retry amendment is saved before the nudge, so a nudge that never
+    reaches the session must close the task with the real reason rather
+    than let the next sweep fail it as "stalled after retry"."""
+    client = _client([_task(updated_minutes_ago=20)], running={"task-1": False})
+    with _patched(client) as mocks:
+        mocks["schedule"].side_effect = RuntimeError("queue is down")
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 0
+    client.close_delegated_task.assert_awaited_once()
+    assert client.close_delegated_task.await_args.kwargs["succeeded"] is False
+    assert "could not dispatch" in (
+        client.close_delegated_task.await_args.kwargs["outcome_summary"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_failed_worker_kickoff_does_not_abort_the_pass():
+    """A kickoff that raises must neither count as a retry nor skip the rest
+    of the sweep (stale checks, expert health) for this user."""
+    client = _client(
+        [
+            _task(status="QUEUED", updated_minutes_ago=20, origin_session_id=None),
+            _task(
+                task_id="task-2",
+                status="WAITING_USER",
+                updated_minutes_ago=60 * 24 * 8,
+            ),
+        ],
+        running={"task-1": False},
+    )
+    with _patched(client) as mocks:
+        mocks["kickoff"].side_effect = RuntimeError("no session")
+        summary = await run_overseer_pass("user-1", now=_NOW)
+
+    assert summary["retried"] == 0
+    assert summary["stale"] == 1
+    client.close_delegated_task.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_queued_task_with_no_session_gets_a_worker():
     """An intro task from a hire lands QUEUED with nothing driving it. The
     retry has no session to nudge, so it opens one for the owner instead."""
