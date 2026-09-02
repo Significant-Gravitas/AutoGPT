@@ -63,7 +63,7 @@ class JUnitResult(unittest.TextTestResult):
 
     def addExpectedFailure(self, test, err):
         self._outcomes[id(test)] = (
-            "skipped",
+            "expected_failure",
             f"expected failure\n{self._exc_info_to_string(err, test)}",
         )
         super().addExpectedFailure(test, err)
@@ -126,7 +126,12 @@ def write_junit(
             },
         )
         if record.outcome != "success":
-            tag = "skipped" if record.outcome == "skipped" else record.outcome
+            if record.outcome == "skipped":
+                tag = "skipped"
+            elif record.outcome == "error":
+                tag = "error"
+            else:
+                tag = "failure"
             message = record.detail.splitlines()[0] if record.detail else record.outcome
             child = ET.SubElement(case, tag, {"message": message})
             child.text = record.detail
@@ -141,29 +146,89 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pattern", default="test*.py")
     parser.add_argument("--suite-name", default="single-container-runtime-helpers")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--allow-skip",
+        action="append",
+        default=[],
+        metavar="TEST_ID",
+        help="exact unittest ID allowed to report as skipped (repeatable)",
+    )
     return parser.parse_args()
+
+
+def enforce_test_policy(
+    records: list[TestRecord],
+    suite_name: str,
+    allowed_skips: set[str],
+) -> bool:
+    """Reject omitted tests unless an exact skip ID is explicitly allowlisted."""
+    if not records:
+        records.append(
+            TestRecord(
+                classname=suite_name,
+                name="test_discovery",
+                duration=0.0,
+                outcome="error",
+                detail="unittest discovery found zero tests",
+            )
+        )
+        return False
+
+    valid = True
+    for record in records:
+        test_id = (
+            f"{record.classname}.{record.name}" if record.classname else record.name
+        )
+        if record.outcome == "expected_failure":
+            record.outcome = "failure"
+            record.detail = f"expected failures are not allowed\n{record.detail}"
+            valid = False
+        elif record.outcome == "skipped" and test_id not in allowed_skips:
+            record.outcome = "failure"
+            record.detail = f"disallowed skip for {test_id}\n{record.detail}"
+            valid = False
+    return valid
 
 
 def main() -> int:
     args = parse_args()
-    suite = unittest.defaultTestLoader.discover(
-        args.start_directory,
-        pattern=args.pattern,
-    )
     started_at = time.monotonic()
-    runner = unittest.TextTestRunner(
-        stream=sys.stderr,
-        verbosity=2,
-        resultclass=JUnitResult,
-    )
-    result = runner.run(suite)
+    try:
+        suite = unittest.defaultTestLoader.discover(
+            args.start_directory,
+            pattern=args.pattern,
+        )
+        runner = unittest.TextTestRunner(
+            stream=sys.stderr,
+            verbosity=2,
+            resultclass=JUnitResult,
+        )
+        result = runner.run(suite)
+        records = result.records
+        policy_passed = enforce_test_policy(
+            records,
+            args.suite_name,
+            set(args.allow_skip),
+        )
+        successful = result.wasSuccessful() and policy_passed
+    except Exception as error:
+        records = [
+            TestRecord(
+                classname=args.suite_name,
+                name="test_discovery",
+                duration=0.0,
+                outcome="error",
+                detail=f"{type(error).__name__}: {error}",
+            )
+        ]
+        successful = False
     write_junit(
         args.output,
         args.suite_name,
-        result.records,
+        records,
         time.monotonic() - started_at,
     )
-    return 0 if result.wasSuccessful() else 1
+    return 0 if successful else 1
 
 
 if __name__ == "__main__":
