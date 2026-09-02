@@ -384,7 +384,10 @@ miss because nothing fails loudly without them, it just 401s later:
   rest of the stack actually uses.
 
 ```bash
-grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
+# [ -n ... ], not grep -q alone — a present-but-empty JWT_JWKS_URL= would
+# otherwise be treated as "already set" and skip the fallback, leaving the
+# backend without a JWKS endpoint to verify tokens against.
+[ -n "$(grep '^JWT_JWKS_URL=' $BACKEND_DIR/.env | cut -d= -f2-)" ] || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
 
 if [ -n "$(grep '^DATABASE_URL=' $FRONTEND_DIR/.env | cut -d= -f2-)" ]; then
   # grep -q alone matches a present-but-empty DATABASE_URL= too, which would
@@ -606,15 +609,17 @@ AUTH_PAYLOAD=$(PR_TEST_USER_EMAIL="$PR_TEST_USER_EMAIL" PR_TEST_USER_PASSWORD="$
 # check; -d passes the payload as an argument, which leaks the password into
 # process listings, so pipe it through stdin with --data-binary @- instead.
 # --noproxy guards against an inherited proxy env var routing the password
-# through a proxy).
-SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --noproxy localhost,127.0.0.1,::1 -X POST 'http://localhost:3000/api/auth/sign-up/email' \
+# through a proxy. --max-time bounds it — without one, a server that accepts
+# the connection but never responds hangs setup indefinitely instead of
+# reaching the empty-$TOKEN failure check below).
+SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --max-time 15 --noproxy localhost,127.0.0.1,::1 -X POST 'http://localhost:3000/api/auth/sign-up/email' \
   -H 'Content-Type: application/json' --data-binary @-)
 echo "$SIGNUP_RESULT" | grep -qi '"code"' && echo "Signup: $SIGNUP_RESULT"  # log it — "already exists" and "password too short" look identical downstream otherwise
 
 # Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR.
 # Capture the body: a failure here (e.g. account exists with a different
 # password) otherwise only shows up as an empty $TOKEN with no explanation.
-SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --noproxy localhost,127.0.0.1,::1 -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
+SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --max-time 15 --noproxy localhost,127.0.0.1,::1 -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
   -H 'Content-Type: application/json' --data-binary @-)
 echo "$SIGNIN_RESULT" | grep -qi '"code"' && echo "Sign-in: $SIGNIN_RESULT"
 
