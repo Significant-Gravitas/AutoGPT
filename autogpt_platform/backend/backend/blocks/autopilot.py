@@ -742,6 +742,14 @@ def _spawner_envelope_from(
         tree_id=execution_context.copilot_tree_id,
         depth=execution_context.copilot_tree_depth,
         tainted=execution_context.copilot_tree_tainted,
+        # None stays None (an unrestricted root); anything else is restored as
+        # a set. Leaving this at the default would hand the far side the root
+        # sentinel and reopen every tool the spawner had lost.
+        tools=(
+            frozenset(execution_context.copilot_tree_tools)
+            if execution_context.copilot_tree_tools is not None
+            else None
+        ),
     )
 
 

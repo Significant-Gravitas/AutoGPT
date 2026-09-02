@@ -136,6 +136,11 @@ class ExecutionContext(BaseModel):
     copilot_tree_id: Optional[str] = None
     copilot_tree_depth: int = 0
     copilot_tree_tainted: bool = False
+    # The spawning turn's tool ceiling. ``None`` is the root sentinel meaning
+    # unrestricted, so it must stay distinct from an empty list: dropping this
+    # field entirely would reopen the whole registry on the far side, which is
+    # the amplification the envelope exists to prevent.
+    copilot_tree_tools: Optional[list[str]] = None
 
 
 # -------------------------- Models -------------------------- #

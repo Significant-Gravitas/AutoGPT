@@ -77,3 +77,72 @@ def test_taint_survives_the_graph_boundary() -> None:
     rebuilt = _spawner_envelope_from(context)
     assert rebuilt is not None
     assert derive_child_envelope(rebuilt, SpawnRequest()).tainted
+
+
+def _cross_the_boundary(envelope):
+    """Round-trip an envelope through the execution payload, as run_agent →
+    graph executor → AutoPilotBlock does."""
+    context = ExecutionContext(
+        copilot_tree_id=envelope.tree_id,
+        copilot_tree_depth=envelope.depth,
+        copilot_tree_tainted=envelope.tainted,
+        copilot_tree_tools=(
+            sorted(envelope.tools) if envelope.tools is not None else None
+        ),
+    )
+    return _spawner_envelope_from(context)
+
+
+@pytest.mark.parametrize(
+    "spawn",
+    [
+        SpawnRequest(may_spawn=True),
+        SpawnRequest(shares_memory=True, may_spawn=True),
+        # Pinned sets must keep a spawn tool, or the rebuilt turn cannot spawn
+        # at all and there is nothing to compare on the far side.
+        SpawnRequest(tools=["read_workspace_file", "run_sub_session"], may_spawn=True),
+    ],
+    ids=["delegate", "isolate", "pinned"],
+)
+def test_the_tool_ceiling_survives_the_graph_boundary(spawn: SpawnRequest) -> None:
+    """The rebuilt turn may never hold more than it did before crossing.
+
+    ``TurnEnvelope.tools=None`` is the ROOT sentinel meaning unrestricted, so a
+    rebuild that leaves it defaulted silently reopens the whole registry — the
+    exact amplification the envelope exists to prevent, arriving through the
+    one door that has no contextvar.
+    """
+    before = derive_child_envelope(root_envelope("t"), spawn)
+    assert before.tools is not None
+    rebuilt = _cross_the_boundary(before)
+    assert rebuilt is not None
+    assert rebuilt.tools == before.tools
+
+    after = derive_child_envelope(rebuilt, SpawnRequest(may_spawn=True))
+    assert after.tools is not None
+    assert after.tools <= before.tools, sorted(after.tools - before.tools)
+
+
+@pytest.mark.parametrize("denied", ["DESCENT", "ISOLATE"])
+def test_denied_tools_are_not_regained_by_crossing(denied: str) -> None:
+    """Neither denial list is undone by a trip through the graph executor."""
+    from backend.copilot.tree import DESCENT_DENIED_TOOLS, ISOLATE_DENIED_TOOLS
+
+    denied_set = DESCENT_DENIED_TOOLS if denied == "DESCENT" else ISOLATE_DENIED_TOOLS
+    before = derive_child_envelope(
+        root_envelope("t"), SpawnRequest(shares_memory=True, may_spawn=True)
+    )
+    assert before.tools is not None and before.tools.isdisjoint(denied_set)
+    rebuilt = _cross_the_boundary(before)
+    assert rebuilt is not None
+    after = derive_child_envelope(rebuilt, SpawnRequest(may_spawn=True))
+    assert after.tools is not None
+    assert after.tools.isdisjoint(denied_set), sorted(after.tools & denied_set)
+
+
+def test_an_unrestricted_root_stays_unrestricted_across_the_boundary() -> None:
+    """None must survive as None — a root genuinely holds everything, and
+    turning it into an empty set would strip a legitimate run of every tool."""
+    rebuilt = _cross_the_boundary(root_envelope("t"))
+    assert rebuilt is not None
+    assert rebuilt.tools is None

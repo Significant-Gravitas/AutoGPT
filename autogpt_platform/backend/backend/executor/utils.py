@@ -1481,6 +1481,11 @@ async def add_graph_execution(
             copilot_tree_id=copilot_tree.tree_id if copilot_tree else None,
             copilot_tree_depth=copilot_tree.depth if copilot_tree else 0,
             copilot_tree_tainted=copilot_tree.tainted if copilot_tree else False,
+            copilot_tree_tools=(
+                sorted(copilot_tree.tools)
+                if copilot_tree is not None and copilot_tree.tools is not None
+                else None
+            ),
             # Execution hierarchy
             root_execution_id=graph_exec.id,
             # File-storage workspace (UserWorkspace) — enables
