@@ -1070,3 +1070,86 @@ class TestActorParameter:
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
         assert "Sub-AutoPilot" not in (result.message or "")
+
+
+class TestSpawnEnvelopeArguments:
+    """The spawn shape each tool asks for is a security property, not a
+    detail: flipping shares_memory to False silently regrants an isolate
+    memory_store under the parent's identity, and allow_queue=True lets a
+    prompt run under another turn's envelope. Neither was asserted anywhere.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_sub_session_spawns_a_memory_sharing_isolate_and_never_queues(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice", "s1"),
+            prompt="do it",
+            wait_for_result=0,
+        )
+        kwargs = mock_waiter.await_args.kwargs
+        assert kwargs["allow_queue"] is False
+        assert kwargs["spawn"].shares_memory is True
+        assert kwargs["spawn"].may_spawn is True
+
+
+@pytest.mark.asyncio
+class TestRefusedSpawnCleanup:
+    """A refusal arrives after the sub's session row exists. Without cleanup
+    the user's history fills with empty threads for turns that never ran.
+    """
+
+    async def test_a_refused_spawn_deletes_the_thread_it_opened(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        deleted.assert_awaited_once_with("inner-1", "alice")
+
+    async def test_a_failed_turn_keeps_its_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        # The turn ran and errored, so the thread is the only record of it.
+        mock_waiter.return_value = ("failed", SessionResult())
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        deleted.assert_not_awaited()
+
+    async def test_a_refused_resume_keeps_the_prior_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", deleted
+        )
+        parent = _session("alice", "s1")
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=parent, prompt="first", wait_for_result=0
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=parent,
+            prompt="again",
+            sub_autopilot_session_id="inner-1",
+        )
+
+        deleted.assert_not_awaited()

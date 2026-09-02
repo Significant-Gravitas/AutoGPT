@@ -42,7 +42,7 @@ from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
@@ -104,13 +104,6 @@ ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-# Kept short on purpose: it rides three tool schemas, and the whole registry
-# shares a char budget (``tool_schema_test``). A refusal names the missing tool.
-GRANT_TOOLS_DESCRIPTION = (
-    "Extra tools for this spawned turn. Only tools you hold yourself, and "
-    "never account-binding or irreversible ones — those are refused."
-)
-
 _LEDGER_KEY_PREFIX = "copilot:tree:"
 
 # All-or-nothing tree creation. ``HSETNX`` per field is not equivalent: it
@@ -154,16 +147,33 @@ class TurnEnvelope(BaseModel):
         may not call. Hiding is presentation; ``BaseTool.execute`` enforces."""
         if self.tools is None:
             return None
+        if not self.tools:
+            # An empty whitelist reads back through effective_allowed_tools as
+            # "no filter at all", which would show a fully-locked child every
+            # tool. Deny-everything is the honest encoding of the same thing.
+            return CopilotPermissions(tools=sorted(ALL_TOOL_NAMES), tools_exclude=True)
         return CopilotPermissions(tools=sorted(self.tools), tools_exclude=False)
 
 
 class SpawnRequest(BaseModel):
-    """What a spawner asks for its child. Every field is clamped, never raised."""
+    """What a spawner asks for its child. Every field is clamped, never raised.
+
+    ``extra="forbid"``: on a model whose job is narrowing a security envelope,
+    a mistyped field name must fail loudly rather than silently yield the
+    widest possible narrowing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     # Exact set (a quarantine preset), or None for the default: everything
-    # the spawner holds minus DESCENT_DENIED_TOOLS plus ``grant``.
+    # the spawner holds minus the denial lists.
+    #
+    # There is deliberately no "grant" escape hatch. Denials are absolute, so
+    # anything a grant could legitimately add is already in the default set,
+    # and anything it could not add must stay denied — a grant parameter can
+    # only ever be a no-op or a violation. A child that genuinely needs a
+    # denied tool is a human-approval case.
     tools: list[str] | None = None
-    grant: list[str] = Field(default_factory=list)
     may_spawn: bool = False
     shares_memory: bool = False
     max_seconds: int | None = Field(default=None, ge=1)
@@ -181,7 +191,7 @@ def derive_child_envelope(
     spawner_permissions: CopilotPermissions | None = None,
     now: datetime | None = None,
 ) -> TurnEnvelope:
-    """The child's envelope, or :class:`TreeRefusal`. Pure.
+    """The child's envelope. Raises :class:`TreeRefusal`. Pure given ``now``.
 
     ``spawner_permissions`` is the spawning turn's own capability filter
     (an ``AutoPilotBlock`` whitelist, say). It lives beside the envelope
@@ -218,7 +228,7 @@ def derive_child_envelope(
     requested = (
         frozenset(request.tools)
         if request.tools is not None
-        else (ALL_TOOL_NAMES - denied) | frozenset(request.grant)
+        else ALL_TOOL_NAMES - denied
     )
     # ``- denied`` last, so no request shape can route around rule 1 above.
     tools = (ceiling & requested) - denied
@@ -244,9 +254,17 @@ class TreeLedger:
 
     Admission is increment-then-check with rollback, the same non-locked
     pattern ``acquire_turn_slot`` uses: two racing spawns can both pass by
-    one, and that over-admit is the bound's stated slack. Spend is compared
-    against a counter charged after each turn, so the overshoot per tree is
-    one turn's cost — the SDK per-query cap on the platform transport.
+    one, and that over-admit is the bound's stated slack.
+
+    Spend is metered, not reserved: ``spent`` only advances when a turn ends
+    (``token_tracking``), so children dispatched in one round all read the
+    same figure and are all admitted. The ceiling therefore bounds how much a
+    tree may *start* spending against, not its total — the worst case is
+    ``(max_nodes - 1) x`` the per-turn cap, i.e. every remaining node
+    admitted at ``spent == 0`` and each running to its own limit. The node
+    cap is what keeps that finite. Reserving at admit and reconciling at
+    charge is the fix, and needs the SDK to report a per-query spend the
+    Codex transport does not currently expose.
     """
 
     def __init__(self, redis: AsyncRedisClient) -> None:
@@ -312,8 +330,9 @@ class TreeLedger:
         if nodes > int(max_nodes):
             await self._hincrby(key, "nodes", -1)
             raise TreeRefusal(
-                f"This task already has {max_nodes} agents working on it; wait "
-                "for one to finish or do the work yourself."
+                f"This task has already used its {max_nodes} agents — that is a "
+                "lifetime budget for this request, not a concurrency limit, so "
+                "waiting will not free one. Finish the remaining work yourself."
             )
 
     async def release(self, tree_id: str) -> None:
@@ -341,7 +360,17 @@ class TreeLedger:
         await cast(Awaitable[bool], self._redis.hsetnx(key, field, str(value)))
 
     async def _hincrby(self, key: str, field: str, amount: int) -> int:
-        return await cast(Awaitable[int], self._redis.hincrby(key, field, amount))
+        """Always re-arm the TTL.
+
+        ``HINCRBY`` on a key whose TTL fired in the meantime *recreates* it,
+        and only ``open()`` ever issued ``EXPIRE`` — so a charge or release
+        landing in that window left a ``copilot:tree:*`` hash with no
+        expiry, i.e. a permanent leak. Re-arming is idempotent and costs one
+        pipelined command.
+        """
+        value = await cast(Awaitable[int], self._redis.hincrby(key, field, amount))
+        await cast(Awaitable[bool], self._redis.expire(key, MAX_TURN_LIFETIME_SECONDS))
+        return value
 
 
 async def get_tree_ledger() -> TreeLedger:
@@ -364,7 +393,10 @@ async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
     """
     cap = config.tree_ceiling_microdollars
     if not user_id:
-        return cap
+        # Fail closed: without a user there is no tier to scale from, and
+        # handing out the full cap is the one fail-open branch this module
+        # would otherwise contain.
+        return 0
     daily, weekly, _ = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,

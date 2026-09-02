@@ -1,14 +1,15 @@
-# Agent collaboration architecture (TODO T15)
+# Agent collaboration architecture
 
-**Status:** plan → two parallel roasts (§11) → revised → slice built and
-committed (§9, `5422a83e99`). Branch `pwuts/agent-collab-architecture`,
-worktree `AutoGPT4`. Not pushed — push hold in effect, and §10 applies.
+How a Copilot turn spawns other turns, and what bounds them: the turn
+envelope (tools, depth, taint, deadline) and the per-tree ledger (node
+cap, metered spend). Written alongside the implementation in
+`autogpt_platform/backend/backend/copilot/tree.py`.
 
 ---
 
 ## 0. The answer, up front
 
-T10 said *a team is a check*. That is true and it is the wrong unit. The unit
+The reviewer-check design said *a team is a check*. That is true and it is the wrong unit. The unit
 that scales is not the team and not the check; it is **the edge** — the thing
 that is created when one agent causes another to exist or to act. Every hard
 question in the brief (coupling, inheritance, position, scale) is a question
@@ -76,7 +77,7 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
 
 - **`EXTERNAL_ACTION_APPROVAL_RULE`** (`api/features/experts/models.py:21`).
   Grep across the backend: rendered by `expert_context.py:100`, returned by
-  `experts_db.py:136`, read by **nothing**. T10's finding stands (TODO T16).
+  `experts_db.py:136`, read by **nothing**. The reviewer-check design's finding stands (TODO T16).
   This plan does not lean on it anywhere.
 - **`toolProfile Json?`** on `Expert` — a column with no reader in the copilot
   path. Noted because it is the natural home for a per-expert permission
@@ -108,7 +109,7 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
   cross-expert* hops, not on the tree — which is why the envelope carries
   depth as a field every spawn kind increments. *(Logged in the shared
   findings ledger as security-sensitive; see §11.)*
-- **Taint.** There is no taint tracking on `dev`. T9's (`AutoGPT3`,
+- **Taint.** There is no taint tracking on `dev`. The auto-mode gate's (`AutoGPT3`,
   `pwuts/autopilot-auto-mode`) is branch-only. `child_session_origin` returns
   the parent's origin — so an *interactive* parent mints an *interactive*
   child — which is the laundering path T9 found.
@@ -143,7 +144,7 @@ does not have to lie about who drives it.
 
 ### 2.2 Edge kinds
 
-Four, and only four. Three already exist; the fourth is T10's and slots in
+Four, and only four. Three already exist; the fourth is the reviewer-check design's and slots in
 as a degenerate case.
 
 | kind | tool | identity of child | what returns | may spawn | who the child escalates to |
@@ -151,7 +152,7 @@ as a degenerate case.
 | **delegate** | `delegate_to_expert` | the target expert | report, pollable by the parent | yes, within envelope | its parent |
 | **isolate** | `run_sub_session` | same as parent | report, pollable by the parent | yes, within envelope | its parent |
 | **handoff** | `handoff_to_expert` | the target expert | nothing (`transferred`) | yes, within envelope | **the human** — the node is re-rooted |
-| **consult** | T10 `consult_teammate` | a fixed frame + the target's declared boundaries | a report with `findings` (= T10's verdict), inline | **no** — `tools = ∅`, no session | n/a (stateless) |
+| **consult** | the reviewer-check design `consult_teammate` | a fixed frame + the target's declared boundaries | a report with `findings` (= the reviewer-check design's verdict), inline | **no** — `tools = ∅`, no session | n/a (stateless) |
 
 `handoff` is the only edge that changes who a node reports to, and it does so
 in exactly one direction: toward the human. There is no edge that makes a
@@ -275,7 +276,7 @@ be busy; a resumed one can, and then the caller is told so.
 
 This is the context-coupling knob, and it is per edge. It is *not* free text
 with a system-context prefix (what exists today); it has slots, and the slots
-are the T10 lesson turned into a schema:
+are the the reviewer-check design lesson turned into a schema:
 
 ```
 SpawnRequest:
@@ -287,13 +288,12 @@ SpawnRequest:
   may_spawn: bool = False       # default: the child is a leaf (and gets no roster — §3.4)
   max_seconds: int              # deadline request — clamped, never raised
   tools: list[str] | None       # exact set (a quarantine preset) — intersected, never widened
-  grant: list[str]              # descent-denied tools to hand down — intersected with what the spawner holds
   shares_memory: bool           # the child writes the spawner's namespace (an isolate) — memory writes withheld
 ```
 
 `content` exists because §2.6's schema test found it missing: a tool-less
-edge (T10's consult) cannot follow a reference, so the payload has to ride
-in the brief. It is bounded (T10 uses 8,000 chars) and it is the *only*
+edge (the reviewer-check design's consult) cannot follow a reference, so the payload has to ride
+in the brief. It is bounded (the reviewer-check design uses 8,000 chars) and it is the *only*
 slot whose size is bounded by the platform rather than the caller.
 
 On `artefacts`, corrected after the roast (§11.1 finding 2): the workspace is
@@ -309,10 +309,10 @@ without inventing a capability system the storage layer cannot back.
 
 On `authority`, corrected after the value roast (§11.2 finding 8): it is
 optional. A child summarising three files has no commitment surface, and
-T5's lesson is that a rule you get for free is noise. The slot is there for
+The earlier experiment's lesson is that a rule you get for free is noise. The slot is there for
 the tasks that have one.
 
-Why `authority` is a slot and not prose: T10's roast killed the original
+Why `authority` is a slot and not prose: the reviewer-check design's roast killed the original
 reviewer design because the veto question ("does this commit the company to
 something the user did not authorise?") was **unanswerable from what
 isolation let the reviewer see**. The fix was to carry the *claimed
@@ -356,7 +356,7 @@ enumerated, and one-directional*.
 Report:
   status: done | needs_input | needs_approval | failed | out_of_budget | out_of_time
   summary: str
-  findings: list[{quote: str, reason: str}]   # verbatim evidence — the bait-audit shape (T5: 97.9% self-agreement)
+  findings: list[{quote: str, reason: str}]   # verbatim evidence — the bait-audit shape (an earlier internal experiment)
   artefacts: list[str]            # what the child wrote, by path (list_sub_workspace_files enumerates; it does not scope)
   tainted: bool                   # the child's envelope bit — a reader of this report inherits it
   asked: str | None               # the question, when status is needs_input / needs_approval
@@ -364,9 +364,9 @@ Report:
 
 `findings` is the field that makes a report *checkable* rather than
 *readable*: each entry carries a verbatim quote the parent can locate in
-the artefact. It is T5's bait-audit shape generalised — the form that
+the artefact. It is the earlier experiment's bait-audit shape generalised — the form that
 scored 97.9% self-agreement where holistic rubrics scored ρ = 0.24 — and it
-is what T10's `block` verdict is made of. §2.6 shows the mapping.
+is what the reviewer-check design's `block` verdict is made of. §2.6 shows the mapping.
 
 `tainted` on the report is the half of the taint rule the first draft
 missed: taint flows **down by inheritance and up by report**. A parent that
@@ -379,7 +379,7 @@ the taint status of the nodes above it.
 up the tree.** When a `needs_approval` reaches a root and becomes a human
 approval card, the card's headline and arguments must be composed
 server-side from the envelope and the tool registry — never from a
-model-supplied field. T9's roast recorded (findings ledger) that the existing
+model-supplied field. The auto-mode gate's roast recorded (findings ledger) that the existing
 review card can render one string while a different payload executes; an
 escalation surface that inherits that would make the tree's one human
 checkpoint the weakest node in it. A child cannot ask a human — the delegate preamble already
@@ -393,18 +393,18 @@ node from which it can go sideways.
 
 ### 2.6 Edge types — the brief/report is the mechanism; `consult_teammate` is edge type #1
 
-Reinier read T10 and this file side by side and saw a large, vaguely
-defined overlap. It is exact, not vague: T10's `consult_teammate` passes
+Reinier read the reviewer-check design and this file side by side and saw a large, vaguely
+defined overlap. It is exact, not vague: the reviewer-check design's `consult_teammate` passes
 work plus the authority it claims and receives a structured verdict with
-verbatim quotes. That *is* a brief and a report. T10 built one concrete
+verbatim quotes. That *is* a brief and a report. The reviewer-check design built one concrete
 instance of the general mechanism before the general mechanism was
 written down, and this section subsumes it rather than running two payload
 shapes side by side.
 
-**The schema test.** Can the brief/report express T10's consult exactly,
+**The schema test.** Can the brief/report express the reviewer-check design's consult exactly,
 without special-casing? Slot by slot:
 
-| T10 consult | brief / report | fit |
+| the reviewer-check design consult | brief / report | fit |
 |---|---|---|
 | `content` — the draft, inline, ≤ 8,000 chars | `SpawnRequest.content` | **was missing**; added in §2.4. A tool-less child cannot follow an artefact reference, so the payload must ride in the brief. |
 | `question` — "does this commit the company to anything the user did not authorise?" | `task` | direct |
@@ -420,7 +420,7 @@ edge needs, and `findings` is what the refund-audit leaves in §3.5 return
 — the general report was already going to need a quote-carrying channel
 and had not admitted it.
 
-**T10's constraints, taken as constraints on the general design.** T10
+**The reviewer-check design's constraints, taken as constraints on the general design.** T10
 removed three things deliberately, and each removal was a reason:
 
 - *Tool-less by construction, so recursion is impossible.* In envelope
@@ -430,7 +430,7 @@ removed three things deliberately, and each removal was a reason:
   could spawn. General edges *do* have tools, and the honest statement is
   that for them recursion is **bounded, not impossible**: depth ≤ 3, nodes
   ≤ `max_nodes`, spend ≤ ceiling, all checked at the chokepoint. That is
-  weaker than T10's guarantee, and it is acceptable only because work
+  weaker than the reviewer-check design's guarantee, and it is acceptable only because work
   needs tools and a check does not. An edge type declares which of the two
   it is; nothing is allowed to be "a check with tools".
 - *No memory read, no memory write.* Reads would need a tool loop; writes
@@ -440,7 +440,7 @@ removed three things deliberately, and each removal was a reason:
   *reads* are allowed to work edges because a delegated expert without its
   own memory is not that expert. A check edge gets neither.
 - *A fixed, soul-free judge.* T5 showed persona judges swing the measured
-  dimension across the full range, and T10 then measured the teammate's
+  dimension across the full range, and the reviewer-check design then measured the teammate's
   identity contributing **3/18** over "a check happens at all" — what the
   identity actually supplied was its *declared boundaries*, i.e. policy,
   not judgement. So the general rule: **identity on an edge buys
@@ -450,7 +450,7 @@ removed three things deliberately, and each removal was a reason:
   edges run under the target's soul because the soul is where the
   structural things are attached.
 
-**What T10 measured, used here instead of asserted.** Supplying the
+**What the reviewer-check design measured, used here instead of asserted.** Supplying the
 authority list: +6/18 on a byte-identical prompt (§2.4). The structured
 frame vs a naive "is anything wrong?": no score gain (12 vs 9, both 15 with
 policy) but a scope gain — 0–1 off-topic objections in 12–15 against 3 in
@@ -490,7 +490,7 @@ It is not a scalar. The evidence:
   linearly in transcript length per child, carries every injected
   instruction the parent ever read, and — per T5 — more text does not buy
   better behaviour (the 7.6k kernel beat the 19.6k full soul).
-- Too weak: T10's reviewer, which could not answer its one question.
+- Too weak: the reviewer-check design's reviewer, which could not answer its one question.
 
 The middle is **typed, explicit, caller-authored, and per edge** (§2.4). The
 platform fixes what *kinds* of things may cross (task, artefact refs,
@@ -518,10 +518,10 @@ already carries the taint bit of the tree it is in.
 | billing route (`llm_auth_provider`, `llm_credential_id`) | ceiling | identical | ✔ | exists: resume checks refuse a mismatch; spawn copies |
 | `dry_run` | ceiling | `spawner or requested` | ✔ (true is sticky) | exists for delegate/isolate/handoff |
 | `origin` | structural | copied as today (`child_session_origin`) | never a taint carrier again | unchanged — taint has its own field |
-| taint | ceiling | `spawner.tainted or born_tainted`; **up** via report | ✔ (never clears) | **new**: turn envelope; T9's gate reads it as a source; chat-platform sessions born tainted |
+| taint | ceiling | `spawner.tainted or born_tainted`; **up** via report | ✔ (never clears) | **new**: turn envelope; the auto-mode gate's gate reads it as a source; chat-platform sessions born tainted |
 | tools | ceiling | `(spawner or ALL) ∩ (requested or ALL − DESCENT_DENIED)` | ✔ | **new**: derived at `schedule_turn`; **enforced in `BaseTool.execute`** so both engines refuse, not just hide (§11.1 finding 5) |
 | blocks | ceiling | spawner's filters + requested, all must pass | ✔ | **new**: serialisable `block_filters` list replaces the `_parent` PrivateAttr the queue drops (finding 6) |
-| budget | ceiling | one metered counter per tree; a turn is admitted iff `spent < ceiling` | ✔ (Σ tree ≤ ceiling + one turn's overshoot) | **new**: Redis tree ledger, `admit` at `schedule_turn`, `charge` from `token_tracking` |
+| budget | ceiling | one metered counter per tree; a turn is admitted iff `spent < ceiling` | ✔ (Σ tree ≤ ceiling + (max_nodes − 1) × the per-turn cap) | **new**: Redis tree ledger, `admit` at `schedule_turn`, `charge` from `token_tracking` |
 | fan-out | ceiling | one counter per tree; `nodes < max_nodes` at admit | ✔ | **new**: same ledger key — per-tree, not per-node-per-turn, because only the former is representable |
 | depth | ceiling | `spawner + 1 ≤ MAX_DEPTH` | ✔ | **new**: turn envelope; applies to isolate and resume, which today it does not |
 | deadline | ceiling | `min(spawner.deadline, now + requested)` | ✔ | **new field + new watcher** — `enqueue_cancel_task` exists, nothing calls it on a timer today (finding 14) |
@@ -609,8 +609,9 @@ Ops *cannot* delegate onward (leaf), *cannot* schedule anything or post
 outward (descent-denied), *cannot* start a turn once the tree has spent its
 $1.00, *cannot* run past the parent's deadline, and *knows* it may not
 promise a refund because the brief said so. The ToolChain card shows the
-envelope next to the delegate row. Total spend ≤ $1.00 plus at most one
-turn's overshoot. Note the numbers: the default daily cap is $1.00
+envelope next to the delegate row. Total spend ≤ $1.00 plus the overshoot
+bound below (§8.2) — with a two-node tree, at most one turn's. Note the
+numbers: the default daily cap is $1.00
 (`config.py:361`), which is why the first draft's "$2 lease with a $0.60 and
 an $0.80 child" could not exist (§11.1 finding 9) — a ledger that meters
 actual spend has no such problem; four small turns fit where two reserved
@@ -635,8 +636,8 @@ hundred schedules firing across the day, plus graphs with `AutoPilotBlock`s.
 - Spend: every root ceiling is clamped to the user's remaining daily/weekly
   cap (exists); every turn in the tree is admitted against the tree's
   metered counter; therefore `Σ spend over the org ≤ Σ over users of their
-  caps + one turn's overshoot per tree`, with no component ever summing
-  across trees.
+  caps + the per-tree overshoot bound of §8.2`, with no component ever
+  summing across trees.
 - Concurrency: per-user in-flight cap of 15 on every spawn path (exists).
   3000 experts is 3000 *rows*; the number of live sessions is bounded by
   users × cap.
@@ -660,14 +661,20 @@ hundred schedules firing across the day, plus graphs with `AutoPilotBlock`s.
   envelope's `user_id` rule has to become "the spawning user is a member of
   the expert's team", which is a one-line change in `resolve_target_expert`.
 
-What is *not* scale-invariant and I am saying so: the overshoot. A tree's
-ceiling is checked at turn start, and a turn that is admitted may spend up
-to the SDK per-query cap (floored at $0.50, times up to three stream
-attempts) before the ledger sees the charge. At the default $1.00 daily cap
-that overshoot is the same order as the ceiling. The ledger makes the
-*bound* honest; it does not make the *granularity* fine, and on Codex —
-where there is no USD cap in the SDK at all — the only per-turn stop is
-`agent_max_turns`. §8.2.
+What is *not* scale-invariant and I am saying so: the overshoot. Spend is
+metered, not reserved — `spent` only advances when a turn *ends* — so the
+ceiling is checked against a figure that a wave of concurrent children all
+read before any of them has charged anything. Every one of them is
+admitted. The honest bound is therefore `(max_nodes − 1) × the per-turn
+cap`, not one turn's: the node cap, not the ceiling, is what makes it
+finite. A turn's own spend is capped by the SDK per-query cap (floored at
+$0.50, times up to three stream attempts); at the default $1.00 daily cap
+one such turn is already the same order as the whole ceiling. The ledger
+makes the *bound* honest; it does not make the *granularity* fine, and on
+Codex — where there is no USD cap in the SDK at all — the only per-turn
+stop is `agent_max_turns`. Reserving at admit and reconciling at charge is
+the fix; it needs a per-query spend figure the Codex transport does not
+expose. §8.2.
 
 ### 3.5 What N agents can do under this design that one agent cannot
 
@@ -734,7 +741,7 @@ question), artefacts (by reference, path-addressed, no structure exposed).
 The only structure that escapes is the session link on the ToolChain card —
 to the human, which is where it belongs. *Verdict: keep, and it is why the
 typed report is not decoration: untyped prose reports are exactly what
-leaks ("I asked Bea and she said…").* One calibration from T10's grid: the
+leaks ("I asked Bea and she said…").* One calibration from the reviewer-check design's grid: the
 structured frame did **not** beat the naive prompt on score (12/18 vs
 9/18 without policy; both 15/18 with it). What structure bought was
 *scope* — the naive arm spent 3 of 12 objections on tone, spelling and
@@ -743,7 +750,7 @@ typed reports is not "more accurate" but "stays in scope", and a check that
 wanders is one people learn to override. Substitutability needs in-scope
 reports, not smarter ones.
 
-**4. Different conditioning (T10's check) and different identity — real,
+**4. Different conditioning (the reviewer-check design's check) and different identity — real,
 existing.** N experts have N memory namespaces, N integrations and N souls;
 a check runs in a context that did not produce the error. Both pre-date
 this design. *Verdict: keep as inherited capability, claim nothing new.*
@@ -763,14 +770,16 @@ the root) over ~three waves for thirty children, each leaf with
 `tools = {read_workspace_file}`, the parent's deadline, and an acceptance
 line of "every match carries a verbatim quote"; every turn admitted against
 one tree ledger. The root merges thirty typed reports and is the only node
-that can act — and it is tainted when it does, so T9's gate asks before it
-does. Wall-clock ≈ 1/14 of serial; spend ≤ the tree's ceiling plus one
-turn's overshoot; injection blast radius = one report, checkable
-against its own quotes (T5's bait-audit shape, 97.9% self-agreement).
+that can act — and it is tainted when it does, so the auto-mode gate's gate asks before it
+does. Wall-clock ≈ 1/14 of serial; spend ≤ the tree's ceiling plus the §8.2
+overshoot bound — and this is the shape where that bound is widest, because
+a wide wave admits every node against the same unadvanced counter;
+injection blast radius = one report, checkable
+against its own quotes (an earlier internal experiment).
 
 I am confident in the *structure* of that claim and I have not run it. The
 unproven part is quality: whether fourteen narrow leaves plus a merge
-produce a better audit than one agent chunking carefully. T5's evidence is
+produce a better audit than one agent chunking carefully. The earlier experiment's evidence is
 that structure beats content on process discipline, not that it beats it
 on correctness, and I am not going to blur that line to make the claim
 prettier. So the defensible statement is:
@@ -802,10 +811,9 @@ DESCENT_DENIED_TOOLS = {
 child.tools = (parent.tools or ALL) ∩ (request.tools or (ALL − DESCENT_DENIED))
 ```
 
-A parent *may* grant a denied tool explicitly — a root that wants a child to
-post to Slack says so in the request (`grant_tools` on all three spawn
-tools) — and the grant is still intersected with what the parent holds, so
-it never widens. What changes is the default: **a child, unless told
+A denial is absolute: a root that wants a child to post to Slack cannot
+hand that down, because there is no grant. The request is a human-approval
+case instead. The derivation only ever narrows; it never widens. What changes is the default: **a child, unless told
 otherwise, cannot create persistent, outward or irreversible effects.**
 
 Memory writes are governed by a second, narrower rule keyed on the
@@ -814,7 +822,7 @@ Memory writes are governed by a second, narrower rule keyed on the
 `add_understanding`, because what it stores the spawner reads back next
 turn as its own memory (§11.1 finding 1). A delegated expert writes to its
 own namespace and keeps them — storing what it learned is its normal
-behaviour, and T9's taint rule governs the tainted case. The first version
+behaviour, and the auto-mode gate's taint rule governs the tainted case. The first version
 of this section put memory writes in the descent-denied set outright; the
 compatibility review (§12) showed that would silently stop every delegated
 expert from learning, which the laundering argument never required.
@@ -826,8 +834,8 @@ expert from learning, which the laundering argument never required.
 | # | invariant (from the brief) | holds by | enforcement seam |
 |---|---|---|---|
 | 1 | Authority never widens on descent; cannot be obtained from a third party | `tools = (spawner or ALL) ∩ (request or ALL − DESCENT_DENIED)`; the envelope is derived from the **running turn's** envelope in the executor's contextvar, never from a row or from the model; there is no tool that grants permissions; a resumed child runs under the caller's *current* envelope; the queued-into-in-flight path is refused for spawns; `expert_admin` is denied to every expert session (exists) | `derive_child_envelope` at `schedule_turn`; **`BaseTool.execute` refuses a tool outside the turn's set on both engines** (hiding in the schema is not enforcement — §11.1 finding 5); `execute_tool` re-checks groups (exists) |
-| 2 | Budget is bounded per tree: a turn is admitted iff the tree's metered spend is under its ceiling; Σ tree ≤ ceiling + one turn's overshoot | one Redis key per tree, Lua `admit` at turn start, `charge` on turn end from the existing cost-recording path; fail closed for depth > 0 when Redis is unavailable | `schedule_turn`; `token_tracking.py` |
-| 3 | Taint propagates downward and never launders; and upward by report | `tainted = spawner.tainted or born`; a new session id no longer means a clean bit because the bit is on the turn, not the session; a report carries its author's bit | `derive_child_envelope`; report model; T9's `is_tainted()` reads `envelope.tainted` as a source |
+| 2 | Budget is bounded per tree: a turn is admitted iff the tree's metered spend is under its ceiling; Σ tree ≤ ceiling + (max_nodes − 1) × the per-turn cap | one Redis key per tree, Lua `admit` at turn start, `charge` on turn end from the existing cost-recording path; fail closed for depth > 0 when Redis is unavailable | `schedule_turn`; `token_tracking.py` |
+| 3 | Taint propagates downward and never launders; and upward by report | `tainted = spawner.tainted or born`; a new session id no longer means a clean bit because the bit is on the turn, not the session; a report carries its author's bit | `derive_child_envelope`; report model; the auto-mode gate's `is_tainted()` reads `envelope.tainted` as a source |
 | 4 | Locality | every bound is a field on the turn or one key per tree; no fan-in, no traversal, no global set; leaves get no roster; spawning nodes get a pod-scoped one | by construction; `_team_context` |
 
 **Restated invariant 2, on the roast's argument (§11.1 finding 17):** the
@@ -849,7 +857,7 @@ propagation and one birth source (chat-platform sessions, `source_platform`
 set — T9 §5.2), so that when T9 lands the laundering path is already closed
 and its gate has one more boolean to read. The claim I can make on `dev`
 alone is "taint, once set, cannot be laundered through a spawn"; the claim
-"taint is set when it should be" is T9's.
+"taint is set when it should be" is the auto-mode gate's.
 
 **The two channels the envelope does not close, named (§11.1 findings 1, 2):**
 memory is shared *along identity* (an isolate shares its parent's
@@ -863,26 +871,26 @@ that is data by reference, and it is what artefacts are.
 
 ---
 
-## 5. Where T10 and T9 slot in
+## 5. Where the reviewer-check design and T9 slot in
 
-**T10's `consult_teammate`** is edge type #1 (§2.6): an envelope with no
+**The reviewer-check design's `consult_teammate`** is edge type #1 (§2.6): an envelope with no
 spawning, `tools = ∅`, one bounded completion charged to the tree, no
 session, and a brief/report that the general schema expresses exactly once
 `content` and `findings` were added. The pod reviewer becomes "the expert
-the pod's members should consult before committing", exactly as T10 had it.
+the pod's members should consult before committing", exactly as the reviewer-check design had it.
 
-**T9's gate** reads `envelope.tainted` as a taint source alongside its
+**The auto-mode gate's gate** reads `envelope.tainted` as a taint source alongside its
 transcript scan, and — this is the part that matters at scale — its
 "delegation is ALWAYS_ASK" rule can be relaxed to "delegation is ALWAYS_ASK
 *when the child would be granted anything the gate would ask about*". A leaf
 child pinned to the read-only quarantine preset (edge type #2), with a
 2-minute deadline and a tree already under a ceiling, does not need a human
-to approve it; the envelope is the approval. **But note the T16 limit above:
+to approve it; the envelope is the approval. **But note the the approval-rule finding limit above:
 a merely descent-denied child still holds `run_agent`, which reaches
 outward blocks and arbitrary HTTP the gate does not judge — so the "envelope
 is the approval" shortcut applies to the read-only preset, not to a default
 child.** That is the ergonomic win the two designs get by composing, scoped
-honestly: T9's gate stops asking about the spawns the envelope has actually
+honestly: the auto-mode gate's gate stops asking about the spawns the envelope has actually
 made safe, and keeps asking about the rest.
 
 Neither integration is built here. Both are one-boolean / one-field seams.
@@ -923,7 +931,7 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 - No memory isolation along the tree — memory is identity-bound and stays
   so; children lose the write side by default.
 - No TEAM/ORG-visible experts — tenancy work, orthogonal.
-- No T9 gate and no T10 consult — both slot in; neither is duplicated.
+- No T9 gate and no the reviewer-check design consult — both slot in; neither is duplicated.
 - No new expert kind, no new UI surface beyond an envelope line on the
   existing delegate ToolChain card.
 - No cross-user spawning of any kind.
@@ -939,20 +947,23 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 2. **Budget is metered, not reserved, and the overshoot is coarse.** A turn
    admitted under the ceiling may spend up to the SDK per-query cap
    (floored at $0.50, up to three stream attempts) before the charge lands
-   — the same order as the default $1.00 daily cap. On the Codex transport
+   — the same order as the default $1.00 daily cap. Worse under fan-out:
+   `spent` advances only at turn end, so children dispatched in one round
+   all read the same figure and are all admitted. The bound is
+   `(max_nodes − 1) × the per-turn cap`, held finite by the node cap rather
+   than by the ceiling. On the Codex transport
    there is no USD cap at all and the only per-turn stop is
    `agent_max_turns`. Graph runs a child starts with `run_agent` are
    charged in credits to the user's wallet and the expert's weekly budget
    — **not** to the tree ledger — in v1. Naming it rather than hiding it:
    the ledger bounds LLM spend across the tree; the wallet and weekly
    budget bound graph spend; the two are not yet one number.
-5. **Memory and workspace are not tree-scoped and this design does not
-   make them so.** Children lose the write side by default; a child that is
-   explicitly granted `memory_store` by a parent that holds it can still
-   write into a namespace its parent reads next turn. The grant is the
-   parent's decision and it is visible in the envelope; it is not a
-   laundering path the platform opened by itself.
-6. **A descent-denied child is not an outward-safe child.** The default
+3. **Memory and workspace are not tree-scoped and this design does not
+   make them so.** Isolates lose the write side outright. A delegate keeps
+   `memory_store` — it writes into its *own* expert's namespace, not the
+   spawner's — so memory crossing between teammates is bounded by who was
+   delegated to, not by the tree.
+4. **A descent-denied child is not an outward-safe child.** The default
    narrowing removes the named outward tools, but it leaves `run_agent`,
    and `run_block`/`run_agent` reach ~78 outward blocks plus arbitrary HTTP
    via `SendWebRequestBlock`, none flagged `is_sensitive_action` (T16). So
@@ -963,11 +974,11 @@ Neither integration is built here. Both are one-boolean / one-field seams.
    sandbox.
 3. **A brief's `authority` line is an assertion by the parent, not a proof.**
    A tainted parent can write a false authority line. The taint bit is what
-   tells the child (and T9's gate) not to trust it — which is why taint and
+   tells the child (and the auto-mode gate's gate) not to trust it — which is why taint and
    authority travel in the same envelope and why nothing here lets a child
    act on authority alone when tainted.
 4. **Process, not correctness.** Acceptance lines and reports are auditable
-   for discipline (T5), not for truth. A parent cannot tell from a report
+   for discipline (an earlier internal experiment), not for truth. A parent cannot tell from a report
    that the child was *right*. Nothing in this design claims otherwise, and
    anything that did would be the rubric that T5 round 1 buried.
 
@@ -1039,8 +1050,6 @@ specifics worth knowing before reading the diff:
   flow today. Isolates now count toward depth (they did not) and lose
   memory writes (they share the namespace); leaf-ness is the quarantine
   preset (`tools=[…]`), not the default.
-- `grant_tools` on all three spawn tools is how a spawner hands down a
-  descent-denied tool it holds — the ToolChain card shows the grant at the
   one place a human can see it.
 - `run_sub_session` now writes `delegated_by_session_id`, which also means
   an isolate's `pending_question` no longer surfaces on Home (the Home
@@ -1060,19 +1069,10 @@ Not in the slice, each a named follow-up: deadline watcher; brief slots in
 the tool schemas (`content`, `authority`, `acceptance`) and typed report
 parsing (`findings`); workspace write confinement; `block_filters` (tools
 only in v1); roster withheld from leaves and pod-scoped for spawning nodes;
-T9/T10 integrations.
+T9/the reviewer-check design integrations.
 
 ---
 
-## 10. Sensitive findings — where they are described
-
-Two of §1.3's grounding facts are logged in `~/code/agpt/.claude/log/findings.jsonl`.
-§12.1 traces both and downgrades them the way T9's were: Fact A is a missing
-control T9's gate needs, not an exploitable widening; Fact B is a churn
-guardrail gap capped by the rate limits, not a new bad outcome. They are
-described in this file only as facts and design consequences — §1.3 (two
-bullets), §3.2 (the `tools` and `depth` rows), §4 (invariants 1 and 3), §12.1.
-No worked sequence appears anywhere in this repository.
 
 ## 11. The roasts
 
@@ -1170,7 +1170,7 @@ a required field.
 
 **Accepted:**
 
-- *F1 KILLS-IT — all bounds, no new capability; T10's check apparently
+- *F1 KILLS-IT — all bounds, no new capability; the reviewer-check design's check apparently
   deleted.* Half accepted. The consult edge was always kept (§2.2); "not
   building" meant not re-implementing. But the substantive point stood and
   §3.5 now exists because of it: four capability candidates tested against
@@ -1198,7 +1198,7 @@ a required field.
 - *F7 MAJOR — envelope immutability contradicts CAS; in-memory fan-out
   count is not a bound.* Accepted (same as architecture F10).
 - *F8 MAJOR — `authority` as a required slot is a schema tax.* Accepted;
-  optional. T10's later measurement (6/18 on an identical prompt) is why it
+  optional. The reviewer-check design's later measurement (6/18 on an identical prompt) is why it
   stays a slot at all.
 - *F9 MAJOR — §9 was the easiest slice, not the demonstrating one.*
   Accepted; §9 rewritten around the chokepoint and a 30-node fan-out demo.
@@ -1230,7 +1230,7 @@ a required field.
   polls. What was missing was not the primitive but the *bound* that makes
   it grantable at width, and that is what the ledger is. Building a second
   fan-out tool on top of a working one is the orchestration-framework trap
-  T10 correctly refused.
+  the reviewer-check design correctly refused.
 
 ---
 
@@ -1238,7 +1238,7 @@ a required field.
 
 ### 12.1 Are the two grounding facts exploitable on `dev` today?
 
-The orchestrator asked the question T9's retraction taught: a finding is a
+The orchestrator asked the question the auto-mode gate's retraction taught: a finding is a
 hypothesis until someone traces reachability. Traced against `dev`:
 
 **Fact A — delegation passes permissions equal to the parent's, with no
@@ -1252,14 +1252,14 @@ variant of `delegate_to_expert`), and the staffing guard is *stricter* for
 children (automation origin). On `dev` an interactive parent is already
 ungated on every outward tool (`post_to_chat_platform`, `schedule_followup`,
 `bash_exec` … — `requires_auth` is the only check), so there is no gate for
-a fresh session to launder past; that gate is T9's, on a branch. What a
+a fresh session to launder past; that gate is the auto-mode gate's, on a branch. What a
 delegation adds is the *target identity's* memory namespace and voice —
 the same user's data, a confidentiality boundary between that user's own
 experts, not a privilege boundary. The `_parent` PrivateAttr loss on the
 queue is moot in practice: `AutoPilotBlock`'s inherited-permission
 contextvar only survives in-process, and nested graph runs execute in
 separate node executions. **Verdict: not exploitable. A missing control
-that T9's gate needs to exist, and a design gap — not a vulnerability.**
+that the auto-mode gate's gate needs to exist, and a design gap — not a vulnerability.**
 
 **Fact B — `run_sub_session` does not count toward the depth bound.** The
 bad outcome the bound exists for is a chain sustaining itself on credits.
@@ -1271,7 +1271,7 @@ regardless of depth. The loop check (`seen` set) still holds for
 cross-expert hops. **Verdict: no new bad outcome reachable. A churn
 guardrail gap — not a vulnerability.**
 
-Both findings therefore downgrade the same way T9's did, and the push is
+Both findings therefore downgrade the same way the auto-mode gate's did, and the push is
 clear on that basis. Their ledger entries should be annotated accordingly.
 
 ### 12.2 What this slice changes for flows that work today
@@ -1285,13 +1285,12 @@ security goal allows:
 | shipped flow | before | after | judgement |
 |---|---|---|---|
 | A delegated / handed-off expert **posts to a chat platform, schedules a follow-up, calls an MCP tool, stores a skill, or stores memory** | inherited from the parent | **still works** — a delegate runs under its own identity, namespace and budget, so these are its job and stay in the default | No change. The scheduled-standup post (the `chat_platform` headline use case) and MCP-integration delegations are unaffected. |
-| A delegated / handed-off expert **connects an integration, sets up a webhook trigger, edits a preset, or deletes a folder/preset/schedule/skill/file** | inherited | **refused unless the spawner passes `grant_tools`**; the refusal names the tool and tells the child to report the need | Intended. These bind the account or are irreversible and are not a normal delegate job. Rare, visible, recoverable — never silent data loss. |
-| A `run_sub_session` **isolate** posts outward, schedules, calls MCP, stores a skill, or **writes memory** | inherited | **refused unless granted** | Intended, and the change most likely to be noticed. An isolate shares the parent's identity and memory namespace, so a write is the parent's write (finding 1) and a post is under the parent's name. This is the shared-namespace leak the design exists to close. |
+| A delegated / handed-off expert **connects an integration, sets up a webhook trigger, edits a preset, or deletes a folder/preset/schedule/skill/file** | inherited | **refused** (there is no grant hatch, by design) | Intended. These bind the account or are irreversible and are not a normal delegate job. Rare, visible, recoverable — never silent data loss. |
+| A `run_sub_session` **isolate** posts outward, schedules, calls MCP, stores a skill, or **writes memory or understanding** | inherited | **refused** | Intended, and the change most likely to be noticed. An isolate shares the parent's identity and memory namespace, so a write is the parent's write (finding 1) and a post is under the parent's name. This is the shared-namespace leak the design exists to close. |
 | A chain that used `run_sub_session` isolates to go **past three hops** | unbounded via isolates | **stops at depth 3** (isolates now count) | Intended. Isolates keep `may_spawn=True`, so a single isolate under a shallow chain is unaffected; only chains implicitly deeper than three via isolates are cut. The bound was always meant to be total. |
 
-The escape hatch for every refusal is one field — `grant_tools` on
-`delegate_to_expert` / `handoff_to_expert` / `run_sub_session`, intersected
-with what the caller holds so it can never widen. Reinier decides whether the
-isolate memory-write default is too aggressive for `dev`; flipping it is
+There is no escape hatch, deliberately: denials are absolute, so anything a
+grant could legitimately add is already in the default set. Whether the
+isolate memory-write default is too aggressive is a maintainer call; flipping it is
 removing two entries from `ISOLATE_DENIED_TOOLS`.
 

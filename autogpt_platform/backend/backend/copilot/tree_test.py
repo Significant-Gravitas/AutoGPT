@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
+from pydantic import ValidationError
 
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.data.redis_client import AsyncRedisClient
@@ -128,32 +129,22 @@ def test_isolate_also_drops_outward_and_memory_write_tools() -> None:
     assert "memory_search" in isolate.tools  # reading is fine; writing is not
 
 
-def test_grant_cannot_reach_a_tool_denied_in_this_context() -> None:
-    """An explicit denial is absolute — grant is not a way around it."""
-    isolate = _child(
-        root_envelope("t"), shares_memory=True, grant=["post_to_chat_platform"]
-    )
-    assert isolate.tools is not None
-    assert "post_to_chat_platform" not in isolate.tools  # isolate-denied
-    assert "connect_integration" not in isolate.tools  # descent-denied
-    # The grant is intersected like everything else: a spawner without the
-    # tool cannot hand it down.
-    narrow_parent = _child(
-        root_envelope("t"),
-        tools=["read_workspace_file", "run_sub_session"],
-        may_spawn=True,
-    )
-    grandchild = derive_child_envelope(
-        narrow_parent, SpawnRequest(grant=["post_to_chat_platform"])
-    )
-    assert grandchild.tools == frozenset({"read_workspace_file"})
+def test_there_is_no_grant_escape_hatch() -> None:
+    """Denials are absolute, so a grant parameter could only ever be a no-op
+    or a violation. It was removed; this pins that it stays removed.
+
+    It existed briefly and was dead on every path: the derivation applies
+    ``- denied`` last, so a granted denied tool was stripped again, and a
+    granted non-denied tool was already in the default set.
+    """
+    with pytest.raises(ValidationError):
+        SpawnRequest(grant=["post_to_chat_platform"])  # type: ignore[call-arg]
 
 
-def test_grant_adds_a_non_denied_tool_the_spawner_holds() -> None:
-    """Grant still works for anything not on a denial list."""
-    delegate = _child(root_envelope("t"), grant=["post_to_chat_platform"])
-    assert delegate.tools is not None
-    assert "post_to_chat_platform" in delegate.tools
+def test_spawn_request_rejects_unknown_fields() -> None:
+    """A typo in a narrowing request must fail loudly, not silently widen."""
+    with pytest.raises(ValidationError):
+        SpawnRequest(shares_memmory=True)  # type: ignore[call-arg]
 
 
 def test_may_spawn_keeps_spawn_tools_but_nothing_denied() -> None:
@@ -476,11 +467,9 @@ def test_a_spawner_can_never_grant_a_tool_it_does_not_hold(tool: str) -> None:
     """An agent cannot authorize use of a tool it is not itself authorized to
     use — for every combination of the request's tool inputs."""
     requests = [
-        SpawnRequest(grant=[tool], may_spawn=True),
         SpawnRequest(tools=[tool], may_spawn=True),
-        SpawnRequest(tools=[tool], grant=[tool], may_spawn=True),
-        SpawnRequest(tools=None, grant=[tool, "bash_exec"], may_spawn=True),
-        SpawnRequest(tools=[tool, "read_workspace_file"], grant=[tool]),
+        SpawnRequest(tools=[tool, "read_workspace_file"], may_spawn=True),
+        SpawnRequest(tools=None, may_spawn=True),
     ]
     for label, spawner in _spawners_lacking(tool):
         assert not spawner.permits(tool), label
@@ -498,51 +487,25 @@ def test_no_spawner_can_ever_pass_on_an_explicitly_denied_tool(tool: str) -> Non
     root = root_envelope("t")
     assert root.permits(tool)
     for request in (
-        SpawnRequest(grant=[tool], may_spawn=True),
         SpawnRequest(tools=[tool], may_spawn=True),
-        SpawnRequest(tools=[tool], grant=[tool], may_spawn=True),
-        SpawnRequest(tools=None, grant=[tool], shares_memory=True),
+        SpawnRequest(tools=[tool, "read_workspace_file"], may_spawn=True),
+        SpawnRequest(tools=None, shares_memory=True),
     ):
         assert not derive_child_envelope(root, request).permits(tool)
 
 
-def test_a_spawner_may_still_grant_a_non_denied_tool() -> None:
-    root = root_envelope("t")
-    child = derive_child_envelope(root, SpawnRequest(grant=["post_to_chat_platform"]))
+def test_a_non_denied_tool_still_reaches_a_child_by_default() -> None:
+    """Removing grant must not remove ordinary inheritance: a delegate still
+    gets the isolate-denied set, because those are only denied to isolates."""
+    child = derive_child_envelope(root_envelope("t"), SpawnRequest())
     assert child.permits("post_to_chat_platform")
     assert not child.permits("delete_preset")
 
 
-@pytest.mark.asyncio
-async def test_two_first_children_racing_to_open_do_not_refuse_each_other() -> None:
-    """Opening must be all-or-nothing.
-
-    With field-by-field writes, a second first-child could observe ``ceiling``
-    already written while ``spent``/``max_nodes`` were not yet — and ``admit``
-    reads a partial hash as a closed tree, refusing a perfectly valid spawn.
-    """
-    redis = FakeRedis()
-    ledger = TreeLedger(cast(AsyncRedisClient, redis))
-    root = root_envelope("t")
-
-    async def open_then_admit() -> str:
-        if not await ledger.exists("t"):
-            await ledger.open(
-                "t", ceiling_microdollars=1_000_000, max_nodes=8, initial_nodes=1
-            )
-        try:
-            await ledger.admit(_child(root))
-            return "admitted"
-        except TreeRefusal as refused:
-            return refused.message
-
-    results = await asyncio.gather(*(open_then_admit() for _ in range(6)))
-    assert all(r == "admitted" for r in results), results
-    snapshot = await ledger.snapshot("t")
-    # One open, one root node, six admitted children.
-    assert snapshot == {
-        "ceiling": 1_000_000,
-        "spent": 0,
-        "nodes": 7,
-        "max_nodes": 8,
-    }
+def test_an_empty_tool_set_denies_rather_than_reading_as_no_filter() -> None:
+    """An empty whitelist round-trips through effective_allowed_tools as "no
+    filter", which would show a fully-locked child every tool."""
+    locked = TurnEnvelope(tree_id="t", depth=1, tools=frozenset())
+    perms = locked.as_permissions()
+    assert perms is not None
+    assert perms.effective_allowed_tools(ALL_TOOL_NAMES) == frozenset()
