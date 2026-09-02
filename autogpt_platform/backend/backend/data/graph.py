@@ -1437,8 +1437,9 @@ def graph_in_library_filter(
     where: LibraryAgentWhereInput = {
         "userId": user_id,
         "agentGraphId": graph_id,
+        # Archiving hides an agent, it does not revoke it; isDeleted is the
+        # membership signal.
         "isDeleted": False,
-        "isArchived": False,
         "AgentGraph": {
             "is": {
                 "StoreListingVersions": {
@@ -1703,10 +1704,12 @@ async def validate_graph_execution_permissions(
 
     ## Logic
     A user can execute a graph if any of these is true:
-    1. They own the graph and some version of it is still listed in their library
-    2. The graph is in the user's library (non-deleted, non-archived)
-    3. The graph is published in the marketplace and listed in their library
-    4. The graph is published in the marketplace and is being executed as a sub-agent
+    1. They own the graph and some version of it is still in their library
+    2. They can *read* the exact version -- it is in their library and that
+       version was submitted to the marketplace (`graph_in_library_filter()`)
+    3. It is published in the marketplace and is executed as a sub-agent.
+       This is the only case where execute is allowed without read; see
+       SECRT-1125 and the invariant note at step 3.
 
     Args:
         graph_id: The ID of the graph to check
@@ -1717,31 +1720,27 @@ async def validate_graph_execution_permissions(
 
     Raises:
         GraphNotAccessibleError: If the graph is not accessible to the user.
-        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     graph, library_agent = await asyncio.gather(
         AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
         ),
+        # The read gate's own predicate, reused rather than restated, so the
+        # two can't drift apart.
         LibraryAgent.prisma().find_first(
-            where={
-                "userId": user_id,
-                "agentGraphId": graph_id,
-                "agentGraphVersion": graph_version,
-                "isDeleted": False,
-                "isArchived": False,
-            }
+            where=graph_in_library_filter(user_id, graph_id, graph_version)
         ),
     )
 
     # Step 1: Check if user owns this graph
     user_owns_graph = graph and graph.userId == user_id
 
-    # Step 2: Check if the exact graph version is in the library.
-    user_has_in_library = library_agent is not None
-    owner_has_live_library_entry = user_has_in_library
-    if user_owns_graph and not user_has_in_library:
+    # Step 2: Check if the exact graph version is readable from the library.
+    version_readable_from_library = library_agent is not None
+    owner_has_live_library_entry = version_readable_from_library
+    if user_owns_graph and not version_readable_from_library:
         # Owners are allowed to execute a new version as long as some live
         # library entry still exists for the graph. Non-owners stay
         # version-specific.
@@ -1751,28 +1750,30 @@ async def validate_graph_execution_permissions(
                     "userId": user_id,
                     "agentGraphId": graph_id,
                     "isDeleted": False,
-                    "isArchived": False,
                 }
             )
             is not None
         )
 
     # Step 3: Apply permission logic
-    # Access is granted if the user owns it, it's in the marketplace, OR
-    # it's in the user's library ("you added it, you keep it").
-    # Looser than the read gate in graph_in_library_filter(): a library-only,
-    # never-submitted version still executes here but 404s on read.
+    # INVARIANT: execution must never be more permissive than read access
+    # (`get_graph()` / `graph_in_library_filter()`). The one sanctioned
+    # exception is SECRT-1125: a non-owner may EXECUTE a marketplace-listed
+    # graph they are denied read of, because the graph -- and its run's
+    # intermediate outputs -- would let them reconstruct a non-public graph.
     if not (
         user_owns_graph
-        or user_has_in_library
+        or version_readable_from_library
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
             f"You do not have access to graph #{graph_id} v{graph_version}: "
-            "it is not owned by you, not in your library, "
-            "and not available in the Marketplace"
+            "it is not owned by you, not in your library as a submitted "
+            "version, and not available in the Marketplace"
         )
-    elif not (user_has_in_library or owner_has_live_library_entry or is_sub_graph):
+    elif not (
+        version_readable_from_library or owner_has_live_library_entry or is_sub_graph
+    ):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
     # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)

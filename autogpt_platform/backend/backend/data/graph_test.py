@@ -26,6 +26,7 @@ from backend.data.graph import (
     Node,
     NodeModel,
     get_graph,
+    graph_in_library_filter,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
@@ -964,7 +965,8 @@ def test_mcp_credential_combine_no_discriminator_values():
 # --------------- get_graph access-control truth table --------------- #
 #
 # Access: owner, OR (in library AND submitted). "Submitted" is any status but
-# DRAFT. get_graph_as_admin() and skip_access_check=True bypass all of it.
+# DRAFT. Archiving hides an agent, it does not revoke it, so only isDeleted
+# ends membership. get_graph_as_admin() and skip_access_check=True bypass it.
 #
 # | User     | Owns? | Submitted   | Library          | Version | Result  | Test
 # |----------|-------|-------------|------------------|---------|---------|-----
@@ -975,7 +977,7 @@ def test_mcp_credential_combine_no_discriminator_values():
 # | regular  | no    | no          | not present      | v1      | DENIED  | test_get_graph_access_matrix
 # | regular  | no    | yes         | active, diff ver | v2      | DENIED  | test_get_graph_library_wrong_version_denied
 # | regular  | no    | yes         | deleted          | v1      | DENIED  | test_get_graph_deleted_library_agent_denied
-# | regular  | no    | yes         | archived         | v1      | DENIED  | test_get_graph_archived_library_agent_denied
+# | regular  | no    | yes         | archived         | v1      | ACCESS  | test_get_graph_archived_library_agent_allowed
 # | regular  | no    | yes         | null AgentGraph  | v1      | DENIED  | test_get_graph_library_with_null_agent_graph_denied
 # | anon     | no    | yes         | -                | v1      | DENIED  | test_get_graph_anonymous_denied_for_submitted_graph
 # | admin*   | no    | PENDING     | -                | v2      | ACCESS  | test_admin_can_access_pending_v2_via_get_graph_as_admin
@@ -1174,7 +1176,7 @@ async def test_get_graph_in_library_but_never_submitted_denied() -> None:
     assert lib_where["agentGraphId"] == graph_id
     assert lib_where["agentGraphVersion"] == 1
     assert lib_where["isDeleted"] is False
-    assert lib_where["isArchived"] is False
+    assert "isArchived" not in lib_where, "archiving hides, it does not revoke"
     # The submission requirement must be part of the same query, so the two
     # halves can never resolve to different graph versions.
     submitted_statuses = set(
@@ -1250,7 +1252,7 @@ async def test_get_graph_library_member_can_access_submitted_agent() -> None:
 
     assert result is mock_graph_model, "Library member should access submitted agent"
 
-    # Verify library query filters on non-deleted, non-archived
+    # Verify library query filters on non-deleted (archived stays readable)
     lib_call = mock_lib_prisma.return_value.find_first
     lib_call.assert_awaited_once()
     assert lib_call.await_args is not None
@@ -1258,7 +1260,7 @@ async def test_get_graph_library_member_can_access_submitted_agent() -> None:
     assert lib_where["userId"] == requester_id
     assert lib_where["agentGraphId"] == graph_id
     assert lib_where["isDeleted"] is False
-    assert lib_where["isArchived"] is False
+    assert "isArchived" not in lib_where
 
 
 @pytest.mark.asyncio
@@ -1292,11 +1294,13 @@ async def test_get_graph_deleted_library_agent_denied() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_graph_archived_library_agent_denied() -> None:
-    """If the user archived the agent in their library, they should
-    NOT get access, even though the version was submitted."""
+async def test_get_graph_archived_library_agent_allowed() -> None:
+    """Archiving is a display state, not a revocation: tidying an agent out of
+    the library view must not cost the user run history, forking, scheduling
+    or webhook presets. `isDeleted` is what ends membership."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
+    mock_graph_model = MagicMock(name="GraphModel")
 
     ag_prisma, lib_prisma = _fake_graph_db(
         owner_id="original-creator-id",
@@ -1315,10 +1319,14 @@ async def test_get_graph_archived_library_agent_denied() -> None:
     with (
         patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
         patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+        patch(
+            "backend.data.graph.GraphModel.from_db",
+            return_value=mock_graph_model,
+        ),
     ):
         result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
 
-    assert result is None, "Archived library agent should not grant graph access"
+    assert result is mock_graph_model, "Archiving must not revoke graph access"
 
 
 @pytest.mark.asyncio
@@ -1676,9 +1684,15 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 # --------------- execution permission truth table --------------- #
 #
 # validate_graph_execution_permissions() has two gates:
-# 1. Accessible graph: owner OR exact-version library entry OR marketplace-published
-# 2. Runnable graph: exact-version library entry OR owner fallback to any live
-#    library entry for the graph OR sub-graph exception
+# 1. Accessible graph: owner OR the exact version is READABLE from the library
+#    (in library AND submitted -- the same graph_in_library_filter() the read
+#    path uses) OR marketplace-published
+# 2. Runnable graph: that readable entry OR owner fallback to any live library
+#    entry for the graph OR sub-graph exception
+#
+# INVARIANT: gate 1 must never be looser than get_graph()'s read rule. The one
+# exception is SECRT-1125 -- a marketplace-published graph runs as a sub-agent
+# without read, so the caller can't reconstruct a non-public graph from it.
 #
 # Desired owner behavior differs from non-owners:
 # owners should be allowed to run a new version when some non-archived/non-deleted
@@ -1687,11 +1701,12 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 #
 # | User     | Owns? | Marketplace | Library state                | is_sub_graph | Result   | Test
 # |----------|-------|-------------|------------------------------|--------------|----------|-----
-# | regular  | no    | no          | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
+# | regular  | no    | submitted   | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
+# | regular  | no    | no          | exact version, NEVER submitted| false        | DENY acc | test_validate_graph_execution_permissions_library_member_never_submitted_denied
 # | owner    | yes   | no          | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_owner_same_version_in_library_allowed
 # | owner    | yes   | no          | previous version present     | false        | ALLOW    | test_validate_graph_execution_permissions_owner_previous_library_version_allowed
 # | owner    | yes   | no          | none present                 | false        | DENY lib | test_validate_graph_execution_permissions_owner_without_library_denied
-# | owner    | yes   | no          | only archived/deleted older  | false        | DENY lib | test_validate_graph_execution_permissions_owner_previous_archived_library_version_denied
+# | owner    | yes   | no          | only archived older          | false        | ALLOW    | test_validate_graph_execution_permissions_owner_previous_archived_library_version_allowed
 # | regular  | no    | yes         | none present                 | false        | DENY lib | test_validate_graph_execution_permissions_marketplace_graph_not_in_library_denied
 # | admin    | no    | no          | none present                 | false        | DENY acc | test_validate_graph_execution_permissions_admin_without_library_or_marketplace_denied
 # | regular  | no    | yes         | none present                 | true         | ALLOW    | test_validate_graph_execution_permissions_marketplace_sub_graph_without_library_allowed
@@ -1729,6 +1744,46 @@ async def test_validate_graph_execution_permissions_library_member_same_version_
     mock_is_published.assert_not_awaited()
     lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
     assert lib_where["agentGraphVersion"] == graph_version
+    # The alignment itself: execute queries the read gate's own predicate, so
+    # it cannot be looser than read. Everything the read tests prove about
+    # graph_in_library_filter() therefore holds here too.
+    assert lib_where == graph_in_library_filter(requester_id, graph_id, graph_version)
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_library_member_never_submitted_denied() -> (
+    None
+):
+    """Library membership alone no longer grants execution. This is the gap the
+    alignment closes: before, a never-submitted version 404'd on read but still
+    ran, and the user paid for a run whose results they could never open."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    graph_version = 2
+    mock_graph = MagicMock(userId="creator-user-id")
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_is_published,
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
+        # graph_in_library_filter() requires a submission, so an unsubmitted
+        # row is simply not found.
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        with pytest.raises(GraphNotAccessibleError):
+            await validate_graph_execution_permissions(
+                user_id=requester_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            )
+
+    mock_is_published.assert_awaited_once_with(graph_id, graph_version)
 
 
 @pytest.mark.asyncio
@@ -1845,14 +1900,15 @@ async def test_validate_graph_execution_permissions_owner_without_library_denied
         "userId": requester_id,
         "agentGraphId": graph_id,
         "isDeleted": False,
-        "isArchived": False,
-    }
+    }, "archiving hides an agent, it must not revoke the owner's run rights"
 
 
 @pytest.mark.asyncio
-async def test_validate_graph_execution_permissions_owner_previous_archived_library_version_denied() -> (
+async def test_validate_graph_execution_permissions_owner_previous_archived_library_version_allowed() -> (
     None
 ):
+    """An owner whose only remaining library entry is archived can still run a
+    new version: the fallback query must not filter on isArchived."""
     requester_id = "owner-user-id"
     graph_id = "graph-id"
     graph_version = 2
@@ -1868,14 +1924,15 @@ async def test_validate_graph_execution_permissions_owner_previous_archived_libr
         ) as mock_is_published,
     ):
         mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
-        mock_lib_prisma.return_value.find_first = AsyncMock(side_effect=[None, None])
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[None, MagicMock(name="ArchivedLibraryAgent")]
+        )
 
-        with pytest.raises(GraphNotInLibraryError):
-            await validate_graph_execution_permissions(
-                user_id=requester_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-            )
+        await validate_graph_execution_permissions(
+            user_id=requester_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+        )
 
     mock_is_published.assert_not_awaited()
     assert mock_lib_prisma.return_value.find_first.await_count == 2
@@ -1890,8 +1947,7 @@ async def test_validate_graph_execution_permissions_owner_previous_archived_libr
         "userId": requester_id,
         "agentGraphId": graph_id,
         "isDeleted": False,
-        "isArchived": False,
-    }
+    }, "archiving hides an agent, it must not revoke the owner's run rights"
 
 
 @pytest.mark.asyncio
