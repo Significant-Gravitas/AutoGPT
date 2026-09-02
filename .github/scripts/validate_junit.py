@@ -122,6 +122,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="replace missing, empty, or malformed reports with a one-error JUnit report",
     )
+    parser.add_argument(
+        "--require-no-skips",
+        action="store_true",
+        help="reject reports containing skipped test cases",
+    )
     parser.add_argument("reports", nargs="+", type=Path)
     return parser.parse_args(argv)
 
@@ -134,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
             summary = validate_path(report, args.synthesize_invalid)
         except ValueError as exc:
             problems.append(f"{report}: {exc}")
+            continue
+        if args.require_no_skips and summary.skipped:
+            problems.append(
+                f"{report}: report contains {summary.skipped} skipped tests"
+            )
             continue
         print(
             f"{report}: {summary.tests} tests, {summary.passed} passed, "

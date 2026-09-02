@@ -74,6 +74,14 @@ class ValidateJUnitTests(unittest.TestCase):
         self.assertEqual(summary.tests, 2)
         self.assertEqual(summary.passed, 0)
 
+    def test_require_no_skips_rejects_a_skipped_case(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "skipped.xml"
+            ElementTree.ElementTree(report_xml(skipped=1)).write(report)
+
+            self.assertEqual(main([str(report)]), 0)
+            self.assertEqual(main(["--require-no-skips", str(report)]), 1)
+
     def test_synthesizes_machine_readable_error_for_missing_report(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / "missing.xml"
