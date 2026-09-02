@@ -385,110 +385,6 @@ def extract_manual_content(existing_content: str) -> dict[str, str]:
     return manual_sections
 
 
-class OrphanedManualContentError(Exception):
-    """Manual prose exists under a heading no block claims; regenerating would drop it."""
-
-    def __init__(self, orphans: dict[str, list[tuple[str, list[str]]]]):
-        self.orphans = orphans
-        super().__init__(format_orphan_report(orphans))
-
-
-def find_block_manual_content(
-    existing_content: str,
-    block_name: str,
-    rename_map: dict[str, str] | None = None,
-) -> dict[str, str]:
-    """Manual sections written under this block's heading, or under a --rekey'd old one."""
-    headings = [block_name] + [
-        old for old, new in (rename_map or {}).items() if new == block_name
-    ]
-    for heading in headings:
-        pattern = rf"(?:^|\n)## {re.escape(heading)}\s*\n(.*?)(?=\n---|\Z)"
-        match = re.search(pattern, existing_content, re.DOTALL)
-        if match:
-            return extract_manual_content(match.group(1))
-    return {}
-
-
-def find_orphaned_manual_sections(
-    existing_content: str,
-    block_names: Iterable[str],
-    rename_map: dict[str, str] | None = None,
-) -> list[tuple[str, list[str]]]:
-    """
-    Hand-written prose under headings that no current block claims.
-
-    A block rename changes its generated heading, so the prose written under the old
-    one would otherwise be replaced by a placeholder without anyone being told.
-    Returns [(heading, [manual keys])].
-    """
-    rename_map = rename_map or {}
-    claimed = set(block_names)
-    orphans: list[tuple[str, list[str]]] = []
-
-    for match in re.finditer(
-        r"(?:^|\n)## ([^\n]+?)[ \t]*\n(.*?)(?=\n## |\Z)", existing_content, re.DOTALL
-    ):
-        heading = match.group(1)
-        if heading in claimed or rename_map.get(heading) in claimed:
-            continue
-        written = sorted(
-            key
-            for key, content in extract_manual_content(match.group(2)).items()
-            if key not in FILE_LEVEL_MANUAL_KEYS
-            and content
-            and content not in PLACEHOLDER_TEXTS
-        )
-        if written:
-            orphans.append((heading, written))
-
-    return orphans
-
-
-def collect_orphaned_manual_sections(
-    output_dir: Path,
-    file_mapping: dict[str, list[BlockDoc]],
-    rename_map: dict[str, str] | None = None,
-) -> dict[str, list[tuple[str, list[str]]]]:
-    """Orphaned manual sections across every file the generator is about to rewrite."""
-    orphans = {}
-    for file_path, file_blocks in file_mapping.items():
-        full_path = output_dir / file_path
-        if not full_path.exists():
-            continue
-        file_orphans = find_orphaned_manual_sections(
-            full_path.read_text(), [b.name for b in file_blocks], rename_map
-        )
-        if file_orphans:
-            orphans[str(file_path)] = file_orphans
-    return orphans
-
-
-def format_orphan_report(orphans: dict[str, list[tuple[str, list[str]]]]) -> str:
-    lines = [
-        "Refusing to write: hand-written documentation would be lost.",
-        "",
-        "These headings carry manual content but match no current block —",
-        "most likely a block was renamed and the docs still use its old name:",
-        "",
-    ]
-    for file_path, file_orphans in sorted(orphans.items()):
-        lines.append(f"  {file_path}")
-        for heading, keys in file_orphans:
-            lines.append(f"    ## {heading}  ({', '.join(keys)})")
-    lines += [
-        "",
-        "Carry the prose over to the new name:",
-        "",
-        '    poetry run python scripts/generate_block_docs.py --rekey "OLD NAME=NEW NAME"',
-        "",
-        "Or, if the block really was deleted and the prose should go with it:",
-        "",
-        "    poetry run python scripts/generate_block_docs.py --allow-orphaned-manual",
-    ]
-    return "\n".join(lines)
-
-
 def generate_block_markdown(
     block: BlockDoc,
     manual_content: dict[str, str] | None = None,
@@ -1169,6 +1065,110 @@ def parse_rekey_args(rekey_args: list[str]) -> dict[str, str]:
             raise ValueError(f"--rekey expects OLD=NEW, got {arg!r}")
         rename_map[old.strip()] = new.strip()
     return rename_map
+
+
+def find_block_manual_content(
+    existing_content: str,
+    block_name: str,
+    rename_map: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Manual sections written under this block's heading, or under a --rekey'd old one."""
+    headings = [block_name] + [
+        old for old, new in (rename_map or {}).items() if new == block_name
+    ]
+    for heading in headings:
+        pattern = rf"(?:^|\n)## {re.escape(heading)}\s*\n(.*?)(?=\n---|\Z)"
+        match = re.search(pattern, existing_content, re.DOTALL)
+        if match:
+            return extract_manual_content(match.group(1))
+    return {}
+
+
+def collect_orphaned_manual_sections(
+    output_dir: Path,
+    file_mapping: dict[str, list[BlockDoc]],
+    rename_map: dict[str, str] | None = None,
+) -> dict[str, list[tuple[str, list[str]]]]:
+    """Orphaned manual sections across every file the generator is about to rewrite."""
+    orphans = {}
+    for file_path, file_blocks in file_mapping.items():
+        full_path = output_dir / file_path
+        if not full_path.exists():
+            continue
+        file_orphans = find_orphaned_manual_sections(
+            full_path.read_text(), [b.name for b in file_blocks], rename_map
+        )
+        if file_orphans:
+            orphans[str(file_path)] = file_orphans
+    return orphans
+
+
+def find_orphaned_manual_sections(
+    existing_content: str,
+    block_names: Iterable[str],
+    rename_map: dict[str, str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    """
+    Hand-written prose under headings that no current block claims.
+
+    A block rename changes its generated heading, so the prose written under the old
+    one would otherwise be replaced by a placeholder without anyone being told.
+    Returns [(heading, [manual keys])].
+    """
+    rename_map = rename_map or {}
+    claimed = set(block_names)
+    orphans: list[tuple[str, list[str]]] = []
+
+    for match in re.finditer(
+        r"(?:^|\n)## ([^\n]+?)[ \t]*\n(.*?)(?=\n## |\Z)", existing_content, re.DOTALL
+    ):
+        heading = match.group(1)
+        if heading in claimed or rename_map.get(heading) in claimed:
+            continue
+        written = sorted(
+            key
+            for key, content in extract_manual_content(match.group(2)).items()
+            if key not in FILE_LEVEL_MANUAL_KEYS
+            and content
+            and content not in PLACEHOLDER_TEXTS
+        )
+        if written:
+            orphans.append((heading, written))
+
+    return orphans
+
+
+class OrphanedManualContentError(Exception):
+    """Manual prose exists under a heading no block claims; regenerating would drop it."""
+
+    def __init__(self, orphans: dict[str, list[tuple[str, list[str]]]]):
+        self.orphans = orphans
+        super().__init__(format_orphan_report(orphans))
+
+
+def format_orphan_report(orphans: dict[str, list[tuple[str, list[str]]]]) -> str:
+    lines = [
+        "Refusing to write: hand-written documentation would be lost.",
+        "",
+        "These headings carry manual content but match no current block —",
+        "most likely a block was renamed and the docs still use its old name:",
+        "",
+    ]
+    for file_path, file_orphans in sorted(orphans.items()):
+        lines.append(f"  {file_path}")
+        for heading, keys in file_orphans:
+            lines.append(f"    ## {heading}  ({', '.join(keys)})")
+    lines += [
+        "",
+        "Carry the prose over to the new name:",
+        "",
+        '    poetry run python scripts/generate_block_docs.py --rekey "OLD NAME=NEW NAME"',
+        "",
+        "Or, if the block really was deleted and the prose should go with it:",
+        "",
+        "    poetry run python scripts/generate_block_docs.py --allow-orphaned-manual",
+    ]
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
