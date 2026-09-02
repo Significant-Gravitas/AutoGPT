@@ -1275,6 +1275,17 @@ async def delete_graph_execution(
         )
 
 
+async def set_cancel_requested(
+    graph_exec_id: str, user_id: str
+) -> None:
+    """REL-002: persist cancel intent durably before fanout."""
+    now = datetime.now(tz=timezone.utc)
+    await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
+        data={"cancelRequestedAt": now, "cancelRequestedBy": user_id},  # type: ignore[arg-type]
+    )
+
+
 async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(

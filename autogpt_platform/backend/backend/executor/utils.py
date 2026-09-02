@@ -1094,7 +1094,19 @@ async def stop_graph_execution(
                 return_exceptions=True,  # Don't fail parent stop if child stop fails
             )
 
-    # Now stop this execution
+    # REL-002 durable cancellation: persist intent before fanout so
+    # executor restart cannot erase it. The column is the SoR; fanout is
+    # latency optimization only.
+    try:
+        from backend.data.execution import set_cancel_requested
+
+        await set_cancel_requested(graph_exec_id, user_id)
+    except Exception as e:
+        logger.warning(f"Failed to persist cancelRequestedAt for {graph_exec_id}: {e}")
+        # Continue to fanout — at-least-once publish is still useful even if
+        # persistence failed; caller will still poll/terminate via status.
+
+    # Now stop this execution (fast path)
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
