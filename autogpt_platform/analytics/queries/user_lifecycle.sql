@@ -102,7 +102,8 @@ runs AS (
     MIN(ge."createdAt")                                                  AS first_agent_run_at,
     MAX(ge."createdAt")                                                  AS last_agent_run_at,
     COUNT(*)                                                             AS agent_runs_total,
-    COUNT(*) FILTER (WHERE ge."triggerSource" IN ('manual', 'api', 'copilot'))
+    COUNT(*) FILTER (WHERE ge."triggerSource" IS NULL
+                        OR ge."triggerSource" IN ('manual', 'api', 'copilot'))
                                                                          AS agent_runs_human_total,
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'schedule')              AS agent_runs_scheduled_total,
     COUNT(*) FILTER (WHERE ge."executionStatus" = 'FAILED')              AS agent_runs_failed_total,
