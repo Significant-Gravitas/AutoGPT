@@ -46,8 +46,6 @@ export function isValidGraphExecutionID(
   return parseGraphExecutionID(raw) !== null;
 }
 
-export function isValidGraphID(
-  raw: string | null | undefined,
-): raw is GraphID {
+export function isValidGraphID(raw: string | null | undefined): raw is GraphID {
   return parseGraphID(raw) !== null;
 }

@@ -41,5 +41,8 @@ export function useBuilderQueryStates() {
     } as never);
   }
 
-  return [{ flowID, flowVersion, flowExecutionID, raw }, setBuilderQueryStates] as const;
+  return [
+    { flowID, flowVersion, flowExecutionID, raw },
+    setBuilderQueryStates,
+  ] as const;
 }

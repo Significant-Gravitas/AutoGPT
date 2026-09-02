@@ -1072,6 +1072,23 @@ model AgentGraphExecution {
   @@index([organizationId])
 }
 
+// REL-005 durable scheduler occurrence — prevents duplicate logical executions
+// across restarts/retries/concurrency. Unique (scheduleId, fireTime) is the
+// idempotency key; status tracks lifecycle separate from execution.
+model ScheduleOccurrence {
+  id         String   @id @default(uuid())
+  scheduleId String
+  fireTime   DateTime
+  status     String   @default("claimed") // claimed | dispatched | completed | missed | failed
+  executionId String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([scheduleId, fireTime])
+  @@index([scheduleId])
+  @@index([fireTime])
+}
+
 enum SharedVia {
   USER
   CHAT_LINK

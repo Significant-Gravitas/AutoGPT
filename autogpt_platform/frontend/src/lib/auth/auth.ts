@@ -214,10 +214,14 @@ export const auth = betterAuth({
         audience: "authenticated",
         // REL-001: shorten replay window from 1h → 5m. Short-lived tokens bound logout/revocation semantics; refresh is via getServerAuthToken per-request cache.
         expirationTime: "5m",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
+          // REL-001 revocation: jti + sid allow Redis denylist to invalidate
+          // a specific token or all tokens from a session without DB lookup.
+          jti: crypto.randomUUID(),
+          sid: (session as unknown as { id?: string })?.id ?? null,
         }),
       },
     }),

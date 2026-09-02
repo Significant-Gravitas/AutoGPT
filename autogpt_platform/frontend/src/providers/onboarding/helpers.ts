@@ -1,7 +1,4 @@
-import {
-  OnboardingStep,
-  UserOnboarding,
-} from "@/lib/autogpt-server-api";
+import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
 import { parseGraphExecutionID } from "@/lib/graph-ids";
 

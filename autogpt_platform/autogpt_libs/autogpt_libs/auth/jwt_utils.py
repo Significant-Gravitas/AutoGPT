@@ -133,11 +133,43 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
             algorithms=algorithms,
             audience=audience,
         )
+        # REL-001 revocation: if jti/sid is in Redis denylist, reject.
+        # Fail-open on Redis outage (bounded 5m exposure, not outage).
+        try:
+            if _is_jti_revoked(payload):
+                raise ValueError("Token has been revoked")
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.warning(f"Revocation check failed (fail-open): {e}")
         return payload
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {str(e)}") from e
+
+
+def _is_jti_revoked(payload: dict[str, Any]) -> bool:
+    """Check Redis denylist for jti/sid. Returns True if revoked."""
+    jti = payload.get("jti")
+    sid = payload.get("sid")
+    if not jti and not sid:
+        return False
+    # Lazy import to avoid hard dependency at import time
+    try:
+        from backend.data.redis import get_redis  # type: ignore
+
+        r = get_redis()
+        # Use sync redis if available, else try async
+        if hasattr(r, "get"):
+            if jti and r.get(f"revoked:jti:{jti}"):
+                return True
+            if sid and r.get(f"revoked:sid:{sid}"):
+                return True
+        return False
+    except Exception:
+        # No redis or not connected — fail-open (bounded by 5m expiry)
+        return False
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:

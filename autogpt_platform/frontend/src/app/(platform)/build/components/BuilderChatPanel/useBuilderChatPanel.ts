@@ -382,7 +382,8 @@ export function useBuilderChatPanel({
           // graph version, the Dexie draft is now from before the edit.
           if (flowID) {
             void import("@/services/builder-draft/draft-service").then(
-              ({ draftService }) => draftService.deleteDraft(flowID).catch(() => {}),
+              ({ draftService }) =>
+                draftService.deleteDraft(flowID).catch(() => {}),
             );
           }
           void refetchGraph();

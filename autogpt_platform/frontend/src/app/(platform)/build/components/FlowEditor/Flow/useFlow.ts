@@ -21,7 +21,6 @@ import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
 import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
-import isEqual from "lodash/isEqual";
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
