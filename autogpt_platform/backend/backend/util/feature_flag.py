@@ -169,6 +169,13 @@ class Flag(str, Enum):
     # targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
+    # Shows a connection the user's plan does not include as a locked entry
+    # in the connection list, rather than omitting it.  Merchandising, not
+    # access: the entitlement still decides what may actually run, and a
+    # locked offer is never routable.  Off by default so the upsell reaches
+    # a cohort before it reaches everyone.
+    CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""

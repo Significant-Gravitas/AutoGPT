@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  getGetV1ListCredentialsQueryKey,
   getV1InitiateOauthFlow,
   postV1ExchangeOauthCodeForTokens,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import {
   OAUTH_ERROR_POPUP_BLOCKED,
   openOAuthPopup,
@@ -115,9 +115,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       });
 
       toast({ title: "Connected via OAuth", variant: "success" });
-      await queryClient.invalidateQueries({
-        queryKey: getGetV1ListCredentialsQueryKey(),
-      });
+      await invalidateConnectionQueries(queryClient);
       // customMutator rejects non-2xx, so a 200 is the only way to get here;
       // the check narrows the union rather than guarding a real branch.
       onSuccess(exchanged.status === 200 ? exchanged.data : undefined);

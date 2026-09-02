@@ -56,9 +56,6 @@ export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 /** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
 export const PANEL_RESERVED_WIDTH = 440;
 
-/** Autopilot response mode. */
-export type CopilotMode = "extended_thinking" | "fast";
-
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
@@ -206,19 +203,16 @@ interface CopilotUIState {
   markUserClosedForAutoOpen: () => void;
   resetAutoOpenState: () => void;
 
-  /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
-  copilotChatMode: CopilotMode;
-  setCopilotChatMode: (mode: CopilotMode) => void;
-  copilotModePinned: boolean;
-  applyServerModeChange: (mode: CopilotMode) => void;
-  clearCopilotModePin: () => void;
-
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
   setCopilotLlmModel: (model: CopilotLlmModel) => void;
 
-  /** Authentication route locked into the next session when it is created. */
-  copilotLlmAuth: CopilotLlmAuthSelection;
+  /**
+   * Authentication route locked into the next session when it is created.
+   * `null` until something chooses — the user via the picker, or the default
+   * they set in Settings, which the server marks on the transport list.
+   */
+  copilotLlmAuth: CopilotLlmAuthSelection | null;
   setCopilotLlmAuth: (selection: CopilotLlmAuthSelection) => void;
 
   /** Developer dry-run mode: sessions created with dry_run=true. */
@@ -516,22 +510,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     _autoOpenUserClosed = false;
   },
 
-  copilotChatMode: (() => {
-    const saved = isClient ? storage.get(Key.COPILOT_MODE) : null;
-    return saved === "fast" ? "fast" : "extended_thinking";
-  })(),
-  setCopilotChatMode: (mode) => {
-    storage.set(Key.COPILOT_MODE, mode);
-    set({ copilotChatMode: mode });
-  },
-  copilotModePinned: false,
-  applyServerModeChange: (mode) => {
-    set({ copilotChatMode: mode, copilotModePinned: true });
-  },
-  clearCopilotModePin: () => {
-    set({ copilotModePinned: false });
-  },
-
   copilotLlmModel: (() => {
     const saved = isClient ? storage.get(Key.COPILOT_MODEL) : null;
     return saved === "advanced" ? "advanced" : "standard";
@@ -541,7 +519,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ copilotLlmModel: model });
   },
 
-  copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  copilotLlmAuth: null,
   setCopilotLlmAuth: (selection) => {
     set({ copilotLlmAuth: selection });
   },
@@ -571,6 +549,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
+    // Retired key — still cleaned so a user who set it before the control
+    // was removed does not keep a dead entry forever.
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
     set({
@@ -587,9 +567,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         lastArtifact: null,
       },
-      copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
-      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      copilotLlmAuth: null,
       isDryRun: false,
     });
     if (isClient) {

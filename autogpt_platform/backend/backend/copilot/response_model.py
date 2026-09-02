@@ -66,6 +66,7 @@ class ResponseType(str, Enum):
     # deltas.  Transient (never persisted); the durable record is the
     # ``context_compaction`` tool row's JSON output.
     COMPACTION = "data-compaction"
+    PROVIDER_FAILURE = "data-provider-failure"
 
 
 class StreamBaseResponse(BaseModel):
@@ -361,6 +362,28 @@ class StreamModeChanged(StreamBaseResponse):
             "data": {"mode": self.mode},
         }
         return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamProviderFailure(StreamBaseResponse):
+    """The typed reason a provider refused this turn.
+
+    Rides alongside ``StreamError`` rather than replacing it. The AI SDK
+    pins error frames to ``z.strictObject({type, errorText})``, which is why
+    ``StreamError.details`` never reaches the client and ``code`` has to
+    travel disguised as a ``[code:x]`` text prefix. A data part has no such
+    ceiling, so the envelope arrives whole -- and every existing consumer of
+    the error frame keeps working untouched.
+    """
+
+    type: ResponseType = ResponseType.PROVIDER_FAILURE
+    failure: dict[str, Any] = Field(
+        ..., description="ProviderFailure.as_part() payload"
+    )
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {"type": self.type.value, "data": self.failure}
+        return f"data: {json_dumps(data)}\n\n"
 
 
 class StreamStatus(StreamBaseResponse):
