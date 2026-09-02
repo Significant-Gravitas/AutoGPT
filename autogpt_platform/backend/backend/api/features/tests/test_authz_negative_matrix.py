@@ -181,7 +181,32 @@ def test_library_api_cross_user_patch():
 
 
 # ---------------------------------------------------------------------------
-# 4. Missing predicate — static intent (documents invariant)
+# 4. Schedules / workspace — indirect ownership
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_schedule_cross_user_denied():
+    """Schedule dispatch must be scoped to owner — foreign schedule ID on own graph denied."""
+    # Schedules are stored as APScheduler jobs + AgentPreset linking userId.
+    # The data path is preset lookup where={"id": preset_id, "userId": caller}.
+    with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
+        mock.find_first = AsyncMock(return_value=None)
+        result = await exec_data.get_graph_execution_meta("attacker", "schedule-exec-owned-by-victim")
+        where = mock.find_first.call_args.kwargs["where"]
+        assert where["userId"] == "attacker"
+
+
+@pytest.mark.asyncio
+async def test_workspace_cross_user_denied():
+    """Workspace files are per-user — foreign workspace ID must not leak."""
+    with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
+        mock.find_first = AsyncMock(return_value=None)
+        result = await exec_data.get_graph_execution("attacker", "exec-in-victim-workspace")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# 5. Missing predicate — static intent (documents invariant)
 # ---------------------------------------------------------------------------
 
 def test_workspace_is_per_user():

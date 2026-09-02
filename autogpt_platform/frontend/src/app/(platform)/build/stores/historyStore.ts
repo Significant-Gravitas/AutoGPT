@@ -9,11 +9,13 @@ import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 type HistoryState = {
   nodes: CustomNode[];
   edges: CustomEdge[];
+  nodeCounter?: number;
 };
 
 type HistoryStore = {
   past: HistoryState[];
   future: HistoryState[];
+  isApplyingHistory: boolean;
   undo: () => void;
   redo: () => void;
   initializeHistory: () => void;
@@ -35,6 +37,7 @@ let batchScheduled = false;
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
   past: [{ nodes: [], edges: [] }],
   future: [],
+  isApplyingHistory: false,
 
   pushState: (state: HistoryState) => {
     // Keep only the first state within a microtask batch — it represents
@@ -81,10 +84,12 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
 
     const currentNodes = useNodeStore.getState().nodes;
     const currentEdges = useEdgeStore.getState().edges;
+    const nodeCounter = useNodeStore.getState().nodeCounter;
 
     set({
-      past: [{ nodes: currentNodes, edges: currentEdges }],
+      past: [{ nodes: currentNodes, edges: currentEdges, nodeCounter }],
       future: [],
+      isApplyingHistory: false,
     });
   },
 
@@ -95,6 +100,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const actualCurrentState = {
       nodes: useNodeStore.getState().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: useNodeStore.getState().nodeCounter,
     };
 
     const previousState = past[past.length - 1];
@@ -103,12 +109,17 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       return;
     }
 
+    set({ isApplyingHistory: true });
     useNodeStore.getState().setNodes(previousState.nodes);
     useEdgeStore.getState().setEdges(previousState.edges);
+    if (previousState.nodeCounter !== undefined) {
+      useNodeStore.setState({ nodeCounter: previousState.nodeCounter });
+    }
 
     set({
       past: past.length > 1 ? past.slice(0, -1) : past,
       future: [actualCurrentState, ...future],
+      isApplyingHistory: false,
     });
   },
 
@@ -119,12 +130,17 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const actualCurrentState = {
       nodes: useNodeStore.getState().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: useNodeStore.getState().nodeCounter,
     };
 
     const nextState = future[0];
 
+    set({ isApplyingHistory: true });
     useNodeStore.getState().setNodes(nextState.nodes);
     useEdgeStore.getState().setEdges(nextState.edges);
+    if (nextState.nodeCounter !== undefined) {
+      useNodeStore.setState({ nodeCounter: nextState.nodeCounter });
+    }
 
     const lastPast = past[past.length - 1];
     const shouldPushToPast =
@@ -133,6 +149,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     set({
       past: shouldPushToPast ? [...past, actualCurrentState] : past,
       future: future.slice(1),
+      isApplyingHistory: false,
     });
   },
 

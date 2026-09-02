@@ -129,12 +129,16 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
   useEffect(() => {
     const unsubscribeNodes = useNodeStore.subscribe((storeState, prevState) => {
       if (storeState.nodes !== prevState.nodes) {
+        // REL-004: do not autosave history-driven undo/redo — prevents
+        // intermediate undone state from becoming the authoritative draft.
+        if (useHistoryStore.getState().isApplyingHistory) return;
         scheduleSave();
       }
     });
 
     const unsubscribeEdges = useEdgeStore.subscribe((storeState, prevState) => {
       if (storeState.edges !== prevState.edges) {
+        if (useHistoryStore.getState().isApplyingHistory) return;
         scheduleSave();
       }
     });
