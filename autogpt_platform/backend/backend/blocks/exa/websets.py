@@ -476,7 +476,7 @@ class ExaCreateOrFindWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        import httpx
+        import httpx2 as httpx
 
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 

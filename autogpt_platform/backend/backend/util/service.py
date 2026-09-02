@@ -26,7 +26,7 @@ from typing import (
     overload,
 )
 
-import httpx
+import httpx2 as httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError

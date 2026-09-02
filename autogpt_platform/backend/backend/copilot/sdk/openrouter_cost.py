@@ -32,7 +32,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2 as httpx
 from langfuse import get_client
 
 from backend.copilot.token_tracking import persist_and_record_usage

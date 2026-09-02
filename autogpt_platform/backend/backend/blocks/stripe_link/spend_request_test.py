@@ -9,7 +9,7 @@ the Shared Payment Token flow needs stays available on every deployment.
 
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 import pytest
 from pydantic import ValidationError
 

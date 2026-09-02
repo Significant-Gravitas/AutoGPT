@@ -7,7 +7,7 @@ enough that a dedicated SDK dependency isn't warranted.
 import logging
 from typing import Any, Optional
 
-import httpx
+import httpx2 as httpx
 
 logger = logging.getLogger(__name__)
 

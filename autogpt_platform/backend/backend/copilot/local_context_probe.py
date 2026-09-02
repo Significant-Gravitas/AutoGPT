@@ -27,7 +27,7 @@ turn has already loaded the model.
 import logging
 import time
 
-import httpx
+import httpx2 as httpx
 
 logger = logging.getLogger(__name__)
 

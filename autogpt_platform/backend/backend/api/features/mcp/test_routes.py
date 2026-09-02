@@ -7,7 +7,7 @@ to avoid creating blocking portals that can corrupt pytest-asyncio's session eve
 from unittest.mock import AsyncMock, patch
 
 import fastapi
-import httpx
+import httpx2 as httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id

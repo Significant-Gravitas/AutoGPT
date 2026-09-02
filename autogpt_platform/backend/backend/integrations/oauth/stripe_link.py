@@ -10,7 +10,7 @@ import time
 from typing import ClassVar
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials

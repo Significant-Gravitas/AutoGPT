@@ -10,7 +10,7 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 import logging
 from typing import Any, Literal
 
-import httpx
+import httpx2 as httpx
 from pydantic import SecretStr
 
 from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Credentials

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from backend.copilot.model import ChatSession
@@ -50,7 +50,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+            patch("httpx2.AsyncClient.get", new_callable=AsyncMock) as mock_get,
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -110,7 +110,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -153,7 +153,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -199,7 +199,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -236,7 +236,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -280,7 +280,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -316,7 +316,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -370,7 +370,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -408,7 +408,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -494,7 +494,7 @@ class TestRecordTurnCostFromOpenRouter:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -538,7 +538,7 @@ class TestLangfuseTraceBackfill:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
@@ -598,7 +598,7 @@ class TestLangfuseTraceBackfill:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.asyncio.sleep",
                 new_callable=AsyncMock,
@@ -647,7 +647,7 @@ class TestLangfuseTraceBackfill:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ),
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
@@ -688,7 +688,7 @@ class TestLangfuseTraceBackfill:
                 "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
                 new_callable=AsyncMock,
             ) as mock_persist,
-            patch("httpx.AsyncClient.get", new=_get),
+            patch("httpx2.AsyncClient.get", new=_get),
             patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,

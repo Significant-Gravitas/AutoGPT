@@ -21,7 +21,7 @@ import time
 from collections.abc import Iterator
 from typing import Any, Optional
 
-import httpx
+import httpx2 as httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.web.async_client import AsyncWebClient

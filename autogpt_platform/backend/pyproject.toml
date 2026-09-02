@@ -38,6 +38,7 @@ gravitasml = "^0.1.4"
 graphiti-core = "^0.28.2"
 groq = "^0.30.0"
 html2text = "^2024.2.26"
+httpx2 = "^2.12.0"
 jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
@@ -112,6 +113,9 @@ tavily-python = "^0.7.26"
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = "^38.2.0"
+# httpx stays in dev deps for tests that build error fixtures for SDKs
+# (anthropic 0.79.x, openai 1.x) which are still httpx-based themselves.
+# Production code uses httpx2 (see runtime deps above).
 httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.41.0"
