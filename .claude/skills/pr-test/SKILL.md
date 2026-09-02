@@ -386,15 +386,24 @@ miss because nothing fails loudly without them, it just 401s later:
 ```bash
 grep -q '^JWT_JWKS_URL=' $BACKEND_DIR/.env || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
 
-if ! grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env; then
-  DB_USER=$(grep '^DB_USER=' $BACKEND_DIR/.env | cut -d= -f2)
-  DB_PASS=$(grep '^DB_PASS=' $BACKEND_DIR/.env | cut -d= -f2)
-  DB_PORT=$(grep '^DB_PORT=' $BACKEND_DIR/.env | cut -d= -f2)
-  DB_NAME=$(grep '^DB_NAME=' $BACKEND_DIR/.env | cut -d= -f2)
+if grep -q '^DATABASE_URL=' $FRONTEND_DIR/.env; then
+  echo "Frontend DATABASE_URL: already set (not touching it)"
+else
+  # cut -f2 (not -f2-) truncates any value containing '=' (base64 secrets do); -f2- keeps the rest.
+  DB_USER=$(grep '^DB_USER=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_PASS=$(grep '^DB_PASS=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_PORT=$(grep '^DB_PORT=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_NAME=$(grep '^DB_NAME=' $BACKEND_DIR/.env | cut -d= -f2-)
   : "${DB_USER:?}" "${DB_PASS:?}" "${DB_PORT:?}" "${DB_NAME:?}"  # fail loudly, not with a silently-empty URL
-  echo "DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:${DB_PORT}/${DB_NAME}" >> $FRONTEND_DIR/.env
+  # Percent-encode user/pass — a raw '@', '#', '?', '%', or ':' in either would
+  # otherwise be misparsed as URL structure instead of credential content.
+  DB_USER_ENC=$(jq -rn --arg s "$DB_USER" '$s|@uri')
+  DB_PASS_ENC=$(jq -rn --arg s "$DB_PASS" '$s|@uri')
+  echo "DATABASE_URL=postgresql://${DB_USER_ENC}:${DB_PASS_ENC}@localhost:${DB_PORT}/${DB_NAME}" >> $FRONTEND_DIR/.env
+  # Reconstructed, not regex-redacted — a password containing '@' would otherwise
+  # leak its tail past a naive "redact up to the first @" pattern.
+  echo "Frontend DATABASE_URL: postgresql://${DB_USER_ENC}:***@localhost:${DB_PORT}/${DB_NAME}"
 fi
-echo "Frontend DATABASE_URL: $(grep '^DATABASE_URL=' $FRONTEND_DIR/.env | sed -E 's#(://[^:]+:)[^@]+#\1***#')"  # redacted — a bad host/port/db should be obvious here without echoing the password into the run log
 ```
 
 ### 3b. Configure copilot authentication
@@ -595,9 +604,12 @@ SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s -X POST 'http://localhost:
   -H 'Content-Type: application/json' --data-binary @-)
 echo "$SIGNUP_RESULT" | grep -qi '"code"' && echo "Signup: $SIGNUP_RESULT"  # log it — "already exists" and "password too short" look identical downstream otherwise
 
-# Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR
-printf '%s' "$AUTH_PAYLOAD" | curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
-  -H 'Content-Type: application/json' --data-binary @- > /dev/null
+# Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR.
+# Capture the body: a failure here (e.g. account exists with a different
+# password) otherwise only shows up as an empty $TOKEN with no explanation.
+SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
+  -H 'Content-Type: application/json' --data-binary @-)
+echo "$SIGNIN_RESULT" | grep -qi '"code"' && echo "Sign-in: $SIGNIN_RESULT"
 
 # Mint a backend-API JWT from the session cookie
 TOKEN=$(curl -s -b "$COOKIE_JAR" 'http://localhost:3000/api/auth/token' | jq -r '.token // ""')
@@ -789,9 +801,10 @@ fails looking for an executable, then use it for finer control over timing
 (`waitForSelector`, explicit timeouts) than agent-browser's CLI gives you:
 
 ```bash
+cd $FRONTEND_DIR  # required — @playwright/test is only declared here, not at the repo root
 pnpm exec playwright install chromium 2>&1 | grep -v "^$"  # no-op if already installed
 
-cd $FRONTEND_DIR && node -e "
+node -e "
 const { chromium } = require('@playwright/test');
 (async () => {
   const browser = await chromium.launch();
