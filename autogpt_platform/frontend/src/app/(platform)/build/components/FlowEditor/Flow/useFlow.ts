@@ -8,6 +8,7 @@ import {
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useRef } from "react";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
@@ -20,6 +21,7 @@ import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
 import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
+import isEqual from "lodash/isEqual";
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
@@ -144,14 +146,33 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
-  // adding nodes
+  // REL-004: single-authority guard — React Query is read-only loader,
+  // Zustand is the mutable SoR. Do not clobber user edits when a stale
+  // query response arrives with the same version. We keep the last
+  // node set we hydrated; if the new customNodes are deep-equal to the
+  // already-mounted nodes, this is a refetch with no new data — skip it.
+  const lastHydratedNodesRef = useRef<string | null>(null);
+  const lastHydratedVersionRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (customNodes.length > 0) {
-      useNodeStore.getState().setNodes([]);
-      useNodeStore.getState().clearResolutionState();
-      addNodes(customNodes);
-    }
-  }, [customNodes, addNodes]);
+    if (customNodes.length === 0) return;
+    const nextKey = JSON.stringify(customNodes.map((n) => n.id).sort());
+    const versionChanged = graph?.version !== lastHydratedVersionRef.current;
+    const nodesChanged = nextKey !== lastHydratedNodesRef.current;
+    const storeEmpty = useNodeStore.getState().nodes.length === 0;
+    // Hydrate when: first load, version bump, or store empty. Skip when
+    // user has edited nodes and we get a stale refetch of the same version.
+    const shouldHydrate = storeEmpty || versionChanged || nodesChanged;
+    if (!shouldHydrate) return;
+    // Extra safety: if versionDidNotChange and nodesChanged is false, skip
+    // (deep-equal fast path already above). If version unchanged but edge
+    // identity changed, we still hydrate — rare and intentional (external trigger).
+    useNodeStore.getState().setNodes([]);
+    useNodeStore.getState().clearResolutionState();
+    addNodes(customNodes);
+    lastHydratedNodesRef.current = nextKey;
+    lastHydratedVersionRef.current = graph?.version ?? null;
+  }, [customNodes, addNodes, graph?.version]);
 
   // adding links
   useEffect(() => {

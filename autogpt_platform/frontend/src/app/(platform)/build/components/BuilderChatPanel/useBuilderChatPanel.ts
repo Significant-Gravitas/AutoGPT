@@ -77,9 +77,11 @@ export function useBuilderChatPanel({
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
-    flowExecutionID: parseAsString,
     flowVersion: parseAsInteger,
   });
+  // REL-004 draft lifecycle: Copilot edits leave a stale IndexedDB draft
+  // from before the edit. We do not import draftService at the top to avoid
+  // a bundle split; dynamic import keeps it lazy.
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -375,6 +377,13 @@ export function useBuilderChatPanel({
           if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
             latestVersionBeforeEditRef.current = newVersion;
             setQueryStates({ flowVersion: newVersion });
+          }
+          // REL-004: invalidate stale draft — Copilot edit advanced the
+          // graph version, the Dexie draft is now from before the edit.
+          if (flowID) {
+            void import("@/services/builder-draft/draft-service").then(
+              ({ draftService }) => draftService.deleteDraft(flowID).catch(() => {}),
+            );
           }
           void refetchGraph();
           if (flowID) {
