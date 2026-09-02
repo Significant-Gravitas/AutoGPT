@@ -177,6 +177,7 @@ ignore_patterns = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 # Disable syrupy plugin to avoid conflict with pytest-snapshot
 # Both provide --snapshot-update argument causing ArgumentError
 addopts = "-p no:syrupy"
