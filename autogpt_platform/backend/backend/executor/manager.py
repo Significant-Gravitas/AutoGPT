@@ -836,6 +836,25 @@ class ExecutionProcessor:
             )
             return
 
+        # REL-002 durable cancellation: if DB says cancelled, honor it even if
+        # fanout was lost or executor restarted after the request.
+        if getattr(exec_meta, "cancelRequestedAt", None) is not None:
+            log_metadata.info(
+                f"Skipped graph execution #{graph_exec.graph_exec_id}, cancelled before start (durable cancelRequestedAt={exec_meta.cancelRequestedAt})"
+            )
+            # Idempotent terminal — already cancelled is still cancelled
+            if exec_meta.status not in [
+                ExecutionStatus.TERMINATED,
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+            ]:
+                update_graph_execution_state(
+                    db_client=db_client,
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    status=ExecutionStatus.TERMINATED,
+                )
+            return
+
         if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
@@ -1000,6 +1019,22 @@ class ExecutionProcessor:
                 )
                 # Continue execution without moderation
 
+            # REL-002 durable check: if cancel was persisted before this
+            # execution started (e.g. executor was down), honor it now.
+            try:
+                _meta = db_client.get_graph_execution_meta(
+                    user_id=graph_exec.user_id,
+                    execution_id=graph_exec.graph_exec_id,
+                )
+                if getattr(_meta, "cancelRequestedAt", None) is not None:
+                    log_metadata.info(
+                        f"Execution {graph_exec.graph_exec_id} cancelled (durable flag) before dispatch"
+                    )
+                    execution_status = ExecutionStatus.TERMINATED
+                    break
+            except Exception:
+                pass
+
             # ------------------------------------------------------------
             # Pre‑populate queue ---------------------------------------
             # ------------------------------------------------------------
@@ -1024,6 +1059,20 @@ class ExecutionProcessor:
             while not execution_queue.empty():
                 if cancel.is_set():
                     break
+                # Also honor durable cancel requested after start (fanout lost)
+                try:
+                    _loop_meta = db_client.get_graph_execution_meta(
+                        user_id=graph_exec.user_id,
+                        execution_id=graph_exec.graph_exec_id,
+                    )
+                    if getattr(_loop_meta, "cancelRequestedAt", None) is not None:
+                        log_metadata.info(
+                            f"Execution {graph_exec.graph_exec_id} cancelled (durable mid-run)"
+                        )
+                        execution_status = ExecutionStatus.TERMINATED
+                        break
+                except Exception:
+                    pass
 
                 queued_node_exec = execution_queue.get()
 
