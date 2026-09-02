@@ -11,6 +11,7 @@ import pytest
 import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.model import NodeExecutionStats
+from backend.util.llm.providers import CONNECT_TIMEOUT_SECONDS
 from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -1532,7 +1533,12 @@ class TestLLMRequestTimeout:
                 max_tokens=100,
             )
 
-        assert captured_kwargs.get("timeout") == llm.LLM_REQUEST_TIMEOUT_SECONDS
+        # The generation budget lands on the read phase; connect stays short so
+        # a blackholed SYN can't park a worker for the whole deadline.
+        sdk_timeout = captured_kwargs["timeout"]
+        assert isinstance(sdk_timeout, httpx.Timeout)
+        assert sdk_timeout.read == llm.LLM_REQUEST_TIMEOUT_SECONDS
+        assert sdk_timeout.connect == CONNECT_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
     async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):

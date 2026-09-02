@@ -900,7 +900,9 @@ class TestOllama:
         assert result.content == '{"facts": []}'
         assert result.prompt_tokens == 7
         assert result.completion_tokens == 9
-        ctor.assert_called_once_with(host="http://gpu-box:11434", timeout=42.0)
+        ctor.assert_called_once_with(
+            host="http://gpu-box:11434", timeout=request_timeout(42.0)
+        )
 
 
 class TestOllamaTrustedHosts:
