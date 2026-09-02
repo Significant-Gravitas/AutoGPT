@@ -1116,6 +1116,22 @@ class TestRefusedSpawnCleanup:
 
         deleted.assert_awaited_once_with("inner-1", "alice")
 
+    async def test_a_refused_spawn_returns_no_handle_to_the_deleted_thread(
+        self, mock_queue, mock_waiter, mock_model, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_waiter.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        result = await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice", "s1"), prompt="do it"
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "over budget" in result.message
+        assert "inner-1" not in result.model_dump_json()
+
     async def test_a_failed_turn_keeps_its_thread(
         self, mock_queue, mock_waiter, mock_model, monkeypatch
     ):

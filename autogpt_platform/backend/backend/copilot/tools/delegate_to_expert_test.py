@@ -855,6 +855,24 @@ class TestRefusedDelegationCleanup:
 
         deleted.assert_awaited_once_with("inner-1", "alice")
 
+    async def test_a_refused_delegation_returns_no_handle_to_the_deleted_thread(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_turn.return_value = ("refused", SessionResult(refusal="over budget"))
+
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert "inner-1" not in result.model_dump_json()
+
     async def test_a_refused_resume_keeps_the_prior_thread(
         self, roster, mock_turn, mock_sessions, monkeypatch
     ):

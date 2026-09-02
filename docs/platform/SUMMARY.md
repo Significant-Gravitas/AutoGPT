@@ -53,6 +53,7 @@
 ## Contributing
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
+* [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
 
 ## Changelog
 

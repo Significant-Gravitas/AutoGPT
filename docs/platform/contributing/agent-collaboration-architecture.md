@@ -77,7 +77,7 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
 
 - **`EXTERNAL_ACTION_APPROVAL_RULE`** (`api/features/experts/models.py:21`).
   Grep across the backend: rendered by `expert_context.py:100`, returned by
-  `experts_db.py:136`, read by **nothing**. The reviewer-check design's finding stands (TODO T16).
+  `experts_db.py:136`, read by **nothing**. The finding from the sensitive-action audit stands.
   This plan does not lean on it anywhere.
 - **`toolProfile Json?`** on `Expert` — a column with no reader in the copilot
   path. Noted because it is the natural home for a per-expert permission
@@ -112,7 +112,7 @@ All paths relative to `autogpt_platform/backend/backend/`. Read, not assumed.
 - **Taint.** There is no taint tracking on `dev`. The auto-mode gate's (`AutoGPT3`,
   `pwuts/autopilot-auto-mode`) is branch-only. `child_session_origin` returns
   the parent's origin — so an *interactive* parent mints an *interactive*
-  child — which is the laundering path T9 found.
+  child — which is the laundering path the approval-gate work found.
 - **Pods do anything.** `ExpertPod` is a folder on one page.
 
 ---
@@ -144,7 +144,7 @@ does not have to lie about who drives it.
 
 ### 2.2 Edge kinds
 
-Four, and only four. Three already exist; the fourth is the reviewer-check design's and slots in
+Four, and only four. Three already exist; the fourth comes from the reviewer-check design and slots in
 as a degenerate case.
 
 | kind | tool | identity of child | what returns | may spawn | who the child escalates to |
@@ -152,7 +152,7 @@ as a degenerate case.
 | **delegate** | `delegate_to_expert` | the target expert | report, pollable by the parent | yes, within envelope | its parent |
 | **isolate** | `run_sub_session` | same as parent | report, pollable by the parent | yes, within envelope | its parent |
 | **handoff** | `handoff_to_expert` | the target expert | nothing (`transferred`) | yes, within envelope | **the human** — the node is re-rooted |
-| **consult** | the reviewer-check design `consult_teammate` | a fixed frame + the target's declared boundaries | a report with `findings` (= the reviewer-check design's verdict), inline | **no** — `tools = ∅`, no session | n/a (stateless) |
+| **consult** | `consult_teammate` | a fixed frame + the target's declared boundaries | a report with `findings` (its verdict), inline | **no** — `tools = ∅`, no session | n/a (stateless) |
 
 `handoff` is the only edge that changes who a node reports to, and it does so
 in exactly one direction: toward the human. There is no edge that makes a
@@ -276,14 +276,14 @@ be busy; a resumed one can, and then the caller is told so.
 
 This is the context-coupling knob, and it is per edge. It is *not* free text
 with a system-context prefix (what exists today); it has slots, and the slots
-are the the reviewer-check design lesson turned into a schema:
+are the reviewer-check lesson turned into a schema:
 
 ```
 SpawnRequest:
   task: str                     # what to do, written for someone who cannot see this thread
   content: str | None           # inline payload, bounded — for edges whose child has no tool to read a reference
   artefacts: list[str]          # workspace paths — REFERENCES, not capabilities (see below)
-  authority: str | None         # what the caller asserts the child may assume/commit to  (T10) — optional
+  authority: str | None         # what the caller asserts the child may assume/commit to — optional
   acceptance: str               # what "done" looks like, in a form the child can check itself against
   may_spawn: bool = False       # default: the child is a leaf (and gets no roster — §3.4)
   max_seconds: int              # deadline request — clamped, never raised
@@ -293,7 +293,7 @@ SpawnRequest:
 
 `content` exists because §2.6's schema test found it missing: a tool-less
 edge (the reviewer-check design's consult) cannot follow a reference, so the payload has to ride
-in the brief. It is bounded (the reviewer-check design uses 8,000 chars) and it is the *only*
+in the brief. It is bounded (the reviewer-check design uses 8,000 chars) and is the *only*
 slot whose size is bounded by the platform rather than the caller.
 
 On `artefacts`, corrected after the roast (§11.1 finding 2): the workspace is
@@ -324,8 +324,8 @@ child guess, and a guessing child is a child that either over-commits or
 stalls and asks. The slot costs the caller one sentence and is the single
 highest-leverage thing that crosses the edge.
 
-That was argued from first principles when this file was first written; T10
-then measured it the same night. On a grid of 6 fixed drafts × 4 arms × 3
+That was argued from first principles when this file was first written; the
+reviewer-check experiment then measured it the same night. On a grid of 6 fixed drafts × 4 arms × 3
 runs, run twice with all 24 cells identical: a naive "is anything wrong with
 this draft?" prompt with **no** authority supplied scored 9/18 (6 false
 blocks, 3 misses); the byte-identical prompt **plus an authority list**
@@ -336,7 +336,7 @@ that had it separated 3/3. Supplying claimed authority is worth 6/18 on an
 otherwise identical boundary crossing. That is the evidence for making it a
 slot rather than hoping the caller mentions it.
 
-Why `acceptance` is a slot: T5 showed that what a fixed structural audit
+Why `acceptance` is a slot: an earlier judging experiment showed that what a fixed structural audit
 reliably measures is **process discipline, not correctness**. An acceptance
 line is the child's own process check — "did I produce the thing that was
 asked for in the form that was asked for" — which is exactly what a report can
@@ -393,7 +393,7 @@ node from which it can go sideways.
 
 ### 2.6 Edge types — the brief/report is the mechanism; `consult_teammate` is edge type #1
 
-Reinier read the reviewer-check design and this file side by side and saw a large, vaguely
+A reviewer read the reviewer-check design and this file side by side and saw a large, vaguely
 defined overlap. It is exact, not vague: the reviewer-check design's `consult_teammate` passes
 work plus the authority it claims and receives a structured verdict with
 verbatim quotes. That *is* a brief and a report. The reviewer-check design built one concrete
@@ -420,8 +420,8 @@ edge needs, and `findings` is what the refund-audit leaves in §3.5 return
 — the general report was already going to need a quote-carrying channel
 and had not admitted it.
 
-**The reviewer-check design's constraints, taken as constraints on the general design.** T10
-removed three things deliberately, and each removal was a reason:
+**The reviewer-check design's constraints, taken as constraints on the general
+design.** It removed three things deliberately, and each removal was a reason:
 
 - *Tool-less by construction, so recursion is impossible.* In envelope
   terms: `tools = ∅` (the empty set is the strongest ceiling; `None` is the
@@ -439,7 +439,7 @@ removed three things deliberately, and each removal was a reason:
   default for every child (§3.6, and §11.1 finding 1 is why); memory
   *reads* are allowed to work edges because a delegated expert without its
   own memory is not that expert. A check edge gets neither.
-- *A fixed, soul-free judge.* T5 showed persona judges swing the measured
+- *A fixed, soul-free judge.* An earlier judging experiment showed persona judges swing the measured
   dimension across the full range, and the reviewer-check design then measured the teammate's
   identity contributing **3/18** over "a check happens at all" — what the
   identity actually supplied was its *declared boundaries*, i.e. policy,
@@ -466,7 +466,7 @@ report shape it promises, and whether its frame is fixed or identity-borne.
 
 | edge type | envelope preset | required brief slots | report | frame |
 |---|---|---|---|---|
-| **#1 consult** (T10, shipped) | `tools = ∅`, leaf, no session, one completion | `content`, `authority`, `task` | `done` + `findings` / `needs_input` + `asked` | fixed; target's boundaries as policy |
+| **#1 consult** (designed, not built — the tool lives in an open PR) | `tools = ∅`, leaf, no session, one completion | `content`, `authority`, `task` | `done` + `findings` / `needs_input` + `asked` | fixed; target's boundaries as policy |
 | **#2 quarantine read** (the §3.5 leaf) | `tools = {read_workspace_file}`, leaf, born-tainted | `artefacts`, `acceptance` | `done` + `findings` with quotes; `tainted = true` | fixed |
 | **#3 delegate / isolate** (exists) | `ALL − DESCENT_DENIED`, `may_spawn` optional | `task`, `acceptance` | any status; `artefacts` | identity-borne (delegate) / spawner's (isolate) |
 | **#4 handoff** (exists) | as #3, re-roots | `task` | none to the spawner | identity-borne |
@@ -488,7 +488,7 @@ It is not a scalar. The evidence:
 
 - Too strong: giving the child the parent's transcript. Costs tokens
   linearly in transcript length per child, carries every injected
-  instruction the parent ever read, and — per T5 — more text does not buy
+  instruction the parent ever read, and — per that same experiment — more text does not buy
   better behaviour (the 7.6k kernel beat the 19.6k full soul).
 - Too weak: the reviewer-check design's reviewer, which could not answer its one question.
 
@@ -713,13 +713,13 @@ the child's taint bit upward (taint flows down by inheritance and up by
 report; what the quarantine confines is the *action surface*, not the
 taint); (b) this only exists if the tools ceiling actually narrows, which
 the roast showed is vacuous when the root has `permissions=None` — hence
-§3.6's descent-denied default. **(c) — the sharp one, from T16:** "no action
+§3.6's descent-denied default. **(c) — the sharp one, from the sensitive-action audit:** "no action
 surface" is a property of the *explicit read-only preset*
 (`tools = {read_workspace_file}`, edge type #2), **not** of a default child.
 A default delegate keeps `run_agent`, and `run_block`/`run_agent` reach ~78
 outward blocks plus arbitrary HTTP via `SendWebRequestBlock`, none carrying
 `is_sensitive_action`, in the one tier the auto-mode gate declines to judge
-(T16, findings ledger). So the quarantine guarantee holds **only** when the
+(recorded in the team's internal findings log). So the quarantine guarantee holds **only** when the
 caller pins the tool set to the read-only preset; the descent-denied default
 does not by itself make a child safe to point at untrusted input, because it
 leaves `run_agent` in. The design must therefore say: quarantine is an
@@ -852,9 +852,10 @@ accounting) is fully preserved; only the *mechanism* changed from
 reservation to metering.
 
 **A note on invariant 3 as it stands on `dev`:** nothing on `dev` *sets*
-taint, because T9 is a branch. This plan builds the carrier and the
-propagation and one birth source (chat-platform sessions, `source_platform`
-set — T9 §5.2), so that when T9 lands the laundering path is already closed
+taint, because the approval-gate work is still a branch. This plan builds the
+carrier and the propagation and one birth source (chat-platform sessions,
+`source_platform` set), so that when that work lands the laundering path is
+already closed
 and its gate has one more boolean to read. The claim I can make on `dev`
 alone is "taint, once set, cannot be laundered through a spawn"; the claim
 "taint is set when it should be" is the auto-mode gate's.
@@ -871,7 +872,7 @@ that is data by reference, and it is what artefacts are.
 
 ---
 
-## 5. Where the reviewer-check design and T9 slot in
+## 5. Where the reviewer-check design and the approval gate slot in
 
 **The reviewer-check design's `consult_teammate`** is edge type #1 (§2.6): an envelope with no
 spawning, `tools = ∅`, one bounded completion charged to the tree, no
@@ -931,7 +932,7 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 - No memory isolation along the tree — memory is identity-bound and stays
   so; children lose the write side by default.
 - No TEAM/ORG-visible experts — tenancy work, orthogonal.
-- No T9 gate and no the reviewer-check design consult — both slot in; neither is duplicated.
+- No approval gate and no reviewer-check consult — both slot in; neither is duplicated.
 - No new expert kind, no new UI surface beyond an envelope line on the
   existing delegate ToolChain card.
 - No cross-user spawning of any kind.
@@ -966,7 +967,7 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 4. **A descent-denied child is not an outward-safe child.** The default
    narrowing removes the named outward tools, but it leaves `run_agent`,
    and `run_block`/`run_agent` reach ~78 outward blocks plus arbitrary HTTP
-   via `SendWebRequestBlock`, none flagged `is_sensitive_action` (T16). So
+   via `SendWebRequestBlock`, none flagged `is_sensitive_action`. So
    the only child that is genuinely safe to point at untrusted input is one
    pinned to an explicit read-only tool set (edge type #2), never one that
    merely inherited the descent-denied default. The design states this as a
@@ -980,7 +981,7 @@ Neither integration is built here. Both are one-boolean / one-field seams.
 4. **Process, not correctness.** Acceptance lines and reports are auditable
    for discipline (an earlier internal experiment), not for truth. A parent cannot tell from a report
    that the child was *right*. Nothing in this design claims otherwise, and
-   anything that did would be the rubric that T5 round 1 buried.
+   anything that did would be the rubric that experiment's first round buried.
 
 ---
 
@@ -1069,7 +1070,7 @@ Not in the slice, each a named follow-up: deadline watcher; brief slots in
 the tool schemas (`content`, `authority`, `acceptance`) and typed report
 parsing (`findings`); workspace write confinement; `block_filters` (tools
 only in v1); roster withheld from leaves and pod-scoped for spawning nodes;
-T9/the reviewer-check design integrations.
+approval-gate and reviewer-check integrations.
 
 ---
 
@@ -1238,7 +1239,7 @@ a required field.
 
 ### 12.1 Are the two grounding facts exploitable on `dev` today?
 
-The orchestrator asked the question the auto-mode gate's retraction taught: a finding is a
+Asking the question the auto-mode gate's retraction taught: a finding is a
 hypothesis until someone traces reachability. Traced against `dev`:
 
 **Fact A — delegation passes permissions equal to the parent's, with no
