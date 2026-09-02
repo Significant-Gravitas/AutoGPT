@@ -1080,26 +1080,48 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    await expect
-      .poll(
-        async () => {
-          if (/\/build/.test(page.url())) {
-            return "build";
-          }
-          if (!(await uploadingButton.isVisible().catch(() => false))) {
-            return "gone";
-          }
-          return (await uploadingButton.isDisabled().catch(() => false))
-            ? "disabled"
-            : "enabled";
-        },
-        {
-          timeout: 5000,
-          message:
-            'upload button should either stay disabled while "Uploading..." is visible or disappear because navigation already started',
-        },
-      )
-      .not.toBe("enabled");
+    const uploadingState = await uploadingButton
+      .evaluateAll((buttons) => {
+        const visibleButton = buttons.find((button) => {
+          const { width, height } = button.getBoundingClientRect();
+          return (
+            width > 0 &&
+            height > 0 &&
+            window.getComputedStyle(button).visibility !== "hidden"
+          );
+        });
+        if (!visibleButton) {
+          return "gone" as const;
+        }
+        return visibleButton.matches(":disabled") ||
+          visibleButton.getAttribute("aria-disabled") === "true"
+          ? ("disabled" as const)
+          : ("enabled" as const);
+      })
+      .catch(async (error: unknown) => {
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes("Execution context was destroyed")
+        ) {
+          throw error;
+        }
+        if (!/\/build/.test(page.url())) {
+          await page
+            .waitForURL(/\/build/, {
+              timeout: 500,
+              waitUntil: "commit",
+            })
+            .catch(() => {
+              throw error;
+            });
+        }
+        return "build" as const;
+      });
+
+    expect(
+      uploadingState,
+      'upload button should be disabled while "Uploading..." is visible',
+    ).not.toBe("enabled");
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
