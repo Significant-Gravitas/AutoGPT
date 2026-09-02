@@ -5,15 +5,21 @@ import {
   MessageActions,
 } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import { CopySimple, ThumbsDown, ThumbsUp } from "@phosphor-icons/react";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useMessageFeedback } from "../useMessageFeedback";
 import { FeedbackModal } from "./FeedbackModal";
 import { TTSButton } from "./TTSButton";
+import {
+  Copy02Icon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  className?: string;
 }
 
 function extractTextFromParts(
@@ -26,7 +32,11 @@ function extractTextFromParts(
     .trim();
 }
 
-export function AssistantMessageActions({ message, sessionID }: Props) {
+export function AssistantMessageActions({
+  message,
+  sessionID,
+  className,
+}: Props) {
   const {
     feedback,
     showFeedbackModal,
@@ -41,14 +51,14 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
 
   return (
     <>
-      <MessageActions className="mt-1">
+      <MessageActions className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}
           variant="ghost"
           size="icon-sm"
         >
-          <CopySimple size={16} weight="regular" />
+          <Icon icon={Copy02Icon} size={16} />
         </MessageAction>
 
         <MessageAction
@@ -62,10 +72,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
             feedback === "downvote" && "!opacity-20",
           )}
         >
-          <ThumbsUp
-            size={16}
-            weight={feedback === "upvote" ? "fill" : "regular"}
-          />
+          <Icon icon={ThumbsUpIcon} size={16} />
         </MessageAction>
 
         <MessageAction
@@ -79,10 +86,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
             feedback === "upvote" && "!opacity-20",
           )}
         >
-          <ThumbsDown
-            size={16}
-            weight={feedback === "downvote" ? "fill" : "regular"}
-          />
+          <Icon icon={ThumbsDownIcon} size={16} />
         </MessageAction>
 
         <TTSButton text={text} />

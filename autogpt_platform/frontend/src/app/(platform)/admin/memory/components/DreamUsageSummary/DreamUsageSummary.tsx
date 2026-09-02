@@ -3,8 +3,9 @@
 import type { DreamPassUsage } from "@/app/api/__generated__/models/dreamPassUsage";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { CoinsIcon } from "@phosphor-icons/react";
 import { formatCost, formatTokens } from "./helpers";
+import { Coins01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   usage: DreamPassUsage | null | undefined;
@@ -35,7 +36,7 @@ export function DreamUsageSummary({ usage }: Props) {
           Token usage
         </Text>
         <div className="inline-flex items-center gap-2">
-          <CoinsIcon size={14} className="text-gray-500" />
+          <Icon icon={Coins01Icon} size={14} className="text-gray-500" />
           <Text variant="small-medium" as="span">
             total: {formatCost(usage.total_cost_usd)}
           </Text>

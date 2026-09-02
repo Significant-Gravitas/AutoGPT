@@ -28,9 +28,10 @@ import {
   postV2InitiateOauthLoginForAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
 } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { CaretDown } from "@phosphor-icons/react";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type MCPToolDialogResult = {
   serverUrl: string;
@@ -548,7 +549,8 @@ function MCPToolCard({
           className="flex w-full items-center justify-center gap-1 border-t border-gray-100 py-1.5 text-[10px] text-gray-400 hover:text-gray-600 dark:border-slate-700 dark:text-gray-500 dark:hover:text-gray-300"
         >
           {expanded ? "Hide details" : "Show details"}
-          <CaretDown
+          <Icon
+            icon={ArrowDown01Icon}
             className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
           />
         </button>

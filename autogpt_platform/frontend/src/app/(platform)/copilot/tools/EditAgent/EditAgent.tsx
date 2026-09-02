@@ -4,13 +4,11 @@ import type { ToolUIPart } from "ai";
 import { AgentSavedCard } from "../../components/AgentSavedCard/AgentSavedCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ToolErrorCard } from "../../components/ToolErrorCard/ToolErrorCard";
-import { MiniGame } from "../../components/MiniGame/MiniGame";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import {
   ContentCardDescription,
   ContentCodeBlock,
   ContentGrid,
-  ContentHint,
   ContentMessage,
 } from "../../components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -48,15 +46,7 @@ function getAccordionMeta(output: EditAgentToolOutput | null): {
 } {
   const icon = <AccordionIcon />;
 
-  if (!output) {
-    return {
-      icon,
-      title: "Editing agent, this may take a few minutes. Play while you wait.",
-      expanded: true,
-    };
-  }
-
-  if (isAgentPreviewOutput(output)) {
+  if (output && isAgentPreviewOutput(output)) {
     return {
       icon,
       title: output.agent_name,
@@ -77,10 +67,6 @@ export function EditAgentTool({ part }: Props) {
     part.state === "output-error" || (!!output && isErrorOutput(output));
 
   const isOperating = !output;
-
-  // Show accordion for operating state and successful outputs, but not for errors
-  // (errors are shown inline so they get replaced when retrying)
-  const hasExpandableContent = !isError;
 
   return (
     <div className="py-2">
@@ -109,30 +95,19 @@ export function EditAgentTool({ part }: Props) {
         />
       )}
 
-      {hasExpandableContent && !(output && isAgentSavedOutput(output)) && (
+      {output && !isError && isAgentPreviewOutput(output) && (
         <ToolAccordion {...getAccordionMeta(output)}>
-          {isOperating && (
-            <ContentGrid>
-              <MiniGame />
-              <ContentHint>
-                This could take a few minutes — play while you wait!
-              </ContentHint>
-            </ContentGrid>
-          )}
-
-          {output && isAgentPreviewOutput(output) && (
-            <ContentGrid>
-              <ContentMessage>{output.message}</ContentMessage>
-              {output.description?.trim() && (
-                <ContentCardDescription>
-                  {output.description}
-                </ContentCardDescription>
-              )}
-              <ContentCodeBlock>
-                {truncateText(formatMaybeJson(output.agent_json), 1600)}
-              </ContentCodeBlock>
-            </ContentGrid>
-          )}
+          <ContentGrid>
+            <ContentMessage>{output.message}</ContentMessage>
+            {output.description?.trim() && (
+              <ContentCardDescription>
+                {output.description}
+              </ContentCardDescription>
+            )}
+            <ContentCodeBlock>
+              {truncateText(formatMaybeJson(output.agent_json), 1600)}
+            </ContentCodeBlock>
+          </ContentGrid>
         </ToolAccordion>
       )}
 

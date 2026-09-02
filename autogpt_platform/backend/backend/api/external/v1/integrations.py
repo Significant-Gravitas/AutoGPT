@@ -31,6 +31,7 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
+from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -272,7 +273,10 @@ async def list_providers(
     from backend.sdk.registry import AutoRegistry
 
     providers = []
+    codex_allowed = await has_codex_access_for_discovery(auth.user_id)
     for name in get_all_provider_names():
+        if name == ProviderName.CODEX and not codex_allowed:
+            continue
         supports_oauth = name in HANDLERS_BY_NAME
         handler_class = HANDLERS_BY_NAME.get(name)
         default_scopes = (
@@ -539,6 +543,11 @@ async def create_credential(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider}' not found",
+        )
+    if provider == "codex":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codex credentials must be created through ChatGPT sign-in",
         )
 
     # Create the appropriate credential type

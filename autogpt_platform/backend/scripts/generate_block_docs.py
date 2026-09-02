@@ -14,6 +14,10 @@ Usage:
 
     # Verbose output
     poetry run python scripts/generate_block_docs.py -v
+
+    # Carry hand-written prose over to a renamed block
+    poetry run python scripts/generate_block_docs.py \\
+        --rekey "All Quiet Incident Trigger=AllQuiet Incident Trigger"
 """
 
 import argparse
@@ -24,7 +28,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Type
+from typing import TYPE_CHECKING, Any, Iterable, Type
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -32,6 +36,9 @@ if TYPE_CHECKING:
 # Add backend to path for imports
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
+
+# Imported after the sys.path insert above so the backend package resolves.
+from backend.util.docs import make_doc_url  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +49,16 @@ DEFAULT_OUTPUT_DIR = (
     / "integrations"
     / "block-integrations"
 )
+
+HOW_IT_WORKS_PLACEHOLDER = "_Add technical explanation here._"
+USE_CASE_PLACEHOLDER = "_Add practical use case examples here._"
+FILE_DESCRIPTION_PLACEHOLDER = "_Add a description of this category of blocks._"
+PLACEHOLDER_TEXTS = frozenset(
+    {HOW_IT_WORKS_PLACEHOLDER, USE_CASE_PLACEHOLDER, FILE_DESCRIPTION_PLACEHOLDER}
+)
+
+# Manual keys owned by the file as a whole rather than by a single block heading.
+FILE_LEVEL_MANUAL_KEYS = frozenset({"file_description", "additional_content"})
 
 
 @dataclass
@@ -225,10 +242,13 @@ def file_path_to_title(file_path: str) -> str:
         "Ci": "CI",
         "Pr": "PR",
         "Gmb": "GMB",  # Google My Business
+        "Mpp": "MPP",  # Machine Payments Protocol
         "Hubspot": "HubSpot",
+        "Allquiet": "All Quiet",
         "Linkedin": "LinkedIn",
         "Tiktok": "TikTok",
         "Youtube": "YouTube",
+        "Dataforb2B": "DataForB2B",  # str.title() key across the digit boundary
     }
 
     def apply_fixes(text: str) -> str:
@@ -384,9 +404,7 @@ def generate_block_markdown(
 
     # How it works (manual section)
     lines.append("### How it works")
-    how_it_works = manual_content.get(
-        "how_it_works", "_Add technical explanation here._"
-    )
+    how_it_works = manual_content.get("how_it_works", HOW_IT_WORKS_PLACEHOLDER)
     lines.append("<!-- MANUAL: how_it_works -->")
     lines.append(how_it_works)
     lines.append("<!-- END MANUAL -->")
@@ -427,7 +445,7 @@ def generate_block_markdown(
 
     # Possible use case (manual section)
     lines.append("### Possible use case")
-    use_case = manual_content.get("use_case", "_Add practical use case examples here._")
+    use_case = manual_content.get("use_case", USE_CASE_PLACEHOLDER)
     lines.append("<!-- MANUAL: use_case -->")
     lines.append(use_case)
     lines.append("<!-- END MANUAL -->")
@@ -515,11 +533,13 @@ def generate_overview_table(blocks: list[BlockDoc], block_dir_prefix: str = "") 
     lines.append("")
     lines.append("Want to create your own custom blocks? Check out our guides:")
     lines.append("")
+    # Build public doc URLs via the shared helper so the host/shape can't drift
+    # from the copilot docs tools (see backend/util/docs.py).
     lines.append(
-        "* [Build your own Blocks](https://docs.agpt.co/platform/new_blocks/) - Step-by-step tutorial with examples"
+        f"* [Build your own Blocks]({make_doc_url('platform/new_blocks.md')}) - Step-by-step tutorial with examples"
     )
     lines.append(
-        "* [Block SDK Guide](https://docs.agpt.co/platform/block-sdk-guide/) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
+        f"* [Block SDK Guide]({make_doc_url('platform/block-sdk-guide.md')}) - Advanced SDK patterns with OAuth, webhooks, and provider configuration"
     )
     lines.append("{% endhint %}")
     lines.append("")
@@ -681,9 +701,14 @@ def write_block_docs(
     output_dir: Path,
     blocks: list[BlockDoc],
     verbose: bool = False,
+    rename_map: dict[str, str] | None = None,
+    allow_orphaned_manual: bool = False,
 ) -> dict[str, str]:
     """
     Write block documentation files.
+
+    Raises OrphanedManualContentError if any file holds manual prose that no block
+    claims, so a rename cannot silently overwrite it.
 
     Returns dict of {file_path: content} for all generated files.
     """
@@ -691,6 +716,12 @@ def write_block_docs(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     file_mapping = get_block_file_mapping(blocks)
+
+    # Checked across every file before writing any, so a refusal leaves the docs intact.
+    orphans = collect_orphaned_manual_sections(output_dir, file_mapping, rename_map)
+    if orphans and not allow_orphaned_manual:
+        raise OrphanedManualContentError(orphans)
+
     generated_files = {}
 
     for file_path, file_blocks in file_mapping.items():
@@ -716,7 +747,7 @@ def write_block_docs(
         if file_header_match:
             file_description = file_header_match.group(1)
         else:
-            file_description = "_Add a description of this category of blocks._"
+            file_description = FILE_DESCRIPTION_PLACEHOLDER
 
         # Generate file header
         file_header = f"# {file_title}\n"
@@ -727,15 +758,9 @@ def write_block_docs(
         # Generate content for each block
         content_parts = []
         for block in sorted(file_blocks, key=lambda b: b.name):
-            # Extract manual content specific to this block
-            # Match block heading (h2) and capture until --- separator
-            block_pattern = rf"(?:^|\n)## {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
-            block_match = re.search(block_pattern, existing_content, re.DOTALL)
-            if block_match:
-                manual_content = extract_manual_content(block_match.group(1))
-            else:
-                manual_content = {}
-
+            manual_content = find_block_manual_content(
+                existing_content, block.name, rename_map
+            )
             content_parts.append(
                 generate_block_markdown(
                     block,
@@ -787,7 +812,11 @@ def write_block_docs(
     return generated_files
 
 
-def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
+def check_docs_in_sync(
+    output_dir: Path,
+    blocks: list[BlockDoc],
+    rename_map: dict[str, str] | None = None,
+) -> bool:
     """
     Check if generated docs match existing docs.
 
@@ -798,6 +827,7 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
 
     all_match = True
     out_of_sync_details: list[tuple[str, list[str]]] = []
+    orphans = collect_orphaned_manual_sections(output_dir, file_mapping, rename_map)
 
     for file_path, file_blocks in file_mapping.items():
         full_path = output_dir / file_path
@@ -824,7 +854,7 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         if file_header_match:
             file_description = file_header_match.group(1)
         else:
-            file_description = "_Add a description of this category of blocks._"
+            file_description = FILE_DESCRIPTION_PLACEHOLDER
 
         # Generate expected file header
         file_header = f"# {file_title}\n"
@@ -833,14 +863,12 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         file_header += "<!-- END MANUAL -->\n"
 
         # Extract manual content from existing file
-        manual_sections_by_block = {}
-        for block in file_blocks:
-            block_pattern = rf"(?:^|\n)## {re.escape(block.name)}\s*\n(.*?)(?=\n---|\Z)"
-            block_match = re.search(block_pattern, existing_content, re.DOTALL)
-            if block_match:
-                manual_sections_by_block[block.name] = extract_manual_content(
-                    block_match.group(1)
-                )
+        manual_sections_by_block = {
+            block.name: find_block_manual_content(
+                existing_content, block.name, rename_map
+            )
+            for block in file_blocks
+        }
 
         # Generate expected content and check each block individually
         content_parts = []
@@ -915,28 +943,29 @@ def check_docs_in_sync(output_dir: Path, blocks: list[BlockDoc]) -> bool:
         out_of_sync_details.append(("SUMMARY.md", ["navigation"]))
         all_match = False
 
-    # Check for unfilled manual sections
-    unfilled_patterns = [
-        "_Add a description of this category of blocks._",
-        "_Add technical explanation here._",
-        "_Add practical use case examples here._",
-    ]
+    # Unfilled sections fail the check: the state left behind by a wipe is otherwise
+    # indistinguishable from "in sync", which is how one passed CI.
     files_with_unfilled = []
     for file_path in file_mapping.keys():
         full_path = output_dir / file_path
         if full_path.exists():
             content = full_path.read_text()
-            unfilled_count = sum(1 for p in unfilled_patterns if p in content)
+            unfilled_count = sum(1 for p in PLACEHOLDER_TEXTS if p in content)
             if unfilled_count > 0:
                 files_with_unfilled.append((file_path, unfilled_count))
 
     if files_with_unfilled:
-        print("\nWARNING: Files with unfilled manual sections:")
+        print("\nUNFILLED: files with placeholder manual sections:")
         for file_path, count in sorted(files_with_unfilled):
             print(f"  {file_path}: {count} unfilled section(s)")
         print(
             f"\nTotal: {len(files_with_unfilled)} files with unfilled manual sections"
         )
+        all_match = False
+
+    if orphans:
+        print("\n" + format_orphan_report(orphans))
+        all_match = False
 
     return all_match
 
@@ -962,8 +991,26 @@ def main():
         action="store_true",
         help="Verbose output",
     )
+    parser.add_argument(
+        "--rekey",
+        action="append",
+        default=[],
+        metavar="OLD=NEW",
+        help="Carry manual prose from an old block heading over to its new name "
+        "(repeatable)",
+    )
+    parser.add_argument(
+        "--allow-orphaned-manual",
+        action="store_true",
+        help="Overwrite manual prose that no block claims, e.g. after a real deletion",
+    )
 
     args = parser.parse_args()
+
+    try:
+        rename_map = parse_rekey_args(args.rekey)
+    except ValueError as e:
+        parser.error(str(e))
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -976,7 +1023,7 @@ def main():
 
     if args.check:
         print(f"Checking docs in {args.output_dir}...")
-        in_sync = check_docs_in_sync(args.output_dir, blocks)
+        in_sync = check_docs_in_sync(args.output_dir, blocks, rename_map)
         if in_sync:
             print("All documentation is in sync!")
             sys.exit(0)
@@ -995,12 +1042,133 @@ def main():
             sys.exit(1)
     else:
         print(f"Generating docs to {args.output_dir}...")
-        write_block_docs(
-            args.output_dir,
-            blocks,
-            verbose=args.verbose,
-        )
+        try:
+            write_block_docs(
+                args.output_dir,
+                blocks,
+                verbose=args.verbose,
+                rename_map=rename_map,
+                allow_orphaned_manual=args.allow_orphaned_manual,
+            )
+        except OrphanedManualContentError as e:
+            print("\n" + str(e), file=sys.stderr)
+            sys.exit(1)
         print("Done!")
+
+
+def parse_rekey_args(rekey_args: list[str]) -> dict[str, str]:
+    """Parse repeated --rekey "OLD=NEW" arguments into {old heading: new heading}."""
+    rename_map = {}
+    for arg in rekey_args:
+        old, sep, new = arg.partition("=")
+        if not sep or not old.strip() or not new.strip():
+            raise ValueError(f"--rekey expects OLD=NEW, got {arg!r}")
+        rename_map[old.strip()] = new.strip()
+    return rename_map
+
+
+def find_block_manual_content(
+    existing_content: str,
+    block_name: str,
+    rename_map: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Manual sections written under this block's heading, or under a --rekey'd old one."""
+    headings = [block_name] + [
+        old for old, new in (rename_map or {}).items() if new == block_name
+    ]
+    for heading in headings:
+        pattern = rf"(?:^|\n)## {re.escape(heading)}\s*\n(.*?)(?=\n---|\Z)"
+        match = re.search(pattern, existing_content, re.DOTALL)
+        if match:
+            return extract_manual_content(match.group(1))
+    return {}
+
+
+def collect_orphaned_manual_sections(
+    output_dir: Path,
+    file_mapping: dict[str, list[BlockDoc]],
+    rename_map: dict[str, str] | None = None,
+) -> dict[str, list[tuple[str, list[str]]]]:
+    """Orphaned manual sections across every file the generator is about to rewrite."""
+    orphans = {}
+    for file_path, file_blocks in file_mapping.items():
+        full_path = output_dir / file_path
+        if not full_path.exists():
+            continue
+        file_orphans = find_orphaned_manual_sections(
+            full_path.read_text(), [b.name for b in file_blocks], rename_map
+        )
+        if file_orphans:
+            orphans[str(file_path)] = file_orphans
+    return orphans
+
+
+def find_orphaned_manual_sections(
+    existing_content: str,
+    block_names: Iterable[str],
+    rename_map: dict[str, str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    """
+    Hand-written prose under headings that no current block claims.
+
+    A block rename changes its generated heading, so the prose written under the old
+    one would otherwise be replaced by a placeholder without anyone being told.
+    Returns [(heading, [manual keys])].
+    """
+    rename_map = rename_map or {}
+    claimed = set(block_names)
+    orphans: list[tuple[str, list[str]]] = []
+
+    for match in re.finditer(
+        r"(?:^|\n)## ([^\n]+?)[ \t]*\n(.*?)(?=\n## |\Z)", existing_content, re.DOTALL
+    ):
+        heading = match.group(1)
+        if heading in claimed or rename_map.get(heading) in claimed:
+            continue
+        written = sorted(
+            key
+            for key, content in extract_manual_content(match.group(2)).items()
+            if key not in FILE_LEVEL_MANUAL_KEYS
+            and content
+            and content not in PLACEHOLDER_TEXTS
+        )
+        if written:
+            orphans.append((heading, written))
+
+    return orphans
+
+
+class OrphanedManualContentError(Exception):
+    """Manual prose exists under a heading no block claims; regenerating would drop it."""
+
+    def __init__(self, orphans: dict[str, list[tuple[str, list[str]]]]):
+        self.orphans = orphans
+        super().__init__(format_orphan_report(orphans))
+
+
+def format_orphan_report(orphans: dict[str, list[tuple[str, list[str]]]]) -> str:
+    lines = [
+        "Refusing to write: hand-written documentation would be lost.",
+        "",
+        "These headings carry manual content but match no current block —",
+        "most likely a block was renamed and the docs still use its old name:",
+        "",
+    ]
+    for file_path, file_orphans in sorted(orphans.items()):
+        lines.append(f"  {file_path}")
+        for heading, keys in file_orphans:
+            lines.append(f"    ## {heading}  ({', '.join(keys)})")
+    lines += [
+        "",
+        "Carry the prose over to the new name:",
+        "",
+        '    poetry run python scripts/generate_block_docs.py --rekey "OLD NAME=NEW NAME"',
+        "",
+        "Or, if the block really was deleted and the prose should go with it:",
+        "",
+        "    poetry run python scripts/generate_block_docs.py --allow-orphaned-manual",
+    ]
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

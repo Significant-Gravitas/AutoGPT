@@ -93,9 +93,40 @@ def test():
     db_name = os.getenv("POSTGRES_DB", "postgres")
     db_port = os.getenv("POSTGRES_PORT", "5432")
 
-    # Construct the test database URL - this ensures we're always pointing to the test container
+    # Run tests against a DEDICATED DATABASE on the test server. This is
+    # load-bearing: the "test" db container shares its data directory with
+    # the dev Supabase database, whose default search_path is
+    # `"$user", platform, public` — so a schema-less URL points unqualified
+    # DDL (and `prisma migrate reset --force`!) at the LIVE `platform`
+    # schema, and a `?schema=` URL breaks migrations that rely on
+    # extensions installed in Supabase's `extensions` schema (pg_trgm's
+    # gin_trgm_ops). A separate database gets its own fresh `public`
+    # schema: extensions install locally, resets stay contained.
+    test_db_name = "agpt_test"
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.test.yaml",
+            "--env-file",
+            "../.env",
+            "exec",
+            "-T",
+            "db",
+            "psql",
+            "-U",
+            db_user,
+            "-d",
+            db_name,
+            "-c",
+            f"CREATE DATABASE {test_db_name}",
+        ],
+        check=False,  # already exists on reruns
+        capture_output=True,
+    )
     test_env["DATABASE_URL"] = (
-        f"postgresql://{db_user}:{db_pass}@localhost:{db_port}/{db_name}"
+        f"postgresql://{db_user}:{db_pass}@localhost:{db_port}/{test_db_name}"
     )
     test_env["DIRECT_URL"] = test_env["DATABASE_URL"]
 

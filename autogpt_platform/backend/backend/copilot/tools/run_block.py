@@ -7,6 +7,7 @@ from typing import Any
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
 from .helpers import (
@@ -15,7 +16,13 @@ from .helpers import (
     execute_block,
     prepare_block_for_execution,
 )
-from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,29 @@ class RunBlockTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Only a credentialed execution is an integration action; schema
+        # lookups, dry runs and credential-less blocks leave no audit trail.
+        if (
+            not isinstance(result, BlockOutputResponse)
+            or not result.success
+            or result.is_dry_run
+            or not result.provider
+        ):
+            return None
+        return ActivityEventDraft(
+            category="INTEGRATION",
+            event_type="integration.action",
+            title=result.block_name,
+            provider=result.provider,
+            object_id=result.block_id,
+        )
 
     async def _execute(
         self,
@@ -174,6 +204,8 @@ class RunBlockTool(BaseTool):
                 node_exec_id=synthetic_node_exec_id,
                 matched_credentials=prep.matched_credentials,
                 dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -238,7 +270,13 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             )
 
-        hitl_or_err = await check_hitl_review(prep, user_id, session_id)
+        hitl_or_err = await check_hitl_review(
+            prep,
+            user_id,
+            session_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
         if isinstance(hitl_or_err, ToolResponseBase):
             return hitl_or_err
         synthetic_node_exec_id, input_data = hitl_or_err
@@ -252,6 +290,8 @@ class RunBlockTool(BaseTool):
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
             dry_run=dry_run,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
 

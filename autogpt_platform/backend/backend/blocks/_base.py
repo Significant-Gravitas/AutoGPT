@@ -38,6 +38,7 @@ from backend.util.exceptions import (
     BlockInputError,
     BlockOutputError,
     BlockUnknownError,
+    InsufficientBalanceError,
 )
 from backend.util.settings import Config
 
@@ -737,8 +738,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ):
                 yield output_name, output_data
         except Exception as ex:
-            if isinstance(ex, BlockError):
-                raise ex
+            if isinstance(ex, (BlockError, InsufficientBalanceError)):
+                raise
             else:
                 raise (
                     BlockExecutionError
@@ -791,6 +792,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             block_name=self.name,
             editable=True,
             is_graph_execution=is_graph_execution,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
         )
 
         if decision is None:

@@ -40,6 +40,7 @@ export default function SettingsCreatorDashboardPage() {
     editState,
     onViewSubmission,
     onEditSubmission,
+    onEditFromReview,
     onEditSuccess,
     onEditClose,
     onDeleteSubmission,
@@ -73,6 +74,7 @@ export default function SettingsCreatorDashboardPage() {
         publishState={publishState}
         onPublishStateChange={onPublishStateChange}
         onOpenSubmit={openPublishModal}
+        onRequestEdit={onEditFromReview}
       />
 
       {isEmpty ? (

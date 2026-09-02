@@ -307,19 +307,19 @@ async def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_overr
 async def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override):
     """TOKENS pre-flight uses MODEL_COST floor; if real token usage is cheaper,
     the user is refunded the overcharge via a negative-delta spend_credits."""
-    from backend.blocks.llm import LlmModel
+    from backend.blocks.llm import LLMModel
 
     tmp_block_costs_override(
         [
             BlockCost(
                 cost_amount=1,
                 cost_type=BlockCostType.TOKENS,
-                cost_filter={"model": LlmModel.GPT5},
+                cost_filter={"model": LLMModel.GPT5},
             )
         ]
     )
     exec_entry = _node_exec(SearchTheWebBlock().id)
-    exec_entry = exec_entry.model_copy(update={"inputs": {"model": LlmModel.GPT5}})
+    exec_entry = exec_entry.model_copy(update={"inputs": {"model": LLMModel.GPT5}})
     # Minimal real usage → post-flight < pre-flight MODEL_COST floor.
     stats = NodeExecutionStats(
         input_token_count=1,

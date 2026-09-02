@@ -93,7 +93,7 @@ class TestHandleSetup:
 
         interaction.followup.send.assert_awaited_once()
         sent = interaction.followup.send.await_args
-        assert "Set up AutoPilot for Test Guild" in sent.args[0]
+        assert "Set up AutoGPT for Test Guild" in sent.args[0]
         assert sent.kwargs["view"] is not None
 
     @pytest.mark.asyncio
@@ -143,7 +143,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = "http://localhost:3000"
         fake_settings.config.platform_base_url = ""
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)
@@ -165,7 +165,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = ""
         fake_settings.config.platform_base_url = "http://other"
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)
@@ -184,7 +184,7 @@ class TestHandleUnlink:
         fake_settings.config.frontend_base_url = ""
         fake_settings.config.platform_base_url = ""
         with patch(
-            "backend.copilot.bot.adapters.discord.commands.Settings",
+            "backend.copilot.bot.command_core.Settings",
             return_value=fake_settings,
         ):
             await _handle_unlink(interaction)

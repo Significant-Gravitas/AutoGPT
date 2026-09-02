@@ -1,11 +1,10 @@
 "use client";
-
-import { XIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 
 import { useLowCreditBanner } from "./useLowCreditBanner";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   className?: string;
@@ -23,12 +22,7 @@ export function LowCreditBanner({ className }: Props) {
           You&apos;re out of automation credits. Top up to keep your agents
           running.
         </AlertDescription>
-        <Button
-          variant="primary"
-          size="small"
-          onClick={openTopUp}
-          className="border-orange-600 bg-orange-600 hover:border-orange-700 hover:bg-orange-700"
-        >
+        <Button variant="primary" size="small" onClick={openTopUp}>
           Top up
         </Button>
         <Button
@@ -39,7 +33,7 @@ export function LowCreditBanner({ className }: Props) {
           title="Dismiss"
           className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
-          <XIcon className="h-4 w-4" />
+          <Icon icon={Cancel01Icon} className="h-4 w-4" />
         </Button>
       </div>
     </Alert>

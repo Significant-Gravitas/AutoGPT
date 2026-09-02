@@ -6,7 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.data.graph import BaseGraph
+from backend.copilot.tools.execution_utils import NodeFailureSummary
+from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
 
 
@@ -52,6 +53,13 @@ class ResponseType(str, Enum):
 
     # Agent triggers
     AGENT_TRIGGER_LIST = "agent_trigger_list"
+    TRIGGER_SETUP = "trigger_setup"
+    TRIGGER_CONFIG_REQUIRED = "trigger_config_required"
+
+    # Presets (list / update / delete)
+    PRESET_LIST = "preset_list"
+    PRESET_UPDATED = "preset_updated"
+    PRESET_DELETED = "preset_deleted"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -105,11 +113,21 @@ class ResponseType(str, Enum):
     # Platform info
     PLATFORM_INFO = "platform_info"
 
+    # Chat-platform proactive output (post message / create thread)
+    CHAT_PLATFORM_CHANNEL_LIST = "chat_platform_channel_list"
+    CHAT_PLATFORM_POSTED = "chat_platform_posted"
+
     # Skills (self-distilled procedure registry)
     SKILL_STORED = "skill_stored"
     SKILL_LOADED = "skill_loaded"
     SKILL_DELETED = "skill_deleted"
     SKILL_LIST = "skill_list"
+
+    # Experts (soul edits, hire/raise)
+    EXPERT_SOUL_UPDATED = "expert_soul_updated"
+    EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
+    EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    TEAM_ROSTER = "team_roster"
 
 
 # Base response model
@@ -165,6 +183,16 @@ class AgentInfo(BaseModel):
         default=None,
         description="Full graph structure (nodes + links) when include_graph is requested",
     )
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentsFoundResponse(ToolResponseBase):
@@ -216,7 +244,16 @@ class AgentDetails(BaseModel):
     inputs: dict[str, Any] = {}
     credentials: list[CredentialsMetaInput] = []
     execution_options: ExecutionOptions = Field(default_factory=ExecutionOptions)
-    trigger_info: dict[str, Any] | None = None
+    trigger_info: GraphTriggerInfo | None = Field(
+        default=None,
+        description=(
+            "Webhook-trigger setup info (provider, config_schema, "
+            "credentials_input_name) for agents with an external trigger. "
+            "Configure the trigger by passing config_schema fields to "
+            "setup_agent_webhook_trigger — never by editing the trigger node "
+            "in the graph. None for agents without a webhook trigger."
+        ),
+    )
 
 
 class AgentDetailsResponse(ToolResponseBase):
@@ -273,6 +310,8 @@ class ExecutionStartedResponse(ToolResponseBase):
     library_agent_id: str | None = None
     library_agent_link: str | None = None
     status: str = "QUEUED"
+    # Set when the run was started with save_as_preset=true.
+    saved_preset_id: str | None = None
 
 
 # Auth/error models
@@ -311,6 +350,38 @@ class SubSessionProgressSnapshot(BaseModel):
     )
 
 
+class WorkspaceFileInfoData(BaseModel):
+    """Workspace file metadata (not a response itself).
+
+    Shared by ``list_workspace_files`` and the ``sub_workspace_files`` manifest
+    on :class:`SubSessionStatusResponse` (SECRT-2377). When it describes a file a
+    sub-AutoPilot wrote, ``path`` is already session-qualified
+    (``/sessions/<sub_id>/...``) and can be passed straight to
+    ``read_workspace_file(path=...)`` for cross-session retrieval.
+    """
+
+    file_id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+
+
+class DelegatedExpertInfo(BaseModel):
+    """Identity of the expert a delegated sub-session runs as.
+
+    Set only by ``delegate_to_expert`` (and by polls of a delegated sub), so
+    both the model and the ToolChain card can name who is doing the work
+    instead of rendering a generic "Sub-AutoPilot".
+    """
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
 
@@ -320,12 +391,17 @@ class SubSessionStatusResponse(ToolResponseBase):
     """
 
     type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
-    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+    status: Literal[
+        "running", "completed", "cancelled", "error", "queued", "transferred"
+    ] = Field(
         description=(
             "Current state of the sub-AutoPilot run.  ``queued`` means the "
             "target session already had a turn in flight, so the message was "
             "pushed onto its pending buffer and will be picked up by the "
-            "existing turn on its next drain."
+            "existing turn on its next drain.  ``transferred`` is terminal "
+            "for the caller: ``handoff_to_expert`` gave the task away, so no "
+            "result is coming back and there is nothing to poll — the "
+            "receiving expert now owns it and reports to the user directly."
         ),
     )
     sub_session_id: str = Field(
@@ -354,9 +430,26 @@ class SubSessionStatusResponse(ToolResponseBase):
             "``sub_autopilot_session_id`` is set."
         ),
     )
+    expert: DelegatedExpertInfo | None = Field(
+        default=None,
+        description=(
+            "Teammate the work was delegated to. Set only for "
+            "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
+        ),
+    )
     tool_calls: list[dict[str, Any]] | None = Field(
         default=None,
         description="Tool calls made during the sub-AutoPilot run.",
+    )
+    sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
+        default=None,
+        description=(
+            "Persistent workspace files the sub wrote during the run. "
+            "Populated when status=completed and the sub used "
+            "write_workspace_file — lets the parent recover work delivered "
+            "via files rather than inline text. Read each via "
+            "read_workspace_file(path=<read_path>)."
+        ),
     )
     error: str | None = Field(
         default=None,
@@ -401,6 +494,7 @@ class ExecutionOutputInfo(BaseModel):
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
     node_executions: list[dict[str, Any]] | None = None
+    nodes_failed: list[NodeFailureSummary] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
@@ -425,6 +519,105 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     current_understanding: dict[str, Any] = Field(default_factory=dict)
 
 
+SoulFieldName = Literal["identity", "voice_preferences", "boundaries"]
+
+
+class SoulFieldChange(BaseModel):
+    """One field's before/after values for an expert soul edit."""
+
+    field: SoulFieldName
+    before: str
+    after: str
+
+
+class ExpertSoulUpdatedResponse(ToolResponseBase):
+    """Response for the two-step Soul edit tools.
+
+    Carries the diff so the model must surface exactly what changed. ``applied``
+    is False for the update_expert_soul preview (nothing written yet; the
+    one-time ``confirmation_id`` references the stored proposal) and True once
+    confirm_expert_soul_update saves the edit.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_SOUL_UPDATED
+    applied: bool = False
+    changes: list[SoulFieldChange] = Field(default_factory=list)
+    confirmation_id: str | None = None
+
+
+ExpertChangeKind = Literal["hire", "raise", "update"]
+
+
+class ExpertChangePreview(BaseModel):
+    """The expert a hire/raise proposal would create, exactly as previewed.
+
+    One shape covers both kinds: ``template_id`` is set only for a hire, and
+    the charter fields (``about`` / ``boundaries``) only for a raise.
+    """
+
+    kind: ExpertChangeKind
+    name: str
+    role: str = ""
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
+    template_id: str | None = None
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ExpertSummary(BaseModel):
+    """Identity of an expert created by ``confirm_expert_change``."""
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class TeamExpertInfo(BaseModel):
+    """One roster row returned by ``list_team``."""
+
+    id: str
+    name: str
+    role: str
+    color: str = ""
+    avatar_url: str | None = None
+    is_paused: bool = False
+
+
+class TeamRosterResponse(ToolResponseBase):
+    """The user's current expert roster, straight from the DB."""
+
+    type: ResponseType = ResponseType.TEAM_ROSTER
+    experts: list[TeamExpertInfo] = Field(default_factory=list)
+
+
+class ExpertChangeProposedResponse(ToolResponseBase):
+    """Preview returned by ``hire_expert`` / ``raise_expert`` — never a write.
+
+    ``applied`` is always False here; the one-time ``confirmation_id``
+    references the proposal stored server-side until the user approves.
+    """
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_PROPOSED
+    applied: bool = False
+    preview: ExpertChangePreview
+    confirmation_id: str
+
+
+class ExpertChangeAppliedResponse(ToolResponseBase):
+    """The expert ``confirm_expert_change`` actually created."""
+
+    type: ResponseType = ResponseType.EXPERT_CHANGE_APPLIED
+    applied: bool = True
+    kind: ExpertChangeKind
+    expert: ExpertSummary
+    failed_workflows: list[str] = Field(default_factory=list)
+
+
 # Agent generation models
 class ClarifyingQuestion(BaseModel):
     """A question that needs user clarification."""
@@ -432,6 +625,7 @@ class ClarifyingQuestion(BaseModel):
     question: str
     keyword: str
     example: str | None = None
+    options: list[str] = Field(default_factory=list)
 
 
 class AgentPreviewResponse(ToolResponseBase):
@@ -545,6 +739,12 @@ class BlockInfoSummary(BaseModel):
         default_factory=list,
         description="List of input fields for this block",
     )
+    provider: str | None = Field(
+        default=None,
+        description="Integration provider slug when the block uses exactly "
+        "one provider (e.g. 'google', 'discord'); used for provider icons "
+        "in the chat UI",
+    )
 
 
 class BlockListResponse(ToolResponseBase):
@@ -586,6 +786,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_id: str
     block_name: str
     outputs: dict[str, list[Any]]
+    provider: str | None = None
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
@@ -615,6 +816,11 @@ class WebFetchResponse(ToolResponseBase):
     status_code: int
     content_type: str
     content: str
+    title: str | None = None
+    content_length: int = Field(
+        default=0,
+        description="Original response body size in bytes",
+    )
     truncated: bool = False
 
 
@@ -690,7 +896,17 @@ class MCPToolInfo(BaseModel):
 
     name: str
     description: str
-    input_schema: dict[str, Any]
+    params: str | None = Field(
+        default=None,
+        description="Compact argument summary: top-level input field names, "
+        "required ones marked with *.",
+    )
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Full input schema. Omitted in discovery responses to "
+        "keep them small; the execution error path returns the failed "
+        "tool's full schema on demand.",
+    )
 
 
 class MCPToolsDiscoveredResponse(ToolResponseBase):
@@ -756,7 +972,11 @@ class FixResultResponse(ToolResponseBase):
     """Response for fix_agent_graph tool."""
 
     type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
-    fixed_agent_json: dict[str, Any]
+    # None when the fixed JSON was written to a workspace file instead
+    # (see fixed_agent_ref + fix_diff).
+    fixed_agent_json: dict[str, Any] | None = None
+    fixed_agent_ref: str | None = None
+    fix_diff: str | None = None
     fixes_applied: list[str] = Field(default_factory=list)
     fix_count: int = 0
     valid_after_fix: bool = False
@@ -909,12 +1129,38 @@ class MemoryForgetCandidatesResponse(ToolResponseBase):
     candidates: list[dict[str, str]] = Field(default_factory=list)
 
 
+class MemoryForgetFailureCode(str, Enum):
+    """Stable, machine-switchable reason a forget delete failed.
+
+    The frontend/model can branch on this code (retry vs. give up) without
+    parsing the free-text ``reason``. New codes may be added over time, so
+    consumers must tolerate unknown values.
+    """
+
+    NO_MATCH = "no_match"
+    QUERY_ERROR = "query_error"
+
+
+class MemoryForgetFailure(BaseModel):
+    """One edge that could not be deleted, with an actionable reason.
+
+    Surfaced so the assistant (and user) can tell *why* a delete failed —
+    e.g. the edge was not found vs. the query itself errored — instead of a
+    bare "N failed" count that gives the model nothing to act on.
+    """
+
+    uuid: str
+    code: MemoryForgetFailureCode
+    reason: str
+
+
 class MemoryForgetConfirmResponse(ToolResponseBase):
     """Response after deleting specific memory edges."""
 
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+    failures: list[MemoryForgetFailure] = Field(default_factory=list)
 
 
 # --- Planning ---
@@ -957,3 +1203,35 @@ class PlatformInfoResponse(ToolResponseBase):
     topic: str
     tier: str | None = None
     billing_url: str | None = "/settings/billing"
+
+
+# --- Chat-platform proactive output (Discord today; Slack/Telegram later) ---
+
+
+class ChatPlatformChannelSummary(BaseModel):
+    """A channel the bot can post to on the user's behalf."""
+
+    id: str
+    name: str
+    server_id: str
+    server_name: str | None = None
+
+
+class ChatPlatformChannelListResponse(ToolResponseBase):
+    """Response for the ``list_chat_platform_channels`` tool."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_CHANNEL_LIST
+    platform: str
+    channels: list[ChatPlatformChannelSummary] = Field(default_factory=list)
+    count: int = 0
+
+
+class ChatPlatformPostedResponse(ToolResponseBase):
+    """Response after the bot posts a message, creates a thread, or DMs."""
+
+    type: ResponseType = ResponseType.CHAT_PLATFORM_POSTED
+    platform: str
+    kind: Literal["message", "thread", "dm"]
+    channel_id: str
+    ref_id: str | None = None
+    url: str | None = None

@@ -13,6 +13,7 @@ from prisma.models import User
 
 from backend.data.credit import (
     UserCredit,
+    _get_active_subscription_cached,
     _is_stripe_reconcilable,
     build_price_to_tier_map,
     cancel_stripe_subscription,
@@ -42,6 +43,19 @@ class _CacheClearable(Protocol):
 
 def _clear_cache(fn: _CacheClearable) -> None:
     fn.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_active_subscription_cache():
+    """Isolate the short-TTL active-subscription cache between tests.
+
+    ``get_user_billing_cycle`` / ``get_active_subscription_period_end`` /
+    ``get_proration_credit_cents`` share ``_get_active_subscription_cached``;
+    clear it so a subscription mocked in one test cannot leak into the next
+    through the cache.
+    """
+    _clear_cache(_get_active_subscription_cached)
+    yield
 
 
 @pytest.mark.asyncio
@@ -852,11 +866,10 @@ async def test_get_proration_credit_cents_with_active_sub():
     period_end = now + 15 * 24 * 3600  # 15 days ahead
     mock_sub = {
         "id": "sub_abc",
+        "status": "active",
         "current_period_start": period_start,
         "current_period_end": period_end,
     }
-    mock_subs = MagicMock()
-    mock_subs.data = [mock_sub]
 
     with (
         patch(
@@ -865,13 +878,55 @@ async def test_get_proration_credit_cents_with_active_sub():
             return_value=_make_user_with_stripe("cus_123"),
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
-            return_value=mock_subs,
+            "backend.data.credit._get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=mock_sub,
         ),
     ):
         result = await get_proration_credit_cents("user-1", monthly_cost_cents=2000)
     assert result > 0
     assert result < 2000
+
+
+@pytest.mark.asyncio
+async def test_get_proration_credit_cents_trialing_sub_returns_zero():
+    """A trialing sub has no paid time to prorate — returns 0 (active-only)."""
+    mock_sub = {
+        "id": "sub_trial",
+        "status": "trialing",
+        "current_period_start": 1,
+        "current_period_end": 10_000_000_000,
+    }
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=_make_user_with_stripe("cus_123"),
+        ),
+        patch(
+            "backend.data.credit._get_active_subscription",
+            new_callable=AsyncMock,
+            return_value=mock_sub,
+        ),
+    ):
+        result = await get_proration_credit_cents("user-1", monthly_cost_cents=2000)
+    assert result == 0
+
+
+@pytest.mark.asyncio
+async def test_active_subscription_lookup_is_cached_within_window():
+    """The subscription-status display path resolves the active sub several
+    times per request; the cached wrapper collapses those into one Stripe call."""
+    mock_sub = {"id": "sub_abc", "status": "active"}
+    with patch(
+        "backend.data.credit._get_active_subscription",
+        new_callable=AsyncMock,
+        return_value=mock_sub,
+    ) as raw:
+        first = await _get_active_subscription_cached("cus_cache")
+        second = await _get_active_subscription_cached("cus_cache")
+    assert first is second is mock_sub
+    raw.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -901,6 +956,49 @@ async def test_create_subscription_checkout_returns_url():
             cancel_url="https://app.example.com/cancel",
         )
         assert url == "https://checkout.stripe.com/pay/cs_test_abc123"
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_checkout_offers_saved_payment_methods():
+    """Returning subscribers must see their saved cards in Checkout.
+
+    Cards attached by a previous subscription-mode Checkout get
+    ``allow_redisplay=limited``, so the filters must include ``limited`` —
+    the default (``always`` only) would hide every card saved this way and
+    force the user to re-enter card details.
+    """
+    mock_session = MagicMock()
+    mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit._expire_open_subscription_sessions",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create",
+            return_value=mock_session,
+        ) as mock_create,
+    ):
+        await create_subscription_checkout(
+            user_id="user-1",
+            tier=SubscriptionTier.PRO,
+            success_url="https://app.example.com/success",
+            cancel_url="https://app.example.com/cancel",
+        )
+    assert mock_create.call_args.kwargs["saved_payment_method_options"] == {
+        "payment_method_save": "enabled",
+        "allow_redisplay_filters": ["always", "limited"],
+    }
 
 
 @pytest.mark.asyncio

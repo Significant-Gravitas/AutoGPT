@@ -6,8 +6,6 @@ import mimetypes
 import os
 from typing import Any, Optional
 
-from pydantic import BaseModel
-
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
@@ -21,11 +19,12 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.activity_event import ActivityEventDraft
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
-from .models import ErrorResponse, ResponseType, ToolResponseBase
+from .models import ErrorResponse, ResponseType, ToolResponseBase, WorkspaceFileInfoData
 
 logger = logging.getLogger(__name__)
 
@@ -255,16 +254,6 @@ async def _resolve_file(
             message=f"File not found at path: {path}", session_id=session_id
         )
     return file_info.id, file_info
-
-
-class WorkspaceFileInfoData(BaseModel):
-    """Data model for workspace file information (not a response itself)."""
-
-    file_id: str
-    name: str
-    path: str
-    mime_type: str
-    size_bytes: int
 
 
 class WorkspaceFileListResponse(ToolResponseBase):
@@ -829,6 +818,26 @@ class WriteWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceWriteResponse):
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.updated" if kwargs.get("overwrite") else "file.created",
+            title=result.name,
+            object_id=result.file_id,
+            data={
+                "path": result.path,
+                "mime_type": result.mime_type,
+                "size_bytes": result.size_bytes,
+            },
+        )
+
     async def _execute(
         self,
         user_id: str | None,
@@ -1017,6 +1026,21 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceDeleteResponse) or not result.success:
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.deleted",
+            title=kwargs.get("path") or "Workspace file",
+            object_id=result.file_id,
+        )
 
     async def _execute(
         self,

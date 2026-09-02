@@ -2,8 +2,9 @@
 
 import type { SelectOption } from "@/components/atoms/Select/Select";
 import { Select } from "@/components/atoms/Select/Select";
-import { FunnelIcon } from "@phosphor-icons/react";
 import type { AgentStatusFilter, FleetSummary } from "../../types";
+import { FunnelIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: AgentStatusFilter;
@@ -35,7 +36,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
       <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
         filter
       </span>
-      <FunnelIcon className="ml-1 h-4 w-4 sm:hidden" />
+      <Icon icon={FunnelIcon} className="ml-1 h-4 w-4 sm:hidden" />
       <Select
         id="agent-status-filter"
         label="Filter agents"

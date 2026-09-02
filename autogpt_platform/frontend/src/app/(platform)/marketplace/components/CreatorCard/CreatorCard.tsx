@@ -9,6 +9,7 @@ import { backgroundColor } from "./helper";
 
 interface Props {
   creatorName: string;
+  creatorUsername?: string;
   creatorImage: string | null;
   bio: string;
   agentsUploaded: number;
@@ -18,6 +19,7 @@ interface Props {
 
 export function CreatorCard({
   creatorName,
+  creatorUsername,
   creatorImage,
   bio,
   agentsUploaded,
@@ -27,7 +29,7 @@ export function CreatorCard({
   return (
     <button
       type="button"
-      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-md transition-all duration-300 hover:shadow-lg ${backgroundColor(index)}`}
+      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"
     >
@@ -36,7 +38,9 @@ export function CreatorCard({
         {creatorImage && (
           <AvatarImage src={creatorImage} alt={`${creatorName} avatar`} />
         )}
-        <AvatarFallback size={56}>{creatorName.charAt(0)}</AvatarFallback>
+        <AvatarFallback size={56}>
+          {creatorUsername || creatorName}
+        </AvatarFallback>
       </Avatar>
 
       <div className="mt-3 flex w-full flex-1 flex-col">

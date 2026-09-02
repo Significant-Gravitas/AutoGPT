@@ -1,241 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
-  buildRenderSegments,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
-  isCompletedToolPart,
-  isInteractiveToolPart,
-  isReasoningToolPart,
+  getLatestCompactionPhase,
+  getLatestCompactionStats,
+  getMessageArtifacts,
+  getMostRecentArtifact,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
-  splitReasoningAndResponse,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
-import type { FileUIPart } from "ai";
+import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 
 function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
 }
 
-function reasoningPart(text: string): MessagePart {
-  return { type: "reasoning", text, state: "done" } as MessagePart;
+function stepStartPart(): MessagePart {
+  return { type: "step-start" } as MessagePart;
 }
-
-function toolPart(
-  toolName: string,
-  state: string = "output-available",
-  output: unknown = "{}",
-): MessagePart {
-  return {
-    type: `tool-${toolName}`,
-    state,
-    toolCallId: `call-${toolName}`,
-    toolName,
-    args: {},
-    output,
-  } as unknown as MessagePart;
-}
-
-function interactiveToolPart(
-  toolName: string,
-  responseType: string,
-): MessagePart {
-  return {
-    type: `tool-${toolName}`,
-    state: "output-available",
-    toolCallId: `call-${toolName}`,
-    toolName,
-    args: {},
-    output: { type: responseType },
-  } as unknown as MessagePart;
-}
-
-describe("isCompletedToolPart", () => {
-  it("returns true for output-available tool part", () => {
-    const part = toolPart("some_tool", "output-available");
-    expect(isCompletedToolPart(part)).toBe(true);
-  });
-
-  it("returns true for output-error tool part", () => {
-    const part = toolPart("some_tool", "output-error");
-    expect(isCompletedToolPart(part)).toBe(true);
-  });
-
-  it("returns false for input-streaming tool part", () => {
-    const part = toolPart("some_tool", "input-streaming");
-    expect(isCompletedToolPart(part)).toBe(false);
-  });
-
-  it("returns false for text part", () => {
-    const part = textPart("hello");
-    expect(isCompletedToolPart(part)).toBe(false);
-  });
-});
-
-describe("isInteractiveToolPart", () => {
-  it("returns true for task_decomposition type", () => {
-    const part = toolPart("decompose_goal", "output-available", {
-      type: "task_decomposition",
-      message: "Plan",
-      goal: "Build agent",
-      steps: [],
-      step_count: 0,
-    });
-    expect(isInteractiveToolPart(part)).toBe(true);
-  });
-
-  it("returns true for setup_requirements type", () => {
-    const part = toolPart("run_mcp_tool", "output-available", {
-      type: "setup_requirements",
-      message: "Setup needed",
-    });
-    expect(isInteractiveToolPart(part)).toBe(true);
-  });
-
-  it("returns true for agent_details type", () => {
-    const part = toolPart("find_agent", "output-available", {
-      type: "agent_details",
-    });
-    expect(isInteractiveToolPart(part)).toBe(true);
-  });
-
-  it("returns false for non-interactive output type", () => {
-    const part = toolPart("some_tool", "output-available", {
-      type: "generic_output",
-    });
-    expect(isInteractiveToolPart(part)).toBe(false);
-  });
-
-  it("returns false when state is not output-available", () => {
-    const part = toolPart("decompose_goal", "input-streaming", {
-      type: "task_decomposition",
-    });
-    expect(isInteractiveToolPart(part)).toBe(false);
-  });
-
-  it("returns false for non-tool parts", () => {
-    const part = textPart("hello");
-    expect(isInteractiveToolPart(part)).toBe(false);
-  });
-
-  it("returns false when output is null", () => {
-    const part = toolPart("decompose_goal", "output-available", null);
-    expect(isInteractiveToolPart(part)).toBe(false);
-  });
-
-  it("handles JSON-encoded string output", () => {
-    const part = toolPart(
-      "decompose_goal",
-      "output-available",
-      JSON.stringify({ type: "task_decomposition" }),
-    );
-    expect(isInteractiveToolPart(part)).toBe(true);
-  });
-
-  it("returns false for invalid JSON string output", () => {
-    const part = toolPart(
-      "decompose_goal",
-      "output-available",
-      "not valid json",
-    );
-    expect(isInteractiveToolPart(part)).toBe(false);
-  });
-});
-
-describe("buildRenderSegments", () => {
-  it("returns individual segments for custom tool types", () => {
-    const parts = [
-      toolPart("decompose_goal", "output-available", {
-        type: "task_decomposition",
-      }),
-    ];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("part");
-  });
-
-  it("collapses consecutive generic completed tool parts", () => {
-    const parts = [
-      toolPart("unknown_tool_a", "output-available"),
-      toolPart("unknown_tool_b", "output-available"),
-    ];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("collapsed-group");
-    if (segments[0].kind === "collapsed-group") {
-      expect(segments[0].parts).toHaveLength(2);
-    }
-  });
-
-  it("does not collapse custom tool types into groups", () => {
-    const parts = [
-      toolPart("decompose_goal", "output-available", {
-        type: "task_decomposition",
-      }),
-      toolPart("create_agent", "output-available"),
-    ];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(2);
-    expect(segments[0].kind).toBe("part");
-    expect(segments[1].kind).toBe("part");
-  });
-
-  it("renders text parts individually", () => {
-    const parts = [textPart("Hello"), textPart("World")];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(2);
-    expect(segments.every((s) => s.kind === "part")).toBe(true);
-  });
-
-  it("handles mixed custom tools, generic tools, and text", () => {
-    const parts = [
-      textPart("Plan:"),
-      toolPart("decompose_goal", "output-available"),
-      toolPart("generic_a", "output-available"),
-      toolPart("generic_b", "output-available"),
-      textPart("Done"),
-    ];
-    const segments = buildRenderSegments(parts);
-
-    expect(segments[0].kind).toBe("part");
-    expect(segments[1].kind).toBe("part");
-    expect(segments[2].kind).toBe("collapsed-group");
-    expect(segments[3].kind).toBe("part");
-  });
-
-  it("does not collapse a single generic tool part", () => {
-    const parts = [toolPart("generic_a", "output-available")];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("part");
-  });
-
-  it("never collapses connect_integration into a tool group", () => {
-    // The sign-in card must stay individually rendered — folding it into a
-    // collapsed group hides the card behind a "N tool calls" summary.
-    const parts = [
-      toolPart("generic_a", "output-available"),
-      toolPart("connect_integration", "output-available", {
-        type: "setup_requirements",
-        message: "Connect GitHub",
-      }),
-      toolPart("generic_b", "output-available"),
-    ];
-    const segments = buildRenderSegments(parts);
-    expect(segments).toHaveLength(3);
-    expect(segments.every((s) => s.kind === "part")).toBe(true);
-  });
-
-  it("preserves baseIndex offset in part segments", () => {
-    const parts = [textPart("Hello")];
-    const segments = buildRenderSegments(parts, 5);
-    expect(segments).toHaveLength(1);
-    if (segments[0].kind === "part") {
-      expect(segments[0].index).toBe(5);
-    }
-  });
-});
 
 describe("parseSpecialMarkers", () => {
   it("returns null marker for plain text", () => {
@@ -384,301 +168,6 @@ describe("filePartToArtifactRef", () => {
   });
 });
 
-describe("isReasoningToolPart", () => {
-  it("returns true for reasoning/search tools", () => {
-    const reasoningTools = [
-      "find_block",
-      "find_agent",
-      "find_library_agent",
-      "search_docs",
-      "get_doc_page",
-      "search_feature_requests",
-      "ask_question",
-    ];
-    for (const name of reasoningTools) {
-      expect(isReasoningToolPart(toolPart(name))).toBe(true);
-    }
-  });
-
-  it("returns false for action tools", () => {
-    const actionTools = [
-      "run_block",
-      "run_agent",
-      "create_agent",
-      "edit_agent",
-      "run_mcp_tool",
-      "schedule_agent",
-      "continue_run_block",
-    ];
-    for (const name of actionTools) {
-      expect(isReasoningToolPart(toolPart(name))).toBe(false);
-    }
-  });
-
-  it("returns false for text parts", () => {
-    expect(isReasoningToolPart(textPart("hello"))).toBe(false);
-  });
-});
-
-describe("splitReasoningAndResponse", () => {
-  it("returns all parts as response when there are no tools", () => {
-    const parts = [textPart("Hello"), textPart("World")];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([]);
-    expect(result.response).toEqual(parts);
-  });
-
-  it("splits on reasoning tools — text before goes to reasoning", () => {
-    const parts = [
-      textPart("Let me search..."),
-      toolPart("find_block"),
-      textPart("Here is your answer"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(2);
-    expect(result.response).toHaveLength(1);
-    expect((result.response[0] as { text: string }).text).toBe(
-      "Here is your answer",
-    );
-  });
-
-  it("does NOT split on action tools — response before run_block stays visible", () => {
-    const parts = [
-      textPart("Here is my answer"),
-      toolPart("run_block"),
-      textPart("Block finished"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([]);
-    expect(result.response).toEqual(parts);
-  });
-
-  it("splits only on reasoning tools when both reasoning and action tools are present", () => {
-    const parts = [
-      textPart("Planning..."),
-      toolPart("search_docs"),
-      textPart("Found it. Running now."),
-      toolPart("run_block"),
-      textPart("Done!"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(2);
-    expect(result.response).toHaveLength(3);
-    expect((result.response[0] as { text: string }).text).toBe(
-      "Found it. Running now.",
-    );
-  });
-
-  it("returns all as response when reasoning tools have no text after them", () => {
-    const parts = [
-      textPart("Hello"),
-      toolPart("find_agent"),
-      toolPart("run_block"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([]);
-    expect(result.response).toEqual(parts);
-  });
-
-  it("handles multiple reasoning tools correctly", () => {
-    const parts = [
-      textPart("Searching..."),
-      toolPart("find_block"),
-      textPart("Found one, searching more..."),
-      toolPart("search_docs"),
-      textPart("Here are the results"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(4);
-    expect(result.response).toHaveLength(1);
-    expect((result.response[0] as { text: string }).text).toBe(
-      "Here are the results",
-    );
-  });
-
-  it("handles action tool after response text without hiding the response", () => {
-    const parts = [
-      toolPart("find_block"),
-      textPart("I found it! Let me run it."),
-      toolPart("run_agent"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(1);
-    expect(result.response).toHaveLength(2);
-    expect((result.response[0] as { text: string }).text).toBe(
-      "I found it! Let me run it.",
-    );
-  });
-
-  it("returns empty arrays for an empty parts list", () => {
-    const result = splitReasoningAndResponse([]);
-    expect(result.reasoning).toEqual([]);
-    expect(result.response).toEqual([]);
-  });
-
-  it("pins interactive reasoning tools into the response (object output)", () => {
-    const askQuestion = interactiveToolPart(
-      "ask_question",
-      "input_validation_error",
-    );
-    const parts = [
-      textPart("Let me check..."),
-      askQuestion,
-      textPart("Here's the result"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    // Non-interactive reasoning (the text) stays in reasoning; the interactive
-    // tool is pinned to the front of the response so it remains visible.
-    expect(result.reasoning).toEqual([parts[0]]);
-    expect(result.response).toHaveLength(2);
-    expect(result.response[0]).toBe(askQuestion);
-    expect((result.response[1] as { text: string }).text).toBe(
-      "Here's the result",
-    );
-  });
-
-  it("pins interactive reasoning tools even when output is a JSON string", () => {
-    const askQuestion = {
-      type: "tool-ask_question",
-      state: "output-available",
-      toolCallId: "call-ask_question",
-      toolName: "ask_question",
-      args: {},
-      output: JSON.stringify({ type: "need_login" }),
-    } as unknown as MessagePart;
-    const parts = [
-      toolPart("find_block"),
-      askQuestion,
-      textPart("Please log in and try again"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([parts[0]]);
-    expect(result.response).toHaveLength(2);
-    expect(result.response[0]).toBe(askQuestion);
-  });
-
-  it("pins corrupted card-capable tool parts instead of hiding them", () => {
-    // Truncated setup_requirements JSON: isInteractiveToolPart can't parse
-    // it, but burying the part in "Show steps" would silently swallow a
-    // lost sign-in card — it must stay visible so the renderer can show
-    // an error.
-    const corruptedRunBlock = toolPart(
-      "run_block",
-      "output-available",
-      '{"type":"setup_requirements","message":"Connect Goo',
-    );
-    const parts = [
-      corruptedRunBlock,
-      reasoningPart("Thinking about the result..."),
-      textPart("A sign-in card has appeared."),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([parts[1]]);
-    expect(result.response).toHaveLength(2);
-    expect(result.response[0]).toBe(corruptedRunBlock);
-  });
-
-  it("keeps card-capable tools with valid non-interactive output in reasoning", () => {
-    const okRunBlock = toolPart(
-      "run_block",
-      "output-available",
-      JSON.stringify({ type: "block_output", block_id: "b1", outputs: {} }),
-    );
-    const parts = [
-      okRunBlock,
-      reasoningPart("Reviewing output..."),
-      textPart("Done"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([okRunBlock, parts[1]]);
-    expect(result.response).toHaveLength(1);
-  });
-
-  it("keeps non-interactive reasoning tools in reasoning", () => {
-    const parts = [
-      toolPart("find_block"),
-      toolPart("search_docs"),
-      textPart("Answer"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(2);
-    expect(result.reasoning[0]).toBe(parts[0]);
-    expect(result.reasoning[1]).toBe(parts[1]);
-    expect(result.response).toHaveLength(1);
-  });
-
-  it("moves a native reasoning part into reasoning when text follows", () => {
-    const parts = [reasoningPart("Thinking through this..."), textPart("Done")];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(1);
-    expect(result.reasoning[0]).toBe(parts[0]);
-    expect(result.response).toHaveLength(1);
-    expect((result.response[0] as { text: string }).text).toBe("Done");
-  });
-
-  it("keeps a trailing native reasoning part in response when no text follows", () => {
-    const parts = [textPart("Hello"), reasoningPart("Thinking...")];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toEqual([]);
-    expect(result.response).toEqual(parts);
-  });
-
-  it("sweeps a native reasoning part emitted after the last reasoning tool into reasoning", () => {
-    const parts = [
-      toolPart("find_block"),
-      reasoningPart("Post-tool thinking"),
-      textPart("Final answer"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(2);
-    expect(result.reasoning[0]).toBe(parts[0]);
-    expect(result.reasoning[1]).toBe(parts[1]);
-    expect(result.response).toHaveLength(1);
-    expect((result.response[0] as { text: string }).text).toBe("Final answer");
-  });
-
-  it("splits on reasoning parts alone when no reasoning tools are present", () => {
-    const parts = [
-      reasoningPart("Step 1"),
-      reasoningPart("Step 2"),
-      textPart("Here's the answer"),
-    ];
-    const result = splitReasoningAndResponse(parts);
-    expect(result.reasoning).toHaveLength(2);
-    expect(result.response).toHaveLength(1);
-    expect((result.response[0] as { text: string }).text).toBe(
-      "Here's the answer",
-    );
-  });
-
-  it("keeps decompose_goal output pinned to response (interactive)", () => {
-    const parts = [
-      textPart("Thinking..."),
-      toolPart("decompose_goal", "output-available", {
-        type: "task_decomposition",
-      }),
-    ];
-    const { reasoning, response } = splitReasoningAndResponse(parts);
-    expect(reasoning).toHaveLength(0);
-    expect(response).toHaveLength(2);
-  });
-
-  it("keeps non-interactive tool parts that emit a block_list payload in reasoning", () => {
-    const genericTool = toolPart("find_block", "output-available", {
-      type: "block_list",
-    });
-    const parts = [
-      textPart("Looking for blocks..."),
-      genericTool,
-      textPart("Found them."),
-    ];
-    const { reasoning, response } = splitReasoningAndResponse(parts);
-    expect(reasoning).toHaveLength(2);
-    expect(reasoning[1]).toBe(genericTool);
-    expect(response).toHaveLength(1);
-  });
-});
-
 // ----- Custom fileUrlBuilder threading -----------------------------------
 // The public-share viewer threads a token-aware URL builder through
 // these helpers so anonymous readers can render file references that
@@ -766,5 +255,217 @@ describe("filePartToArtifactRef with custom pattern", () => {
   it("WORKSPACE_FILE_PATTERN matches a workspace-file URL", () => {
     const url = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
     expect(url.match(WORKSPACE_FILE_PATTERN)?.[1]).toBe(FILE_ID);
+  });
+});
+
+type Message = UIMessage<unknown, UIDataTypes, UITools>;
+
+const FILE_A = "550e8400-e29b-41d4-a716-446655440000";
+const FILE_B = "660e8400-e29b-41d4-a716-446655440111";
+
+function message(role: Message["role"], parts: MessagePart[]): Message {
+  return { id: `m-${role}`, role, parts } as unknown as Message;
+}
+
+function filePart(fileId: string, filename: string): MessagePart {
+  return {
+    type: "file",
+    filename,
+    mediaType: "image/png",
+    url: `/api/proxy/api/workspace/files/${fileId}/download`,
+  } as unknown as MessagePart;
+}
+
+describe("getMessageArtifacts", () => {
+  it("collects file-part artifacts before text artifacts", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "from-file.png"),
+      textPart(`Here is [doc](workspace://${FILE_B})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out.map((a) => a.id)).toEqual([FILE_A, FILE_B]);
+    expect(out[0].title).toBe("from-file.png");
+  });
+
+  it("does not double-count a file referenced as both a file part and in text", () => {
+    const msg = message("assistant", [
+      filePart(FILE_A, "rich.png"),
+      textPart(`[again](workspace://${FILE_A})`),
+    ]);
+    const out = getMessageArtifacts(msg);
+    expect(out).toHaveLength(1);
+    // File-part metadata wins over the text-derived entry.
+    expect(out[0].title).toBe("rich.png");
+  });
+
+  it("marks user-uploaded files with the user-upload origin", () => {
+    const msg = message("user", [filePart(FILE_A, "upload.png")]);
+    expect(getMessageArtifacts(msg)[0].origin).toBe("user-upload");
+  });
+});
+
+describe("getMostRecentArtifact", () => {
+  it("returns null when there are no artifacts", () => {
+    expect(
+      getMostRecentArtifact([message("assistant", [textPart("hi")])]),
+    ).toBeNull();
+  });
+
+  it("returns the last file-part artifact scanning from the end", () => {
+    const messages = [
+      message("assistant", [filePart(FILE_A, "old.png")]),
+      message("assistant", [filePart(FILE_B, "new.png")]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_B);
+  });
+
+  it("finds the most recent text-derived artifact", () => {
+    const messages = [
+      message("assistant", [textPart(`[a](workspace://${FILE_A})`)]),
+    ];
+    expect(getMostRecentArtifact(messages)?.id).toBe(FILE_A);
+  });
+
+  it("filters by origin when requested", () => {
+    const messages = [
+      message("user", [filePart(FILE_A, "upload.png")]),
+      message("assistant", [textPart(`[b](workspace://${FILE_B})`)]),
+    ];
+    // Only agent-origin artifacts are eligible; the latest such one wins.
+    expect(getMostRecentArtifact(messages, { origin: "agent" })?.id).toBe(
+      FILE_B,
+    );
+    expect(getMostRecentArtifact(messages, { origin: "user-upload" })?.id).toBe(
+      FILE_A,
+    );
+  });
+});
+
+function dataPart(type: string, data?: unknown): MessagePart {
+  return { type, data } as unknown as MessagePart;
+}
+
+function compactionRowPart(
+  state: string,
+  output?: unknown,
+  id = "compaction-1",
+): MessagePart {
+  return {
+    type: "tool-context_compaction",
+    state,
+    toolCallId: id,
+    toolName: "context_compaction",
+    input: {},
+    output,
+  } as unknown as MessagePart;
+}
+
+describe("getLatestCompactionPhase", () => {
+  const openRow = compactionRowPart("input-available");
+  const summarizing = dataPart("data-compaction", {
+    phase: "summarizing",
+    tokensBefore: 128_000,
+  });
+
+  it("reads the latest phase behind the open row", () => {
+    expect(
+      getLatestCompactionPhase([stepStartPart(), openRow, summarizing]),
+    ).toBe("summarizing");
+  });
+
+  it("survives ANY transient data part landing mid-compaction", () => {
+    // data-pending-drained and data-mode-changed are real parts the backend
+    // emits mid-turn; an enumerated deny-list dropped the phase (and the
+    // bar) the moment one arrived.
+    const parts = [
+      openRow,
+      summarizing,
+      dataPart("data-pending-drained", { count: 1 }),
+      dataPart("data-mode-changed", { mode: "chat" }),
+      dataPart("data-status", { message: "working" }),
+      dataPart("data-some-future-part"),
+    ];
+    expect(getLatestCompactionPhase(parts)).toBe("summarizing");
+  });
+
+  it("nulls the phase once real content lands past it", () => {
+    expect(
+      getLatestCompactionPhase([openRow, summarizing, textPart("Back to it.")]),
+    ).toBeNull();
+  });
+
+  it("skips whitespace-only streaming text", () => {
+    expect(
+      getLatestCompactionPhase([openRow, summarizing, textPart("  ")]),
+    ).toBe("summarizing");
+  });
+
+  it("drops the phase when the row was retired by the abort sentinel", () => {
+    const abortedRow = compactionRowPart("output-available", "");
+    expect(getLatestCompactionPhase([abortedRow, summarizing])).toBeNull();
+  });
+
+  it("drops the phase when the row closed with an error", () => {
+    const failedRow = compactionRowPart("output-error");
+    expect(getLatestCompactionPhase([failedRow, summarizing])).toBeNull();
+  });
+
+  it("ignores an earlier retired row when a later cycle is live", () => {
+    const abortedRow = compactionRowPart(
+      "output-available",
+      "",
+      "compaction-1",
+    );
+    const secondRow = compactionRowPart(
+      "input-available",
+      undefined,
+      "compaction-2",
+    );
+    expect(
+      getLatestCompactionPhase([
+        abortedRow,
+        textPart("hi"),
+        secondRow,
+        summarizing,
+      ]),
+    ).toBe("summarizing");
+  });
+
+  it("returns null with no compaction parts at all", () => {
+    expect(getLatestCompactionPhase([textPart("hello")])).toBeNull();
+  });
+});
+
+describe("getLatestCompactionStats", () => {
+  it("merges stats across data-compaction parts, later phases winning", () => {
+    const parts = [
+      dataPart("data-compaction", {
+        phase: "summarizing",
+        tokensBefore: 128_000,
+      }),
+      dataPart("data-compaction", {
+        phase: "rebuilding",
+        tokensBefore: 128_000,
+        tokensAfter: 31_000,
+        messagesBefore: 412,
+        messagesAfter: 38,
+      }),
+    ];
+    expect(getLatestCompactionStats(parts)).toEqual({
+      tokensBefore: 128_000,
+      tokensAfter: 31_000,
+      messagesBefore: 412,
+      messagesAfter: 38,
+    });
+  });
+
+  it("survives phase-only and junk payloads", () => {
+    const parts = [
+      dataPart("data-compaction", { phase: "summarizing" }),
+      dataPart("data-compaction", null),
+      dataPart("data-compaction"),
+      textPart("hi"),
+    ];
+    expect(getLatestCompactionStats(parts)).toEqual({});
   });
 });

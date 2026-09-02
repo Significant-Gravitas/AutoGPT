@@ -1,6 +1,11 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
 import {
@@ -16,9 +21,18 @@ const { setFlagStatusMock } = vi.hoisted(() => {
   };
 });
 
+// usePlatformChrome re-renders once on mount (isMounted guard), so per-test
+// flag overrides must persist across renders; restore the default afterward.
+afterEach(() => {
+  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
+  Flag: {
+    ARTIFACTS_PAGE: "artifacts-page",
+    AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+  },
+  useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
 }));
 
@@ -183,11 +197,35 @@ describe("ArtifactsPage - search filter", () => {
     // Wait for the filtered list to appear (debounced ~250ms).
     expect(await screen.findByText("beta.txt")).toBeDefined();
   });
+
+  test("searching at root spans folders instead of forcing root_only", async () => {
+    useStorageHandler();
+    const rootOnlyParams: (string | null)[] = [];
+    server.use(
+      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+        rootOnlyParams.push(new URL(request.url).searchParams.get("root_only"));
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    // Initial root listing is scoped to root-level files.
+    await waitFor(() => expect(rootOnlyParams).toContain("true"));
+
+    const search = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(search, { target: { value: "beta" } });
+
+    // A global search must not be limited to root — files inside folders count.
+    await waitFor(() => {
+      expect(rootOnlyParams[rootOnlyParams.length - 1]).toBe("false");
+    });
+  });
 });
 
 describe("ArtifactsPage - feature flag gating", () => {
   test("shows the flag-loading skeleton while LaunchDarkly is resolving", async () => {
-    setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: false });
+    setFlagStatusMock.mockReturnValue({ enabled: false, ready: false });
 
     render(<ArtifactsPage />);
 

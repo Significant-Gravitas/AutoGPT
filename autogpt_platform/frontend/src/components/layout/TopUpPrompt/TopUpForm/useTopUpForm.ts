@@ -8,6 +8,7 @@ import { z } from "zod";
 const topUpSchema = z.object({
   amount: z
     .number({ coerce: true, invalid_type_error: "Enter top-up amount" })
+    .int("Enter a whole-dollar amount")
     .min(5, "Top-ups start at $5. Please enter a higher amount."),
 });
 
@@ -23,7 +24,7 @@ export function useTopUpForm() {
 
   async function submitTopUp(data: z.infer<typeof topUpSchema>) {
     setIsLoading(true);
-    await requestTopUp(data.amount * 100)
+    await requestTopUp(Math.round(data.amount * 100))
       .catch(toastOnFail("request top-up"))
       .finally(() => setIsLoading(false));
   }

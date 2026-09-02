@@ -71,6 +71,59 @@ def _stub_scheduler() -> Scheduler:
     return s
 
 
+class TestAddCopilotTurnScheduleExpertAttribution:
+    """A follow-up scheduled from an expert chat must persist that expert id in
+    the job args, so the fresh session minted at fire time is scoped to her and
+    its runs count as the expert's work. Plain chats persist no expert.
+
+    In-process (no SpinTestServer): the RPC return-value round-trip is unrelated
+    to attribution — what matters is the persisted CopilotTurnJobArgs that fire
+    time reads back, which is exactly what ``_persist_schedule`` receives here.
+    """
+
+    @staticmethod
+    def _fake_job() -> MagicMock:
+        job = MagicMock(id="cop-1", next_run_time=None)
+        job.name = "copilot turn"
+        job.trigger = MagicMock(timezone="UTC")
+        return job
+
+    def _persisted_args(self, *, expert_id=None):
+        s = _stub_scheduler()
+        experts_store = MagicMock()
+        experts_store.resolve_private_expert_tenancy = MagicMock(
+            return_value=("personal-org", "personal-team")
+        )
+        with (
+            patch.object(
+                s, "_persist_schedule", return_value=self._fake_job()
+            ) as persist,
+            # Creation-time expert validation resolves tenancy via
+            # run_async; the stub scheduler has no event loop, so hand
+            # run_async the mock's (non-coroutine) return value directly.
+            patch(
+                "backend.executor.scheduler.experts_db",
+                return_value=experts_store,
+            ),
+            patch("backend.executor.scheduler.run_async", new=lambda v: v),
+        ):
+            s.add_copilot_turn_schedule(
+                user_id="user-1",
+                session_id=None,
+                message="check CI",
+                run_at=datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc),
+                user_timezone="UTC",
+                expert_id=expert_id,
+            )
+        return persist.call_args.kwargs["job_args"]
+
+    def test_expert_session_persists_expert_id(self) -> None:
+        assert self._persisted_args(expert_id="expert-1").expert_id == "expert-1"
+
+    def test_plain_session_persists_no_expert(self) -> None:
+        assert self._persisted_args().expert_id is None
+
+
 class TestAddCommunityRebuildSchedule:
     def test_registers_with_expected_cron_and_jobstore(self) -> None:
         s = _stub_scheduler()
@@ -130,7 +183,11 @@ class TestDeleteCommunityRebuildSchedule:
         s = _stub_scheduler()
         fake_job = MagicMock()
         s.scheduler.get_job.return_value = fake_job
-        assert s.delete_community_rebuild_schedule("abc") is True
+        with (
+            patch("backend.executor.scheduler.run_async"),
+            patch("backend.executor.scheduler.clear_registration_marker"),
+        ):
+            assert s.delete_community_rebuild_schedule("abc") is True
         # Look up by the canonical job id
         s.scheduler.get_job.assert_called_once_with(
             "community_rebuild_abc", jobstore=Jobstores.EXECUTION.value
@@ -141,6 +198,23 @@ class TestDeleteCommunityRebuildSchedule:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = None
         assert s.delete_community_rebuild_schedule("abc") is False
+
+    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+        self,
+    ) -> None:
+        """An in-band delete must clear the Redis registration marker —
+        otherwise ``ensure_dream_system_scheduled`` sees the stored tz
+        still matching and refuses to re-register for up to 7 days
+        while no cron exists in APScheduler."""
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = MagicMock()
+        with (
+            patch("backend.executor.scheduler.run_async") as run_async_mock,
+            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+        ):
+            assert s.delete_community_rebuild_schedule("abc") is True
+        clear_mock.assert_called_once_with("abc", "community_rebuild_registered")
+        run_async_mock.assert_called_once()
 
 
 class TestExecuteCommunityRebuildPass:
@@ -231,7 +305,11 @@ class TestDeleteNightlyBatchSchedule:
         s = _stub_scheduler()
         fake_job = MagicMock()
         s.scheduler.get_job.return_value = fake_job
-        assert s.delete_nightly_batch_schedule("abc") is True
+        with (
+            patch("backend.executor.scheduler.run_async"),
+            patch("backend.executor.scheduler.clear_registration_marker"),
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is True
         s.scheduler.get_job.assert_called_once_with(
             "dream_nightly_batch_abc", jobstore=Jobstores.EXECUTION.value
         )
@@ -241,6 +319,22 @@ class TestDeleteNightlyBatchSchedule:
         s = _stub_scheduler()
         s.scheduler.get_job.return_value = None
         assert s.delete_nightly_batch_schedule("abc") is False
+
+    def test_delete_clears_registration_marker_so_lazy_path_can_re_register(
+        self,
+    ) -> None:
+        """Same contract as the community-rebuild delete: removing the
+        cron in-band must also drop the dedup marker so the next memory
+        write can lazily re-register without waiting out the TTL."""
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = MagicMock()
+        with (
+            patch("backend.executor.scheduler.run_async") as run_async_mock,
+            patch("backend.executor.scheduler.clear_registration_marker") as clear_mock,
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is True
+        clear_mock.assert_called_once_with("abc", "dream_nightly_batch_registered")
+        run_async_mock.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +554,92 @@ class TestExecuteNightlyBatchWithStatus:
         errored_mock.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# JobStatus transitions for the admin-triggered community rebuild wrapper
+# ---------------------------------------------------------------------------
+
+
+def _run_rebuild_wrapper(result):
+    """Invoke the rebuild wrapper with the work body + status writers mocked.
+
+    ``rebuild_communities_for_user`` is stubbed to return a sentinel so the
+    ``run_async`` fake can hand back the rebuild ``result`` dict for that
+    call only and ``None`` for the (mocked) status writes.
+    """
+    from backend.executor.scheduler import execute_community_rebuild_with_status
+
+    rebuild_sentinel = object()
+
+    def fake_run_async(coro, timeout=None):
+        return result if coro is rebuild_sentinel else None
+
+    with (
+        patch("backend.executor.scheduler.run_async", side_effect=fake_run_async),
+        # ``new=MagicMock(...)`` — a bare patch() would auto-detect the
+        # async target and install an AsyncMock, whose call returns a
+        # coroutine instead of the sentinel.
+        patch(
+            "backend.executor.scheduler.rebuild_communities_for_user",
+            new=MagicMock(return_value=rebuild_sentinel),
+        ),
+        patch("backend.copilot.dream.job_status.mark_complete") as complete_mock,
+        patch("backend.copilot.dream.job_status.mark_errored") as errored_mock,
+        patch("backend.copilot.dream.job_status.update_status_phase"),
+    ):
+        execute_community_rebuild_with_status("abc", "job-1")
+    return complete_mock, errored_mock
+
+
+class TestExecuteCommunityRebuildWithStatus:
+    def test_errored_rebuild_result_marks_errored_not_complete(self) -> None:
+        """``rebuild_communities_for_user`` never raises — failures land
+        in ``result['error']``. The admin row must read 'errored';
+        'complete' would toast success on a rebuild that DETACH-DELETEd
+        every :Community node and then crashed mid-summarization."""
+        result = {
+            "user_id": "abc",
+            "error": "OpenRouterError: 502",
+            "skipped": False,
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        errored_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", error="OpenRouterError: 502"
+        )
+        complete_mock.assert_not_called()
+
+    def test_clean_rebuild_result_marks_complete(self) -> None:
+        result = {
+            "user_id": "abc",
+            "error": None,
+            "communities_built": 4,
+            "skipped": False,
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+
+    def test_skipped_rebuild_result_still_marks_complete(self) -> None:
+        """An activity-gated skip is a successful no-op — the result dict
+        carries ``skip_reason`` for the visualizer, the row stays
+        'complete'."""
+        result = {
+            "user_id": "abc",
+            "error": None,
+            "skipped": True,
+            "skip_reason": "no_activity",
+        }
+        complete_mock, errored_mock = _run_rebuild_wrapper(result)
+
+        complete_mock.assert_called_once_with(
+            kind="rebuild", job_id="job-1", result=result
+        )
+        errored_mock.assert_not_called()
+
+
 class TestExecuteCommunityRebuildRuntimeGate:
     def test_flag_off_short_circuits_before_rebuild_runs(self) -> None:
         from backend.executor.scheduler import execute_community_rebuild
@@ -613,3 +793,57 @@ def test_build_trigger_unix_dow_various_cases(
     nxt = trigger.get_next_fire_time(None, start)
     assert nxt is not None
     assert nxt.strftime("%A") == expected_dow
+
+
+# ---------------------------------------------------------------------------
+# LaunchDarkly lifecycle — the scheduler eagerly inits LD in run_service (so
+# @expose flag gates don't fail-closed right after a pod restart) and tears
+# it down in cleanup, both gated on the non-LOCAL app env. Test the gate at
+# the boundary where the LD symbols are used (the scheduler module).
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchDarklyLifecycle:
+    def test_init_runs_when_app_env_not_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
+            patch.object(sched, "initialize_launchdarkly") as init,
+        ):
+            sched._init_launchdarkly_for_scheduler()
+        init.assert_called_once()
+
+    def test_init_skipped_when_app_env_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
+            patch.object(sched, "initialize_launchdarkly") as init,
+        ):
+            sched._init_launchdarkly_for_scheduler()
+        init.assert_not_called()
+
+    def test_shutdown_runs_when_app_env_not_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
+            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+        ):
+            sched._shutdown_launchdarkly_for_scheduler()
+        shutdown.assert_called_once()
+
+    def test_shutdown_skipped_when_app_env_local(self) -> None:
+        from backend.executor import scheduler as sched
+        from backend.util.settings import AppEnvironment
+
+        with (
+            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
+            patch.object(sched, "shutdown_launchdarkly") as shutdown,
+        ):
+            sched._shutdown_launchdarkly_for_scheduler()
+        shutdown.assert_not_called()

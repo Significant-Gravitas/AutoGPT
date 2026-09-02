@@ -1,5 +1,3 @@
-import { TrashIcon, UsersIcon, WarningCircleIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -8,9 +6,16 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import type { PlatformLinkInfo } from "@/app/api/__generated__/models/platformLinkInfo";
+import {
+  AlertCircleIcon,
+  Delete02Icon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   platformName: string;
+  serverNoun: string;
   serverLinks: PlatformLinkInfo[];
   isPending: (linkId: string) => boolean;
   onUnlink: (linkId: string) => void;
@@ -18,6 +23,7 @@ type Props = {
 
 export function BotCardServerList({
   platformName,
+  serverNoun,
   serverLinks,
   isPending,
   onUnlink,
@@ -26,8 +32,9 @@ export function BotCardServerList({
     return (
       <div className="rounded-large border border-dashed border-zinc-200 px-4 py-3">
         <Text variant="small" as="span" className="text-zinc-500">
-          No servers linked yet. Use &quot;Add bot to {platformName}&quot; to
-          invite the bot.
+          No {serverNoun}s linked yet. Use &quot;Add bot to {platformName}&quot;{" "}
+          to invite the bot — already added it? Run <code>/setup</code> there to
+          finish connecting.
         </Text>
       </div>
     );
@@ -40,6 +47,7 @@ export function BotCardServerList({
           key={link.id}
           link={link}
           platformName={platformName}
+          serverNoun={serverNoun}
           isPending={isPending(link.id)}
           onUnlink={() => onUnlink(link.id)}
         />
@@ -51,6 +59,7 @@ export function BotCardServerList({
 type RowProps = {
   link: PlatformLinkInfo;
   platformName: string;
+  serverNoun: string;
   isPending: boolean;
   onUnlink: () => void;
 };
@@ -58,6 +67,7 @@ type RowProps = {
 function BotCardServerRow({
   link,
   platformName,
+  serverNoun,
   isPending,
   onUnlink,
 }: RowProps) {
@@ -67,7 +77,11 @@ function BotCardServerRow({
   return (
     <li className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <UsersIcon size={20} className="shrink-0 text-zinc-500" />
+        <Icon
+          icon={UserMultipleIcon}
+          size={20}
+          className="shrink-0 text-zinc-500"
+        />
         <div className="flex min-w-0 flex-col">
           <Text
             variant="body-medium"
@@ -80,14 +94,12 @@ function BotCardServerRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                  <WarningCircleIcon size={14} weight="fill" /> Bot not in
-                  server
+                  <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {platformName} can&apos;t see this server, so we can&apos;t
-                resolve its name. Re-invite the bot, or unlink to remove this
-                row.
+                {platformName} didn&apos;t give us a name for this {serverNoun}.
+                It stays linked and usable; unlink to remove this row.
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -100,7 +112,7 @@ function BotCardServerRow({
       <Button
         variant="outline"
         size="small"
-        leftIcon={<TrashIcon size={16} />}
+        leftIcon={<Icon icon={Delete02Icon} size={16} />}
         loading={isPending}
         onClick={onUnlink}
         aria-label={`Unlink ${displayLabel}`}

@@ -1,7 +1,6 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
-import { PencilSimpleIcon } from "@phosphor-icons/react";
+import type { User } from "@/lib/auth/types";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 
@@ -18,6 +17,8 @@ import {
 
 import { EASE_OUT } from "../../helpers";
 import { useAccountCard } from "./useAccountCard";
+import { PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   user: User;
@@ -91,7 +92,7 @@ export function AccountCard({ user, index = 0 }: Props) {
                   aria-label="Edit email"
                   className="h-7 min-w-0 px-1.5 py-0.5"
                 >
-                  <PencilSimpleIcon size={14} weight="duotone" />
+                  <Icon icon={PencilIcon} size={14} />
                 </Button>
               </Dialog.Trigger>
               <Dialog.Content>

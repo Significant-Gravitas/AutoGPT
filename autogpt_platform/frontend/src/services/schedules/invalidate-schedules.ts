@@ -26,21 +26,26 @@ export function invalidateAllScheduleQueries(
   queryClient: QueryClient,
   graphId?: string,
 ) {
-  queryClient.invalidateQueries({
-    queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
-  });
-  queryClient.invalidateQueries({
-    queryKey: getListCopilotFollowupSchedulesQueryKey(),
-  });
-  // Partial-key match: hits every variant of the library agents query
-  // (search, filter, pagination, plus the infinite-query form used by
-  // `/library`'s agent list).  Required so `agent.is_scheduled` —
-  // computed server-side and fed into the fleet-summary "Scheduled"
-  // count — refreshes after a schedule mutation.
-  queryClient.invalidateQueries({ queryKey: ["/api/library/agents"] });
-  if (graphId) {
+  const invalidations = [
     queryClient.invalidateQueries({
-      queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
-    });
+      queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: getListCopilotFollowupSchedulesQueryKey(),
+    }),
+    // Partial-key match: hits every variant of the library agents query
+    // (search, filter, pagination, plus the infinite-query form used by
+    // `/library`'s agent list).  Required so `agent.is_scheduled` —
+    // computed server-side and fed into the fleet-summary "Scheduled"
+    // count — refreshes after a schedule mutation.
+    queryClient.invalidateQueries({ queryKey: ["/api/library/agents"] }),
+  ];
+  if (graphId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(graphId),
+      }),
+    );
   }
+  return Promise.all(invalidations);
 }

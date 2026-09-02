@@ -23,22 +23,30 @@ copilot turn routed through the same queue and event bus as every
 other turn.
 """
 
+import json
 import logging
 import time
 from typing import Any
 
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
-from backend.copilot.context import get_current_permissions
+from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
     run_copilot_turn_via_queue,
 )
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .base import BaseTool
-from .models import ErrorResponse, SubSessionStatusResponse, ToolResponseBase
+from .models import (
+    DelegatedExpertInfo,
+    ErrorResponse,
+    SubSessionStatusResponse,
+    ToolResponseBase,
+    WorkspaceFileInfoData,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +55,10 @@ logger = logging.getLogger(__name__)
 # Shared with every other long-running tool so the stream idle timeout's
 # 2x headroom holds uniformly.
 MAX_SUB_SESSION_WAIT_SECONDS = MAX_TOOL_WAIT_SECONDS
+
+# Cap on how many sub-written files we enumerate in a completed response's
+# manifest. Bounds context size; a sub producing more than this is pathological.
+_WORKSPACE_FILE_MANIFEST_LIMIT = 50
 
 
 class RunSubSessionTool(BaseTool):
@@ -140,9 +152,62 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            if owned.expert_id != session.expert_id:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} is not "
+                        "in the current memory scope. Leave empty to start a "
+                        "fresh sub for this assistant."
+                    ),
+                    session_id=session.session_id,
+                )
+            # Subs are created as automations below, so only a sub may be
+            # resumed as one. Otherwise this tool would run a model-authored
+            # prompt inside an interactive session the caller happens to own,
+            # under an origin the staffing guard lets through.
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and any
+            # sub started before this deploy holds one of those. Refusing them
+            # would break live sub-sessions to close a hole they never opened
+            # — the staffing guard is where an unknown origin fails closed
+            # instead. Same call as `blocks/autopilot.py` on resume.
+            if owned.metadata.origin == "interactive":
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} was "
+                        "started by a person, not by a previous run_sub_session "
+                        "call. Leave empty to start a fresh sub for this "
+                        "session."
+                    ),
+                    session_id=session.session_id,
+                )
+            if (
+                owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
+                or owned.metadata.llm_credential_id
+                != session.metadata.llm_credential_id
+            ):
+                return ErrorResponse(
+                    message="codex_session_route_mismatch",
+                    session_id=session.session_id,
+                )
             inner_session_id = sub_session_param
         else:
-            new_session = await create_chat_session(user_id, dry_run=session.dry_run)
+            new_session = await create_chat_session(
+                user_id,
+                dry_run=session.dry_run,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+                expert_id=session.expert_id,
+                # A sub is machine-driven whatever opened it: its prompt is
+                # written by the parent model, not typed by the user, and no
+                # tool restriction applies to it. Inheriting an "interactive"
+                # origin would put the staffing tools one hop away from the
+                # gate that refuses them directly.
+                origin="automation",
+            )
             inner_session_id = new_session.session_id
 
         effective_prompt = prompt
@@ -161,13 +226,43 @@ class RunSubSessionTool(BaseTool):
             tool_name="run_sub_session",
         )
         elapsed = time.monotonic() - started_at
+        workspace_files = (
+            await list_sub_workspace_files(user_id, inner_session_id)
+            if outcome == "completed"
+            else None
+        )
         return response_from_outcome(
             outcome=outcome,
             result=result,
             inner_session_id=inner_session_id,
             parent_session_id=session.session_id,
             elapsed=elapsed,
+            workspace_files=workspace_files,
         )
+
+
+def apply_delegated_expert(
+    response: SubSessionStatusResponse,
+    expert: DelegatedExpertInfo | None,
+) -> SubSessionStatusResponse:
+    """Re-badge a sub-session response as a named teammate's delegated run.
+
+    Only sets the ``expert`` field for the ToolChain card; the message text
+    is already correct when the caller passed ``actor=expert.name`` into
+    ``response_from_outcome`` up front. The ``replace`` below is a fallback
+    for callers that built the message with the default "Sub-AutoPilot"
+    wording and only learn the delegate's identity afterwards — it is a
+    no-op once the message was built with the right actor. No-op entirely
+    for same-scope subs.
+    """
+    if expert is None:
+        return response
+    return response.model_copy(
+        update={
+            "message": response.message.replace("Sub-AutoPilot", expert.name),
+            "expert": expert,
+        }
+    )
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:
@@ -182,6 +277,115 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     return f"/copilot?sessionId={inner_session_id}"
 
 
+async def list_sub_workspace_files(
+    user_id: str,
+    inner_session_id: str,
+) -> list[WorkspaceFileInfoData] | None:
+    """Authoritative manifest of the persistent files a sub wrote, read from
+    the sub's session workspace.
+
+    A sub may deliver its real output by writing workspace files and only
+    summarising in its final message (SECRT-2377). This queries the sub's
+    session for ``agent-created`` files directly, so it captures writes from
+    *any* turn — including ones absent from the current turn's tool-call log
+    (e.g. the cold-poll / already-terminal path in ``get_sub_session_result``).
+
+    The ``origin=agent-created`` filter means only files the sub persisted via
+    ``write_workspace_file`` are listed — transient working-directory artefacts
+    (e.g. a ``git clone`` the sub inspects but never persists) are not workspace
+    files and never appear here. When the sub persists more than
+    ``_WORKSPACE_FILE_MANIFEST_LIMIT`` files, the most recently written ones win
+    (the listing is ordered ``createdAt`` descending).
+
+    Returns ``None`` on lookup failure so callers can fall back to mining the
+    tool-call log; an empty list means the sub genuinely wrote nothing.
+    """
+    try:
+        manager = await get_workspace_manager(user_id, inner_session_id)
+        files = await manager.list_files(
+            limit=_WORKSPACE_FILE_MANIFEST_LIMIT,
+            metadata_equals={"origin": "agent-created"},
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to list workspace files for sub {inner_session_id[:12]}",
+            exc_info=True,
+        )
+        return None
+    return [
+        WorkspaceFileInfoData(
+            file_id=f.id,
+            name=f.name,
+            path=f.path,
+            mime_type=f.mime_type,
+            size_bytes=f.size_bytes,
+        )
+        for f in files
+    ]
+
+
+def _workspace_files_from_tool_calls(
+    tool_calls: list[ToolCallEntry],
+) -> list[WorkspaceFileInfoData]:
+    """Mine the files a sub wrote from its tool-call log — the cheap fallback
+    when the authoritative workspace listing is unavailable.
+
+    ``write_workspace_file`` outputs already carry the fully session-qualified
+    ``path`` (the workspace manager resolves it on write), so it is directly
+    usable with ``read_workspace_file``. The output is an opaque
+    ``WorkspaceWriteResponse`` payload — a JSON string on the live-drain path,
+    a dict on the persisted-replay path — so we parse defensively and skip
+    anything that doesn't carry the fields we need.
+    """
+    files: list[WorkspaceFileInfoData] = []
+    seen_ids: set[str] = set()
+    for tc in tool_calls:
+        if tc.tool_name != "write_workspace_file" or tc.success is False:
+            continue
+        payload = _as_payload(tc.output)
+        if payload is None:
+            continue
+        file_id = payload.get("file_id")
+        path = payload.get("path")
+        if not file_id or not path or file_id in seen_ids:
+            continue
+        seen_ids.add(file_id)
+        files.append(
+            WorkspaceFileInfoData(
+                file_id=file_id,
+                name=payload.get("name") or path.rsplit("/", 1)[-1],
+                path=path,
+                mime_type=payload.get("mime_type") or "",
+                size_bytes=_coerce_size_bytes(payload.get("size_bytes")),
+            )
+        )
+    return files
+
+
+def _coerce_size_bytes(raw: Any) -> int:
+    """Coerce a mined ``size_bytes`` to a non-negative int — the payload is
+    untrusted (JSON parsed from the tool log), so a missing, malformed, or
+    negative value must not surface as invalid size data."""
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_payload(output: Any) -> dict[str, Any] | None:
+    """Coerce a tool-call ``output`` (JSON string or dict) into a dict, or
+    ``None`` when it isn't a usable object."""
+    if isinstance(output, dict):
+        return output
+    if isinstance(output, str):
+        try:
+            parsed = json.loads(output)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
 def response_from_outcome(
     *,
     outcome: SessionOutcome,
@@ -189,11 +393,23 @@ def response_from_outcome(
     inner_session_id: str,
     parent_session_id: str | None,
     elapsed: float,
+    workspace_files: list[WorkspaceFileInfoData] | None = None,
+    actor: str = "Sub-AutoPilot",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
-    ``completed`` surfaces the aggregated response text + tool calls.
+    ``actor`` names who ran the turn in the human-readable message — the
+    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    when the caller already knows it (e.g. ``delegate_to_expert``), so the
+    message is built correctly once instead of via a post-hoc string
+    substitution against this function's own wording.
+
+    ``completed`` surfaces the aggregated response text + tool calls, plus a
+    manifest of any workspace files the sub wrote (SECRT-2377). Pass
+    ``workspace_files`` to supply the authoritative listing from the sub's
+    session; when omitted, the files are mined from ``result.tool_calls`` as a
+    fallback.
     ``failed`` returns the error marker with the same handles.
     ``running`` returns just the polling handles so the agent can resume.
     ``queued`` means the target session already had a turn in flight; the
@@ -221,7 +437,7 @@ def response_from_outcome(
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
-                f"Sub-AutoPilot is still running after {elapsed:.0f}s."
+                f"{actor} is still running after {elapsed:.0f}s."
                 f"{f' Watch live at {link}.' if link else ''} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
@@ -251,7 +467,7 @@ def response_from_outcome(
 
     if outcome == "failed":
         return SubSessionStatusResponse(
-            message="Sub-AutoPilot failed. See the sub's transcript for details.",
+            message=f"{actor} failed. See the sub's transcript for details.",
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
@@ -260,9 +476,21 @@ def response_from_outcome(
             elapsed_seconds=round(elapsed, 2),
         )
 
-    # completed
+    # completed — prefer the authoritative listing supplied by the caller;
+    # fall back to mining the tool-call log when it's unavailable.
+    if workspace_files is None:
+        workspace_files = _workspace_files_from_tool_calls(result.tool_calls)
+    message = f"{actor} completed.{f' View at {link}.' if link else ''}"
+    if workspace_files:
+        # The sub may have put its real output in files and only summarised in
+        # `response`. Flag the files explicitly so the parent reads them rather
+        # than treating the run as empty (SECRT-2377).
+        message += (
+            f" It wrote {len(workspace_files)} workspace file(s); read them via "
+            "read_workspace_file(path=<read_path>) — see sub_workspace_files."
+        )
     return SubSessionStatusResponse(
-        message=f"Sub-AutoPilot completed.{f' View at {link}.' if link else ''}",
+        message=message,
         session_id=parent_session_id,
         status="completed",
         sub_session_id=inner_session_id,
@@ -270,5 +498,6 @@ def response_from_outcome(
         sub_autopilot_session_link=link,
         response=result.response_text,
         tool_calls=[tc.model_dump() for tc in result.tool_calls],
+        sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
     )

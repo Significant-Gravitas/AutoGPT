@@ -244,7 +244,23 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
 # ── Confirmation (user-facing, JWT-authed) ────────────────────────────
 
 
-async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
+def _enforce_verified_identity(
+    token_platform_user_id: str, verified_platform_user_id: str | None
+) -> None:
+    """When the caller carries a platform-verified identity (Telegram
+    login_url payload), the token must have been minted for that same
+    platform user — a forwarded/leaked link URL then fails instead of
+    binding to whoever opened it."""
+    if (
+        verified_platform_user_id is not None
+        and token_platform_user_id != verified_platform_user_id
+    ):
+        raise NotAuthorizedError("This link was created for a different platform user.")
+
+
+async def confirm_server_link(
+    token: str, user_id: str, verified_platform_user_id: str | None = None
+) -> ConfirmLinkResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -257,6 +273,7 @@ async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
+    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_server_link_owner(
         link_token.platform, link_token.platformServerId
@@ -308,7 +325,9 @@ async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
     )
 
 
-async def confirm_user_link(token: str, user_id: str) -> ConfirmUserLinkResponse:
+async def confirm_user_link(
+    token: str, user_id: str, verified_platform_user_id: str | None = None
+) -> ConfirmUserLinkResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -319,6 +338,7 @@ async def confirm_user_link(token: str, user_id: str) -> ConfirmUserLinkResponse
         raise LinkTokenExpiredError("This link has already been used.")
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise LinkTokenExpiredError("This link has expired.")
+    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_user_link_owner(link_token.platform, link_token.platformUserId)
     if owner:

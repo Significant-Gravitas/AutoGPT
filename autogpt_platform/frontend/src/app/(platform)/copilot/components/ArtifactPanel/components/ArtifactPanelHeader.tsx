@@ -1,36 +1,40 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import {
-  ArrowLeft,
-  ArrowsIn,
-  ArrowsOut,
-  Copy,
-  DownloadSimple,
-  Minus,
-  X,
-} from "@phosphor-icons/react";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";
+import {
+  ArrowLeft02Icon,
+  Cancel01Icon,
+  Copy01Icon,
+  Download01Icon,
+  Folder01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: ArtifactRef;
   classification: ArtifactClassification;
   canGoBack: boolean;
-  isMaximized: boolean;
   isSourceView: boolean;
   hasSourceToggle: boolean;
-  mobile?: boolean;
   canCopy?: boolean;
   onBack: () => void;
   onClose: () => void;
-  onMinimize: () => void;
-  onMaximize: () => void;
-  onRestore: () => void;
   onCopy: () => void;
   onDownload: () => void;
+  onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
+  /** True when a control outside the panel (the chat's sidebar-right
+   *  toggle) already closes it — standalone hosts (share viewer, tour,
+   *  mobile drawer) have no such control and keep the header Close. */
+  hasExternalClose?: boolean;
 }
 
 function HeaderButton({
@@ -43,15 +47,19 @@ function HeaderButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={title}
+          className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{title}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -59,32 +67,33 @@ export function ArtifactPanelHeader({
   artifact,
   classification,
   canGoBack,
-  isMaximized,
   isSourceView,
   hasSourceToggle,
-  mobile,
   canCopy = true,
   onBack,
   onClose,
-  onMinimize,
-  onMaximize,
-  onRestore,
   onCopy,
   onDownload,
+  onOpenFiles,
   onSourceToggle,
+  hasExternalClose = false,
 }: Props) {
-  const Icon = classification.icon;
-
+  // Height matches the chat thread header (36px avatar + py-2 + border) so
+  // the two top bars share one seam across the panel split.
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-2">
+    <div className="sticky top-0 z-10 flex h-[53px] items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3">
       {/* Left section */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
-            <ArrowLeft size={16} />
+            <Icon icon={ArrowLeft02Icon} size={16} />
           </HeaderButton>
         )}
-        <Icon size={16} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={classification.icon}
+          size={16}
+          className="shrink-0 text-zinc-400"
+        />
         <span className="truncate text-sm font-medium text-zinc-900">
           {artifact.title}
         </span>
@@ -107,31 +116,20 @@ export function ArtifactPanelHeader({
         )}
         {canCopy && (
           <HeaderButton onClick={onCopy} title="Copy">
-            <Copy size={16} />
+            <Icon icon={Copy01Icon} size={16} />
           </HeaderButton>
         )}
         <HeaderButton onClick={onDownload} title="Download">
-          <DownloadSimple size={16} />
+          <Icon icon={Download01Icon} size={16} />
         </HeaderButton>
-        {!mobile && (
-          <>
-            <HeaderButton onClick={onMinimize} title="Minimize">
-              <Minus size={16} />
-            </HeaderButton>
-            {isMaximized ? (
-              <HeaderButton onClick={onRestore} title="Restore">
-                <ArrowsIn size={16} />
-              </HeaderButton>
-            ) : (
-              <HeaderButton onClick={onMaximize} title="Maximize">
-                <ArrowsOut size={16} />
-              </HeaderButton>
-            )}
-          </>
+        <HeaderButton onClick={onOpenFiles} title="All files">
+          <Icon icon={Folder01Icon} size={16} />
+        </HeaderButton>
+        {!hasExternalClose && (
+          <HeaderButton onClick={onClose} title="Close">
+            <Icon icon={Cancel01Icon} size={16} />
+          </HeaderButton>
         )}
-        <HeaderButton onClick={onClose} title="Close">
-          <X size={16} />
-        </HeaderButton>
       </div>
     </div>
   );

@@ -360,11 +360,15 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
         submission_id=submission_id,
+        organization_id=getattr(ctx, "org_id", None),
     )
     return result
 
@@ -377,6 +381,9 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     search_query: str | None = Query(default=None, max_length=100),
@@ -388,6 +395,7 @@ async def get_submissions(
     parsed_statuses = _parse_status_filter(statuses)
     listings = await store_db.get_store_submissions(
         user_id=user_id,
+        organization_id=getattr(ctx, "org_id", None),
         page=page,
         page_size=page_size,
         search_query=search_query,
@@ -428,8 +436,16 @@ def _parse_status_filter(
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
+    # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
+    # this function is invoked outside FastAPI's dependency-injection path
+    # (e.g. some integration tests). ``getattr`` with a default returns
+    # None instead of raising AttributeError on the sentinel.
+    org_id = getattr(ctx, "org_id", None)
     result = await store_db.create_store_submission(
         user_id=user_id,
         graph_id=submission_request.graph_id,
@@ -445,6 +461,7 @@ async def create_submission(
         categories=submission_request.categories,
         changes_summary=submission_request.changes_summary or "Initial Submission",
         recommended_schedule_cron=submission_request.recommended_schedule_cron,
+        organization_id=org_id,
     )
     return result
 
@@ -459,11 +476,15 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
+    ctx: autogpt_libs.auth.RequestContext = Security(
+        autogpt_libs.auth.get_request_context
+    ),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
         user_id=user_id,
         store_listing_version_id=store_listing_version_id,
+        organization_id=getattr(ctx, "org_id", None),
         name=submission_request.name,
         video_url=submission_request.video_url,
         agent_output_demo_url=submission_request.agent_output_demo_url,
@@ -567,9 +588,13 @@ async def get_cache_metrics():
         info = cache_func.cache_info()
         # Cache size metric (dynamic - changes as items are cached/expired)
         metrics.append(f'store_cache_entries{{cache="{cache_name}"}} {info["size"]}')
-        # Cache utilization percentage (dynamic - useful for monitoring)
+        # Cache utilization percentage (dynamic - useful for monitoring).
+        # An unbounded cache reports maxsize=None → utilization is undefined
+        # (0), and comparing None > 0 would raise, 500-ing the endpoint.
         utilization = (
-            (info["size"] / info["maxsize"] * 100) if info["maxsize"] > 0 else 0
+            (info["size"] / info["maxsize"] * 100)
+            if info["maxsize"] and info["maxsize"] > 0
+            else 0
         )
         metrics.append(
             f'store_cache_utilization_percent{{cache="{cache_name}"}} {utilization:.2f}'

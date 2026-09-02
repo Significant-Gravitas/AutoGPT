@@ -23,6 +23,18 @@ export const NO_PAYWALL_STEPS = {
   preparing: 4,
 } as const;
 
+// Self-host has no paywall, but it has the same question in a different
+// currency: a chat needs a model behind it before personalising the chat is
+// worth anything. On cloud the user pays us first; on self-host they connect
+// a plan they already pay for. Same slot, same reason.
+export const SELF_HOST_STEPS = {
+  connect: 1,
+  welcome: 2,
+  role: 3,
+  painPoints: 4,
+  preparing: 5,
+} as const;
+
 interface OnboardingWizardState {
   currentStep: Step;
   name: string;
@@ -34,6 +46,11 @@ interface OnboardingWizardState {
   selectedBilling: "monthly" | "yearly";
   hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
+  /** True while the current step is mid-flight (e.g. the brain dump is
+   * being processed) — navigation away must be blocked. Transient, never
+   * persisted. */
+  isStepBusy: boolean;
+  setStepBusy(busy: boolean): void;
   setName(name: string): void;
   setRole(role: string): void;
   setOtherRole(otherRole: string): void;
@@ -62,6 +79,10 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       selectedBilling: "monthly",
       hasUserSelectedBilling: false,
       selectedCountryCode: "US",
+      isStepBusy: false,
+      setStepBusy(busy) {
+        set({ isStepBusy: busy });
+      },
       setName(name) {
         set({ name });
       },

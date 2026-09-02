@@ -212,3 +212,6 @@ test-screenshots/
 .ign*
 **/.ign*
 .claude/scheduled_tasks.lock
+
+# Supabase CLI machine-local state (linked project ref, etc.)
+supabase/.temp/

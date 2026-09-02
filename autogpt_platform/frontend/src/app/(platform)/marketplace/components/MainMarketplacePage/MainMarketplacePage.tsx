@@ -1,17 +1,22 @@
 "use client";
-import { Separator } from "@/components/__legacy__/ui/separator";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { AICatalogIcon } from "../AICatalogIcon";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
+import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
+import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
+import { AGENTS_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
 export const MainMarkeplacePage = () => {
   const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
     useMainMarketplacePage();
+  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -19,7 +24,7 @@ export const MainMarkeplacePage = () => {
 
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -38,28 +43,39 @@ export const MainMarkeplacePage = () => {
   return (
     // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
     <div className="mx-auto w-full max-w-[1360px]">
-      <main className="px-4 pb-12">
+      <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {featuredAgents && (
-          <FeaturedSection featuredAgents={featuredAgents.agents} />
-        )}
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24 bg-transparent" />
-
+        {isHireExpertsEnabled ? <ExpertsSection /> : null}
         {topAgents && (
-          <AgentsSection sectionTitle="All Agents" agents={topAgents.agents} />
+          <div className="mb-20" id={AGENTS_SECTION_ID}>
+            <AgentsSection
+              sectionTitle="All AI Workflows"
+              titleIcon={<AICatalogIcon size={30} />}
+              subtitle={
+                isHireExpertsEnabled
+                  ? "Install one on an Expert, or run it standalone."
+                  : "Ready-made automations from the community."
+              }
+              agents={topAgents.agents}
+            >
+              {featuredAgents && featuredAgents.agents.length > 0 && (
+                <FeaturedSection featuredAgents={featuredAgents.agents} />
+              )}
+            </AgentsSection>
+          </div>
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {featuredCreators && (
-          <FeaturedCreators featuredCreators={featuredCreators.creators} />
+          <div className="mb-4">
+            <FeaturedCreators featuredCreators={featuredCreators.creators} />
+          </div>
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"
           buttonText="Become a Creator"
         />
       </main>
+      <MarketplaceTabIntro />
     </div>
   );
 };

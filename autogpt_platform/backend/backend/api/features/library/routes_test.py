@@ -7,6 +7,7 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
+from backend.util.exceptions import MissingConfigError
 from backend.util.models import Pagination
 
 from . import model as library_model
@@ -20,12 +21,49 @@ client = fastapi.testclient.TestClient(app)
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
+def test_create_expert_preset_missing_workspace_returns_503(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+        side_effect=MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {},
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Your expert workspace is still being set up. Try again shortly."
+    }
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -116,6 +154,7 @@ async def test_get_library_agents_success(
         folder_id=None,
         include_root_only=False,
         is_hidden=None,
+        organization_id="test-org",
     )
 
 

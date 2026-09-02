@@ -21,9 +21,18 @@ import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
+import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
+import { CompactionCard } from "../../CompactionCard/CompactionCard";
+import {
+  parseCompactionOutput,
+  type CompactionPhase,
+  type CompactionStats,
+} from "../../CompactionCard/helpers";
+import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
+  isRetiredCompactionRow,
   parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
@@ -85,10 +94,17 @@ function TextWithArtifactCards({
   const artifacts = extractWorkspaceArtifacts(text, fileUrlBuilder);
   const resolved = resolveWorkspaceUrls(text, fileUrlBuilder);
 
+  // Text reads first, with the artifact cards trailing.
   return (
     <>
+      <MessageResponse
+        components={STREAMDOWN_COMPONENTS}
+        className="[&_li]:py-0"
+      >
+        {resolved}
+      </MessageResponse>
       {isArtifactsEnabled && artifacts.length > 0 && (
-        <div className="mb-2 flex flex-col gap-1">
+        <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
           {artifacts.map((artifact) => (
             <ArtifactCard
               key={artifact.id}
@@ -98,9 +114,6 @@ function TextWithArtifactCards({
           ))}
         </div>
       )}
-      <MessageResponse components={STREAMDOWN_COMPONENTS}>
-        {resolved}
-      </MessageResponse>
     </>
   );
 }
@@ -121,6 +134,22 @@ interface Props {
   /** Read-only mode — forwarded so embedded ``ArtifactCard``s
    *  download on click instead of opening a panel. */
   readOnly?: boolean;
+  /** Live `data-compaction` phase for the enclosing message, derived by
+   *  the caller from the message's parts. Drives the compaction row's
+   *  progress bar; null once the row has settled into history. */
+  compactionPhase?: CompactionPhase | null;
+  /** Tool-call ID of the message's last compaction row — the only row the
+   *  live phase applies to. Earlier (settled) rows render as history even
+   *  while a later cycle streams its phases. */
+  liveCompactionCallId?: string | null;
+  /** Stats streamed on the message's `data-compaction` parts. They pace the
+   *  live progress curve before the tool row closes; once it does, the
+   *  row's own parsed output wins. */
+  liveCompactionStats?: CompactionStats;
+  /** Whether the enclosing message is still streaming. A compaction row
+   *  only animates while it is; once the stream ends the row is history,
+   *  however it was left. */
+  isCurrentlyStreaming?: boolean;
 }
 
 export function MessagePartRenderer({
@@ -131,6 +160,10 @@ export function MessagePartRenderer({
   fileUrlBuilder,
   forceArtifacts,
   readOnly,
+  compactionPhase,
+  liveCompactionCallId,
+  liveCompactionStats,
+  isCurrentlyStreaming,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -217,6 +250,8 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-setup_agent_webhook_trigger":
+      return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
     case "tool-decompose_goal":
       return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
     case "tool-create_agent":
@@ -236,6 +271,49 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case "tool-TodoWrite":
+      // Hidden inline — the task list surfaces through TaskProgressBar above
+      // the composer, not as a message part. That bar is gated on
+      // TASK_PROGRESS_BAR, so until it rolls out the list has no UI.
+      return null;
+    case COMPACTION_PART_TYPE: {
+      const toolPart = part as ToolUIPart;
+      // A failed compaction, or one closed by the abort sentinel (output ""),
+      // condensed nothing — settled "Condensed…" copy would report work that
+      // never happened. Render nothing; failure messaging belongs to the
+      // turn-level error surfaces, not a maintenance row. Same predicate the
+      // phase derivation uses, so the row and the bar can never disagree.
+      if (isRetiredCompactionRow(part)) return null;
+      const settled = toolPart.state === "output-available";
+      // A row still open when the stream is over never completed — the
+      // user stopped the turn or the connection dropped mid-compaction.
+      // Claiming "Condensed the conversation" would report work that
+      // never finished, so render nothing, like the abort sentinel.
+      if (!isCurrentlyStreaming && !settled) return null;
+      const isLiveRow =
+        liveCompactionCallId != null &&
+        toolPart.toolCallId === liveCompactionCallId;
+      const phase = isLiveRow ? (compactionPhase ?? null) : null;
+      const outputStats = parseCompactionOutput(
+        settled ? toolPart.output : undefined,
+      );
+      // The streamed `data-compaction` stats pace the live curve while the
+      // row is still open; the row's own output wins once it lands.
+      const stats = isLiveRow
+        ? { ...liveCompactionStats, ...outputStats }
+        : outputStats;
+      return (
+        <CompactionCard
+          key={key}
+          phase={phase}
+          stats={stats}
+          // While streaming, an open row with no phase yet is still live —
+          // settling on `phase === null` alone would flash the settled copy
+          // in the gap before the first progress part lands.
+          isSettled={!isCurrentlyStreaming || (settled && phase === null)}
+        />
+      );
+    }
     default:
       // Render a generic tool indicator for SDK built-in
       // tools (Read, Glob, Grep, etc.) or any unrecognized tool

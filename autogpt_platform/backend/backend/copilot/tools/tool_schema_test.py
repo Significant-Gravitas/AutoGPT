@@ -74,7 +74,45 @@ from backend.copilot.tools import TOOL_REGISTRY
 # a new ``agent_id`` parameter (library_agent_id / graph_id) that resolves the
 # exact agent with no fuzzy name-search fallback, so the library "Chat" flow is
 # reliable without a separate tool. Net smaller than a dedicated tool would add.
-_CHAR_BUDGET = 41_000
+# Bumped 41000 -> 42500 for the setup_agent_webhook_trigger tool (OPEN-3152). Adds
+# ~1.3k chars: identifier + trigger_config + explicit-credentials schema
+# and the "manual webhooks return an exact URL / provider webhooks need
+# an explicitly chosen account" copy the model needs to drive webhook
+# trigger setup without inventing URLs or auto-picking credentials.
+# Bumped 42500 -> 45000 for the preset-management tools (list_presets /
+# update_preset / delete_preset) that complete the /presets lifecycle for
+# AutoPilot. Adds ~1.6k chars: three tool skeletons plus the "is_active
+# pauses/resumes the trigger" + "inputs reconfigure & re-register the webhook"
+# copy the model needs to manage triggers without re-running setup.
+# Bumped 45000 -> 47000 on the dev merge: dev added the proactive chat-platform
+# tools (post_to_chat_platform + list_chat_platform_channels, ~1.4k chars) on top
+# of the trigger/preset tools above, so the merged registry needs both deltas.
+# Bumped 47000 -> 47800 on the post-#13601 dev merge: the registry now carries
+# the full merged tool set (webhook-trigger + preset lifecycle + docs/building
+# tools) at 47461 chars; ~340 headroom so routine wording tweaks don't trip it.
+# Bumped 47800 -> 51500 for OPEN-3188: the five agent-graph tools (create/edit/
+# customize/validate/fix) replaced their bare ``{"type": "object"}`` agent_json
+# with a structured schema (nodes/links/...) and gained an agent_json_ref string
+# param. The structure is what stops constrained decoders collapsing the graph to
+# ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
+# Merged registry measures 50915 chars (incl. find_library_agent's
+# write_graph_to); ~580 headroom for wording tweaks.
+# Includes the two-step Soul edit flow (update_expert_soul preview +
+# confirm_expert_soul_update); registry measures ~52.2k chars locally, with
+# ~800 headroom for CI env deltas and wording tweaks.
+# Bumped 53000 -> 54_000 for the copilot tool-chain UI: ``ask_question`` is back
+# in TOOL_REGISTRY as a first-class tool (docked clarifying-question flow), so
+# its schema counts again on top of the Soul edit flow. Merged registry measures
+# 53349 chars; ~650 headroom for CI env deltas and wording tweaks.
+# Bumped 54_000 -> 59_000 for the expert team tools: delegate_to_expert plus
+# the confirm-gated hire/raise pair, their shared confirm, and handoff_to_expert.
+# No single session sees them all (hire/raise/confirm and handoff/soul gate on
+# opposite sides of session.expert_id), but the registry total counts every
+# tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
+# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# same confirm gate) and raise_expert's color palette enum + persona-name
+# guidance. Merged registry measures 59625 chars; ~1.4k headroom.
+_CHAR_BUDGET = 61_000
 
 
 @pytest.fixture(scope="module")

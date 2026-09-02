@@ -9,8 +9,9 @@ from urllib.parse import urlparse
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from fastapi import (
     APIRouter,
     Body,
@@ -26,7 +27,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -35,6 +36,15 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
+from backend.api.features.executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+    hide_activity_summary_if_disabled,
+)
+from backend.api.features.experts import experts_db
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
@@ -52,12 +62,15 @@ from backend.blocks import get_block, get_blocks
 from backend.copilot.rate_limit import enforce_payment_paywall, get_tier_multipliers
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
+    SkillLimitError,
     SkillNotFoundError,
     delete_user_skill,
     get_default_skill_with_body,
     list_user_skill_sibling_paths,
     list_user_skills,
+    parse_skill_markdown,
     read_user_skill_with_body,
+    store_user_skill,
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -74,11 +87,11 @@ from backend.data.credit import (
     create_subscription_checkout,
     get_active_subscription_period_end,
     get_auto_top_up,
+    get_credit_model,
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    get_user_credit_model,
     handle_subscription_payment_failure,
     handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
@@ -96,7 +109,12 @@ from backend.data.execution_cost_summary import (
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    NotificationPreference,
+    NotificationPreferenceDTO,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
@@ -111,23 +129,26 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.tally import extract_business_understanding
+from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     upsert_business_understanding,
 )
 from backend.data.user import (
     get_or_create_user,
+    get_or_create_user_with_status,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
+    verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import (
@@ -135,6 +156,8 @@ from backend.monitoring.instrumentation import (
     record_graph_execution,
     record_graph_operation,
 )
+from backend.notifications import lifecycle
+from backend.notifications.queue import queue_pass_work
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -153,6 +176,7 @@ from backend.util.timezone_utils import (
 from backend.util.virus_scanner import scan_content_safe
 
 from .library import db as library_db
+from .library import model as library_model
 from .store.model import StoreAgentDetails
 
 
@@ -178,21 +202,34 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+USER_CREATED_HEADER = "X-AutoGPT-User-Created"
 
 
 @v1_router.post(
     "/auth/user",
     summary="Get or create user",
     tags=["auth"],
+    responses={
+        200: {
+            "description": "Successful Response",
+            "headers": {
+                USER_CREATED_HEADER: {
+                    "description": "Whether this request created a new user",
+                    "schema": {"type": "string", "enum": ["true", "false"]},
+                }
+            },
+        }
+    },
     dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+async def get_or_create_user_route(
+    response: Response, user_data: dict = Security(get_jwt_payload)
+):
+    result = await get_or_create_user_with_status(user_data)
+    response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
+    user = result.user
 
     # Fire-and-forget: populate business understanding from Tally form.
-    # We use created_at proximity instead of an is_new flag because
-    # get_or_create_user is cached — a separate is_new return value would be
-    # unreliable on repeated calls within the cache TTL.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:
@@ -278,6 +315,59 @@ async def update_preferences(
     return output
 
 
+@v1_router.post(
+    "/auth/user/preferences/from-email",
+    summary="Apply a volume-knob choice from a Briefing footer link",
+    tags=["auth"],
+)
+async def apply_email_preference_choice(
+    choice: Annotated[str, Query()],
+    token: Annotated[str, Query()],
+) -> NotificationPreference:
+    """Apply one footer choice, authorised by the token in the link.
+
+    Deliberately not `Security(requires_user)`. The session is the wrong
+    authority here: the settings page applies this on arrival, so a
+    session-authenticated write would let any third party change a logged-in
+    reader's preferences just by getting them to follow a link. The HMAC binds
+    the choice to the recipient we sent it to, exactly as the unsubscribe link
+    does, and works whether or not they happen to be signed in.
+    """
+    user_id = verify_preference_token(token, choice)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+
+    current = await get_user_notification_preference(user_id)
+    updated = _preference_with_choice(current, choice)
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Unknown preference choice")
+    return await update_user_notification_preference(user_id, updated)
+
+
+def _preference_with_choice(
+    current: NotificationPreference, choice: str
+) -> NotificationPreferenceDTO | None:
+    """The volume knob, server-side. "alerts" and "off" both stop the digest;
+    they differ in whether alerts survive."""
+    mapping: dict[str, tuple[BriefingFrequency, bool]] = {
+        "daily": (BriefingFrequency.DAILY, current.alerts_enabled),
+        "weekly": (BriefingFrequency.WEEKLY, current.alerts_enabled),
+        "monthly": (BriefingFrequency.MONTHLY, current.alerts_enabled),
+        "alerts": (BriefingFrequency.OFF, True),
+        "off": (BriefingFrequency.OFF, False),
+    }
+    if choice not in mapping:
+        return None
+    frequency, alerts = mapping[choice]
+    return NotificationPreferenceDTO(
+        email=current.email,
+        briefing_frequency=frequency,
+        alerts_enabled=alerts,
+        store_verdicts_enabled=current.store_verdicts_enabled,
+        daily_limit=current.daily_limit,
+    )
+
+
 ########################################################
 ##################### Onboarding #######################
 ########################################################
@@ -359,7 +449,8 @@ async def is_onboarding_completed(
 ) -> OnboardingStatusResponse:
     user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
+        is_completed=OnboardingStep.ONBOARDING_COMPLETE
+        in user_onboarding.completedSteps,
     )
 
 
@@ -486,7 +577,10 @@ async def get_graph_blocks() -> Response:
     },
 )
 async def execute_graph_block(
-    block_id: str, data: BlockInput, user_id: Annotated[str, Security(get_user_id)]
+    block_id: str,
+    data: BlockInput,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
@@ -547,6 +641,7 @@ async def execute_graph_block(
 )
 async def upload_file(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     file: UploadFile = File(...),
     expiration_hours: int = 24,
 ) -> UploadFileResponse:
@@ -636,9 +731,10 @@ async def upload_file(
 )
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, int]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return {"credits": await user_credit_model.get_credits(user_id)}
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return {"credits": await credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -650,6 +746,7 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     x_datafast_visitor_id: Annotated[
         str | None, Header(include_in_schema=False)
     ] = None,
@@ -657,8 +754,8 @@ async def request_top_up(
         str | None, Header(include_in_schema=False)
     ] = None,
 ):
-    user_credit_model = await get_user_credit_model(user_id)
-    checkout_url = await user_credit_model.top_up_intent(
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    checkout_url = await credit_model.top_up_intent(
         user_id,
         request.credit_amount,
         datafast_visitor_id=x_datafast_visitor_id,
@@ -675,11 +772,12 @@ async def request_top_up(
 )
 async def refund_top_up(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.top_up_refund(user_id, transaction_key, metadata)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -688,9 +786,12 @@ async def refund_top_up(
     tags=["credits"],
     dependencies=[Security(requires_user)],
 )
-async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
-    user_credit_model = await get_user_credit_model(user_id)
-    await user_credit_model.fulfill_checkout(user_id=user_id)
+async def fulfill_checkout(
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
+):
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    await credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
 
@@ -701,7 +802,9 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
     dependencies=[Security(requires_user)],
 )
 async def configure_user_auto_top_up(
-    request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
+    request: AutoTopUpConfig,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
 
@@ -719,14 +822,14 @@ async def configure_user_auto_top_up(
             status_code=422, detail="Amount must be greater than or equal to threshold"
         )
 
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    current_balance = await credit_model.get_credits(user_id)
 
     try:
         if current_balance < request.threshold:
-            await user_credit_model.top_up_credits(user_id, request.amount)
+            await credit_model.top_up_credits(user_id, request.amount)
         else:
-            await user_credit_model.top_up_credits(user_id, 0)
+            await credit_model.top_up_credits(user_id, 0)
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -754,6 +857,7 @@ async def configure_user_auto_top_up(
 )
 async def get_user_auto_top_up(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -902,7 +1006,11 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
@@ -1356,6 +1464,46 @@ async def _claim_stripe_event(event_id: str) -> bool:
         return True
 
 
+async def _notify_checkout_completed(session: dict) -> None:
+    """Hand the completed checkout to the lifecycle emails.
+
+    Failures here must not fail the webhook: the customer has paid, and Stripe
+    retrying the whole event would re-run `fulfill_checkout`, which grants
+    credits. But swallowing the failure lost the welcome permanently — Stripe
+    does not retry a 200, and `customer.subscription.created` deliberately does
+    not send it either.
+
+    So the work is queued rather than done here. The consumer re-reads the
+    session and subscription from Stripe and sends the welcome, with the same
+    retry-with-backoff and dead-letter queue every other notification gets.
+    Publishing is one small call that either succeeds or is logged; the Stripe
+    API round-trip and the email now sit behind a retry instead of a warning.
+    """
+    if session.get("mode") != "subscription":
+        return
+    if not session.get("subscription"):
+        return
+    session_id = session.get("id")
+    if not session_id:
+        return
+    result = await queue_pass_work(
+        PassWorkKind.WELCOME.value,
+        str(session_id),
+        PassWorkEvent(
+            kind=PassWorkKind.WELCOME,
+            user_id="",
+            scheduled_for=datetime.now(tz=timezone.utc),
+            context={"session_id": str(session_id)},
+        ).model_dump_json(),
+    )
+    if not result.success:
+        logger.warning(
+            "stripe_webhook: could not queue the welcome email for session %s: %s",
+            session_id,
+            result.message,
+        )
+
+
 async def _release_stripe_event(event_id: str) -> None:
     """Release a previously-claimed dedup key so Stripe's retry can rerun."""
     if not event_id:
@@ -1444,6 +1592,11 @@ async def stripe_webhook(request: Request):
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
             await sync_tier_from_checkout_session(data_object)
+            # Only `checkout.session.completed` drives the welcome email.
+            # `customer.subscription.created` fires at signup too; listening to
+            # both would double-send.
+            if event_type == "checkout.session.completed":
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -1451,6 +1604,12 @@ async def stripe_webhook(request: Request):
             "customer.subscription.deleted",
         ):
             await sync_subscription_from_stripe(data_object)
+            if event_type == "customer.subscription.updated":
+                await lifecycle.on_subscription_updated(
+                    data_object, event_data.get("previous_attributes") or {}
+                )
+            elif event_type == "customer.subscription.deleted":
+                await lifecycle.on_subscription_deleted(data_object)
 
         # `subscription_schedule.updated` is deliberately omitted: our own
         # `SubscriptionSchedule.create` + `.modify` calls in
@@ -1469,6 +1628,7 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
+            await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1486,6 +1646,7 @@ async def stripe_webhook(request: Request):
                     await handle_subscription_payment_success(invoice_payload)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
+                    await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1515,9 +1676,10 @@ async def stripe_webhook(request: Request):
 )
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> dict[str, str]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return {"url": await user_credit_model.create_billing_portal_session(user_id)}
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return {"url": await credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(
@@ -1528,6 +1690,7 @@ async def manage_payment_method(
 )
 async def get_credit_history(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
@@ -1535,8 +1698,8 @@ async def get_credit_history(
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
 
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.get_transaction_history(
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.get_transaction_history(
         user_id=user_id,
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
@@ -1552,9 +1715,10 @@ async def get_credit_history(
 )
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[RefundRequest]:
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.get_refund_requests(user_id)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.get_refund_requests(user_id)
 
 
 @v1_router.get(
@@ -1565,6 +1729,7 @@ async def get_refund_requests(
 )
 async def list_invoices(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     limit: int = Query(24, ge=1, le=100),
 ) -> list[InvoiceListItem]:
     """Recent Stripe invoices for the current user.
@@ -1573,8 +1738,8 @@ async def list_invoices(
     ``invoice_pdf_url`` (direct PDF download). Returns an empty list when
     the credit system is disabled or the user has no Stripe customer yet.
     """
-    user_credit_model = await get_user_credit_model(user_id)
-    return await user_credit_model.list_invoices(user_id, limit=limit)
+    credit_model = await get_credit_model(user_id, ctx.org_id)
+    return await credit_model.list_invoices(user_id, limit=limit)
 
 
 ########################################################
@@ -1586,6 +1751,33 @@ class DeleteGraphResponse(TypedDict):
     version_counts: int
 
 
+class UpdateGraphResponse(BaseModel):
+    """Response for creating/activating a new graph version.
+
+    Carries the new graph version plus any webhook presets that were left
+    pinned to their old version because the new version's trigger block is
+    incompatible and needs to be reconfigured.
+    """
+
+    graph: graph_db.GraphModel
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
+
+
+class SetActiveGraphVersionResponse(BaseModel):
+    """Response for activating an existing graph version.
+
+    Carries any webhook presets that were left pinned to their old version
+    because the newly activated version's trigger block is incompatible and
+    needs to be reconfigured.
+    """
+
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = Field(
+        default_factory=list
+    )
+
+
 @v1_router.get(
     path="/graphs",
     summary="List user graphs",
@@ -1594,12 +1786,14 @@ class DeleteGraphResponse(TypedDict):
 )
 async def list_graphs(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphMeta]:
     paginated_result = await graph_db.list_graphs_paginated(
         user_id=user_id,
         page=1,
         page_size=250,
         filter_by="active",
+        organization_id=ctx.org_id,
     )
     return paginated_result.graphs
 
@@ -1619,6 +1813,7 @@ async def list_graphs(
 async def get_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     version: int | None = None,
     for_export: bool = False,
 ) -> graph_db.GraphModel:
@@ -1628,6 +1823,7 @@ async def get_graph(
         user_id=user_id,
         for_export=for_export,
         include_subgraphs=True,  # needed to construct full credentials input schema
+        organization_id=ctx.org_id,
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -1641,9 +1837,13 @@ async def get_graph(
     dependencies=[Security(requires_user)],
 )
 async def get_graph_all_versions(
-    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> Sequence[graph_db.GraphModel]:
-    graphs = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
+    graphs = await graph_db.get_graph_all_versions(
+        graph_id, user_id=user_id, organization_id=ctx.org_id
+    )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
     return graphs
@@ -1658,16 +1858,29 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph, user_id=user_id)
-    await library_db.create_library_agent(graph, user_id)
-    activated_graph = await on_graph_activate(graph, user_id=user_id)
+    # Validate node credentials (and clear stale optional ones) BEFORE
+    # persisting, so a credential issue can't leave the graph/library agent
+    # half-saved. before_graph_activate may also mutate input_default; those
+    # edits need to be persisted, so it must run before create_graph.
+    graph = await before_graph_activate(graph, user_id=user_id)
 
-    return activated_graph
+    await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+    await library_db.create_library_agent(
+        graph, user_id, organization_id=ctx.org_id, team_id=ctx.team_id
+    )
+
+    return graph
 
 
 @v1_router.delete(
@@ -1677,14 +1890,20 @@ async def create_new_graph(
     dependencies=[Security(requires_user)],
 )
 async def delete_graph(
-    graph_id: str, user_id: Annotated[str, Security(get_user_id)]
+    graph_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(
         graph_id=graph_id, version=None, user_id=user_id
     ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
-    return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
+    return {
+        "version_counts": await graph_db.delete_graph(
+            graph_id, user_id=user_id, organization_id=ctx.org_id
+        )
+    }
 
 
 @v1_router.put(
@@ -1697,7 +1916,8 @@ async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
-) -> graph_db.GraphModel:
+    ctx: Annotated[RequestContext, Security(get_request_context)],
+) -> UpdateGraphResponse:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
 
@@ -1712,13 +1932,25 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
-    new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
+    # If this new version is going to be active, validate node credentials
+    # BEFORE persisting so a credential issue can't leave a half-saved version
+    # behind. before_graph_activate may also clear stale optional credentials —
+    # those edits must be persisted, hence the pre-save call.
+    if graph.is_active:
+        graph = await before_graph_activate(graph, user_id=user_id)
 
+    new_graph_version = await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
+
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
             user_id, new_graph_version
         )
-        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
@@ -1728,11 +1960,11 @@ async def update_graph(
         # Migrate webhook-attached presets to the new version so that
         # existing webhook URLs continue to trigger the latest agent version.
         if new_graph_version.webhook_input_node:
-            await library_db.migrate_webhook_presets_to_new_version(
+            migration = await library_db.migrate_webhook_presets_to_new_version(
                 user_id=user_id,
-                graph_id=graph_id,
-                new_version=new_graph_version.version,
+                new_graph=new_graph_version,
             )
+            skipped_webhook_presets = migration.skipped_presets
 
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
@@ -1741,7 +1973,10 @@ async def update_graph(
         include_subgraphs=True,
     )
     assert new_graph_version_with_subgraphs
-    return new_graph_version_with_subgraphs
+    return UpdateGraphResponse(
+        graph=new_graph_version_with_subgraphs,
+        skipped_webhook_presets=skipped_webhook_presets,
+    )
 
 
 @v1_router.put(
@@ -1754,7 +1989,8 @@ async def set_graph_active_version(
     graph_id: str,
     request_body: SetGraphActiveVersion,
     user_id: Annotated[str, Security(get_user_id)],
-):
+    ctx: Annotated[RequestContext, Security(get_request_context)],
+) -> SetActiveGraphVersionResponse:
     new_active_version = request_body.active_graph_version
     new_active_graph = await graph_db.get_graph(
         graph_id, new_active_version, user_id=user_id
@@ -1768,8 +2004,11 @@ async def set_graph_active_version(
         user_id=user_id,
     )
 
-    # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(new_active_graph, user_id=user_id)
+    # Validate the new graph's credentials before flipping the active version.
+    # Capture the returned graph: before_graph_activate may clear stale
+    # optional credential references, which we want propagated to the library
+    # agent's settings sync below.
+    new_active_graph = await before_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -1788,12 +2027,17 @@ async def set_graph_active_version(
 
     # Migrate webhook-attached presets to the new active version so that
     # existing webhook URLs continue to trigger the latest agent version.
+    skipped_webhook_presets: list[library_model.SkippedWebhookPreset] = []
     if new_active_graph.webhook_input_node:
-        await library_db.migrate_webhook_presets_to_new_version(
+        migration = await library_db.migrate_webhook_presets_to_new_version(
             user_id=user_id,
-            graph_id=graph_id,
-            new_version=new_active_version,
+            new_graph=new_active_graph,
         )
+        skipped_webhook_presets = migration.skipped_presets
+
+    return SetActiveGraphVersionResponse(
+        skipped_webhook_presets=skipped_webhook_presets
+    )
 
 
 @v1_router.patch(
@@ -1806,6 +2050,7 @@ async def update_graph_settings(
     graph_id: str,
     settings: GraphSettings,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> GraphSettings:
     """Update graph settings for the user's library agent."""
     library_agent = await library_db.get_library_agent_by_graph_id(
@@ -1844,6 +2089,7 @@ async def update_graph_settings(
 async def execute_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
@@ -1854,8 +2100,8 @@ async def execute_graph(
     dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
     if not dry_run:
-        user_credit_model = await get_user_credit_model(user_id)
-        current_balance = await user_credit_model.get_credits(user_id)
+        credit_model = await get_credit_model(user_id, ctx.org_id)
+        current_balance = await credit_model.get_credits(user_id)
         if current_balance <= 0:
             raise HTTPException(
                 status_code=402,
@@ -1871,14 +2117,14 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
-            await complete_onboarding_step(
-                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
-            )
+            await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
         elif source == "builder":
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
@@ -1955,11 +2201,13 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[execution_db.GraphExecutionMeta]:
     paginated_result = await execution_db.get_graph_executions_paginated(
         user_id=user_id,
         page=1,
         page_size=250,
+        organization_id=ctx.org_id,
     )
 
     # Apply feature flags to filter out disabled features
@@ -2015,6 +2263,7 @@ async def get_executions_cost_summary(
 async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
@@ -2025,6 +2274,7 @@ async def list_graph_executions(
         user_id=user_id,
         page=page,
         page_size=page_size,
+        organization_id=ctx.org_id,
     )
 
     # Apply feature flags to filter out disabled features
@@ -2045,23 +2295,6 @@ async def list_graph_executions(
     )
 
 
-async def hide_activity_summaries_if_disabled(
-    executions: list[execution_db.GraphExecutionMeta], user_id: str
-) -> list[execution_db.GraphExecutionMeta]:
-    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return executions  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    filtered_executions = []
-    for execution in executions:
-        if execution.stats:
-            filtered_stats = execution.stats.without_activity_features()
-            execution = execution.model_copy(update={"stats": filtered_stats})
-        filtered_executions.append(execution)
-    return filtered_executions
-
-
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     summary="Get execution details",
@@ -2072,11 +2305,13 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
     result = await execution_db.get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
+        organization_id=ctx.org_id,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
@@ -2087,6 +2322,7 @@ async def get_graph_execution(
         graph_id=result.graph_id,
         version=result.graph_version,
         user_id=user_id,
+        organization_id=ctx.org_id,
     ):
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
@@ -2104,21 +2340,6 @@ async def get_graph_execution(
     return result
 
 
-async def hide_activity_summary_if_disabled(
-    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
-    user_id: str,
-) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return execution  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    if execution.stats:
-        filtered_stats = execution.stats.without_activity_features()
-        return execution.model_copy(update={"stats": filtered_stats})
-    return execution
-
-
 @v1_router.delete(
     path="/executions/{graph_exec_id}",
     summary="Delete graph execution",
@@ -2129,6 +2350,7 @@ async def hide_activity_summary_if_disabled(
 async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     await execution_db.delete_graph_execution(
         graph_exec_id=graph_exec_id, user_id=user_id
@@ -2156,6 +2378,7 @@ async def enable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     _body: ShareRequest = Body(default=ShareRequest()),
 ) -> ShareResponse:
     """Enable sharing for a graph execution."""
@@ -2212,6 +2435,7 @@ async def disable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     """Disable sharing for a graph execution."""
     # Verify the execution belongs to the user
@@ -2305,6 +2529,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
+    expert_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
 
 
 @v1_router.post(
@@ -2315,6 +2543,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -2336,6 +2565,21 @@ async def create_graph_execution_schedule(
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+    # Expert attribution: explicit expert_id must be an active expert owned
+    # by the caller; when omitted, a unique (user, graph) → expert match
+    # keeps attribution for schedules created through the generic UI.
+    expert_id = schedule_params.expert_id
+    if expert_id is not None:
+        expert = await experts_db.get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+        if expert is None or expert.is_archived:
+            raise HTTPException(
+                status_code=404, detail=f"Expert #{expert_id} not found."
+            )
+    else:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
+
     result = await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
@@ -2345,6 +2589,9 @@ async def create_graph_execution_schedule(
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+        expert_id=expert_id,
     )
 
     # Convert the next_run_time back to user timezone for display
@@ -2366,11 +2613,15 @@ async def create_graph_execution_schedule(
 )
 async def list_graph_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
     return await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
+        organization_id=ctx.org_id,
+        team_ids=team_ids,
     )
 
 
@@ -2382,8 +2633,14 @@ async def list_graph_execution_schedules(
 )
 async def list_all_graphs_execution_schedules(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
-    return await get_scheduler_client().get_graph_execution_schedules(user_id=user_id)
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    return await get_scheduler_client().get_graph_execution_schedules(
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_ids=team_ids,
+    )
 
 
 @v1_router.get(
@@ -2424,6 +2681,7 @@ async def list_copilot_turn_schedules(
 )
 async def delete_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     schedule_id: str = Path(..., description="ID of the schedule to delete"),
 ) -> dict[str, Any]:
     try:
@@ -2470,6 +2728,17 @@ class CopilotSkillDetail(BaseModel):
     sibling_files: list[str] = []
 
 
+class UploadCopilotSkillRequest(BaseModel):
+    """Body for the library UI's "upload skill" action.
+
+    Carries the raw ``SKILL.md`` text (YAML frontmatter + markdown body) the
+    user picked from disk; the server parses + validates it so the upload and
+    the copilot's ``store_skill`` tool share one source of truth.
+    """
+
+    content: str
+
+
 @v1_router.get(
     path="/skills",
     summary="List user-distilled copilot skills",
@@ -2496,6 +2765,64 @@ async def list_copilot_skills(
         )
         for s in skills
     ]
+
+
+@v1_router.post(
+    path="/skills",
+    summary="Upload a copilot skill from a SKILL.md file",
+    operation_id="uploadCopilotSkill",
+    tags=["skills"],
+    status_code=201,
+    responses={
+        400: {"description": "Malformed SKILL.md or validation error"},
+        409: {"description": "Per-user skill limit reached"},
+    },
+    dependencies=[Security(requires_user)],
+)
+async def upload_copilot_skill(
+    user_id: Annotated[str, Security(get_user_id)],
+    body: UploadCopilotSkillRequest,
+) -> CopilotSkillInfo:
+    """Create a user-distilled skill from an uploaded ``SKILL.md`` file.
+
+    Parses the canonical frontmatter + body, then reuses
+    :func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill
+    is validated, capped, and persisted exactly like one the copilot distils
+    via ``store_skill``.  Malformed files return 400, the per-user cap returns
+    409, and an existing slug is overwritten (upsert).
+    """
+    parsed = parse_skill_markdown(body.content)
+    if parsed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "File is not a valid SKILL.md — expected YAML frontmatter with "
+                "'name' and 'description' followed by a markdown body."
+            ),
+        )
+    try:
+        stored = await store_user_skill(
+            user_id,
+            name=parsed.name,
+            description=parsed.description,
+            body=parsed.body,
+            triggers=list(parsed.triggers),
+            version=parsed.version,
+        )
+    except SkillLimitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (VirusDetectedError, VirusScanError) as exc:
+        logger.warning("[skills] virus scan rejected uploaded skill: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Skill content rejected by virus scan"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return CopilotSkillInfo(
+        name=stored.name,
+        description=stored.description,
+        triggers=list(stored.triggers),
+    )
 
 
 @v1_router.get(
@@ -2592,7 +2919,9 @@ async def delete_copilot_skill(
     dependencies=[Security(requires_user)],
 )
 async def create_api_key(
-    request: CreateAPIKeyRequest, user_id: Annotated[str, Security(get_user_id)]
+    request: CreateAPIKeyRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> CreateAPIKeyResponse:
     """Create a new API key"""
     api_key_info, plain_text_key = await api_key_db.create_api_key(
@@ -2600,6 +2929,7 @@ async def create_api_key(
         user_id=user_id,
         permissions=request.permissions,
         description=request.description,
+        organization_id=ctx.org_id,
     )
     return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
 
@@ -2612,9 +2942,13 @@ async def create_api_key(
 )
 async def get_api_keys(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
-    return await api_key_db.list_user_api_keys(user_id)
+    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
+    return await api_key_db.list_user_api_keys(
+        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
+    )
 
 
 @v1_router.get(
@@ -2624,10 +2958,14 @@ async def get_api_keys(
     dependencies=[Security(requires_user)],
 )
 async def get_api_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(key_id, user_id)
+    api_key = await api_key_db.get_api_key_by_id(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
     return api_key
@@ -2640,10 +2978,14 @@ async def get_api_key(
     dependencies=[Security(requires_user)],
 )
 async def delete_api_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Revoke an API key"""
-    return await api_key_db.revoke_api_key(key_id, user_id)
+    return await api_key_db.revoke_api_key(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
 
 
 @v1_router.post(
@@ -2653,10 +2995,14 @@ async def delete_api_key(
     dependencies=[Security(requires_user)],
 )
 async def suspend_key(
-    key_id: str, user_id: Annotated[str, Security(get_user_id)]
+    key_id: str,
+    user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Suspend an API key"""
-    return await api_key_db.suspend_api_key(key_id, user_id)
+    return await api_key_db.suspend_api_key(
+        key_id, user_id, organization_id=ctx.org_id or None
+    )
 
 
 @v1_router.put(
@@ -2669,8 +3015,9 @@ async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> api_key_db.APIKeyInfo:
     """Update API key permissions"""
     return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions
+        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
     )
