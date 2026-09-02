@@ -2481,14 +2481,14 @@ test = ["objgraph", "psutil", "setuptools"]
 
 [[package]]
 name = "groq"
-version = "0.30.0"
+version = "1.6.0"
 description = "The official Python library for the groq API"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "groq-0.30.0-py3-none-any.whl", hash = "sha256:6d9609a7778ba56432f45c1bac21b005f02c6c0aca9c1c094e65536f162c1e83"},
-    {file = "groq-0.30.0.tar.gz", hash = "sha256:919466e48fcbebef08fed3f71debb0f96b0ea8d2ec77842c384aa843019f6e2c"},
+    {file = "groq-1.6.0-py3-none-any.whl", hash = "sha256:fa16db582455db324adcff1b5908519474736872e28cd5c8fa2b8bef6860e12a"},
+    {file = "groq-1.6.0.tar.gz", hash = "sha256:c4237ecf0053ba85fd926bb31cb4b178996310474b4618867994e3e40d8e3c02"},
 ]
 
 [package.dependencies]
@@ -2497,10 +2497,10 @@ distro = ">=1.7.0,<2"
 httpx = ">=0.23.0,<1"
 pydantic = ">=1.9.0,<3"
 sniffio = "*"
-typing-extensions = ">=4.10,<5"
+typing-extensions = ">=4.14,<5"
 
 [package.extras]
-aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.6)"]
+aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.9)"]
 
 [[package]]
 name = "grpc-google-iam-v1"
@@ -8659,4 +8659,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "e8bab234faec1b6b792df40152f60681295cdfaa7aed30344a4b94b4df7775c9"
+content-hash = "648d1b959a835a4ae554dbdbcf2a3838a6b71db6d46d145a49d9243a0456589a"
