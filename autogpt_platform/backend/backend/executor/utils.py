@@ -1028,7 +1028,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
         arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
-        vhost="/",
+        vhost=Config().rabbitmq_vhost,
         exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
         queues=[run_queue, cancel_queue],
     )
