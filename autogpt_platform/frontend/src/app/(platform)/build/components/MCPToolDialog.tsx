@@ -34,6 +34,7 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
+  validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
@@ -213,6 +214,12 @@ export function MCPToolDialog({
     const credential = manualToken.trim();
     if (!url || !credential) return;
 
+    const invalid = validateMCPAuthCredential(credential, manualAuthScheme);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -228,22 +235,33 @@ export function MCPToolDialog({
         throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
       }
 
-      const credentialResponse = await postV2StoreABearerTokenForAnMcpServer({
-        server_url: url,
-        token: authValue,
-      });
-      if (credentialResponse.status !== 200) {
-        throw getAPIResponseError(
-          credentialResponse.status,
-          credentialResponse.data,
-        );
+      // Store through the credentials provider so the new credential lands in
+      // the map the builder resolves node bindings against. Calling the
+      // endpoint directly leaves the node pointing at an ID the builder cannot
+      // see, which it renders as "was removed" until the next page load.
+      const mcpProvider = allProviders?.["mcp"];
+      let storedCredential;
+      if (mcpProvider) {
+        storedCredential = await mcpProvider.mcpStoreToken(url, authValue);
+      } else {
+        const credentialResponse = await postV2StoreABearerTokenForAnMcpServer({
+          server_url: url,
+          token: authValue,
+        });
+        if (credentialResponse.status !== 200) {
+          throw getAPIResponseError(
+            credentialResponse.status,
+            credentialResponse.data,
+          );
+        }
+        storedCredential = credentialResponse.data;
       }
 
       setCredentials({
-        id: credentialResponse.data.id,
-        provider: credentialResponse.data.provider,
-        type: credentialResponse.data.type,
-        title: credentialResponse.data.title,
+        id: storedCredential.id,
+        provider: storedCredential.provider,
+        type: storedCredential.type,
+        title: storedCredential.title,
       });
       setCredentialServerUrl(url);
 
@@ -255,7 +273,13 @@ export function MCPToolDialog({
     } finally {
       setLoading(false);
     }
-  }, [applyDiscoveredTools, manualAuthScheme, manualToken, serverUrl]);
+  }, [
+    allProviders,
+    applyDiscoveredTools,
+    manualAuthScheme,
+    manualToken,
+    serverUrl,
+  ]);
 
   const handleDiscoverTools = useCallback(() => {
     if (!serverUrl.trim()) return;

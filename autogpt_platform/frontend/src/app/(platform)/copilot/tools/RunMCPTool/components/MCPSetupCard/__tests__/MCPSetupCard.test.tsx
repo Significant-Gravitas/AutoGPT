@@ -10,7 +10,7 @@ import {
   CredentialsProvidersContext,
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChainActionsContext,
   type ChainActionEntry,
@@ -34,6 +34,7 @@ vi.mock("@/lib/oauth-popup", () => ({
 
 // Mock the generated API functions
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
+  postV2DiscoverAvailableToolsOnAnMcpServer: vi.fn(),
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
   postV2ExchangeOauthCodeForMcpTokens: vi.fn(),
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
@@ -93,6 +94,19 @@ function makeSetupOutput(
 }
 
 describe("MCPSetupCard", () => {
+  // Storing a manual credential probes the server first, so the default is an
+  // accepting server; the tests that care override it.
+  beforeEach(async () => {
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
+      status: 200,
+      data: { tools: [], server_name: "Example" },
+      headers: new Headers(),
+    } as never);
+  });
+
   afterEach(() => {
     cleanup();
     setMockLiveCreds([]);
@@ -569,6 +583,46 @@ describe("MCPSetupCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     });
+  });
+
+  it("does not report Connected for a credential the server rejects", async () => {
+    // A 2xx from ``/mcp/token`` only says the row was written. Without a probe
+    // the card claims Connected, the very next copilot call 401s, and the card,
+    // the database and the assistant all disagree about the state.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
+      status: 401,
+      data: { detail: "Server rejected the credential" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+      target: { value: "wrong-token" },
+    });
+    // This file's teardown does not clear call history between tests.
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/server rejected the credential/i)).toBeDefined();
+    });
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
 
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {

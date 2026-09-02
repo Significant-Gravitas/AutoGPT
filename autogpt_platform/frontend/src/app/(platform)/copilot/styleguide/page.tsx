@@ -123,6 +123,7 @@ function makeMockProvider(
     isSystemProvider: false,
     oAuthCallback: noop as CredentialsProviderData["oAuthCallback"],
     mcpOAuthCallback: noop as CredentialsProviderData["mcpOAuthCallback"],
+    mcpStoreToken: noop as CredentialsProviderData["mcpStoreToken"],
     createAPIKeyCredentials:
       noop as CredentialsProviderData["createAPIKeyCredentials"],
     createUserPasswordCredentials:

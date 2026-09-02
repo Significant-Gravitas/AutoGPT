@@ -63,6 +63,33 @@ def test_normalize_mcp_authorization_preserves_bare_credential_with_spaces() -> 
 
 
 @pytest.mark.parametrize(
+    "value",
+    [
+        "basic auth key",
+        "bearer token pair",
+        "Basic org id key",
+    ],
+)
+def test_normalize_mcp_authorization_keeps_multi_word_bare_credentials_intact(
+    value: str,
+) -> None:
+    """A bare multi-word credential is not a scheme-prefixed one.
+
+    RFC 7235 credentials carry no internal whitespace, so a first word of
+    "basic"/"bearer" followed by more than one word is part of the secret.
+    Reading it as a scheme would both flip the scheme and silently drop that
+    first word from a credential stored before this feature existed.
+    """
+    assert normalize_mcp_authorization(value) == f"Bearer {value}"
+
+
+def test_normalize_mcp_authorization_rejects_multi_word_explicit_header() -> None:
+    """An explicit Authorization header fails closed rather than falling back."""
+    with pytest.raises(ValueError):
+        normalize_mcp_authorization("Authorization: Basic user pass")
+
+
+@pytest.mark.parametrize(
     "control_character", ["\x00", "\t", "\n", "\r", "\x1f", "\x7f"]
 )
 def test_normalize_mcp_authorization_rejects_control_characters(

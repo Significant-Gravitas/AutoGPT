@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { detectMCPAuthScheme, prepareMCPAuthCredential } from "./mcp-auth";
+import {
+  detectMCPAuthScheme,
+  prepareMCPAuthCredential,
+  validateMCPAuthCredential,
+} from "./mcp-auth";
 
 describe("MCP manual authentication helpers", () => {
   it("does not guess a scheme for a bare credential", () => {
@@ -55,5 +59,27 @@ describe("MCP manual authentication helpers", () => {
     expect(
       prepareMCPAuthCredential("Authorization: Digest abc", "bearer"),
     ).toBe("Authorization: Digest abc");
+  });
+
+  // A scheme word followed by more than one word is a bare multi-word
+  // credential, not a prefix — the backend reads it the same way, and the two
+  // ends disagreeing is what silently rewrites a stored secret.
+  it("does not read a scheme out of a bare multi-word credential", () => {
+    expect(detectMCPAuthScheme("basic auth key")).toBeNull();
+    expect(prepareMCPAuthCredential("basic auth key", "bearer")).toBe(
+      "Bearer basic auth key",
+    );
+  });
+
+  it("rejects a Basic credential containing whitespace", () => {
+    expect(validateMCPAuthCredential("dXNlcjpwYXNz", "basic")).toBeNull();
+    expect(validateMCPAuthCredential("Basic dXNlcjpwYXNz", "basic")).toBeNull();
+    expect(validateMCPAuthCredential("user pass", "basic")).toMatch(
+      /cannot contain spaces/,
+    );
+  });
+
+  it("allows whitespace in a Bearer credential", () => {
+    expect(validateMCPAuthCredential("orgid api-key", "bearer")).toBeNull();
   });
 });

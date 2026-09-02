@@ -2,6 +2,7 @@
 
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
+  postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
@@ -265,6 +266,27 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setLoading(true);
     setError(null);
     try {
+      // Ask the server to accept the credential before storing it and calling
+      // the card Connected. A 2xx from /mcp/token only says the row was
+      // written; the copilot then fails on the very next call and the card,
+      // the database and the assistant all disagree about the state. The
+      // builder dialog already discovers first — match it.
+      const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: serverUrl,
+        auth_token: token,
+      });
+      if (probe.status !== 200) {
+        const probeDetail =
+          probe.data && typeof probe.data === "object" && "detail" in probe.data
+            ? probe.data.detail
+            : null;
+        throw new Error(
+          typeof probeDetail === "string"
+            ? probeDetail
+            : "This server did not accept the credential.",
+        );
+      }
+
       const res = await postV2StoreABearerTokenForAnMcpServer({
         server_url: serverUrl,
         token,

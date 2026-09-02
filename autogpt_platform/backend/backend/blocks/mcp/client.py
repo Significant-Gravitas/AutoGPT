@@ -49,10 +49,19 @@ def normalize_mcp_authorization(value: str) -> str:
 
     parts = candidate.split(None, 1)
     scheme_key = parts[0].casefold()
-    if len(parts) == 2 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
+    known_scheme = scheme_key in _SUPPORTED_AUTH_SCHEMES
+    remainder = parts[1].strip() if len(parts) == 2 else ""
+    # RFC 7235 credentials after a scheme are a single token68/base64 run with
+    # no internal whitespace, so a remainder that still contains a space means
+    # this is a bare multi-word credential that merely starts with
+    # "basic"/"bearer" (e.g. an "orgid api-key" pair), not a scheme-prefixed
+    # one.  Reading it as a scheme would flip the scheme *and* silently drop
+    # that first word from the secret.
+    is_scheme_prefixed = known_scheme and bool(remainder) and " " not in remainder
+    if is_scheme_prefixed:
         scheme = _SUPPORTED_AUTH_SCHEMES[scheme_key]
-        credential = parts[1].strip()
-    elif len(parts) == 1 and scheme_key in _SUPPORTED_AUTH_SCHEMES:
+        credential = remainder
+    elif known_scheme and not remainder:
         scheme_name = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         raise ValueError(f"{scheme_name} authentication requires a credential.")
     elif included_header_name:

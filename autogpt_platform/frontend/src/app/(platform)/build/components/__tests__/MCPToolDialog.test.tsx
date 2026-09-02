@@ -6,6 +6,11 @@ import {
 } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
+
 import { MCPToolDialog } from "../MCPToolDialog";
 
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
@@ -113,6 +118,39 @@ describe("MCPToolDialog credential binding", () => {
       server_url: PRIVATE_SERVER_URL,
       token: "Bearer private-secret",
     });
+  });
+
+  it("stores a manual credential through the credentials provider", async () => {
+    // Storing via the endpoint directly leaves the provider map without the
+    // credential the node is about to be bound to, and the builder renders
+    // that binding as "was removed" until the next page load.
+    const { postV2StoreABearerTokenForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    const mcpStoreToken = vi.fn().mockResolvedValue(CREDENTIAL);
+    const providers = {
+      mcp: { mcpStoreToken },
+    } as unknown as CredentialsProvidersContextType;
+    const onConfirm = vi.fn();
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPToolDialog open onClose={() => {}} onConfirm={onConfirm} />
+      </CredentialsProvidersContext.Provider>,
+    );
+
+    await connectPrivateServer();
+    fireEvent.click(screen.getByRole("button", { name: /private-tool/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Block" }));
+
+    expect(mcpStoreToken).toHaveBeenCalledWith(
+      PRIVATE_SERVER_URL,
+      "Bearer private-secret",
+    );
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: CREDENTIAL }),
+    );
   });
 
   it("does not store a manual credential rejected by discovery", async () => {

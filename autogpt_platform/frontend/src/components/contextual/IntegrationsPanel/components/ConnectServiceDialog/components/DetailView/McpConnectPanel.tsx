@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
+  postV2DiscoverAvailableToolsOnAnMcpServer,
   postV2ExchangeOauthCodeForMcpTokens,
   postV2InitiateOauthLoginForAnMcpServer,
   postV2StoreABearerTokenForAnMcpServer,
@@ -17,6 +18,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
+  validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
 import { openOAuthPopup } from "@/lib/oauth-popup";
@@ -137,13 +139,33 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
   async function handleSubmitToken() {
     if (!canSubmitToken) return;
+
+    const invalid = validateMCPAuthCredential(trimmedToken, authScheme);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
 
     try {
+      const authValue = prepareMCPAuthCredential(trimmedToken, authScheme);
+
+      // Check the server accepts the credential before storing it, so a
+      // rejected value never replaces a working one and the panel never
+      // reports a connection the next call will fail on.
+      const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
+        server_url: trimmedUrl,
+        auth_token: authValue,
+      });
+      if (probe.status !== 200) {
+        throw getAPIResponseError(probe.status, probe.data);
+      }
+
       const stored = await postV2StoreABearerTokenForAnMcpServer({
         server_url: trimmedUrl,
-        token: prepareMCPAuthCredential(trimmedToken, authScheme),
+        token: authValue,
       });
       if (stored.status !== 200) {
         throw getAPIResponseError(stored.status, stored.data);

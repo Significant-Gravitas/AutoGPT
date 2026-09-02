@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { McpConnectPanel } from "../McpConnectPanel";
 
@@ -14,6 +14,7 @@ vi.mock("@/lib/oauth-popup", () => ({
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
+  postV2DiscoverAvailableToolsOnAnMcpServer: vi.fn(),
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
   postV2ExchangeOauthCodeForMcpTokens: vi.fn(),
   postV2StoreABearerTokenForAnMcpServer: vi.fn(),
@@ -41,6 +42,19 @@ function makeApiError(status: number, detail = "boom"): Error {
 }
 
 describe("McpConnectPanel", () => {
+  // Saving a manual credential probes the server first, so the default is an
+  // accepting server; the tests that care override it.
+  beforeEach(async () => {
+    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
+      status: 200,
+      data: { tools: [], server_name: "Example" },
+      headers: new Headers(),
+    } as never);
+  });
+
   afterEach(() => {
     vi.resetAllMocks();
     mockSavedCredentials = [];
@@ -264,6 +278,81 @@ describe("McpConnectPanel", () => {
         token: "Basic new-encoded-value",
       });
     });
+  });
+
+  it("does not store a credential the server rejects", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
+      status: 401,
+      data: { detail: "Bad credential" },
+      headers: new Headers(),
+    } as never);
+
+    const onSuccess = vi.fn();
+    render(<McpConnectPanel onSuccess={onSuccess} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "wrong-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Bad credential");
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Basic credential containing whitespace before any request", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "user pass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("cannot contain spaces");
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("lets the user switch from manual-token back to OAuth", async () => {
