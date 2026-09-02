@@ -72,14 +72,20 @@ async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
     REL-006: 5s → 30s and drain global registry (not just current loop) so
     deploy-time pending logs survive loop mismatch.
     """
-    # asyncio.wait() requires all tasks to belong to the running event loop.
-    # _pending_log_tasks is shared across executor worker threads (each with
-    # its own loop), so filter to only tasks owned by the current loop.
-    # Acquire the lock to take a consistent snapshot (worker threads call
-    # discard() via done callbacks concurrently with this iteration).
+    # REL-006: drain global registry (all loops) with longer timeout so
+    # deploy-time pending logs survive loop mismatch. asyncio.wait still
+    # requires tasks to belong to the running loop for awaiting, so we
+    # partition: await those on current loop, log those on other loops.
     current_loop = asyncio.get_running_loop()
     with _pending_log_tasks_lock:
-        all_pending = [t for t in _pending_log_tasks if t.get_loop() is current_loop]
+        all_tasks = list(_pending_log_tasks)
+        all_pending = [t for t in all_tasks if t.get_loop() is current_loop]
+        other_loop_pending = [t for t in all_tasks if t.get_loop() is not current_loop]
+    if other_loop_pending:
+        logger.warning(
+            "%d executor cost log task(s) on other loops (not awaitable this loop) — will be drained by owning loop",
+            len(other_loop_pending),
+        )
     if all_pending:
         logger.info("Draining %d executor cost log task(s)", len(all_pending))
         _, still_pending = await asyncio.wait(all_pending, timeout=timeout)
@@ -91,7 +97,14 @@ async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
             )
     # Also drain copilot cost log tasks (token_tracking._pending_log_tasks)
     with _copilot_tasks_lock:
-        copilot_pending = [t for t in _copilot_tasks if t.get_loop() is current_loop]
+        all_copilot = list(_copilot_tasks)
+        copilot_pending = [t for t in all_copilot if t.get_loop() is current_loop]
+        other_copilot = [t for t in all_copilot if t.get_loop() is not current_loop]
+    if other_copilot:
+        logger.warning(
+            "%d copilot cost log task(s) on other loops — not awaitable this loop",
+            len(other_copilot),
+        )
     if copilot_pending:
         logger.info("Draining %d copilot cost log task(s)", len(copilot_pending))
         _, still_pending = await asyncio.wait(copilot_pending, timeout=timeout)
