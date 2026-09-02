@@ -113,13 +113,14 @@ def test_isolate_also_drops_outward_and_memory_write_tools() -> None:
     assert "memory_search" in isolate.tools  # reading is fine; writing is not
 
 
-def test_grant_adds_a_denied_tool_the_spawner_holds() -> None:
+def test_grant_cannot_reach_a_tool_denied_in_this_context() -> None:
+    """An explicit denial is absolute — grant is not a way around it."""
     isolate = _child(
         root_envelope("t"), shares_memory=True, grant=["post_to_chat_platform"]
     )
     assert isolate.tools is not None
-    assert "post_to_chat_platform" in isolate.tools
-    assert "connect_integration" not in isolate.tools
+    assert "post_to_chat_platform" not in isolate.tools  # isolate-denied
+    assert "connect_integration" not in isolate.tools  # descent-denied
     # The grant is intersected like everything else: a spawner without the
     # tool cannot hand it down.
     narrow_parent = _child(
@@ -133,6 +134,13 @@ def test_grant_adds_a_denied_tool_the_spawner_holds() -> None:
     assert grandchild.tools == frozenset({"read_workspace_file"})
 
 
+def test_grant_adds_a_non_denied_tool_the_spawner_holds() -> None:
+    """Grant still works for anything not on a denial list."""
+    delegate = _child(root_envelope("t"), grant=["post_to_chat_platform"])
+    assert delegate.tools is not None
+    assert "post_to_chat_platform" in delegate.tools
+
+
 def test_may_spawn_keeps_spawn_tools_but_nothing_denied() -> None:
     child = _child(root_envelope("t"), may_spawn=True)
     assert child.tools is not None
@@ -140,9 +148,12 @@ def test_may_spawn_keeps_spawn_tools_but_nothing_denied() -> None:
     assert child.tools.isdisjoint(DESCENT_DENIED_TOOLS)
 
 
-def test_root_may_grant_a_denied_tool_explicitly() -> None:
+def test_pinning_a_tool_set_still_respects_the_denials() -> None:
     child = _child(root_envelope("t"), tools=["post_to_chat_platform"])
     assert child.tools == frozenset({"post_to_chat_platform"})
+    # …but a descent-denied tool is refused even when pinned by name.
+    denied = _child(root_envelope("t"), tools=["connect_integration"])
+    assert denied.tools == frozenset()
 
 
 def test_child_cannot_regain_a_tool_its_spawner_lacks() -> None:
@@ -346,3 +357,142 @@ def test_all_tool_names_cover_the_denied_set() -> None:
     # A denied name that is not a real tool would be a silent no-op.
     assert DESCENT_DENIED_TOOLS <= ALL_TOOL_NAMES
     assert SPAWN_TOOLS <= ALL_TOOL_NAMES
+
+
+# ── ceiling formula (finding 3) ────────────────────────────────────────
+
+
+def _ceiling(daily: int, remaining_usd: float, monkeypatch) -> int:
+    """Drive resolve_root_ceiling_microdollars with a fixed tier + balance."""
+
+    async def _limits(_uid, _d, _w):
+        return daily, daily * 5, "TIER"
+
+    async def _remaining(**_kw):
+        return remaining_usd
+
+    monkeypatch.setattr(tree, "get_global_rate_limits", _limits)
+    monkeypatch.setattr(tree, "get_remaining_usd_budget", _remaining)
+    return asyncio.run(tree.resolve_root_ceiling_microdollars("u"))
+
+
+def test_ceiling_is_a_fraction_of_the_tier_daily_limit(monkeypatch) -> None:
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    # 0.5 x $8.00 = $4.00, under both floor and cap.
+    assert _ceiling(8_000_000, 999.0, monkeypatch) == 4_000_000
+
+
+def test_ceiling_floor_applies_to_a_small_tier(monkeypatch) -> None:
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    # 0.5 x $0.20 = $0.10, raised to the $0.50 floor so a tree can fund a turn.
+    assert _ceiling(200_000, 999.0, monkeypatch) == 500_000
+
+
+def test_ceiling_cap_applies_to_a_large_tier(monkeypatch) -> None:
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    assert _ceiling(400_000_000, 999.0, monkeypatch) == 10_000_000
+
+
+def test_no_tier_yields_no_budget_and_therefore_no_spawns(monkeypatch) -> None:
+    """A NO_TIER user's multiplier is 0.0, so the daily limit resolves to 0.
+    The floor must not resurrect a tier that may not spend at all."""
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    assert _ceiling(0, 0.0, monkeypatch) == 0
+
+
+def test_remaining_budget_clamps_the_ceiling(monkeypatch) -> None:
+    monkeypatch.setattr(tree.config, "tree_ceiling_fraction_of_daily", 0.5)
+    monkeypatch.setattr(tree.config, "tree_ceiling_floor_microdollars", 500_000)
+    monkeypatch.setattr(tree.config, "tree_ceiling_microdollars", 10_000_000)
+    # Formula would allow $4.00; only $0.75 is left today.
+    assert _ceiling(8_000_000, 0.75, monkeypatch) == 750_000
+
+
+def test_isolate_denied_names_are_real_tools() -> None:
+    # DESCENT and SPAWN are asserted above; ISOLATE was the gap.
+    assert ISOLATE_DENIED_TOOLS <= ALL_TOOL_NAMES
+
+
+# ── no amplification (finding 4) ───────────────────────────────────────
+
+
+def _spawners_lacking(tool: str) -> list[tuple[str, TurnEnvelope]]:
+    """Every shape of spawner that does not hold *tool*.
+
+    Which shapes qualify depends on the tool: a delegate keeps the
+    isolate-denied set, so it is only a valid "lacking" spawner for a
+    descent-denied tool.
+    """
+    root = root_envelope("t")
+    candidates = [
+        (
+            "explicit pin",
+            derive_child_envelope(
+                root,
+                SpawnRequest(
+                    tools=["read_workspace_file", "run_sub_session"], may_spawn=True
+                ),
+            ),
+        ),
+        (
+            "isolate default",
+            derive_child_envelope(
+                root, SpawnRequest(shares_memory=True, may_spawn=True)
+            ),
+        ),
+        (
+            "delegate default",
+            derive_child_envelope(root, SpawnRequest(may_spawn=True)),
+        ),
+    ]
+    lacking = [(label, env) for label, env in candidates if not env.permits(tool)]
+    assert lacking, f"no spawner shape lacks {tool}"
+    return lacking
+
+
+@pytest.mark.parametrize("tool", ["post_to_chat_platform", "connect_integration"])
+def test_a_spawner_can_never_grant_a_tool_it_does_not_hold(tool: str) -> None:
+    """An agent cannot authorize use of a tool it is not itself authorized to
+    use — for every combination of the request's tool inputs."""
+    requests = [
+        SpawnRequest(grant=[tool], may_spawn=True),
+        SpawnRequest(tools=[tool], may_spawn=True),
+        SpawnRequest(tools=[tool], grant=[tool], may_spawn=True),
+        SpawnRequest(tools=None, grant=[tool, "bash_exec"], may_spawn=True),
+        SpawnRequest(tools=[tool, "read_workspace_file"], grant=[tool]),
+    ]
+    for label, spawner in _spawners_lacking(tool):
+        assert not spawner.permits(tool), label
+        for request in requests:
+            child = derive_child_envelope(spawner, request)
+            assert not child.permits(tool), f"{label} amplified via {request}"
+            assert child.tools is not None
+            assert child.tools <= (spawner.tools or ALL_TOOL_NAMES), label
+
+
+@pytest.mark.parametrize("tool", sorted(DESCENT_DENIED_TOOLS))
+def test_no_spawner_can_ever_pass_on_an_explicitly_denied_tool(tool: str) -> None:
+    """Even a spawner that holds the tool — a root holds everything — cannot
+    hand a descent-denied tool to a child, by any mechanism."""
+    root = root_envelope("t")
+    assert root.permits(tool)
+    for request in (
+        SpawnRequest(grant=[tool], may_spawn=True),
+        SpawnRequest(tools=[tool], may_spawn=True),
+        SpawnRequest(tools=[tool], grant=[tool], may_spawn=True),
+        SpawnRequest(tools=None, grant=[tool], shares_memory=True),
+    ):
+        assert not derive_child_envelope(root, request).permits(tool)
+
+
+def test_a_spawner_may_still_grant_a_non_denied_tool() -> None:
+    root = root_envelope("t")
+    child = derive_child_envelope(root, SpawnRequest(grant=["post_to_chat_platform"]))
+    assert child.permits("post_to_chat_platform")
+    assert not child.permits("delete_preset")

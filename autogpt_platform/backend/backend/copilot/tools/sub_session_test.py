@@ -365,7 +365,9 @@ class TestRunSubSession:
         """
         legacy_sub = _session("alice", "other-session", origin=None)
         legacy_sub.messages = []
-        legacy_sub.metadata.delegated_by_session_id = "s1"
+        # Deliberately no provenance: this is the pre-provenance sub the
+        # resume path has to keep accepting at deploy.
+        assert legacy_sub.metadata.delegated_by_session_id is None
 
         async def fake_get(_session_id: str):
             return legacy_sub

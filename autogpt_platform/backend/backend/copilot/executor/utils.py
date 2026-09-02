@@ -273,9 +273,18 @@ async def enqueue_copilot_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
-    envelope: TurnEnvelope | None = None,
+    *,
+    envelope: TurnEnvelope,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
+
+    ``envelope`` is required and keyword-only on purpose. Every turn belongs to
+    a tree, and a turn that arrives without one is unenforced end to end: the
+    ``BaseTool.execute`` check no-ops and its first spawn is minted as a fresh
+    root. Making the parameter mandatory means a new entry point has to decide
+    which tree its turn belongs to rather than silently opting out.
+    ``CoPilotExecutionEntry.envelope`` stays optional so a message enqueued by
+    an older worker still decodes.
 
     Args:
         session_id: Chat session ID (also used for dedup/locking)
@@ -458,14 +467,11 @@ async def dispatch_turn(
     envelope = await _admitted_turn_envelope(turn_id, user_id, permissions, spawn)
     permissions = _narrow_permissions(permissions, envelope)
 
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        turn_id=turn_id,
-    )
-
+    # Everything after the admit above runs inside the try: the tree's node
+    # counter is already incremented, so an exception from ``create_session``
+    # (a Redis blip) would otherwise leak a node for the key's whole TTL, and
+    # a handful of those exhaust a tree that never ran anything.
+    #
     # Once ``create_session`` has written Redis meta, EVERY exit path
     # from this point on must either (a) commit the turn (``slot.keep()``
     # + RabbitMQ message enqueued) or (b) tear the Redis meta down — or
@@ -475,6 +481,13 @@ async def dispatch_turn(
     # happy path from any failure / cancellation.
     committed = False
     try:
+        await stream_registry.create_session(
+            session_id=session_id,
+            user_id=user_id,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            turn_id=turn_id,
+        )
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,

@@ -22,6 +22,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.tree import root_envelope
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
@@ -389,6 +390,10 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         file_ids=request.file_ids or None,
         llm_auth_provider=session.metadata.llm_auth_provider,
         llm_credential_id=session.metadata.llm_credential_id,
+        # Roots its own tree, and born tainted: the message was written on a
+        # chat platform by someone who need not be the account owner, so
+        # anything this turn spawns inherits the bit.
+        envelope=root_envelope(turn_id, tainted=True),
     )
 
     logger.info(

@@ -112,6 +112,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
+#
+# NOT bumped for the spawn tools' ``grant_tools`` parameter (3 schemas), which
+# is why its description in ``copilot/tree.py`` is deliberately one short line:
+# the registry measures 60840 chars, ~160 headroom. That is thin — under ~0.3%
+# — so the next tool or wording change here should bump the budget rather than
+# shave prose, and be aware CI has historically measured a few hundred chars
+# above local because env-flagged tools register there and not here.
 _CHAR_BUDGET = 61_000
 
 

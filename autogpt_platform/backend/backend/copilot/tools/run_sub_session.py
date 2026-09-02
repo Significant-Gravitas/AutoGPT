@@ -172,7 +172,17 @@ class RunSubSessionTool(BaseTool):
             # Only the session that opened a sub may steer it: same scope is
             # not enough, or any sibling — or the sub itself — could queue a
             # prompt into it under its envelope rather than their own.
-            if owned.metadata.delegated_by_session_id != session.session_id:
+            #
+            # Subs created before this tool started recording provenance have
+            # ``None`` here and cannot satisfy the check. Refusing them would
+            # strand every in-flight sub at deploy, so they fall back to the
+            # scope + origin rules that governed them when they were made —
+            # the group is closed (nothing new joins it) and ages out with the
+            # 6h turn lifetime.
+            if (
+                owned.metadata.delegated_by_session_id is not None
+                and owned.metadata.delegated_by_session_id != session.session_id
+            ):
                 return ErrorResponse(
                     message=(
                         f"sub_autopilot_session_id {sub_session_param} was not "
@@ -222,7 +232,11 @@ class RunSubSessionTool(BaseTool):
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
                 # Provenance doubles as the resume capability above and as
-                # the poll capability in get_sub_session_result.
+                # the poll capability in get_sub_session_result. It also makes
+                # subs visible to ``chain_refusal``'s walk, which is intended:
+                # a sub hop now spends delegation budget like any other hop
+                # (both bounds refuse the same 4th hop), and a sub delegating
+                # back to its own parent expert is correctly seen as a loop.
                 delegated_by_expert_id=session.expert_id,
                 delegated_by_session_id=session.session_id,
                 # A sub is machine-driven whatever opened it: its prompt is

@@ -19,6 +19,16 @@ The ledger meters; it does not reserve. That is deliberate: the SDK's
 ``max_budget_usd`` is a per-query stop that floors upward and does not exist
 on the Codex transport, so a reservation could never be enforced — a counter
 checked at the one seam every turn passes through can.
+
+Reachable surface, stated plainly so nobody reads more into this module than
+it currently does. Live today: ``depth``, ``tools`` via the descent/isolate
+defaults and ``grant``, the node cap and the spend ceiling. Carried but not
+yet driven by any tool: ``tainted`` (propagated and tested, but no consumer
+reads it until the auto-mode gate lands), ``SpawnRequest.max_seconds`` (so
+``deadline_at`` is always ``None``), ``SpawnRequest.tools`` (the exact-set pin
+— which means the read-only quarantine shape is expressible here but not
+selectable from any tool yet), and ``may_spawn=False`` (all three spawn tools
+pass ``True``, so no leaf is created in production).
 """
 
 import logging
@@ -91,8 +101,8 @@ ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
 # Kept short on purpose: it rides three tool schemas, and the whole registry
 # shares a char budget (``tool_schema_test``). A refusal names the missing tool.
 GRANT_TOOLS_DESCRIPTION = (
-    "Extra tools to grant this spawned turn beyond its default (e.g. "
-    "post_to_chat_platform). Only tools you hold yourself."
+    "Extra tools for this spawned turn. Only tools you hold yourself, and "
+    "never account-binding or irreversible ones — those are refused."
 )
 
 _LEDGER_KEY_PREFIX = "copilot:tree:"
@@ -168,6 +178,15 @@ def derive_child_envelope(
     if not any(spawner.permits(t) for t in SPAWN_TOOLS):
         raise TreeRefusal("This turn may not spawn further work.")
 
+    # Two rules, both enforced below, and the result is
+    # ``child ⊆ (spawner_effective − denied)``:
+    #
+    # 1. An explicit descent denial is absolute. Nothing reaches a child that
+    #    is on the denied list — not via ``request.tools``, not via ``grant``,
+    #    not even from a spawner that holds the tool itself. A child that
+    #    genuinely needs one of these is a human-approval case, not a grant.
+    # 2. Otherwise no amplification: an agent cannot authorize a tool it is
+    #    not itself authorized to use.
     ceiling = spawner.tools if spawner.tools is not None else ALL_TOOL_NAMES
     if spawner_permissions is not None:
         ceiling = ceiling & spawner_permissions.effective_allowed_tools(ALL_TOOL_NAMES)
@@ -179,7 +198,8 @@ def derive_child_envelope(
         if request.tools is not None
         else (ALL_TOOL_NAMES - denied) | frozenset(request.grant)
     )
-    tools = ceiling & requested
+    # ``- denied`` last, so no request shape can route around rule 1 above.
+    tools = (ceiling & requested) - denied
     if not request.may_spawn:
         tools = tools - SPAWN_TOOLS
 
@@ -295,22 +315,41 @@ async def get_tree_ledger() -> TreeLedger:
 
 
 async def resolve_root_ceiling_microdollars(user_id: str | None) -> int:
-    """A root tree may spend the configured tree ceiling or whatever the
-    user has left this day/week, whichever is smaller."""
-    static = config.tree_ceiling_microdollars
+    """What one tree may spend:
+
+        min( remaining_budget,
+             max( fraction_of_daily * tier_daily_limit, floor ),
+             absolute_cap )
+
+    Scaling off the caller's *tier-scaled* daily limit rather than a flat
+    constant is what makes the number proportionate — and it is why a
+    NO_TIER user (multiplier 0.0) resolves to 0: a tier that may not spend
+    may not spawn either. The floor keeps a modest daily limit from
+    producing a tree too small to fund one real turn; the cap keeps a
+    generous one from handing a single tree the whole day.
+    """
+    cap = config.tree_ceiling_microdollars
     if not user_id:
-        return static
+        return cap
     daily, weekly, _ = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
+    # ``daily`` is already tier-scaled by get_global_rate_limits.
+    scaled = int(config.tree_ceiling_fraction_of_daily * daily)
+    # A zero tier allowance means no spend at all; the floor must not
+    # resurrect it, so it only applies to a tier that may spend.
+    allowance = max(scaled, config.tree_ceiling_floor_microdollars) if daily > 0 else 0
+    ceiling = min(allowance, cap)
+
     remaining_usd = await get_remaining_usd_budget(
         user_id=user_id, daily_cost_limit=daily, weekly_cost_limit=weekly, floor_usd=0.0
     )
     if remaining_usd == float("inf"):
-        return static
-    return max(0, min(static, int(round(remaining_usd * 1_000_000))))
+        return max(0, ceiling)
+    remaining = int(round(remaining_usd * 1_000_000))
+    return max(0, min(remaining, ceiling))
 
 
 async def admit_turn(

@@ -152,6 +152,13 @@ async def run_copilot_turn_via_queue(
     fallback below: a spawn tool must never append its prompt into a turn
     that is already running under a different envelope.
 
+    That is a deliberate behaviour change, not just a new flag. Continuing a
+    delegation to a teammate who is still working (``delegate_to_expert`` with
+    ``delegated_session_id``) used to queue into their running turn; it now
+    returns ``refused`` with a message telling the caller to wait or start
+    fresh. ``AutoPilotBlock`` keeps the queueing behaviour — it passes no
+    ``spawn`` and leaves ``allow_queue`` at its default.
+
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
     caller that needs to run a copilot turn without occupying its own

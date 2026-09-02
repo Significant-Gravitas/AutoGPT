@@ -487,8 +487,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode actually registers: outside E2B only
+            # ``read_file`` has an MCP wrapper, so mapping Write/Edit solely
+            # to their MCP names silently dropped them from every filtered
+            # turn (they are not in ``base_allowed`` to survive the filter).
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names

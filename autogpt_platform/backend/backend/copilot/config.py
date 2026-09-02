@@ -430,17 +430,39 @@ class ChatConfig(BaseSettings):
         default=10.0,
         ge=0.01,
         le=1000.0,
-        description="Maximum spend in USD per SDK query. The CLI attempts "
-        "to wrap up gracefully when this budget is reached. "
-        "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
+        description="Maximum spend in USD per SDK query — a backstop, not a "
+        "target: it sits ~10x above the observed per-TURN p90. Measured over "
+        "60 days ending 2026-09-02, one PlatformCostLog row = one turn: "
+        "sonnet-5 p50 $0.28 / p75 $0.46 / p90 $0.93 (n=707); "
+        "opus-4-8 p50 $0.49 / p90 $1.34 (n=18). Note request < turn < session: "
+        "over half of all rows are near-zero utility calls (flash-lite, haiku, "
+        "sonar), so unfiltered aggregates understate a real turn. "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
-    tree_ceiling_microdollars: int = Field(
-        default=2_000_000,
+    tree_ceiling_fraction_of_daily: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Share of the user's tier-scaled DAILY limit that one tree "
+        "(a root turn plus everything it spawns) may consume. Scaling off the "
+        "tier rather than a flat number keeps the ceiling proportionate: a "
+        "NO_TIER user (multiplier 0.0) gets 0, i.e. no spawns at all.",
+    )
+    tree_ceiling_floor_microdollars: int = Field(
+        default=500_000,
         ge=0,
-        description="Max metered LLM spend for one root turn and everything it "
-        "spawns, in microdollars; clamped to the user's remaining daily/weekly "
-        "cap. Checked at turn start, so overshoot is at most one turn's cost.",
+        description="Lower bound on a tree ceiling, in microdollars ($0.50), so "
+        "a small daily limit still affords a tree at least one real turn — "
+        "per-SESSION spend is p50 $0.49 / p75 $1.14 / p90 $3.25 (n=319, "
+        "60 days ending 2026-09-02).",
+    )
+    tree_ceiling_microdollars: int = Field(
+        default=10_000_000,
+        ge=0,
+        description="Absolute cap on a tree ceiling, in microdollars ($10.00), "
+        "applied after the tier-scaled fraction and the floor. The effective "
+        "ceiling is min(remaining budget, max(fraction x tier daily, floor), "
+        "this cap). Checked at turn start, so overshoot is at most one turn.",
     )
     tree_max_nodes: int = Field(
         default=8,
