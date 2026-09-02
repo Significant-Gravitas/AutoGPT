@@ -175,8 +175,11 @@ async def _notify_manager(
 
     The parent task's ``origin_session_id`` is where the delegator was
     working when they opened this subtask, so the question belongs there.
-    Best-effort — a lost notification still leaves the escalation entry on
-    the task timeline, which the overseer and Team page can surface.
+    Once the parent has been handed off that session belongs to a previous
+    owner, so the question stays on the timeline instead of waking the
+    wrong expert. Best-effort — a lost notification still leaves the
+    escalation entry on the task timeline, which the overseer and Team
+    page can surface.
     """
     if task.parent_task_id is None:
         return
@@ -184,7 +187,9 @@ async def _notify_manager(
         detail = await get_database_manager_async_client().get_delegated_task(
             user_id, task.parent_task_id
         )
-        parent_session_id = detail.task.origin_session_id if detail else None
+        if detail is None or detail.task.handoff_count > 0:
+            return
+        parent_session_id = detail.task.origin_session_id
         if parent_session_id is None or parent_session_id == session.session_id:
             return
         owner = task.owner.name if task.owner else "A teammate"

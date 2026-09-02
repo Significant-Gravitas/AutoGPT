@@ -64,6 +64,11 @@ async def handoff_delegated_task(
             "Handoff refused: that expert already owns this task."
         )
 
+    # The caller's read may have crossed the RPC boundary and come back
+    # naive; the column is UTC, so a naive value is compared as UTC rather
+    # than failing every handoff as a phantom conflict.
+    if expected_updated_at.tzinfo is None:
+        expected_updated_at = expected_updated_at.replace(tzinfo=UTC)
     trail = list(row.ancestorExpertIds)
     if to_expert_id not in trail:
         trail.append(to_expert_id)

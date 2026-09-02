@@ -48,11 +48,17 @@ def _task(
     return task
 
 
-def _rpc(task: MagicMock, parent_origin_session: str | None = "manager-sess"):
+def _rpc(
+    task: MagicMock,
+    parent_origin_session: str | None = "manager-sess",
+    *,
+    parent_handoffs: int = 0,
+):
     client = MagicMock()
     client.escalate_delegated_task = AsyncMock(return_value=task)
     detail = MagicMock()
     detail.task.origin_session_id = parent_origin_session
+    detail.task.handoff_count = parent_handoffs
     client.get_delegated_task = AsyncMock(return_value=detail)
     return client
 
@@ -109,6 +115,32 @@ async def test_manager_escalation_notifies_the_delegator_session():
     assert delivery["session_id"] == "manager-sess"
     assert "Which repo does this belong in?" in delivery["message"]
     assert "not the user speaking" in delivery["message"]
+
+
+@pytest.mark.asyncio
+async def test_manager_escalation_skips_a_handed_off_parent_session():
+    """After the parent changed hands its origin session belongs to the
+    previous owner; the question stays on the timeline instead."""
+    task = _task()
+    client = _rpc(task, parent_origin_session="old-owner-sess", parent_handoffs=1)
+    queued = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.tools.escalate_task.get_database_manager_async_client",
+            return_value=client,
+        ),
+        patch("backend.copilot.tools.escalate_task.queue_user_message", queued),
+    ):
+        result = await EscalateTaskTool()._execute(
+            user_id="alice",
+            session=_session("worker-sess"),
+            task_id="t-child",
+            question="Which repo does this belong in?",
+            target="manager",
+        )
+
+    assert isinstance(result, TaskUpdateResponse)
+    queued.assert_not_awaited()
 
 
 @pytest.mark.asyncio

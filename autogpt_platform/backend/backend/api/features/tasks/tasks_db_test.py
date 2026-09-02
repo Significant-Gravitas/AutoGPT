@@ -421,6 +421,28 @@ async def test_handoff_swaps_owner_and_records_the_hop(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_handoff_accepts_a_naive_expected_timestamp(server: SpinTestServer):
+    """A read that crossed the RPC boundary can come back naive; the lock
+    must still match the UTC column instead of reporting a conflict."""
+    owner = await _create_seed_user()
+    alice = await _seed_expert(owner.id, "Alice")
+    bob = await _seed_expert(owner.id, "Bob")
+    created = await tasks_db.create_delegated_task(
+        owner.id, title="Root", spec="spec", owner_id=alice.id
+    )
+
+    task = await task_actions.handoff_delegated_task(
+        owner.id,
+        created.id,
+        to_expert_id=bob.id,
+        note="Naive clock, same instant.",
+        expected_updated_at=created.updated_at.replace(tzinfo=None),
+    )
+
+    assert task.owner is not None and task.owner.id == bob.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_handoff_is_refused_after_the_cap(server: SpinTestServer):
     owner = await _create_seed_user()
     alice = await _seed_expert(owner.id, "Alice")
