@@ -805,6 +805,33 @@ def execute_morning_briefing(user_id: str) -> None:
         logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
 
 
+def _task_overseer_crontab(user_id: str) -> str:
+    """Every-15-minutes cron, with the offset spread across the window.
+
+    Same sha256 spreading rationale as ``_morning_briefing_crontab``: a
+    fixed ``*/15`` fires every user at the same instant.
+    """
+    offset = int(hashlib.sha256(user_id.encode("utf-8")).hexdigest(), 16) % 15
+    return f"{offset}-59/15 * * * *"
+
+
+def execute_task_overseer(user_id: str) -> None:
+    """Per-user task-overseer cron body. Same sync-wrapper shape as
+    ``execute_morning_briefing`` — one user's sweep must never affect
+    scheduler health."""
+    from backend.copilot.overseer.service import run_overseer_pass
+
+    try:
+        result = run_async(
+            run_overseer_pass(user_id),
+            timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+        )
+        if any(result.values()):
+            logger.info("Task overseer for user %s: %s", user_id[:12], result)
+    except Exception as e:
+        logger.error("Task overseer failed for user %s: %s", user_id[:12], e)
+
+
 def execute_nightly_batch_sync(user_id: str):
     """Per-user nightly batch-family fan-out cron body.
 
@@ -2486,6 +2513,50 @@ class Scheduler(AppService):
             ),
         }
 
+    @expose
+    def add_task_overseer_schedule(self, user_id: str) -> dict:
+        """Register the 15-minute task-overseer sweep for one user.
+
+        UTC and interval-shaped, so unlike the briefing there is no
+        timezone to compare — an existing job is simply left alone
+        (re-adding would reset a pending ``next_run_time``).
+        """
+        job_id = f"task_overseer_{user_id}"
+        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if existing is not None:
+            return {
+                "id": existing.id,
+                "user_id": user_id,
+                "next_run_time": (
+                    existing.next_run_time.isoformat()
+                    if existing.next_run_time
+                    else None
+                ),
+                "skipped": True,
+                "reason": "already_registered",
+            }
+
+        job = self.scheduler.add_job(
+            execute_task_overseer,
+            kwargs={"user_id": user_id},
+            trigger=CronTrigger.from_crontab(
+                _task_overseer_crontab(user_id), timezone="UTC"
+            ),
+            id=job_id,
+            name=f"Task overseer for {user_id[:12]}",
+            jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info("Registered task overseer job %s for user %s", job.id, user_id[:12])
+        return {
+            "id": job.id,
+            "user_id": user_id,
+            "next_run_time": (
+                job.next_run_time.isoformat() if job.next_run_time else None
+            ),
+        }
+
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
     # ONE per-user cron at user-local 03:00 fans out all batch-family
@@ -2709,6 +2780,7 @@ class SchedulerClient(AppServiceClient):
     add_morning_briefing_schedule = endpoint_to_async(
         Scheduler.add_morning_briefing_schedule
     )
+    add_task_overseer_schedule = endpoint_to_async(Scheduler.add_task_overseer_schedule)
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)
     delete_nightly_batch_schedule = endpoint_to_async(

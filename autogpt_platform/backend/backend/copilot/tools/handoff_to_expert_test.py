@@ -78,9 +78,13 @@ def roster(monkeypatch):
     async def fake_list_experts(user_id, *, with_metrics=True, **_):
         return list(experts.values())
 
+    async def fake_list_pods(user_id):
+        return []
+
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
+    db.list_pods = fake_list_pods
     for module in ("handoff_to_expert", "expert_delegation"):
         monkeypatch.setattr(
             f"backend.copilot.tools.{module}.experts_db",
@@ -619,13 +623,13 @@ class TestFailedTransfer:
 
 class TestGating:
     def test_handoff_is_hidden_in_autopilot_sessions(self) -> None:
-        assert TOOL_GROUPS["handoff_to_expert"] == "experts"
+        assert TOOL_GROUPS["handoff_to_expert"] == "expert_delegation"
         names = {t["function"]["name"] for t in get_available_tools()}
         # What survives the filter, NOT what it hid — naming this `hidden`
         # invites "fixing" the assertion below into its own inverse.
         remaining = {
             t["function"]["name"]
-            for t in get_available_tools(disabled_groups=["experts"])
+            for t in get_available_tools(disabled_groups=["expert_delegation"])
         }
         assert "handoff_to_expert" in names
         assert "handoff_to_expert" not in remaining
@@ -671,29 +675,36 @@ class TestHandoffPolling:
 
 
 class TestExpertToolGate:
-    """The shared engine gate: flag off hides everything, flag on splits by
-    session role. Anonymous turns never reach the flag (engines pass
-    experts_enabled=False for user_id=None)."""
+    """The shared engine gate: hire-experts off hides everything, on splits
+    by session role, and the task-spine groups additionally require the
+    expert-task-management flag. Anonymous turns never reach the flags
+    (engines pass experts_enabled=False for user_id=None)."""
 
     def test_flag_off_disables_every_team_group(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=False, expert_id=None) == [
-            "experts",
-            "expert_admin",
-            "delegation",
-        ]
         assert expert_tool_disabled_groups(
-            experts_enabled=False, expert_id="expert-a"
-        ) == ["experts", "expert_admin", "delegation"]
+            experts_enabled=False, task_management_enabled=False, expert_id=None
+        ) == ["experts", "expert_admin", "team", "delegation", "expert_delegation"]
+        assert expert_tool_disabled_groups(
+            experts_enabled=False, task_management_enabled=True, expert_id="expert-a"
+        ) == ["experts", "expert_admin", "team", "delegation", "expert_delegation"]
 
     def test_plain_session_loses_expert_session_tools(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=True, expert_id=None) == [
-            "experts"
-        ]
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=True, expert_id=None
+        ) == ["experts", "expert_delegation"]
 
     def test_expert_session_loses_staffing_tools(self) -> None:
         assert expert_tool_disabled_groups(
-            experts_enabled=True, expert_id="expert-a"
+            experts_enabled=True, task_management_enabled=True, expert_id="expert-a"
         ) == ["expert_admin"]
+
+    def test_task_management_off_hides_the_task_spine_only(self) -> None:
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=False, expert_id=None
+        ) == ["experts", "expert_delegation", "delegation"]
+        assert expert_tool_disabled_groups(
+            experts_enabled=True, task_management_enabled=False, expert_id="expert-a"
+        ) == ["expert_admin", "delegation", "expert_delegation"]
 
 
 class TestExecuteToolEnforcesDisabledGroups:

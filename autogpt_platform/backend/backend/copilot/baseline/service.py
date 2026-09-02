@@ -28,7 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
-from backend.copilot import engine_switch
+from backend.copilot import engine_switch, task_spine
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -76,8 +76,11 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
+    assemble_system_prompt,
+    copilot_role,
     get_delegation_supplement,
     get_graphiti_supplement,
+    get_role_charter,
 )
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
@@ -1834,7 +1837,8 @@ async def stream_chat_completion_baseline(
     # Append tool documentation, technical notes, and Graphiti memory instructions
     graphiti_enabled = await is_enabled_for_user(user_id)
 
-    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    role = copilot_role(session.expert_id)
+    graphiti_supplement = get_graphiti_supplement(role) if graphiti_enabled else ""
     # The whole expert-team surface rides the hire-experts flag, failing
     # closed for anonymous turns.  Resolved here rather than at the
     # tool-filtering site below so the delegation rules can be gated on the
@@ -1843,20 +1847,35 @@ async def stream_chat_completion_baseline(
     experts_enabled = bool(user_id) and await is_feature_enabled(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
-    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+    # Task management is a child gate of the experts surface: the delegation
+    # rules and task-spine tools ride expert-task-management on top of
+    # hire-experts, so the spine can be turned off (or removed) without
+    # darkening the rest of the experts surface.
+    task_management_enabled = (
+        experts_enabled
+        and user_id is not None
+        and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        )
+    )
+    delegation_supplement = (
+        get_delegation_supplement(role) if task_management_enabled else ""
+    )
+    role_charter = get_role_charter(role) if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    system_prompt = (
-        base_system_prompt
-        + SHARED_TOOL_NOTES
-        + delegation_supplement
-        + graphiti_supplement
-        + builder_session_suffix
-        + expert_session_suffix
+    system_prompt = assemble_system_prompt(
+        base_system_prompt,
+        engine_supplement=SHARED_TOOL_NOTES,
+        delegation_supplement=delegation_supplement,
+        graphiti_supplement=graphiti_supplement,
+        role_charter=role_charter,
+        builder_session_suffix=builder_session_suffix,
+        expert_session_suffix=expert_session_suffix,
     )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -1952,6 +1971,11 @@ async def stream_chat_completion_baseline(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
+            task_ctx=(
+                await task_spine.build_task_context(user_id, session)
+                if task_management_enabled
+                else ""
+            ),
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not
@@ -2104,7 +2128,9 @@ async def stream_chat_completion_baseline(
     # above; the role split lives in the shared helper.
     disabled_tool_groups.extend(
         expert_tool_disabled_groups(
-            experts_enabled=experts_enabled, expert_id=session.expert_id
+            experts_enabled=experts_enabled,
+            task_management_enabled=task_management_enabled,
+            expert_id=session.expert_id,
         )
     )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)

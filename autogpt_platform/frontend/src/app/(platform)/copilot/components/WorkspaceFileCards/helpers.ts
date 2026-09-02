@@ -26,19 +26,29 @@ export interface SessionSchedule {
   timezone: string | null;
 }
 
+export interface SessionTask {
+  taskId: string;
+  title: string;
+  /** Teammate the work was delegated to; null when Autopilot kept it. */
+  expertName: string | null;
+  status: string | null;
+}
+
 const RUN_TOOLS = new Set(["tool-run_agent", "tool-schedule_agent"]);
 
 /**
- * Runs triggered and schedules created in this chat, mined from the session's
- * tool outputs — there is no session-scoped REST list for either, the chat
- * transcript is the source of truth.
+ * Runs triggered, schedules created, and tasks delegated in this chat, mined
+ * from the session's tool outputs — there is no session-scoped REST list for
+ * any of them, the chat transcript is the source of truth.
  */
 export function getSessionActivity(messages: UIMessage[]): {
   runs: SessionRun[];
   schedules: SessionSchedule[];
+  tasks: SessionTask[];
 } {
   const runs = new Map<string, SessionRun>();
   const schedules = new Map<string, SessionSchedule>();
+  const tasks = new Map<string, SessionTask>();
   const deletedScheduleIds = new Set<string>();
 
   for (const message of messages) {
@@ -74,6 +84,21 @@ export function getSessionActivity(messages: UIMessage[]): {
         continue;
       }
       if (!output) continue;
+
+      // A delegation answers with the DelegatedTask receipt it opened; a
+      // later result for the same receipt re-stamps the row, so the status
+      // follows the delegation as the chat polls it.
+      const taskId = str(output, "task_id");
+      const taskTitle = str(output, "task_title");
+      if (taskId && taskTitle) {
+        const expert = asObject(output.expert);
+        tasks.set(taskId, {
+          taskId,
+          title: taskTitle,
+          expertName: expert ? str(expert, "name") : null,
+          status: str(output, "status"),
+        });
+      }
 
       if (RUN_TOOLS.has(part.type)) {
         const name = str(output, "graph_name", "agent_name");
@@ -160,6 +185,7 @@ export function getSessionActivity(messages: UIMessage[]): {
   return {
     runs: [...runs.values()].reverse(),
     schedules: [...schedules.values()].reverse(),
+    tasks: [...tasks.values()].reverse(),
   };
 }
 

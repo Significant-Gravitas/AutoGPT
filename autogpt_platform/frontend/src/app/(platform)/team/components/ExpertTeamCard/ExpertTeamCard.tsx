@@ -18,18 +18,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import {
+  Message01Icon,
   PencilEdit02Icon,
   PlusSignIcon,
   Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
-import Image from "next/image";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
 import { SpendMeter } from "./components/SpendMeter";
 import {
+  ACTION_BUTTON_CLASS,
+  OUTLINE_ACTION_BUTTON_CLASS,
   getNeedsSetupCount,
   getScheduleCountLabel,
   getWeeklySpend,
@@ -37,8 +39,6 @@ import {
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
-
-const TEAM_CARD_BANNER_SRC = "/images/team-card-banner.jpg";
 
 interface Props {
   expert: Expert;
@@ -77,69 +77,96 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="flex flex-col rounded-[1.75rem] border border-zinc-200 bg-white p-1 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]">
-      <div className="relative h-24 w-full overflow-hidden rounded-t-[1.5rem]">
-        <Image
-          src={TEAM_CARD_BANNER_SRC}
-          alt=""
-          fill
-          sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-          className="object-cover"
+    <div className="relative flex flex-col rounded-[1.75rem] bg-white p-1 shadow-zinc-950 transition-transform duration-200 smooth-shadow-ring-sm hover:-translate-y-0.5">
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-1">
+        {pods.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="icon"
+                size="small"
+                className="bg-white p-2 hover:bg-zinc-100"
+                aria-label={
+                  currentPod
+                    ? `Move to pod (currently ${currentPod.name})`
+                    : "Move to pod"
+                }
+              >
+                <Icon icon={UserGroupIcon} size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="max-h-72 w-52 overflow-y-auto"
+            >
+              {pods.map((pod) => (
+                <DropdownMenuItem
+                  key={pod.id}
+                  onSelect={() => onAssignPod(expert.id, pod.id)}
+                >
+                  <span className="flex-1 truncate">{pod.name}</span>
+                  {expert.pod_id === pod.id ? (
+                    <Icon icon={Tick02Icon} size={16} className="ml-2" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+              {expert.pod_id ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => onAssignPod(expert.id, null)}
+                  >
+                    Remove from pod
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        <Button
+          variant="icon"
+          size="small"
+          aria-label="Edit Soul"
+          className="bg-white p-2 hover:bg-zinc-100"
+          onClick={handleEditSoulClick}
+        >
+          <Icon icon={PencilEdit02Icon} size={16} />
+        </Button>
+        <FireExpertMenu
+          expertName={expert.name}
+          onFire={openFire}
+          testId="expert-card-actions"
+          triggerClassName="bg-white text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
         />
-        {/* Fades the banner into the card background along its bottom edge, so
-            the avatar straddling the seam has no hard line to cross. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 shadow-[inset_0_-4rem_3rem_-1.5rem_hsl(var(--card))]"
-        />
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
-          <Button
-            variant="icon"
-            size="small"
-            aria-label="Edit Soul"
-            className="bg-white p-2 hover:bg-zinc-100"
-            onClick={handleEditSoulClick}
-          >
-            <Icon icon={PencilEdit02Icon} size={16} />
-          </Button>
-          <FireExpertMenu
-            expertName={expert.name}
-            onFire={openFire}
-            testId="expert-card-actions"
-            triggerClassName="bg-white text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-          />
-        </div>
       </div>
-      <div className="flex flex-1 flex-col gap-3 p-4 pt-0">
+      <div className="flex flex-1 flex-col gap-3 p-4">
         <Link
           href={`/team/${expert.id}`}
           aria-label={`View ${expert.name}`}
           className="flex flex-col gap-3"
         >
-          <div className="flex items-center gap-3">
-            {/* Half the avatar sits over the banner, half below it. */}
-            <Avatar className="-mt-9 h-[4.5rem] w-[4.5rem] self-start ring-4 ring-white">
+          <div className="flex flex-col gap-2">
+            <Avatar className="h-14 w-14 self-start rounded-2xl">
               {expert.avatar_url ? (
                 <AvatarImage
                   src={expert.avatar_url}
                   alt={expert.name}
-                  width={72}
-                  height={72}
+                  width={56}
+                  height={56}
                   className="bg-white"
                 />
               ) : null}
-              <AvatarFallback>{expert.name}</AvatarFallback>
+              <AvatarFallback square className="grain-overlay">
+                {expert.name}
+              </AvatarFallback>
             </Avatar>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <Text variant="large-medium">{expert.name}</Text>
               <Text variant="small" className="text-zinc-500">
                 {expert.role}
               </Text>
             </div>
           </div>
-          <Text variant="body" className="line-clamp-2 min-h-12 text-zinc-600">
-            {expert.tagline || expert.identity}
-          </Text>
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
               <Text variant="small" className="text-zinc-500">
@@ -195,63 +222,22 @@ export function ExpertTeamCard({
           <Button
             as="NextLink"
             href={`/copilot?expertId=${expert.id}`}
-            variant="secondary"
+            variant="primary"
             size="small"
+            className={ACTION_BUTTON_CLASS}
+            leftIcon={<Icon icon={Message01Icon} size={16} />}
           >
             Chat
           </Button>
           <Button
-            variant="ghost"
+            variant="outline"
             size="small"
+            className={OUTLINE_ACTION_BUTTON_CLASS}
             leftIcon={<Icon icon={PlusSignIcon} size={16} />}
             onClick={handleInstallClick}
           >
             Install workflow
           </Button>
-          {pods.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="small"
-                  leftIcon={<Icon icon={UserGroupIcon} size={16} />}
-                  aria-label={
-                    currentPod
-                      ? `Move to pod (currently ${currentPod.name})`
-                      : "Move to pod"
-                  }
-                >
-                  {currentPod ? currentPod.name : "Move to pod"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="max-h-72 w-52 overflow-y-auto"
-              >
-                {pods.map((pod) => (
-                  <DropdownMenuItem
-                    key={pod.id}
-                    onSelect={() => onAssignPod(expert.id, pod.id)}
-                  >
-                    <span className="flex-1 truncate">{pod.name}</span>
-                    {expert.pod_id === pod.id ? (
-                      <Icon icon={Tick02Icon} size={16} className="ml-2" />
-                    ) : null}
-                  </DropdownMenuItem>
-                ))}
-                {expert.pod_id ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onSelect={() => onAssignPod(expert.id, null)}
-                    >
-                      Remove from pod
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
         </div>
       </div>
       <FireExpertDialog

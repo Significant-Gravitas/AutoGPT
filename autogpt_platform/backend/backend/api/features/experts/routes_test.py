@@ -1218,6 +1218,107 @@ def test_list_pods_returns_user_pods(
     )
 
 
+def test_update_pod_sets_the_lead(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_set = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.set_pod_lead",
+        new_callable=AsyncMock,
+        return_value=_make_pod(lead_expert_id="expert-1"),
+    )
+
+    response = client.patch("/experts/pods/pod-1", json={"lead_expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert response.json()["lead_expert_id"] == "expert-1"
+    mock_set.assert_awaited_once_with(test_user_id, "pod-1", "expert-1")
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_set_lead"
+    )
+
+
+def test_update_pod_clears_the_lead_with_explicit_null(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_set = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.set_pod_lead",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.patch("/experts/pods/pod-1", json={"lead_expert_id": None})
+
+    assert response.status_code == 200
+    assert response.json()["lead_expert_id"] is None
+    mock_set.assert_awaited_once_with(test_user_id, "pod-1", None)
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True), "expert_pod_clear_lead"
+    )
+
+
+def test_update_pod_rejects_an_omitted_lead_field(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mock_set = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.set_pod_lead",
+        new_callable=AsyncMock,
+        return_value=_make_pod(),
+    )
+
+    response = client.patch("/experts/pods/pod-1", json={})
+
+    assert response.status_code == 422
+    mock_set.assert_not_awaited()
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_pod_lead_omitted",
+    )
+
+
+def test_update_pod_unknown_pod_returns_404(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.set_pod_lead",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodNotFoundError("pod-9"),
+    )
+
+    response = client.patch("/experts/pods/pod-9", json={"lead_expert_id": "expert-1"})
+
+    assert response.status_code == 404
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_pod_lead_unknown_pod",
+    )
+
+
+def test_update_pod_non_member_lead_returns_409(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.set_pod_lead",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertPodLeadNotMemberError("expert-9", "pod-1"),
+    )
+
+    response = client.patch("/experts/pods/pod-1", json={"lead_expert_id": "expert-9"})
+
+    assert response.status_code == 409
+    assert "not a member" in response.json()["detail"]
+    configured_snapshot.assert_match(
+        json.dumps(response.json(), indent=2, sort_keys=True),
+        "expert_pod_lead_non_member",
+    )
+
+
 def test_pods_route_is_not_shadowed_by_expert_detail(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

@@ -1,13 +1,10 @@
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import {
   getArchiveExpertMockHandler,
   getGetExpertDetachPreviewMockHandler,
   getGetExpertMockHandler,
-  getListExpertRunsMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
-import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -120,40 +117,10 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-const mariaRuns: ExpertRun[] = [
-  {
-    execution_id: "run-1",
-    graph_id: "graph-1",
-    agent_name: "Weekly Report",
-    library_agent_id: "lib-1",
-    status: "completed",
-    output_type: "table",
-    output_key: "result",
-    needs_review: false,
-    started_at: null,
-    ended_at: null,
-    link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
-  },
-  {
-    execution_id: "run-2",
-    graph_id: "graph-2",
-    agent_name: "SEO Audit",
-    library_agent_id: "lib-2",
-    status: "review",
-    output_type: "doc",
-    output_key: "report",
-    needs_review: true,
-    started_at: null,
-    ended_at: null,
-    link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
-  },
-];
-
 beforeEach(() => {
   server.use(
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
-    getListExpertRunsMockHandler([]),
   );
 });
 
@@ -161,6 +128,10 @@ afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   pushMock.mockReset();
 });
+
+async function openTab(name: string) {
+  await userEvent.click(await screen.findByRole("tab", { name }));
+}
 
 describe("ExpertDetailPage", () => {
   test("renders the expert profile with workflows and schedule state", async () => {
@@ -171,8 +142,11 @@ describe("ExpertDetailPage", () => {
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
+
+    await openTab("Skills");
     expect(screen.getByText("Content strategy")).toBeDefined();
 
+    await openTab("Workflows");
     const workflowRows = screen.getAllByTestId("expert-workflow-row");
     expect(workflowRows).toHaveLength(2);
     expect(within(workflowRows[0]).getByText("Content Calendar")).toBeDefined();
@@ -186,7 +160,7 @@ describe("ExpertDetailPage", () => {
   test("lists the expert's schedules with edit and delete actions", async () => {
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Schedules");
     const row = await screen.findByTestId("schedule-row");
     expect(row.getAttribute("data-schedule-id")).toBe("sched-1");
     expect(screen.getByRole("button", { name: /Edit schedule/ })).toBeDefined();
@@ -199,6 +173,7 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
+    await openTab("Schedules");
     fireEvent.click(await screen.findByTestId("schedule-delete-button"));
     fireEvent.click(await screen.findByTestId("schedule-confirm-delete"));
 
@@ -210,68 +185,15 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
-    expect(screen.getByText(/No schedules yet/)).toBeDefined();
+    await openTab("Schedules");
+    expect(await screen.findByText(/No schedules yet/)).toBeDefined();
   });
 
-  test("shows the expert's recent work with honest status chips", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
+  test("has no Work tab — the Tasks table is the single work view", async () => {
     render(<ExpertDetailPage />);
 
     await screen.findByRole("heading", { name: "Maria" });
-    const workList = await screen.findByRole("list", { name: "Expert work" });
-    expect(within(workList).getByText("Weekly Report")).toBeDefined();
-    expect(within(workList).getByText("Completed")).toBeDefined();
-    // A run paused for review reads "Waiting for review" — never "Completed"
-    // with a contradictory badge next to it.
-    expect(within(workList).getByText("Waiting for review")).toBeDefined();
-    expect(within(workList).queryByText("Needs review")).toBeNull();
-  });
-
-  test("filters work to runs that need review", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
-    render(<ExpertDetailPage />);
-
-    await screen.findByRole("heading", { name: "Maria" });
-    await screen.findByRole("list", { name: "Expert work" });
-
-    fireEvent.click(screen.getByRole("button", { name: /Needs review \(1\)/ }));
-
-    const workList = screen.getByRole("list", { name: "Expert work" });
-    expect(within(workList).queryByText("Weekly Report")).toBeNull();
-    expect(within(workList).getByText("SEO Audit")).toBeDefined();
-  });
-
-  test("shows an empty work message when there is no completed work", async () => {
-    render(<ExpertDetailPage />);
-
-    await screen.findByRole("heading", { name: "Maria" });
-    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
-  });
-
-  test("shows a retryable error when recent work fails to load", async () => {
-    let attempts = 0;
-    server.use(
-      http.get("/api/proxy/api/experts/:expertId/runs", () => {
-        attempts += 1;
-        return attempts === 1
-          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
-          : HttpResponse.json(mariaRuns);
-      }),
-    );
-    const user = userEvent.setup();
-
-    render(<ExpertDetailPage />);
-
-    expect(
-      await screen.findByText("We could not load this expert's recent work."),
-    ).toBeDefined();
-    await user.click(screen.getByRole("button", { name: /try again/i }));
-
-    expect(await screen.findByText("Weekly Report")).toBeDefined();
-    expect(attempts).toBe(2);
+    expect(screen.queryByRole("tab", { name: "Work" })).toBeNull();
   });
 
   test("paused expert offers one-click resume", async () => {
@@ -291,7 +213,7 @@ describe("ExpertDetailPage", () => {
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
-  test("fires the expert from the header menu and returns to the team page", async () => {
+  test("fires the expert from the settings tab and returns to the team page", async () => {
     const archiveSpy = vi.fn();
     server.use(
       getGetExpertDetachPreviewMockHandler({
@@ -303,13 +225,8 @@ describe("ExpertDetailPage", () => {
 
     render(<ExpertDetailPage />);
 
-    await screen.findByRole("heading", { name: "Maria" });
-    fireEvent.pointerDown(screen.getByTestId("expert-detail-actions"), {
-      button: 0,
-    });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Fire Maria/ }),
-    );
+    await openTab("Settings");
+    fireEvent.click(await screen.findByTestId("expert-fire-button"));
 
     const dialog = await screen.findByRole("dialog", { name: "Fire Maria?" });
     expect(

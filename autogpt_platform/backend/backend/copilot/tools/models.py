@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.api.features.tasks.models import DelegatedTask as DelegatedTaskModel
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
@@ -128,6 +129,10 @@ class ResponseType(str, Enum):
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
     TEAM_ROSTER = "team_roster"
+
+    # Delegated tasks (handoff / escalate / report)
+    TASK_UPDATE = "task_update"
+    DELEGATION_CONFIRMATION = "delegation_confirmation"
 
 
 # Base response model
@@ -382,6 +387,67 @@ class DelegatedExpertInfo(BaseModel):
     color: str = ""
 
 
+class TaskUpdateResponse(ToolResponseBase):
+    """Outcome of a task-spine write: handoff, escalation, or report."""
+
+    type: ResponseType = ResponseType.TASK_UPDATE
+    task_id: str
+    task_title: str
+    task_status: str = Field(
+        description="The task's status after the write (WORKING, WAITING_USER, DONE…).",
+    )
+    action: Literal["handoff", "escalation", "report"]
+    expert: DelegatedExpertInfo | None = Field(
+        default=None,
+        description="The task's owner after the write, when it has one.",
+    )
+
+    @classmethod
+    def from_task(
+        cls,
+        task: "DelegatedTaskModel",
+        *,
+        action: Literal["handoff", "escalation", "report"],
+        message: str,
+        session_id: str | None,
+    ) -> "TaskUpdateResponse":
+        return cls(
+            message=message,
+            session_id=session_id,
+            task_id=task.id,
+            task_title=task.title,
+            task_status=task.status,
+            action=action,
+            expert=(
+                DelegatedExpertInfo(
+                    id=task.owner.id,
+                    name=task.owner.name,
+                    role=task.owner.role,
+                    avatar_url=task.owner.avatar_url,
+                )
+                if task.owner
+                else None
+            ),
+        )
+
+
+class DelegationConfirmationResponse(ToolResponseBase):
+    """A delegation the model proposes but must not send yet.
+
+    Returned when ``delegate_to_expert`` is called with
+    ``require_confirmation=true`` — the router's uncertain path. Nothing was
+    created; the frontend renders an Accept / pick-someone-else card and the
+    accepted delegation arrives as a fresh tool call without the flag.
+    """
+
+    type: ResponseType = ResponseType.DELEGATION_CONFIRMATION
+    expert: DelegatedExpertInfo
+    task_title: str
+    prompt: str = Field(
+        description="The task prompt that will be sent if the user accepts.",
+    )
+
+
 class SubSessionStatusResponse(ToolResponseBase):
     """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
 
@@ -436,6 +502,18 @@ class SubSessionStatusResponse(ToolResponseBase):
             "Teammate the work was delegated to. Set only for "
             "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
+    )
+    task_id: str | None = Field(
+        default=None,
+        description=(
+            "DelegatedTask receipt opened for this delegation. Set only by "
+            "``delegate_to_expert``; the task drawer at /team?task=<id> "
+            "shows its progress, subtasks, and spend."
+        ),
+    )
+    task_title: str | None = Field(
+        default=None,
+        description="Title of the DelegatedTask receipt, when one was opened.",
     )
     tool_calls: list[dict[str, Any]] | None = Field(
         default=None,

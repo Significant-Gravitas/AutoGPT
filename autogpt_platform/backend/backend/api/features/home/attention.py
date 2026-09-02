@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.tasks.models import DelegatedTask, TaskAmendment
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -23,6 +24,8 @@ def compose_attention_items(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     credits_balance: int | None,
     questions: list[ChatSessionInfo] | None = None,
+    tasks: list[DelegatedTask] | None = None,
+    failed_tasks: list[DelegatedTask] | None = None,
 ) -> list[HomeAttentionItem]:
     expert_by_id = {expert.id: expert for expert in experts}
     items = [_review_attention(review, now) for review in reviews]
@@ -33,6 +36,25 @@ def compose_attention_items(
         _question_attention(session, question, expert_by_id)
         for session, question in _open_questions(questions or [])
         if _is_answerable(session, expert_by_id)
+    )
+    escalations = _open_escalations(tasks or [])
+    items.extend(
+        _escalation_attention(task, escalation) for task, escalation in escalations
+    )
+    items.extend(
+        _failed_task_attention(task)
+        for task in failed_tasks or []
+        if _failed_after_retry(task)
+    )
+    # A stale task with a live escalation already has an actionable card
+    # above — a second "still waiting" row for the same task is just noise.
+    escalated_ids = {task.id for task, _ in escalations}
+    items.extend(
+        _stale_task_attention(task)
+        for task in tasks or []
+        if task.stale_at
+        and task.status == "WAITING_USER"
+        and task.id not in escalated_ids
     )
     if credits_balance is not None and credits_balance <= 0 and schedules:
         items.append(_credits_attention(len(schedules)))
@@ -144,6 +166,112 @@ def _question_attention(
             label="Answer",
             href=f"/copilot?sessionId={quote(session.session_id)}",
         ),
+    )
+
+
+def _open_escalations(
+    tasks: list[DelegatedTask],
+) -> list[tuple[DelegatedTask, TaskAmendment]]:
+    """WAITING_USER tasks paired with their latest escalation question.
+
+    Answering flips the task back to WORKING, so only WAITING_USER rows can
+    carry a live question; a waiting task with no escalation entry (a legacy
+    or hand-edited row) has nothing to render and is skipped.
+    """
+    pairs = []
+    for task in tasks:
+        if task.status != "WAITING_USER":
+            continue
+        escalations = [a for a in task.amendments if a.kind == "escalation"]
+        if escalations:
+            pairs.append((task, escalations[-1]))
+    return pairs
+
+
+def _escalation_attention(
+    task: DelegatedTask, escalation: TaskAmendment
+) -> HomeAttentionItem:
+    """A task an expert parked on the user. Answering here resumes it, so the
+    card carries the question, the options, and the task id the frontend
+    posts the answer to."""
+    asker = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-escalation-{task.id}",
+        kind="task_escalation",
+        priority="high",
+        title=f"{asker} needs a decision on “{task.title}”",
+        description=_clip(escalation.question or escalation.note),
+        why_it_matters="The task is paused until you answer.",
+        expert=(
+            HomeExpert(
+                id=task.owner.id,
+                name=task.owner.name,
+                role=task.owner.role,
+                avatar_url=task.owner.avatar_url,
+            )
+            if task.owner
+            else None
+        ),
+        created_at=as_utc(escalation.at),
+        task_id=task.id,
+        options=escalation.options,
+        primary_action=HomeAction(
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
+        ),
+    )
+
+
+def _failed_after_retry(task: DelegatedTask) -> bool:
+    """Only the failures the overseer gave up on earn a card — a run the
+    user watched fail in chat already told them."""
+    return task.status == "FAILED" and any(a.kind == "retry" for a in task.amendments)
+
+
+def _failed_task_attention(task: DelegatedTask) -> HomeAttentionItem:
+    owner = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-failed-{task.id}",
+        kind="task_failed",
+        priority="high",
+        title=f"“{task.title}” failed after a retry",
+        description=_clip(task.outcome_summary or f"{owner} could not finish it."),
+        why_it_matters="The work stopped; restart it or hand it to someone else.",
+        expert=_task_expert(task),
+        created_at=as_utc(task.updated_at),
+        task_id=task.id,
+        primary_action=HomeAction(
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
+        ),
+    )
+
+
+def _stale_task_attention(task: DelegatedTask) -> HomeAttentionItem:
+    owner = task.owner.name if task.owner else "Autopilot"
+    return HomeAttentionItem(
+        id=f"task-stale-{task.id}",
+        kind="task_stale",
+        priority="normal",
+        title=f"Still waiting on you: “{task.title}”",
+        description=f"{owner} asked over a week ago and is still waiting.",
+        why_it_matters="The task stays parked until you answer — it is never "
+        "cancelled for you.",
+        expert=_task_expert(task),
+        created_at=as_utc(task.stale_at) if task.stale_at else None,
+        task_id=task.id,
+        primary_action=HomeAction(
+            label="View task", href=f"/team/tasks/{quote(task.id)}"
+        ),
+    )
+
+
+def _task_expert(task: DelegatedTask) -> HomeExpert | None:
+    if task.owner is None:
+        return None
+    return HomeExpert(
+        id=task.owner.id,
+        name=task.owner.name,
+        role=task.owner.role,
+        avatar_url=task.owner.avatar_url,
     )
 
 

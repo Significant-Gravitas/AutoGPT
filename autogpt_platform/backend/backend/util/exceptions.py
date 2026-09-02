@@ -326,6 +326,20 @@ class DuplicateChatMessageError(ValueError):
     """The same user message is already in flight for this chat session."""
 
 
+class TaskDelegationRefusedError(ValueError):
+    """A DelegatedTask write was refused by delegation policy (loop, depth,
+    handoff cap, open subtasks). The message is written for the calling
+    agent and safe to return to it verbatim. Lives here rather than in the
+    tasks feature so the DatabaseManager RPC layer can reconstruct it for
+    Prisma-less callers instead of retrying it as a server error."""
+
+
+class TaskUpdateConflictError(Exception):
+    """A DelegatedTask optimistic-concurrency write lost the race: the row
+    changed between read and write. Retryable — re-read the task and try
+    again."""
+
+
 class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
 

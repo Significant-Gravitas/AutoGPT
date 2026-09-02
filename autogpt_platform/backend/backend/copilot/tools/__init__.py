@@ -25,6 +25,7 @@ from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
+from .escalate_task import EscalateTaskTool
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
@@ -37,6 +38,7 @@ from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
+from .handoff_task import HandoffTaskTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
@@ -54,6 +56,7 @@ from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .report_task import ReportTaskTool
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -124,6 +127,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
+    "handoff_task": HandoffTaskTool(),
+    "escalate_task": EscalateTaskTool(),
+    "report_task": ReportTaskTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
@@ -187,7 +193,9 @@ run_agent_tool = TOOL_REGISTRY["run_agent"]
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
-ToolGroup = Literal["graphiti", "experts", "expert_admin", "delegation"]
+ToolGroup = Literal[
+    "graphiti", "experts", "expert_admin", "team", "delegation", "expert_delegation"
+]
 
 TOOL_GROUPS: dict[str, ToolGroup] = {
     "memory_store": "graphiti",
@@ -198,9 +206,6 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # disable this group when the session has no expert_id.
     "update_expert_soul": "experts",
     "confirm_expert_soul_update": "experts",
-    # A handoff transfers a task between experts, so it needs a caller with
-    # an expert identity to hand it off from.
-    "handoff_to_expert": "experts",
     # Staffing the team is the user's call, made in the Autopilot chat — an
     # expert must not hire its own teammates.  The engines disable this
     # group whenever the session HAS an expert_id (the opposite gate to
@@ -209,29 +214,50 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "raise_expert": "expert_admin",
     "update_expert": "expert_admin",
     "confirm_expert_change": "expert_admin",
-    # Delegation works from either side of ``session.expert_id`` (AutoPilot
-    # and expert sessions alike), so it has its own group: the engines
-    # disable it only when the user's hire-experts flag is off.
+    # Read-only roster listing: works from either side of
+    # ``session.expert_id`` and rides only the hire-experts flag — with the
+    # flag off there is no team to list.
+    "list_team": "team",
+    # The DelegatedTask spine rides the expert-task-management flag on top
+    # of hire-experts.  Delegation works from either side of
+    # ``session.expert_id`` (AutoPilot and expert sessions alike).
     "delegate_to_expert": "delegation",
-    # Read-only, but it shares the same gate: with the flag off there is no
-    # team to list.
-    "list_team": "delegation",
+    "handoff_task": "delegation",
+    "escalate_task": "delegation",
+    "report_task": "delegation",
+    # A handoff transfers a task between experts, so it needs a caller with
+    # an expert identity to hand it off from — task-spine gate plus the
+    # expert-session-only split.
+    "handoff_to_expert": "expert_delegation",
 }
 
 
 def expert_tool_disabled_groups(
-    *, experts_enabled: bool, expert_id: str | None
+    *,
+    experts_enabled: bool,
+    task_management_enabled: bool,
+    expert_id: str | None,
 ) -> list[ToolGroup]:
     """Expert-team groups to disable for a turn — shared by both engines.
 
     Without the hire-experts flag every team tool is hidden. With it, the
     split follows the session role: an expert session loses the staffing
     tools (``expert_admin``), a plain Autopilot session loses the
-    expert-session tools (``experts``).
+    expert-session tools (``experts`` and ``expert_delegation``). The
+    task-spine groups additionally require the expert-task-management flag,
+    so task management can be switched off without darkening the rest of
+    the experts surface.
     """
     if not experts_enabled:
-        return ["experts", "expert_admin", "delegation"]
-    return ["expert_admin"] if expert_id else ["experts"]
+        return ["experts", "expert_admin", "team", "delegation", "expert_delegation"]
+    disabled: list[ToolGroup] = (
+        ["expert_admin"] if expert_id else ["experts", "expert_delegation"]
+    )
+    if not task_management_enabled:
+        for group in ("delegation", "expert_delegation"):
+            if group not in disabled:
+                disabled.append(group)
+    return disabled
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

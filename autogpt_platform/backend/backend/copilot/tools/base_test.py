@@ -1,16 +1,23 @@
-"""Tests for BaseTool large-output persistence in execute()."""
+"""Tests for BaseTool large-output persistence and credential parking in execute()."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import (
     _LARGE_OUTPUT_THRESHOLD,
     BaseTool,
     _persist_and_summarize,
     _summarize_binary_fields,
 )
-from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.models import (
+    ResponseType,
+    SetupInfo,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+    UserReadiness,
+)
 
 
 class _HugeOutputTool(BaseTool):
@@ -192,3 +199,85 @@ class TestSummarizeBinaryFields:
         data = {"message": "hello", "type": "info"}
         raw = json.dumps(data)
         assert _summarize_binary_fields(raw) == raw
+
+
+# ---------------------------------------------------------------------------
+# BaseTool.execute — missing credentials park a Home "Needs You" row
+# ---------------------------------------------------------------------------
+
+
+class _SetupCardTool(BaseTool):
+    """Fake tool that returns a setup card, optionally missing credentials."""
+
+    def __init__(self, *, missing: dict | None) -> None:
+        self._missing = missing
+
+    @property
+    def name(self) -> str:
+        return "setup_card_tool"
+
+    @property
+    def description(self) -> str:
+        return "Returns a setup card"
+
+    @property
+    def parameters(self) -> dict:
+        return {"type": "object", "properties": {}}
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        readiness = UserReadiness(
+            has_all_credentials=not self._missing,
+            missing_credentials=self._missing or {},
+            ready_to_run=not self._missing,
+        )
+        return SetupRequirementsResponse(
+            message="setup",
+            setup_info=SetupInfo(
+                agent_id="agent-1",
+                agent_name="Agent",
+                user_readiness=readiness,
+            ),
+        )
+
+
+class TestExecuteParksMissingCredentials:
+    def _session(self) -> ChatSession:
+        return ChatSession.new(user_id="user-1", dry_run=False)
+
+    @pytest.mark.asyncio
+    async def test_missing_credentials_park_a_pending_question(self):
+        session = self._session()
+        db = MagicMock()
+        db.set_session_pending_question = AsyncMock()
+        with patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)):
+            await _SetupCardTool(missing={"github": {}}).execute(
+                "user-1", session, "tc-1"
+            )
+
+        assert session.metadata.pending_question is not None
+        assert "github" in session.metadata.pending_question.text
+        db.set_session_pending_question.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_satisfied_credentials_park_nothing(self):
+        session = self._session()
+        db = MagicMock()
+        db.set_session_pending_question = AsyncMock()
+        with patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)):
+            await _SetupCardTool(missing=None).execute("user-1", session, "tc-2")
+
+        assert session.metadata.pending_question is None
+        db.set_session_pending_question.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_failed_parking_write_never_fails_the_tool_call(self):
+        session = self._session()
+        db = MagicMock()
+        db.set_session_pending_question = AsyncMock(side_effect=RuntimeError("down"))
+        with patch("backend.copilot.tools.base.chat_db", MagicMock(return_value=db)):
+            result = await _SetupCardTool(missing={"notion": {}}).execute(
+                "user-1", session, "tc-3"
+            )
+
+        assert result.success is True
+        assert session.metadata.pending_question is not None

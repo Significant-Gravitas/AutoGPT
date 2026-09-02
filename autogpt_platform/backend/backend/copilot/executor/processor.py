@@ -559,6 +559,7 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        session: "ChatSession | None" = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -779,3 +780,12 @@ class CoPilotProcessor:
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
+                # A delegated worker session carries a DelegatedTask receipt;
+                # settle it here so it closes even when the delegating
+                # waiter timed out and nobody ever polls the sub-session.
+                if session is not None and session.metadata.delegated_task_id:
+                    from backend.copilot import task_spine
+
+                    await task_spine.settle_task_for_turn(
+                        entry.user_id, session, error_message=error_msg
+                    )

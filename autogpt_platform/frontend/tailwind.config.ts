@@ -30,6 +30,27 @@ const smoothShadowRing = plugin(function smoothShadowRing({
   });
 });
 
+// Fractal-noise tile, inlined so the grain costs no extra request. `#` and `%`
+// stay percent-encoded or the data URI terminates early.
+const GRAIN_TEXTURE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E")`;
+
+// Lays grain over an element's own background. Deliberately sets no `position`,
+// so it never fights the positioning utilities already on the target — callers
+// must position the element themselves.
+const grainTexture = plugin(function grainTexture({ addUtilities }) {
+  addUtilities({
+    ".grain-overlay::after": {
+      content: '""',
+      position: "absolute",
+      inset: "0",
+      backgroundImage: GRAIN_TEXTURE,
+      opacity: "0.5",
+      mixBlendMode: "soft-light",
+      pointerEvents: "none",
+    },
+  });
+});
+
 const config = {
   darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}", "./node_modules/streamdown/dist/**/*.js"],
@@ -268,6 +289,12 @@ const config = {
           from: { transform: "scaleY(0)" },
           to: { transform: "scaleY(1)" },
         },
+        // One lattice dot swelling out of its resting ink and sinking back.
+        // Per-cell delays turn nine copies of this into a travelling wave.
+        "orb-wave": {
+          "0%, 56%, 100%": { opacity: "0.3", transform: "scale(1)" },
+          "28%": { opacity: "1", transform: "scale(1.18)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -290,6 +317,8 @@ const config = {
         "shimmer-text": "shimmer-text 2s linear infinite",
         "fade-up": "fade-up 320ms cubic-bezier(0.23, 1, 0.32, 1) both",
         "grow-line": "grow-line 500ms cubic-bezier(0.23, 1, 0.32, 1) both",
+        "orb-wave":
+          "orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both",
       },
       transitionDuration: {
         "400": "400ms",
@@ -305,6 +334,7 @@ const config = {
     tailwindcssAnimate,
     scrollbar({ nocompatible: true }),
     smoothShadowRing,
+    grainTexture,
   ],
 } satisfies Config;
 

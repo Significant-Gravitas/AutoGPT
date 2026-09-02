@@ -49,6 +49,30 @@ def render_briefing_markdown(content: BriefingContent) -> str:
         remaining = total - len(content.decision_items)
         if remaining > 0:
             lines.append(f"- …and {remaining} more on your home page")
+        lines.append("")
+    if content.nudge_items:
+        lines.append("**Waiting on you**")
+        for nudge in content.nudge_items:
+            title = _md_link(_md(nudge.title), f"/team/tasks/{nudge.task_id}")
+            ask = f" — {_md(nudge.question)}" if nudge.question else ""
+            marker = " (stale for over a week)" if nudge.is_stale else ""
+            lines.append(f"- {title}{ask}{marker}")
+        lines.append("")
+    if content.merge_items:
+        lines.append("**Possible duplicates — merge?**")
+        for merge in content.merge_items:
+            titles = " / ".join(
+                _md_link(_md(title), f"/team/tasks/{task_id}")
+                for title, task_id in zip(merge.titles, merge.task_ids)
+            )
+            lines.append(f"- {titles} look like the same ask")
+        lines.append("")
+    for hire in content.hire_items:
+        lines.append(
+            f"**Worth a hire?** Autopilot handled {hire.task_count} "
+            f"{_md(hire.role.lower())} tasks itself recently — "
+            f"{_md(hire.name)} covers that lane. Hire them from the team page."
+        )
     return "\n".join(lines).strip()
 
 

@@ -1326,6 +1326,39 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     )
 
 
+async def get_graph_names_by_ids(
+    user_id: str,
+    graph_ids: list[str],
+    *,
+    organization_id: str | None = None,
+) -> dict[str, str]:
+    """Display name per graph, for callers labelling a known handful of runs.
+
+    Ascending version order means the newest row wins the dict slot, matching
+    what `get_graph_metadata` returns for a single graph. With an org
+    context the same org/team visibility as `list_graphs` applies, so a run
+    of a team-shared graph still gets its name.
+    """
+    if not graph_ids:
+        return {}
+
+    if organization_id is not None:
+        team_ids = await get_user_team_ids(user_id, organization_id)
+        where_clause = cast(
+            AgentGraphWhereInput,
+            visibility_filter(user_id, organization_id, team_ids),
+        )
+    else:
+        where_clause = {"userId": user_id}
+    where_clause["id"] = {"in": graph_ids}
+
+    graphs = await AgentGraph.prisma().find_many(
+        where=where_clause,
+        order={"version": "asc"},
+    )
+    return {graph.id: graph.name for graph in graphs if graph.name}
+
+
 async def get_graph(
     graph_id: str,
     version: int | None,

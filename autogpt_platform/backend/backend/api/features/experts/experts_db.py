@@ -22,6 +22,7 @@ from backend.api.features.experts.errors import (
     LIFETIME_RAISED_EXPERT_LIMIT,
     ExpertHireUnavailableError,
     ExpertLimitExceededError,
+    ExpertPodLeadNotMemberError,
     ExpertPodLimitReachedError,
     ExpertPodNameTakenError,
     ExpertPodNotFoundError,
@@ -45,6 +46,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.library import db as library_db
 from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.tasks import overseer_db
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.data.db import prisma as db_client
@@ -526,17 +528,15 @@ async def resolve_private_expert_tenancy(
     return organization_id, team_id
 
 
-async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
-    template = await prisma.models.Expert.prisma().find_first(
-        where={"id": template_id, "isTemplate": True, "isArchived": False},
-        include=_WORKFLOW_INCLUDE,
-    )
-    if template is None:
-        raise ExpertTemplateNotFoundError(template_id)
+def hire_create_data(
+    user_id: str, template: prisma.models.Expert, name: str | None = None
+) -> prisma.types.ExpertCreateInput:
+    """The hired-copy row for *template*, shared by hire and hire-office.
 
-    # Copy the plain description, never the template's sample envelope: a hire
-    # that skips the voice pick must not leave raw JSON in the prompt, and the
-    # pick (when made) overwrites this via the soul PATCH anyway.
+    Copies the plain voice description, never the template's sample envelope:
+    a hire that skips the voice pick must not leave raw JSON in the prompt,
+    and the pick (when made) overwrites this via the soul PATCH anyway.
+    """
     template_voice, _ = decode_voice_preferences(template.voicePreferences)
     create_data: prisma.types.ExpertCreateInput = {
         "ownerUserId": user_id,
@@ -555,6 +555,18 @@ async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireR
     }
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
+    return create_data
+
+
+async def hire_expert(user_id: str, template_id: str, name: str | None) -> HireResult:
+    template = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_WORKFLOW_INCLUDE,
+    )
+    if template is None:
+        raise ExpertTemplateNotFoundError(template_id)
+
+    create_data = hire_create_data(user_id, template, name)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -592,35 +604,48 @@ async def _reserve_hired_expert(
     consume capacity, while reviving an archived hire does.
     """
     async with transaction() as tx:
-        await _lock_expert_creation(tx, user_id)
-        existing = await tx.expert.find_first(
-            where={"ownerUserId": user_id, "sourceTemplateId": template_id},
-            include=_WORKFLOW_INCLUDE,
-        )
-        if existing is not None:
-            # Fail closed on a hire that would resolve to a non-PRIVATE row:
-            # idempotent re-hire must never hand back an expert the rest of
-            # the API hides (mirrors get_expert's visibility filter).
-            if existing.visibility != ResourceVisibility.PRIVATE:
-                raise ExpertNotFoundError(existing.id)
-            if not existing.isArchived:
-                return existing, "existing"
-            await _ensure_active_expert_capacity(tx, user_id)
-            revived = await tx.expert.update(
-                where={"id": existing.id},
-                data={"isArchived": False},
-                include=_WORKFLOW_INCLUDE,
-            )
-            if revived is None:
-                raise ExpertNotFoundError(existing.id)
-            return revived, "revived"
+        await lock_expert_creation(tx, user_id)
+        return await reserve_hired_expert_locked(tx, user_id, template_id, create_data)
 
+
+async def reserve_hired_expert_locked(
+    tx: prisma.Prisma,
+    user_id: str,
+    template_id: str,
+    create_data: prisma.types.ExpertCreateInput,
+) -> tuple[prisma.models.Expert, Literal["existing", "revived", "created"]]:
+    """Get, revive, or create one hired expert inside the caller's
+    transaction. The caller must already hold the per-user creation lock
+    (:func:`lock_expert_creation`) — hire-office reserves several experts
+    under one lock and one transaction."""
+    existing = await tx.expert.find_first(
+        where={"ownerUserId": user_id, "sourceTemplateId": template_id},
+        include=_WORKFLOW_INCLUDE,
+    )
+    if existing is not None:
+        # Fail closed on a hire that would resolve to a non-PRIVATE row:
+        # idempotent re-hire must never hand back an expert the rest of
+        # the API hides (mirrors get_expert's visibility filter).
+        if existing.visibility != ResourceVisibility.PRIVATE:
+            raise ExpertNotFoundError(existing.id)
+        if not existing.isArchived:
+            return existing, "existing"
         await _ensure_active_expert_capacity(tx, user_id)
-        created = await tx.expert.create(
-            data=create_data,
+        revived = await tx.expert.update(
+            where={"id": existing.id},
+            data={"isArchived": False},
             include=_WORKFLOW_INCLUDE,
         )
-        return created, "created"
+        if revived is None:
+            raise ExpertNotFoundError(existing.id)
+        return revived, "revived"
+
+    await _ensure_active_expert_capacity(tx, user_id)
+    created = await tx.expert.create(
+        data=create_data,
+        include=_WORKFLOW_INCLUDE,
+    )
+    return created, "created"
 
 
 async def _resume_revived_hire(row: prisma.models.Expert) -> prisma.models.Expert:
@@ -672,7 +697,7 @@ async def _rollback_revive(owner_user_id: str, expert_id: str) -> None:
         logger.exception(f"Failed to restore archived state for expert #{expert_id}")
 
 
-async def _lock_expert_creation(tx: prisma.Prisma, user_id: str) -> None:
+async def lock_expert_creation(tx: prisma.Prisma, user_id: str) -> None:
     # execute_raw, not query_raw: pg_advisory_xact_lock returns void,
     # which Prisma cannot deserialize as a result column.
     await tx.execute_raw(
@@ -770,7 +795,7 @@ async def _create_raised_expert_row(
     skills: list[str] | None = None,
 ) -> prisma.models.Expert:
     async with transaction() as tx:
-        await _lock_expert_creation(tx, user_id)
+        await lock_expert_creation(tx, user_id)
         await _ensure_active_expert_capacity(tx, user_id)
         lifetime_raised_count = await tx.expert.count(
             where={
@@ -1182,6 +1207,14 @@ async def archive_expert(user_id: str, expert_id: str) -> None:
         logger.exception(
             f"Failed to detach triggers while archiving expert #{expert_id}"
         )
+    try:
+        # Open tasks must not die with their owner: hand them to Autopilot
+        # (null owner), with a handoff amendment on each task's timeline.
+        await overseer_db.reassign_open_tasks_to_autopilot(user_id, expert_id)
+    except Exception:
+        logger.exception(
+            f"Failed to reassign open tasks while archiving expert #{expert_id}"
+        )
 
 
 # ─── Pods (owner-scoped named groups) ──────────────────────────────────
@@ -1256,11 +1289,63 @@ async def assign_pod(user_id: str, expert_id: str, pod_id: str | None) -> Expert
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
 
+    # A lead must stay a member of the pod they lead, so moving them out of a
+    # pod clears its leadership rather than leaving a stale lead behind.
+    where: prisma.types.ExpertPodWhereInput = {
+        "userId": user_id,
+        "leadExpertId": expert_id,
+    }
+    if pod_id is not None:
+        where["NOT"] = [{"id": pod_id}]
+    await prisma.models.ExpertPod.prisma().update_many(
+        where=where, data={"leadExpertId": None}
+    )
+
     expert = await get_expert(user_id, expert_id)
     if expert is None:
         raise ExpertNotFoundError(expert_id)
     return expert
 
 
+async def set_pod_lead(
+    user_id: str, pod_id: str, lead_expert_id: str | None
+) -> ExpertPod:
+    """Set (or clear, with ``None``) who fronts *pod_id*.
+
+    The lead must be a live hire of *user_id* who is a member of the pod:
+    routing sends the pod's work to them, so an outsider or archived expert
+    as lead would silently swallow delegations.
+    """
+    pod = await prisma.models.ExpertPod.prisma().find_first(
+        where={"id": pod_id, "userId": user_id}
+    )
+    if pod is None:
+        raise ExpertPodNotFoundError(pod_id)
+
+    if lead_expert_id is not None:
+        lead = await prisma.models.Expert.prisma().find_first(
+            where={
+                "id": lead_expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+            }
+        )
+        if lead is None:
+            raise ExpertNotFoundError(lead_expert_id)
+        if lead.podId != pod_id:
+            raise ExpertPodLeadNotMemberError(lead_expert_id, pod_id)
+
+    updated = await prisma.models.ExpertPod.prisma().update(
+        where={"id": pod_id}, data={"leadExpertId": lead_expert_id}
+    )
+    return _to_pod(updated or pod)
+
+
 def _to_pod(row: prisma.models.ExpertPod) -> ExpertPod:
-    return ExpertPod(id=row.id, name=row.name, created_at=row.createdAt)
+    return ExpertPod(
+        id=row.id,
+        name=row.name,
+        created_at=row.createdAt,
+        lead_expert_id=row.leadExpertId,
+    )

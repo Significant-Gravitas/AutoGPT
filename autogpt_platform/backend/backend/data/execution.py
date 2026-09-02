@@ -25,6 +25,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    DelegatedTask,
     Expert,
     LibraryAgent,
     SharedExecutionFile,
@@ -127,6 +128,11 @@ class ExecutionContext(BaseModel):
     # spend and the executor can post run results into the expert's thread.
     expert_id: Optional[str] = None
 
+    # The DelegatedTask this run satisfies. Carried at runtime so the
+    # executor's completion hook can close the receipt without re-querying
+    # the execution row.
+    delegated_task_id: Optional[str] = None
+
 
 # -------------------------- Models -------------------------- #
 
@@ -214,6 +220,10 @@ class GraphExecutionMeta(BaseDbModel):
     # Expert attribution, surfaced from the DB row for the same
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
+
+    # The DelegatedTask this run satisfies, surfaced for the same
+    # resume/requeue recovery reason.
+    delegated_task_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -366,6 +376,7 @@ class GraphExecutionMeta(BaseDbModel):
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
             expert_id=_graph_exec.expertId,
+            delegated_task_id=_graph_exec.delegatedTaskId,
         )
 
 
@@ -919,6 +930,7 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    delegated_task_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -940,6 +952,14 @@ async def create_graph_execution(
         )
         if expert is None:
             raise ValueError(f"Expert #{expert_id} is unavailable")
+
+    # Same rule for the task receipt: never link a run to another user's task.
+    if delegated_task_id:
+        task = await DelegatedTask.prisma().find_first(
+            where={"id": delegated_task_id, "userId": user_id}
+        )
+        if task is None:
+            raise ValueError(f"Delegated task #{delegated_task_id} is unavailable")
 
     result = await AgentGraphExecution.prisma().create(
         data={
@@ -973,6 +993,7 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"expertId": expert_id} if expert_id else {}),
+            **({"delegatedTaskId": delegated_task_id} if delegated_task_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),

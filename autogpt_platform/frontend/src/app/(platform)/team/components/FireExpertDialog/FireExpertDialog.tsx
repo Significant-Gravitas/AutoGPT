@@ -58,6 +58,7 @@ export function FireExpertDialog({
           <FireExpertPreview
             expertName={expertName}
             automationLine={summary.automationLine}
+            reassignLine={summary.reassignLine}
             items={summary.items}
             isLoading={isPreviewLoading}
             isError={isPreviewError}

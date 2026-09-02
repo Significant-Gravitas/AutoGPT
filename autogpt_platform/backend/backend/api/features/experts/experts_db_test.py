@@ -941,7 +941,7 @@ async def test_raise_expert_locks_are_independent_per_owner(server: SpinTestServ
     first_lock_acquired = asyncio.Event()
     second_lock_acquired = asyncio.Event()
     release_first = asyncio.Event()
-    lock_creation = experts_db._lock_expert_creation
+    lock_creation = experts_db.lock_expert_creation
 
     async def lock_and_hold_first(tx: prisma.Prisma, user_id: str) -> None:
         await lock_creation(tx, user_id)
@@ -951,7 +951,7 @@ async def test_raise_expert_locks_are_independent_per_owner(server: SpinTestServ
         elif user_id == second_owner.id:
             second_lock_acquired.set()
 
-    with patch.object(experts_db, "_lock_expert_creation", new=lock_and_hold_first):
+    with patch.object(experts_db, "lock_expert_creation", new=lock_and_hold_first):
         first = asyncio.create_task(
             experts_db.create_raised_expert(first_owner.id, "Alpha", None, None)
         )
@@ -3123,6 +3123,72 @@ async def test_assign_pod_none_detaches(server: SpinTestServer, test_user):
 
     detached = await experts_db.assign_pod(test_user.id, hired.expert.id, None)
     assert detached.pod_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_set_pod_lead_requires_membership(server: SpinTestServer, test_user):
+    member_template = await _seed_template(name="Maria", preload_listings=[])
+    outsider_template = await _seed_template(name="Omar", preload_listings=[])
+    member = await experts_db.hire_expert(test_user.id, member_template.id, "Member")
+    outsider = await experts_db.hire_expert(
+        test_user.id, outsider_template.id, "Outsider"
+    )
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    await experts_db.assign_pod(test_user.id, member.expert.id, pod.id)
+
+    with pytest.raises(experts_db.ExpertPodLeadNotMemberError):
+        await experts_db.set_pod_lead(test_user.id, pod.id, outsider.expert.id)
+
+    led = await experts_db.set_pod_lead(test_user.id, pod.id, member.expert.id)
+    assert led.lead_expert_id == member.expert.id
+
+    cleared = await experts_db.set_pod_lead(test_user.id, pod.id, None)
+    assert cleared.lead_expert_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_set_pod_lead_rejects_other_users_pod(
+    server: SpinTestServer, test_user, other_user
+):
+    foreign_pod = await experts_db.create_pod(other_user.id, _pod_name("Theirs"))
+
+    with pytest.raises(experts_db.ExpertPodNotFoundError):
+        await experts_db.set_pod_lead(test_user.id, foreign_pod.id, None)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_moving_the_lead_out_of_the_pod_clears_its_leadership(
+    server: SpinTestServer, test_user
+):
+    """A lead must stay a member of the pod they lead — leaving the pod must
+    not strand routing on an outsider."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    lead = await experts_db.hire_expert(test_user.id, template.id, "Lead")
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    other_pod = await experts_db.create_pod(test_user.id, _pod_name("Ops"))
+    await experts_db.assign_pod(test_user.id, lead.expert.id, pod.id)
+    await experts_db.set_pod_lead(test_user.id, pod.id, lead.expert.id)
+
+    await experts_db.assign_pod(test_user.id, lead.expert.id, other_pod.id)
+
+    pods = {p.id: p for p in await experts_db.list_pods(test_user.id)}
+    assert pods[pod.id].lead_expert_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reassigning_the_lead_to_the_same_pod_keeps_leadership(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    lead = await experts_db.hire_expert(test_user.id, template.id, "Lead")
+    pod = await experts_db.create_pod(test_user.id, _pod_name("Growth"))
+    await experts_db.assign_pod(test_user.id, lead.expert.id, pod.id)
+    await experts_db.set_pod_lead(test_user.id, pod.id, lead.expert.id)
+
+    await experts_db.assign_pod(test_user.id, lead.expert.id, pod.id)
+
+    pods = {p.id: p for p in await experts_db.list_pods(test_user.id)}
+    assert pods[pod.id].lead_expert_id == lead.expert.id
 
 
 @pytest.mark.asyncio(loop_scope="session")

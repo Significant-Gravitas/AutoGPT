@@ -18,19 +18,31 @@ function messageOf(...parts: Record<string, unknown>[]): UIMessage[] {
 
 describe("getSessionActivity", () => {
   it("returns nothing for an empty transcript", () => {
-    expect(getSessionActivity([])).toEqual({ runs: [], schedules: [] });
+    expect(getSessionActivity([])).toEqual({
+      runs: [],
+      schedules: [],
+      tasks: [],
+    });
   });
 
   it("ignores non-tool message parts", () => {
     const messages = messageOf({ type: "text", text: "hello" });
-    expect(getSessionActivity(messages)).toEqual({ runs: [], schedules: [] });
+    expect(getSessionActivity(messages)).toEqual({
+      runs: [],
+      schedules: [],
+      tasks: [],
+    });
   });
 
   it("ignores tool parts with no output that aren't run tools", () => {
     const messages = messageOf(
       toolPart({ type: "tool-something_else", output: undefined }),
     );
-    expect(getSessionActivity(messages)).toEqual({ runs: [], schedules: [] });
+    expect(getSessionActivity(messages)).toEqual({
+      runs: [],
+      schedules: [],
+      tasks: [],
+    });
   });
 
   it("surfaces an in-flight run from the tool input, deslugifying the name", () => {
@@ -93,7 +105,11 @@ describe("getSessionActivity", () => {
         state: "input-available",
       }),
     );
-    expect(getSessionActivity(messages)).toEqual({ runs: [], schedules: [] });
+    expect(getSessionActivity(messages)).toEqual({
+      runs: [],
+      schedules: [],
+      tasks: [],
+    });
   });
 
   it("records a completed async run from a top-level execution_started envelope", () => {

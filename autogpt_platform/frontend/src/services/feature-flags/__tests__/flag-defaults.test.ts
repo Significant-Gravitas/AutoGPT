@@ -1,5 +1,5 @@
 import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Flag, useGetFlag } from "../use-get-flag";
 
 // LD is enabled but has not answered for any key — the exact window
@@ -17,6 +17,28 @@ vi.mock("@/services/environment", () => ({
   environment: { areFeatureFlagsEnabled: () => true },
 }));
 
+const FORCE_FLAG_PREFIX = "NEXT_PUBLIC_FORCE_FLAG_";
+let forcedFlagsBefore: Record<string, string | undefined> = {};
+
+function clearForcedFlags() {
+  const forced = Object.keys(process.env).filter((k) =>
+    k.startsWith(FORCE_FLAG_PREFIX),
+  );
+  forcedFlagsBefore = Object.fromEntries(
+    forced.map((k) => [k, process.env[k]]),
+  );
+  forced.forEach((k) => delete process.env[k]);
+}
+
+function restoreForcedFlags() {
+  Object.keys(process.env)
+    .filter((k) => k.startsWith(FORCE_FLAG_PREFIX))
+    .forEach((k) => delete process.env[k]);
+  Object.entries(forcedFlagsBefore).forEach(([k, v]) => {
+    process.env[k] = v;
+  });
+}
+
 const DREAM_GRAPHITI_FLAGS = [
   Flag.GRAPHITI_MEMORY,
   Flag.GRAPHITI_COMMUNITIES_ENABLED,
@@ -26,11 +48,8 @@ const DREAM_GRAPHITI_FLAGS = [
 ] as const;
 
 describe("dream/graphiti flag defaults fail closed", () => {
-  beforeEach(() => {
-    Object.keys(process.env)
-      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
-      .forEach((k) => delete process.env[k]);
-  });
+  beforeEach(clearForcedFlags);
+  afterEach(restoreForcedFlags);
 
   it.each(DREAM_GRAPHITI_FLAGS)(
     "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
@@ -56,12 +75,26 @@ const ONBOARDING_FLAGS = [
   Flag.AUTOGPT_NEW_LAYOUT,
 ] as const;
 
-describe("onboarding flag defaults fail closed", () => {
-  beforeEach(() => {
-    Object.keys(process.env)
-      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
-      .forEach((k) => delete process.env[k]);
+describe("expert flag default fails closed", () => {
+  beforeEach(clearForcedFlags);
+  afterEach(restoreForcedFlags);
+
+  it("resolves HIRE_EXPERTS to false when LaunchDarkly has not answered, keeping the team surfaces hidden", () => {
+    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    expect(result.current).toBe(false);
   });
+
+  it("resolves EXPERT_TASK_MANAGEMENT to false when LaunchDarkly has not answered, keeping the task-receipt surfaces hidden", () => {
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.EXPERT_TASK_MANAGEMENT),
+    );
+    expect(result.current).toBe(false);
+  });
+});
+
+describe("onboarding flag defaults fail closed", () => {
+  beforeEach(clearForcedFlags);
+  afterEach(restoreForcedFlags);
 
   it.each(ONBOARDING_FLAGS)(
     "resolves %s to false when LaunchDarkly has not answered, so the default flow renders untouched",

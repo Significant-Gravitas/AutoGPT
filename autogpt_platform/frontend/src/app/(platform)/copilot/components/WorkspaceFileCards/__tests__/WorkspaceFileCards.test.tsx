@@ -271,6 +271,36 @@ describe("WorkspaceFileCards", () => {
     expect(screen.getByText("Morning brief")).toBeDefined();
   });
 
+  it("links the tasks this chat delegated straight to their task pages", async () => {
+    useCopilotStreamStore.getState().setMessageSnapshot(SESSION, [
+      {
+        id: "m1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-delegate_to_expert",
+            toolCallId: "call-3",
+            state: "output-available",
+            input: {},
+            output: {
+              status: "running",
+              sub_session_id: "sub-1",
+              task_id: "task-9",
+              task_title: "Build a landing page",
+              expert: { id: "expert-1", name: "Dana" },
+            },
+          },
+        ],
+      } as unknown as UIMessage,
+    ]);
+    render(<WorkspaceFileCards sessionId={SESSION} />);
+
+    expect(await screen.findByText(/^Tasks \(1\)/)).toBeDefined();
+    const row = screen.getByRole("link", { name: /Build a landing page/ });
+    expect(row.getAttribute("href")).toBe("/team/tasks/task-9");
+    expect(screen.getByText("Dana")).toBeDefined();
+  });
+
   it("downloads a single file on click", async () => {
     render(<WorkspaceFileCards sessionId={SESSION} />);
 

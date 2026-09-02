@@ -15,7 +15,7 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { formatWhen } from "../../ToolChain/resultHelpers";
-import type { SessionRun, SessionSchedule } from "../helpers";
+import type { SessionRun, SessionSchedule, SessionTask } from "../helpers";
 
 const RUN_STATUS: Record<
   string,
@@ -47,6 +47,17 @@ export function RunsList({ runs }: { runs: SessionRun[] }) {
     <div className={LIST}>
       {runs.map((run) => (
         <RunRow key={run.executionId} run={run} />
+      ))}
+    </div>
+  );
+}
+
+/** Tasks this chat delegated — each row jumps straight to the task page. */
+export function TasksList({ tasks }: { tasks: SessionTask[] }) {
+  return (
+    <div className={LIST}>
+      {tasks.map((task) => (
+        <TaskRow key={task.taskId} task={task} />
       ))}
     </div>
   );
@@ -115,6 +126,51 @@ function RunRow({ run }: { run: SessionRun }) {
     <div title={name} className={rowClass}>
       {content}
     </div>
+  );
+}
+
+// Delegation envelopes speak lowercase sub-session statuses, not run ones.
+const TASK_STATUS: Record<
+  string,
+  { icon: IconSvgElement; className: string; spin: boolean }
+> = {
+  completed: RUN_STATUS.COMPLETED,
+  error: RUN_STATUS.FAILED,
+  cancelled: {
+    icon: CancelCircleIcon,
+    className: "text-zinc-400",
+    spin: false,
+  },
+  running: RUN_STATUS.RUNNING,
+  queued: RUN_STATUS.QUEUED,
+};
+
+function TaskRow({ task }: { task: SessionTask }) {
+  const status =
+    TASK_STATUS[task.status?.toLowerCase() ?? ""] ?? FALLBACK_STATUS;
+  return (
+    <Link
+      href={`/team/tasks/${task.taskId}`}
+      title={task.title}
+      className="-mx-2.5 flex items-center gap-3 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-zinc-50"
+    >
+      <Icon
+        icon={status.icon}
+        size={16}
+        aria-label={task.status?.toLowerCase()}
+        className={cn(
+          "shrink-0",
+          status.className,
+          status.spin && "animate-spin motion-reduce:animate-none",
+        )}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-zinc-800">{task.title}</p>
+        {task.expertName && (
+          <p className="truncate text-xs text-zinc-400">{task.expertName}</p>
+        )}
+      </div>
+    </Link>
   );
 }
 

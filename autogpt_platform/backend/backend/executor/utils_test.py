@@ -358,6 +358,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = None
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
@@ -443,6 +444,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        delegated_task_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -458,6 +460,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec_2.organization_id = None
     mock_graph_exec_2.expert_id = None
+    mock_graph_exec_2.delegated_task_id = None
     mock_graph_exec_2.team_id = None
     mock_graph_exec_2.id = "execution-id-456"
     mock_graph_exec_2.node_executions = []
@@ -518,6 +521,7 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = None
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
@@ -609,8 +613,8 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = "org-rpc"
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = "team-rpc"
-    mock_graph_exec.expert_id = None
     mock_graph_exec.id = "exec-id-rpc"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -836,6 +840,7 @@ async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = None
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = None
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []
@@ -934,6 +939,7 @@ async def test_add_graph_execution_resume_backfills_org_from_row(mocker: MockerF
     mock_graph_exec.nodes_input_masks = {}
     mock_graph_exec.organization_id = "org-row"
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = "team-row"
 
     captured_kwargs: dict = {}
@@ -2005,8 +2011,10 @@ def _mock_add_graph_execution_create_path(
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.organization_id = org_id
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.team_id = team_id
     mock_graph_exec.expert_id = None
+    mock_graph_exec.delegated_task_id = None
     mock_graph_exec.id = "exec-id"
     mock_graph_exec.node_executions = []
     mock_graph_exec.status = ExecutionStatus.QUEUED
@@ -2100,6 +2108,7 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.graph_version = 1
     graph_exec.nodes_input_masks = {}
     graph_exec.expert_id = expert_id
+    graph_exec.delegated_task_id = None
     graph_exec.organization_id = organization_id
     graph_exec.team_id = team_id
 

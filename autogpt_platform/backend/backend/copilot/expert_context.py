@@ -167,12 +167,15 @@ async def build_expert_context(user_id: str | None, expert_id: str | None) -> st
     if not user_id:
         return ""
     try:
-        # ``delegate_to_expert`` is hidden from the tool schema and refused by
-        # execute_tool when the hire-experts flag is off, so the roster block
-        # must not tell the model to call it. Same boolean the engines use to
-        # gate the delegation supplement and the tool groups.
+        # ``delegate_to_expert`` is hidden from the tool schema when either
+        # flag is off, so the roster block must not tell the model to call
+        # it. Same booleans the engines use to gate the delegation
+        # supplement and the tool groups: the roster rides hire-experts,
+        # the delegation phrasing additionally rides expert-task-management.
         delegation_enabled = await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
+        ) and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
         )
         if expert_id:
             return await _expert_session_context(
@@ -286,10 +289,19 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
         )
     if exclude_expert_id is None:
         return (
-            "When a request clearly matches an expert's domain, you may hand "
-            "it off with `delegate_to_expert(expert_id=..., prompt=...)` or "
-            "suggest opening that expert's thread — either way, tell the "
-            "user which expert is handling it. Never delegate silently."
+            "Route each request before answering it:\n"
+            "(a) Clearly matches one expert's role, skills, or workflows → "
+            "delegate with `delegate_to_expert(expert_id=..., prompt=...)` "
+            "and confirm to the user in one short line ('Sent to <name>.') "
+            "with what you asked for. Never delegate silently.\n"
+            "(b) Plausibly matches but you are unsure who — or whether — to "
+            "involve → call `delegate_to_expert` with "
+            "`require_confirmation=true` for your best pick, and ask the "
+            "user ONE confirm question. Do not send work while unsure.\n"
+            "(c) No expert fits, or it is quick and general → handle it "
+            "yourself.\n"
+            "Judge the match on the roster above; never guess at skills an "
+            "expert does not list."
         )
     return (
         "These are your teammates. When a task needs their skills or "
@@ -300,14 +312,26 @@ def _team_rule(*, delegation_enabled: bool, exclude_expert_id: str | None) -> st
     )
 
 
+def quote_prompt_data(value: str) -> str:
+    """Render a user- or marketplace-authored string that lands inside a
+    prompt line as one quoted token: newlines collapse so the value cannot
+    open a new line of instructions, and the quotes mark it as data."""
+    flat = " ".join(escape_prompt_xml_tags(value).split())
+    return '"' + flat.replace('"', '\\"') + '"'
+
+
 def _team_line(expert: Expert) -> str:
     workflow_names = ", ".join(
-        escape_prompt_xml_tags(w.name or "Unnamed workflow") for w in expert.workflows
+        quote_prompt_data(w.name or "Unnamed workflow") for w in expert.workflows
     )
     if not workflow_names:
         workflow_names = "none installed"
+    skills = ", ".join(
+        quote_prompt_data(skill) for skill in expert.skills if skill.strip()
+    )
+    skills_part = f"; skills: {skills}" if skills else ""
     return (
         f"- {escape_prompt_xml_tags(expert.name)} — "
-        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
-        f"installed workflows: {workflow_names}"
+        f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id})"
+        f"{skills_part}; installed workflows: {workflow_names}"
     )

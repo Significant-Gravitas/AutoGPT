@@ -28,7 +28,16 @@ export function getAutomationLine(count: number) {
   return `${count} ${count === 1 ? "automation" : "automations"} will pause.`;
 }
 
+export function getReassignLine(count: number): string | null {
+  if (count <= 0) return null;
+  return `${count} open ${count === 1 ? "task" : "tasks"} will be reassigned to Autopilot.`;
+}
+
 export function getFireSummary(preview: ExpertDetachPreview | null) {
   const items = getPauseItems(preview);
-  return { items, automationLine: getAutomationLine(items.length) };
+  return {
+    items,
+    automationLine: getAutomationLine(items.length),
+    reassignLine: getReassignLine(preview?.open_task_count ?? 0),
+  };
 }

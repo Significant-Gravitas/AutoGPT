@@ -13,6 +13,7 @@ import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { OutcomeRow } from "./components/OutcomeRow";
+import { ProactiveSection } from "./components/ProactiveSection/ProactiveSection";
 import { type BriefingFilter, useMorningBriefing } from "./useMorningBriefing";
 
 interface Props {
@@ -98,6 +99,8 @@ export function MorningBriefing({ dashboard, className }: Props) {
           ))}
         </div>
       )}
+
+      <ProactiveSection />
 
       {briefing.routine_count > 0 ? (
         <div className="inline-flex items-center gap-1.5 self-end rounded-full border border-purple-500 bg-purple-100 px-2.5 py-1 text-sm font-medium text-purple-600">

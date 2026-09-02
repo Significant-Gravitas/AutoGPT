@@ -60,6 +60,7 @@ describe("getFireSummary", () => {
     expect(getFireSummary(null)).toEqual({
       items: [],
       automationLine: "No automations will pause.",
+      reassignLine: null,
     });
   });
 });

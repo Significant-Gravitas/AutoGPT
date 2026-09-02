@@ -34,6 +34,7 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStart
+from backend.util.feature_flag import Flag
 
 _SVC = "backend.copilot.sdk.service"
 
@@ -91,12 +92,25 @@ def _make_client_mock():
     return cm
 
 
-def _make_patches(*, hire_experts_enabled: bool):
+def _make_patches(
+    *, hire_experts_enabled: bool, task_management_enabled: bool | None = None
+):
     """Patch list for a full (mocked) SDK turn, plus a fresh mock for
     ``create_copilot_mcp_server`` and ``is_feature_enabled`` the caller can
     read after the turn."""
     mcp_server_mock = MagicMock(return_value=MagicMock())
-    is_feature_enabled_mock = AsyncMock(return_value=hire_experts_enabled)
+    task_enabled = (
+        hire_experts_enabled
+        if task_management_enabled is None
+        else task_management_enabled
+    )
+
+    async def _resolve_flag(flag, *args, **kwargs):
+        if flag is Flag.EXPERT_TASK_MANAGEMENT:
+            return task_enabled
+        return hire_experts_enabled
+
+    is_feature_enabled_mock = AsyncMock(side_effect=_resolve_flag)
 
     patches = [
         (f"{_SVC}.get_chat_session", dict(new_callable=AsyncMock)),
@@ -160,12 +174,18 @@ def _make_patches(*, hire_experts_enabled: bool):
     return patches, mcp_server_mock, is_feature_enabled_mock
 
 
-async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
+async def _run_sdk_turn(
+    *,
+    user_id: str | None,
+    hire_experts_enabled: bool,
+    task_management_enabled: bool | None = None,
+):
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
     session = _make_session()
     patches, mcp_server_mock, is_feature_enabled_mock = _make_patches(
-        hire_experts_enabled=hire_experts_enabled
+        hire_experts_enabled=hire_experts_enabled,
+        task_management_enabled=task_management_enabled,
     )
 
     events = []
@@ -210,10 +230,29 @@ class TestSdkExpertsFlagGuard:
             user_id="test-user", hire_experts_enabled=True
         )
 
-        is_feature_enabled_mock.assert_awaited_once()
+        # Two awaits now: hire-experts plus its expert-task-management
+        # child gate.
+        assert is_feature_enabled_mock.await_count == 2
         hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
         # Plain Autopilot session (no session.expert_id): loses the
         # expert-session tools, keeps the staffing ("expert_admin") tools.
         assert "update_expert_soul" in hidden
+        assert "handoff_to_expert" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+
+    @pytest.mark.asyncio
+    async def test_task_management_off_hides_only_the_task_spine(self) -> None:
+        mcp_server_mock, _ = await _run_sdk_turn(
+            user_id="test-user",
+            hire_experts_enabled=True,
+            task_management_enabled=False,
+        )
+
+        hidden = mcp_server_mock.call_args.kwargs["hidden_tool_names"]
+        assert "delegate_to_expert" in hidden
+        assert "handoff_task" in hidden
+        assert "report_task" in hidden
+        # The rest of the experts surface stays lit.
+        assert "hire_expert" not in hidden
+        assert "list_team" not in hidden

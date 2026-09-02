@@ -60,8 +60,9 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
   // An empty-state card is noise floating over the chat — the files card only
   // earns its space once there's something in it (or something to report).
   const showFilesCard = isLoading || isError || files.length > 0;
-  const { runs, schedules } = useSessionActivity(sessionId);
-  const hasActivity = runs.length > 0 || schedules.length > 0;
+  const { runs, schedules, tasks } = useSessionActivity(sessionId);
+  const hasActivity =
+    runs.length > 0 || schedules.length > 0 || tasks.length > 0;
 
   return (
     <motion.div
@@ -115,7 +116,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
           />
         </StackSection>
       )}
-      <SessionActivityCard sessionId={sessionId} />
+      <SessionActivityCard runs={runs} schedules={schedules} tasks={tasks} />
     </motion.div>
   );
 }

@@ -1,0 +1,13 @@
+{
+  "detail": [
+    {
+      "input": {},
+      "loc": [
+        "body",
+        "lead_expert_id"
+      ],
+      "msg": "Field required",
+      "type": "missing"
+    }
+  ]
+}

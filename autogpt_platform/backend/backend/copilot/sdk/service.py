@@ -47,6 +47,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
+from backend.copilot import task_spine
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
@@ -110,8 +111,11 @@ from ..permissions import (
     apply_tool_permissions,
 )
 from ..prompting import (
+    assemble_system_prompt,
+    copilot_role,
     get_delegation_supplement,
     get_graphiti_supplement,
+    get_role_charter,
     get_sdk_supplement,
 )
 from ..rate_limit import (
@@ -1629,6 +1633,7 @@ async def _apply_building_mode_restart(
     base_system_prompt: str,
     delegation_supplement: str,
     graphiti_supplement: str,
+    role_charter: str,
     use_e2b: bool,
     session_id: str,
     message_id: str,
@@ -1660,13 +1665,14 @@ async def _apply_building_mode_restart(
     # registered across a restart (registration happens once, before it), so
     # dropping their disclosure rules here would leave the model able to
     # delegate silently for the rest of the turn.
-    system_prompt = (
-        base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b)
-        + delegation_supplement
-        + graphiti_supplement
-        + building_suffix
-        + expert_session_suffix
+    system_prompt = assemble_system_prompt(
+        base_system_prompt,
+        engine_supplement=get_sdk_supplement(use_e2b=use_e2b),
+        delegation_supplement=delegation_supplement,
+        graphiti_supplement=graphiti_supplement,
+        role_charter=role_charter,
+        builder_session_suffix=building_suffix,
+        expert_session_suffix=expert_session_suffix,
     )
     sdk_options_restart = copy(sdk_options)
     sdk_options_restart.system_prompt = _build_system_prompt_value(
@@ -4690,7 +4696,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
-        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        role = copilot_role(session.expert_id)
+        graphiti_supplement = get_graphiti_supplement(role) if graphiti_enabled else ""
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -4699,7 +4706,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         experts_enabled = bool(user_id) and await is_feature_enabled(
             Flag.HIRE_EXPERTS, user_id, default=False
         )
-        delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        # Task management is a child gate of the experts surface: the
+        # delegation rules and task-spine tools ride expert-task-management
+        # on top of hire-experts, so the spine can be turned off (or
+        # removed) without darkening the rest of the experts surface.
+        task_management_enabled = experts_enabled and await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        )
+        delegation_supplement = (
+            get_delegation_supplement(role) if task_management_enabled else ""
+        )
+        role_charter = get_role_charter(role) if experts_enabled else ""
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4711,13 +4728,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # guide is already in this turn's cached system prompt.
         session.sdk_turn_active = True
         session.guide_in_system_prompt = bool(builder_session_suffix)
-        system_prompt = (
-            base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b)
-            + delegation_supplement
-            + graphiti_supplement
-            + builder_session_suffix
-            + expert_session_suffix
+        system_prompt = assemble_system_prompt(
+            base_system_prompt,
+            engine_supplement=get_sdk_supplement(use_e2b=use_e2b),
+            delegation_supplement=delegation_supplement,
+            graphiti_supplement=graphiti_supplement,
+            role_charter=role_charter,
+            builder_session_suffix=builder_session_suffix,
+            expert_session_suffix=expert_session_suffix,
         )
 
         transcript_content = _restore.transcript_content
@@ -4763,7 +4781,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # above; the role split lives in the shared helper.
         disabled_tool_groups.extend(
             expert_tool_disabled_groups(
-                experts_enabled=experts_enabled, expert_id=session.expert_id
+                experts_enabled=experts_enabled,
+                task_management_enabled=task_management_enabled,
+                expert_id=session.expert_id,
             )
         )
 
@@ -5123,6 +5143,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
                 expert_id=session.expert_id,
+                task_ctx=(
+                    await task_spine.build_task_context(user_id, session)
+                    if task_management_enabled
+                    else ""
+                ),
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -5489,6 +5514,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
                     graphiti_supplement=graphiti_supplement,
+                    role_charter=role_charter,
                     use_e2b=use_e2b,
                     session_id=session_id,
                     message_id=message_id,

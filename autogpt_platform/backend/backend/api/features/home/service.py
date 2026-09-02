@@ -13,12 +13,15 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.api.features.library import db as library_db
+from backend.api.features.tasks import overseer_db, tasks_db
+from backend.api.features.tasks.models import DelegatedTask
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
 from backend.data import activity_event as activity_db
 from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
+from backend.data import graph as graph_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
 from backend.data.credit import get_credit_model
@@ -55,6 +58,8 @@ class HomeSourceData(BaseModel):
     credits_balance: int | None
     questions: list[ChatSessionInfo]
     work_events: list[activity_db.ActivityEvent]
+    open_tasks: list[DelegatedTask]
+    failed_tasks: list[DelegatedTask]
     timezone_name: str
 
 
@@ -80,11 +85,39 @@ async def build_home_dashboard(
     )
     # All depend on the gathered data (graph ids / session ids / timezone) but
     # not on each other, so these reads cost no extra round-trip.
-    library_refs, persisted_briefing, session_titles = await asyncio.gather(
-        library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
-        _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
-        _get_session_titles(user_id=user_id, session_ids=work_session_ids),
+    library_refs, graph_names, persisted_briefing, session_titles = (
+        await asyncio.gather(
+            library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
+            _graph_names(
+                user_id=user_id, graph_ids=graph_ids, organization_id=organization_id
+            ),
+            _persisted_briefing(
+                user_id=user_id, timezone_name=data.timezone_name, now=now
+            ),
+            _get_session_titles(user_id=user_id, session_ids=work_session_ids),
+        )
     )
+    # A stored briefing can carry a run older than the live window, whose
+    # graph the lookup above never saw; resolve those so the card still
+    # names the agent instead of the placeholder.
+    persisted_graph_ids = (
+        [
+            graph_id
+            for graph_id in {item.graph_id for item in persisted_briefing.run_items}
+            if graph_id not in set(graph_ids)
+        ]
+        if persisted_briefing
+        else []
+    )
+    if persisted_graph_ids:
+        graph_names = {
+            **graph_names,
+            **await _graph_names(
+                user_id=user_id,
+                graph_ids=persisted_graph_ids,
+                organization_id=organization_id,
+            ),
+        }
 
     return compose_home_dashboard(
         now=now,
@@ -93,6 +126,7 @@ async def build_home_dashboard(
         reviews=data.reviews,
         schedules=data.schedules,
         library_refs=library_refs,
+        graph_names=graph_names,
         cost_summary=data.cost_summary,
         credits_balance=data.credits_balance,
         timezone_name=data.timezone_name,
@@ -100,7 +134,28 @@ async def build_home_dashboard(
         persisted_briefing=persisted_briefing,
         work_events=data.work_events,
         session_titles=session_titles,
+        open_tasks=data.open_tasks,
+        failed_tasks=data.failed_tasks,
     )
+
+
+async def _graph_names(
+    *, user_id: str, graph_ids: list[str], organization_id: str | None
+) -> dict[str, str]:
+    """Graph-level names, the fallback for runs with no library row.
+
+    Fail-soft like schedules: losing this costs a headline its agent name, not
+    the page.
+    """
+    try:
+        return await graph_db.get_graph_names_by_ids(
+            user_id, graph_ids, organization_id=organization_id
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load graph names for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return {}
 
 
 async def _persisted_briefing(
@@ -184,6 +239,8 @@ async def _load_home_source_data(
     work_events_task = asyncio.create_task(
         _get_work_events(user_id=user_id, since=week_start)
     )
+    open_tasks_task = asyncio.create_task(_get_open_tasks(user_id=user_id))
+    failed_tasks_task = asyncio.create_task(_get_failed_tasks(user_id=user_id, now=now))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
     # otherwise leave the rest detached with their exceptions never retrieved.
@@ -196,6 +253,8 @@ async def _load_home_source_data(
         credits_task,
         questions_task,
         work_events_task,
+        open_tasks_task,
+        failed_tasks_task,
         user_task,
     ]
     await asyncio.gather(*started)
@@ -211,6 +270,8 @@ async def _load_home_source_data(
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
         work_events=work_events_task.result(),
+        open_tasks=open_tasks_task.result(),
+        failed_tasks=failed_tasks_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
 
@@ -227,6 +288,45 @@ async def _get_schedules(
     except Exception:
         logger.warning(
             "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+
+
+async def _get_open_tasks(*, user_id: str) -> list[DelegatedTask]:
+    # Fail-soft like schedules and credits: the task spine only enriches the
+    # active-task cards (which fall back to execution data), so a failure here
+    # must cost titles, not the page.
+    try:
+        # Task attention rows and spine enrichment ride the
+        # expert-task-management flag; with it off Home shows execution
+        # data only, with no dead links into the hidden task pages.
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return []
+        return await tasks_db.list_open_tasks(user_id)
+    except Exception:
+        logger.warning(
+            "Home could not load open tasks for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+
+
+async def _get_failed_tasks(*, user_id: str, now: datetime) -> list[DelegatedTask]:
+    # Recently FAILED tasks feed the "failed after retry" attention card.
+    # Fail-soft like open tasks: losing them costs a card, not the page.
+    try:
+        # Gated like open tasks: failed-task attention is a task-spine card.
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return []
+        return await overseer_db.list_recent_failed_tasks(
+            user_id, since=now - timedelta(days=3)
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load failed tasks for user %s", user_id[:_LOG_ID_CHARS]
         )
         return []
 

@@ -72,9 +72,13 @@ def roster(monkeypatch):
     async def fake_list_experts(user_id, *, with_metrics=True, **_):
         return list(experts.values())
 
+    async def fake_list_pods(user_id):
+        return []
+
     db = MagicMock()
     db.get_expert = fake_get_expert
     db.list_experts = fake_list_experts
+    db.list_pods = fake_list_pods
     for module in (
         "delegate_to_expert",
         "get_sub_session_result",

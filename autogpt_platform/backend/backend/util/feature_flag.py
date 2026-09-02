@@ -101,6 +101,14 @@ class Flag(str, Enum):
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
 
+    # Mirror of the frontend `expert-task-management` flag. Child gate of
+    # HIRE_EXPERTS for the DelegatedTask spine: delegation/task tools,
+    # the task overseer cron, briefing task cards, Home task attention
+    # rows, and the intro-task kickoff. Every check pairs it with
+    # HIRE_EXPERTS — turning this one flag off (or deleting the feature)
+    # removes task management while leaving the experts surface intact.
+    EXPERT_TASK_MANAGEMENT = "expert-task-management"
+
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
     # facts ride the ratification loop as tentative. Off on the

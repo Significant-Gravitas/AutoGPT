@@ -82,12 +82,64 @@ class TestToolDiscoveryPriorityAntiPattern:
 
 
 class TestGraphitiMemoryScope:
-    def test_supplement_describes_assistant_scoped_memory(self):
-        result = prompting.get_graphiti_supplement()
+    def test_autopilot_supplement_describes_assistant_scoped_memory(self):
+        result = prompting.get_graphiti_supplement("autopilot")
 
         assert "scoped to the assistant running this session" in result
-        assert "AutoPilot uses the user's personal memory" in result
-        assert "each hired expert uses its own separate memory" in result
+        assert "You are AutoPilot and use the user's personal memory" in result
+        assert "each hired expert keeps its own" in result
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
+
+    def test_expert_supplement_frames_memory_as_own_experience(self):
+        result = prompting.get_graphiti_supplement("expert")
+
+        assert "scoped to the assistant running this session" in result
+        assert "your accumulated professional experience" in result
+        assert "AutoPilot and other experts cannot read it" in result
+        assert "You are AutoPilot" not in result
+
+
+class TestRoleAwareTeamSections:
+    """Autopilot gets a head-of-team charter; an expert session gets employee
+    operating rules. Both roles are told about ``escalate_task`` targets so a
+    blocked chain routes up instead of stalling."""
+
+    def test_autopilot_charter_is_head_of_staff(self):
+        charter = prompting.get_role_charter("autopilot")
+        assert "head of the user's team" in charter
+        assert "hire_expert" in charter
+        assert "Operating as a hired expert" not in charter
+
+    def test_expert_charter_is_employee_rules(self):
+        charter = prompting.get_role_charter("expert")
+        assert "Operating as a hired expert" in charter
+        assert 'escalate_task(target="manager")' in charter
+        assert 'escalate_task(target="user")' in charter
+        assert "hire_expert" not in charter
+
+    def test_delegation_supplement_routes_escalation_by_role(self):
+        expert = prompting.get_delegation_supplement("expert")
+        autopilot = prompting.get_delegation_supplement("autopilot")
+        assert 'escalate_task(target="manager")' in expert
+        assert "Experts may escalate their blocked tasks to you" in autopilot
+
+    def test_assemble_orders_static_before_identity(self):
+        prompt = prompting.assemble_system_prompt(
+            "BASE",
+            engine_supplement="ENGINE",
+            delegation_supplement=prompting.get_delegation_supplement("expert"),
+            graphiti_supplement=prompting.get_graphiti_supplement("expert"),
+            role_charter=prompting.get_role_charter("expert"),
+            builder_session_suffix="<builder/>",
+            expert_session_suffix="<expert_identity/>",
+        )
+        assert (
+            prompt.index("ENGINE")
+            < prompt.index("### Delegating to a teammate")
+            < prompt.index("## Memory System (Graphiti)")
+            < prompt.index("## Operating as a hired expert")
+            < prompt.index("<builder/>")
+            < prompt.index("<expert_identity/>")
+        )

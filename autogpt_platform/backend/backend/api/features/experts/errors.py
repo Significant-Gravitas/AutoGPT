@@ -23,6 +23,7 @@ __all__ = [
     "LIFETIME_RAISED_EXPERT_LIMIT",
     "ExpertHireUnavailableError",
     "ExpertLimitExceededError",
+    "ExpertPodLeadNotMemberError",
     "ExpertPodLimitReachedError",
     "ExpertPodNameTakenError",
     "ExpertPodNotFoundError",
@@ -52,3 +53,13 @@ class ExpertPodLimitReachedError(Exception):
     def __init__(self, limit: int):
         super().__init__(f"You can have at most {limit} pods")
         self.limit = limit
+
+
+class ExpertPodLeadNotMemberError(Exception):
+    def __init__(self, expert_id: str, pod_id: str):
+        super().__init__(
+            f"Expert {expert_id} is not a member of pod {pod_id}, "
+            "so they cannot lead it"
+        )
+        self.expert_id = expert_id
+        self.pod_id = pod_id

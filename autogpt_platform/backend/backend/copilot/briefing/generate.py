@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.copilot.constants import COPILOT_SESSION_PREFIX
+from backend.copilot.overseer.cards import compose_merge_items, compose_nudge_items
+from backend.copilot.overseer.recruiter import RECRUITER_WINDOW, compose_hire_items
 from backend.data.db_accessors import (
     execution_db,
     experts_db,
@@ -235,8 +237,22 @@ async def _compose_fresh_briefing(
         generated_at=now_local,
         tz_name=tz_name,
     )
+    nudges, merges, hires = await _compose_task_cards(user_id, now_local, experts)
     if content is None:
-        return None
+        if not (nudges or merges or hires):
+            return None
+        # A day with nothing run but tasks worth nagging about still earns
+        # a briefing — otherwise a week-stale question never resurfaces.
+        content = BriefingContent(
+            generated_at=now_local,
+            timezone=tz_name,
+            zero_expert_fallback=not experts,
+            run_items=[],
+            decision_items=[],
+        )
+    content = content.model_copy(
+        update={"nudge_items": nudges, "merge_items": merges, "hire_items": hires}
+    )
     # Written here, once, rather than at render time: the thread post and the
     # home card must show the same paragraph, and home must not pay for an LLM
     # call on every poll. `None` on failure — the briefing ships either way.
@@ -250,6 +266,38 @@ async def _compose_fresh_briefing(
     return content.model_copy(
         update={"narrative": await compose_narrative(user_id, content, experts)}
     )
+
+
+async def _compose_task_cards(user_id: str, now: datetime, experts: list[Expert]):
+    """Overseer/recruiter cards for the briefing. Best-effort: a task-spine
+    hiccup must not sink the whole briefing."""
+    # Nudges, merges and recruiter hires are all derived from DelegatedTask
+    # rows, so the whole card set rides expert-task-management (the briefing
+    # shell itself rides hire-experts, checked by the caller).
+    try:
+        if not await is_feature_enabled(
+            Flag.EXPERT_TASK_MANAGEMENT, user_id, default=False
+        ):
+            return [], [], []
+        client = get_database_manager_async_client()
+        open_tasks = await client.list_open_tasks(user_id)
+        nudges = compose_nudge_items(open_tasks, now)
+        merges = compose_merge_items(open_tasks)
+        hires = []
+        autopilot_tasks = await client.list_recent_autopilot_tasks(
+            user_id, since=now - RECRUITER_WINDOW
+        )
+        if autopilot_tasks:
+            templates = await client.list_templates()
+            hires = compose_hire_items(autopilot_tasks, templates, experts)
+        return nudges, merges, hires
+    except Exception:
+        logger.warning(
+            "Briefing task cards failed for user %s; shipping without them",
+            user_id[:12],
+            exc_info=True,
+        )
+        return [], [], []
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:

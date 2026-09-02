@@ -15,6 +15,9 @@ const FILTER_LABELS: Partial<Record<AttentionFilter, string>> = {
   paused: "Paused",
   credits: "Credits",
   question: "Questions",
+  task_escalation: "Task questions",
+  task_failed: "Failed",
+  task_stale: "Stale",
 };
 
 export function useNeedsYou({ items }: Args) {

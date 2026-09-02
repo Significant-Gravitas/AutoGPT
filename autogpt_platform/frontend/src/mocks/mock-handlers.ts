@@ -29,7 +29,9 @@ import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/sc
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
 import { getSkillsMock } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getListTasksMockHandler } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import { HttpResponse, http } from "msw";
 
 // Pass hard-coded data to individual handler functions to override faker-generated data.
 export const mockHandlers = [
@@ -59,6 +61,13 @@ export const mockHandlers = [
   ...getDefaultMock(),
   ...getEmailMock(),
   ...getExecutionsMock(),
+  // Hand-written until the office endpoints land in the OpenAPI spec; swap
+  // for the generated experts.msw handlers after `pnpm generate:api`. Must
+  // sit before getExpertsMock so `GET /api/experts/:expertId` doesn't
+  // swallow the office-templates path.
+  http.get("/api/proxy/api/experts/office-templates", () =>
+    HttpResponse.json([]),
+  ),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),
@@ -74,5 +83,8 @@ export const mockHandlers = [
   ...getSearchMock(),
   ...getSkillsMock(),
   ...getStoreMock(),
+  // Empty by default so surfaces that read the task spine stay quiet in
+  // unrelated tests; task tests override with their own fixtures.
+  getListTasksMockHandler([]),
   ...getWorkspaceMock(),
 ];
