@@ -558,6 +558,7 @@ class DatabaseManager(AppService):
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -933,6 +934,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
+    update_chat_session_llm_route = d.update_chat_session_llm_route
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status

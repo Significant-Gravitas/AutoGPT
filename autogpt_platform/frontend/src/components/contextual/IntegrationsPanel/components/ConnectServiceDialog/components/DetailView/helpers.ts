@@ -1,3 +1,5 @@
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
+
 type ValidationDetailItem = { msg?: unknown };
 
 function readDetail(value: unknown): string | null {
@@ -51,4 +53,24 @@ export function getOAuthErrorMessage(error: unknown): string {
   }
 
   return "Something went wrong. Please try again.";
+}
+
+/**
+ * "5.6 Terra (Balanced) and 5.6 Sol (Advanced)", from the catalog.
+ *
+ * Empty when the server named nothing, so the sentence falls back to the
+ * general one rather than rendering half of a promise.
+ */
+export function chatgptModelsSentence(
+  providers: ProviderTiers[] | undefined,
+): string {
+  const chatgpt = (providers ?? []).find(
+    (provider) => provider.provider_family === "openai",
+  );
+  const named = (chatgpt?.tiers ?? [])
+    .filter((tier) => tier.display_model)
+    .map((tier) => `${tier.display_model} (${tier.label})`);
+  if (named.length === 0) return "";
+  if (named.length === 1) return named[0];
+  return `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
 }

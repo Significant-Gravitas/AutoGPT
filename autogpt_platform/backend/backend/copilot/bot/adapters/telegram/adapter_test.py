@@ -1,10 +1,13 @@
 """Tests for the Telegram adapter."""
 
+import html
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
+from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
 
 from .adapter import (
     TelegramAdapter,
@@ -396,3 +399,65 @@ class TestStreamDrafts:
             await a.send_stream_draft("42", 7, "x" * 5000) is StreamDraftOutcome.SKIPPED
         )
         a._client.call.assert_not_awaited()
+
+
+class TestProactiveChunking:
+    @pytest.mark.asyncio
+    async def test_post_channel_message_chunks_canonical_before_html(self):
+        # Chunking must happen on the canonical markdown (where the splitter
+        # balances ``` fences), THEN localize per chunk — the old order cut
+        # inside <pre> blocks and Telegram 400s on unbalanced tags.
+        a = _adapter()
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        await a.post_channel_message("123", f"```python\n{code}\n```")
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2  # long enough to actually split
+        for c in calls:
+            sent = c.kwargs["text"]
+            assert sent.count("<pre>") == sent.count("</pre>") == 1
+
+    @pytest.mark.asyncio
+    async def test_partial_chunked_post_keeps_what_landed(self):
+        # A 400/429 past the first chunk would otherwise report the whole post
+        # failed, and the model reposts — duplicating the delivered chunks.
+        a = _adapter()
+        a._client.call = AsyncMock(
+            side_effect=[{"message_id": 77}, TelegramAPIError("sendMessage failed")]
+        )
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        ref = await a.post_channel_message("123", f"```python\n{code}\n```")
+        assert ref is not None
+        assert ref.id == "77"
+
+    @pytest.mark.asyncio
+    async def test_first_chunk_failure_still_raises(self):
+        # Nothing landed, so the caller must hear about it and retry.
+        a = _adapter()
+        a._client.call = AsyncMock(side_effect=TelegramAPIError("sendMessage failed"))
+        code = "\n".join(f"line {i} of some code" for i in range(400))
+        with pytest.raises(TelegramAPIError):
+            await a.post_channel_message("123", f"```python\n{code}\n```")
+
+    @pytest.mark.asyncio
+    async def test_entity_dense_chunks_respect_the_parsed_length_cap(self):
+        # Telegram's 4096 cap counts characters AFTER entity parsing (Bot API,
+        # sendMessage.text), so the raw HTML may legitimately run over it;
+        # what must hold is the parsed length of every chunk.
+        a = _adapter()
+        line = '<div class="row">Tom & Jerry\'s "quote"</div>'
+        await a.post_channel_message("123", "\n".join([line] * 200))
+
+        calls = [c for c in a._client.call.call_args_list if c.args == ("sendMessage",)]
+        assert len(calls) >= 2
+        raw_over_cap = 0
+        for c in calls:
+            sent = c.kwargs["text"]
+            parsed = html.unescape(re.sub(r"<[^>]+>", "", sent))
+            assert len(parsed) <= 4096
+            raw_over_cap += len(sent) > 4096
+        assert raw_over_cap > 0  # the raw length is not the limit
+        joined = "".join(
+            html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
+        )
+        assert joined.count("Tom") == 200  # nothing dropped across the chunks

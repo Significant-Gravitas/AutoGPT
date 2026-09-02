@@ -17,7 +17,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import (
@@ -215,9 +215,6 @@ class CoPilotExecutionEntry(BaseModel):
     team_id: str | None = None
     """Active workspace for tenant-scoped execution"""
 
-    mode: CopilotMode | None = None
-    """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
-
     model: CopilotLLMModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
@@ -267,7 +264,6 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -311,7 +307,6 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         organization_id=organization_id,
         team_id=team_id,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
@@ -341,7 +336,6 @@ async def schedule_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -409,7 +403,6 @@ async def schedule_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -434,7 +427,6 @@ async def dispatch_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -503,7 +495,6 @@ async def dispatch_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -586,7 +577,6 @@ async def schedule_chat_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -656,7 +646,6 @@ async def schedule_chat_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
