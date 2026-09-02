@@ -389,9 +389,11 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
         voice_preferences=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
+        tagline="Finds your leads and their decision-makers.",
     )
     assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert raised.expert.color == "sky-300"
+    assert raised.expert.tagline == "Finds your leads and their decision-makers."
 
     reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
     assert reloaded is not None

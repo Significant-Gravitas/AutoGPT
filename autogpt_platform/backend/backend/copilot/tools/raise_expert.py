@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
+    EXPERT_TAGLINE_MAX_LENGTH,
     WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
     ExpertSoulFieldsPatch,
@@ -69,6 +70,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
 
@@ -89,13 +91,15 @@ class RaiseExpertTool(BaseTool):
         return (
             "Propose a brand-new expert when no roster template fits. Give "
             "them a personal first name (the role field carries the job "
-            "title) and an accent color, then write their charter: what they "
-            "own, what good looks like, and where they stop (always fill "
-            "boundaries — an expert without them oversteps). Never writes: "
+            "title), a one-line tagline and an accent color, then write "
+            "their charter: what they own, what good looks like, and where "
+            "they stop (always fill boundaries — an expert without them "
+            "oversteps). Never writes: "
             "returns the proposed expert plus a one-time confirmation_id. "
-            "Read the FULL charter back — name, role, color, what they own, "
-            "where they stop, voice, weekly budget — and only after the user "
-            "approves, call confirm_expert_change with that id."
+            "The user sees the whole charter on a card with Approve and "
+            "Decline buttons, so never repeat it in text — one short line "
+            "at most, then wait. Only after the user approves, call "
+            "confirm_expert_change with that id."
         )
 
     @property
@@ -114,6 +118,15 @@ class RaiseExpertTool(BaseTool):
                 "role": {
                     "type": "string",
                     "description": "Short title for what they own.",
+                },
+                "tagline": {
+                    "type": "string",
+                    "description": (
+                        "One line, third person, what they do for the user "
+                        "— e.g. 'Finds your leads and their decision-makers.' "
+                        "Under 120 characters. This is what the user reads "
+                        "on their card; the charter is for the expert."
+                    ),
                 },
                 "color": {
                     "type": "string",
@@ -146,7 +159,7 @@ class RaiseExpertTool(BaseTool):
                     "description": "Weekly credit cap (100 = $1); omit for default.",
                 },
             },
-            "required": ["name", "about", "boundaries"],
+            "required": ["name", "tagline", "about", "boundaries"],
         }
 
     async def _execute(
@@ -156,6 +169,7 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        tagline: str = "",
         color: str = "",
         about: str = "",
         boundaries: str = "",
@@ -185,6 +199,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
             )
@@ -235,6 +250,7 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            tagline=params.tagline,
             color=params.color,
             about=soul.identity or "",
             boundaries=soul.boundaries,
@@ -254,11 +270,11 @@ class RaiseExpertTool(BaseTool):
         )
         return ExpertChangeProposedResponse(
             message=(
-                "Nothing created yet. Read the full charter back to the "
-                "user — name, role, color, what this expert owns, where "
-                "they stop, voice and weekly budget — and only after they "
-                "explicitly approve, call confirm_expert_change with this "
-                "confirmation_id."
+                "Nothing created yet. The user is looking at this charter on "
+                "a card with Approve and Decline buttons — do not repeat any "
+                "of it in text. Reply with one short line at most and wait. "
+                "Only after they explicitly approve, call "
+                "confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,
