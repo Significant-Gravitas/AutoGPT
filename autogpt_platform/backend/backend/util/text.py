@@ -140,6 +140,7 @@ _CAMELCASE_EXCEPTIONS: dict[str, str] = {
     "You Tube": "YouTube",
     "Git Hub": "GitHub",
     "Linked In": "LinkedIn",
+    "All Quiet": "AllQuiet",
 }
 
 _CAMELCASE_EXCEPTION_RE = re.compile(
