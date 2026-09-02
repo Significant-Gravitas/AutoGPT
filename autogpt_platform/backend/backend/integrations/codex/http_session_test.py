@@ -1,7 +1,9 @@
 import asyncio
 from typing import Any
 
+import httpx
 import pytest
+from openai import AsyncOpenAI
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
@@ -48,9 +50,9 @@ class _RawResponse:
         self._events = events
         self.headers = headers
 
-    async def parse(self):
-        # Match openai.AsyncAPIResponse.parse: callers must await the method,
-        # which then returns the AsyncStream for an SSE response.
+    def parse(self):
+        # Match LegacyAPIResponse.parse, which synchronously returns the
+        # AsyncStream for an SSE response.
         async def stream():
             for event in self._events:
                 yield event
@@ -138,6 +140,38 @@ def _request(**over: Any) -> CodexInvocationRequest:
 TOOL = CodexDynamicToolSpec(
     name="lookup", description="Look something up.", input_schema={"type": "object"}
 )
+
+
+# --------------------------------------------------------------------------- #
+# The installed OpenAI SDK streaming contract
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_installed_sdk_raw_stream_is_consumed_without_awaiting_it() -> None:
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b"data: [DONE]\n\n",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = AsyncOpenAI(
+            api_key="test",
+            base_url="https://example.test",
+            http_client=http,
+        )
+        session = CodexHttpSession(
+            _credentials(),
+            turn_timeout_seconds=30,
+            tool_timeout_seconds=5,
+            client=client,
+        )
+
+        result = await session.invoke(_request(), [], _echo_tool)
+
+    assert result.status == "completed"
 
 
 # --------------------------------------------------------------------------- #

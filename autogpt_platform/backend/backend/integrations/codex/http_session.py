@@ -206,10 +206,9 @@ class CodexHttpSession:
         self._rate_limits = parse_rate_limits(raw.headers)
 
         outcome = _TurnOutcome()
-        # The SDK's AsyncAPIResponse.parse() is itself async. For an SSE
-        # response it resolves to AsyncStream; iterating the coroutine directly
-        # raises TypeError before the first provider event is consumed.
-        stream = await raw.parse()
+        # with_raw_response returns LegacyAPIResponse for streaming requests;
+        # its synchronous parse() returns the AsyncStream to iterate.
+        stream = raw.parse()
         async for event in stream:
             await _consume_event(event, outcome, event_handler)
         return outcome
