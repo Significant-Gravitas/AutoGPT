@@ -27,6 +27,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-dispatch-{1}', github.workflow, github.run_id) || format('{0}-{1}', github.workflow, github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -190,6 +193,7 @@ jobs:
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
+          GIT_REF: ${{ github.ref }}
           PUBLISH_BUILD_CACHE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && inputs.publish_build_cache) }}
         run: |
           pip install pyyaml
@@ -215,7 +219,7 @@ jobs:
             --cache-from "type=gha" \
             --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend/**') }}" \
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}-sourcemaps" \
-            --git-ref "${{ github.ref }}" \
+            --git-ref "$GIT_REF" \
             --cache-to "$cache_to"
 
       - name: Set up Platform - Build Docker images
