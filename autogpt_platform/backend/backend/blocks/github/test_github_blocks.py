@@ -566,6 +566,20 @@ class TestReadPr:
         assert result == TEST_PR_PAYLOAD
 
 
+class TestPrSummary:
+    def test_null_body_falls_back_instead_of_yielding_none(self):
+        # GitHub returns an explicit "body": null for PRs with no description.
+        pr = {**TEST_PR_PAYLOAD, "body": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[1] == (
+            "No body content found"
+        )
+
+    def test_null_user_falls_back_instead_of_raising(self):
+        # Reviews by deleted accounts come back with a null user.
+        pr = {**TEST_PR_PAYLOAD, "user": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[2] == "Unknown author"
+
+
 # ── get_paginated tests ──
 # Every list block delegates its fetching here, and every block test mocks the
 # list method wholesale, so the pagination logic is exercised directly.

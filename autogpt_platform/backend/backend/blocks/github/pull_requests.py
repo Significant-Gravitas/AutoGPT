@@ -377,9 +377,11 @@ class GithubReadPullRequestBlock(Block):
 
     @staticmethod
     def _pr_summary(pull_request: dict) -> tuple[str, str, str]:
-        title = pull_request.get("title", "No title found")
-        body = pull_request.get("body", "No body content found")
-        author = pull_request.get("user", {}).get("login", "Unknown author")
+        # GitHub returns an explicit `"body": null` for PRs with no description,
+        # so `.get(..., default)` alone won't catch it — `or` does.
+        title = pull_request.get("title") or "No title found"
+        body = pull_request.get("body") or "No body content found"
+        author = (pull_request.get("user") or {}).get("login") or "Unknown author"
         return title, body, author
 
     @staticmethod
