@@ -114,7 +114,7 @@ jobs:
         env:
           CACHE_ENABLED: ${{ github.event_name != 'pull_request' }}
           CACHE_WRITE_ENABLED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v1-${{ matrix.suffix }}
+          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
         run: |
           set -euo pipefail
           echo "set<<CACHE_EOF" >> "$GITHUB_OUTPUT"
@@ -126,22 +126,6 @@ jobs:
             echo "single-container.cache-to=type=registry,ref=$CACHE_REF,mode=max,oci-mediatypes=true,image-manifest=false" >> "$GITHUB_OUTPUT"
           fi
           echo "CACHE_EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Build image without publishing
-        id: build-image
-        background: true
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
-        with:
-          source: .
-          files: autogpt_platform/single-container/docker-bake.hcl
-          targets: single-container
-          set: |
-            *.platform=${{ matrix.platform }}
-            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
-            single-container.args.VCS_REF=${{ github.sha }}
-            single-container.output=type=docker
-            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
-            ${{ steps.cache.outputs.set }}
 
       - name: Test appliance runtime helpers
         shell: bash
@@ -163,6 +147,22 @@ jobs:
           --classname single-container.publication
           --output "$REPORT_DIR/publication-policy.xml"
           -- bash .github/scripts/platform-single-container-publish.sh self-test
+
+      - name: Build image without publishing
+        id: build-image
+        background: true
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: |
+            *.platform=${{ matrix.platform }}
+            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+            single-container.args.VCS_REF=${{ github.sha }}
+            single-container.output=type=docker
+            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+            ${{ steps.cache.outputs.set }}
 
       - name: Wait for image build
         wait: build-image
