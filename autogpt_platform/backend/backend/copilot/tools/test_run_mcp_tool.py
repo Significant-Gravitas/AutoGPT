@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
+
 from backend.data.model import OAuth2Credentials
 
 from ._test_data import make_session
@@ -162,55 +163,6 @@ async def test_non_dict_tool_arguments_returns_error():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("surface_connect_card", [False, True])
-async def test_malformed_stored_credential_surfaces_reconnect(
-    surface_connect_card: bool,
-):
-    """Strict input parsing must not strand users with a legacy stored value."""
-    tool = RunMCPToolTool()
-    session = make_session(_USER_ID)
-    malformed_cred = OAuth2Credentials(
-        id="malformed-mcp-credential",
-        provider="mcp",
-        title="MCP: remote.mcpservers.org",
-        access_token=SecretStr("Authorization: Digest abc"),
-        scopes=[],
-        metadata={"mcp_server_url": _SERVER_URL},
-    )
-
-    with (
-        patch(
-            "backend.copilot.tools.run_mcp_tool.validate_url_host",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-            new_callable=AsyncMock,
-            return_value=malformed_cred,
-        ),
-        patch(
-            "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
-            new_callable=AsyncMock,
-        ) as invalidate,
-    ):
-        response = await tool._execute(
-            user_id=_USER_ID,
-            session=session,
-            server_url=_SERVER_URL,
-            surface_connect_card=surface_connect_card,
-        )
-
-    assert isinstance(response, SetupRequirementsResponse)
-    assert response.setup_info.user_readiness.has_all_credentials is False
-    invalidate.assert_awaited_once_with(_USER_ID, malformed_cred.id)
-
-
-# ---------------------------------------------------------------------------
-# Stage 1 — Discovery
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_discover_tools_returns_discovered_response():
     """Calling with only server_url triggers discovery and returns tool list."""
     tool = RunMCPToolTool()
@@ -249,12 +201,22 @@ async def test_discover_tools_returns_discovered_response():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_discover_tools_with_credentials():
-    """Stored credentials are passed as Bearer token to MCPClient."""
+    """A legacy stored credential is sent as a Bearer header.
+
+    A real credential rather than a ``MagicMock``: the header is built from
+    ``mcp_auth_scheme`` metadata, and a mock answers every attribute lookup
+    truthily, which silently exercises the wrong branch.
+    """
     tool = RunMCPToolTool()
     session = make_session(_USER_ID)
 
-    mock_creds = MagicMock()
-    mock_creds.access_token = SecretStr("test-token-abc")
+    mock_creds = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: remote.mcpservers.org",
+        access_token=SecretStr("test-token-abc"),
+        scopes=[],
+        metadata={"mcp_server_url": _SERVER_URL},
+    )
     mock_tools = _make_tool_list("push_notification")
 
     with patch(

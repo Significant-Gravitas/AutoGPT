@@ -75,6 +75,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",
@@ -100,6 +102,8 @@ class TestDiscoverTools:
     async def test_discover_tools_with_auth_token(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -142,6 +146,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -159,38 +165,6 @@ class TestDiscoverTools:
         )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_discover_tools_invalid_stored_credential_surfaces_reconnect(
-        self, client
-    ):
-        stored_cred = OAuth2Credentials(
-            provider="mcp",
-            title="MCP: example.com",
-            access_token=SecretStr("Authorization: Digest abc"),
-            scopes=[],
-            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
-        )
-
-        with (
-            patch(
-                "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
-                new_callable=AsyncMock,
-                return_value=stored_cred,
-            ),
-            patch(
-                "backend.api.features.mcp.routes.invalidate_mcp_credential",
-                new_callable=AsyncMock,
-            ) as invalidate,
-        ):
-            response = await client.post(
-                "/discover-tools",
-                json={"server_url": "https://mcp.example.com/mcp"},
-            )
-
-        assert response.status_code == 401
-        assert "reconnect" in response.json()["detail"].lower()
-        invalidate.assert_awaited_once_with("test-user-id", stored_cred.id)
-
-    @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_mcp_error(self, client):
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
@@ -201,6 +175,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
@@ -224,6 +200,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
             response = await client.post(
@@ -245,6 +223,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
             )
@@ -268,6 +248,8 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
             )
@@ -298,6 +280,8 @@ class TestOAuthLogin:
             ) as mock_register,
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(
                 return_value={
                     "authorization_servers": ["https://auth.sentry.io"],
@@ -337,6 +321,8 @@ class TestOAuthLogin:
     async def test_oauth_login_no_oauth_support(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(return_value=None)
             instance.discover_auth_server_metadata = AsyncMock(return_value=None)
 
@@ -357,6 +343,8 @@ class TestOAuthLogin:
             patch("backend.api.features.mcp.routes.settings") as mock_settings,
         ):
             instance = MockClient.return_value
+            # The route closes its session in a finally block.
+            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(
                 return_value={
                     "authorization_servers": ["https://auth.example.com"],
@@ -551,6 +539,7 @@ class TestStoreToken:
                 side_effect=AssertionError("manual credentials must not refresh")
             )
             mcp_client = client_cls.return_value
+            mcp_client.close = AsyncMock()
             mcp_client.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",
@@ -596,7 +585,7 @@ class TestStoreToken:
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
-            mock_cm.store.delete_creds_by_id = AsyncMock()
+            mock_cm.delete = AsyncMock()
 
             response = await client.post(
                 "/token",
@@ -617,7 +606,7 @@ class TestStoreToken:
         assert updated.id == old_cred.id
         assert updated.access_token.get_secret_value() == "Bearer new-token"
         assert updated.metadata["mcp_auth_scheme"] == "bearer"
-        mock_cm.store.delete_creds_by_id.assert_not_awaited()
+        mock_cm.delete.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_rotates_one_row_and_prunes_duplicates(self, client):
@@ -641,7 +630,7 @@ class TestStoreToken:
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=old_creds)
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
-            mock_cm.store.delete_creds_by_id = AsyncMock()
+            mock_cm.delete = AsyncMock()
 
             response = await client.post(
                 "/token",
@@ -662,9 +651,7 @@ class TestStoreToken:
         assert updated.access_token.get_secret_value() == "Basic encoded-value"
         # A static pasted credential carries no OAuth scopes.
         assert updated.scopes == []
-        mock_cm.store.delete_creds_by_id.assert_awaited_once_with(
-            "test-user-id", old_creds[0].id
-        )
+        mock_cm.delete.assert_awaited_once_with("test-user-id", old_creds[0].id)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_replaces_an_oauth_credential_instead_of_converting_it(
@@ -693,7 +680,7 @@ class TestStoreToken:
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[oauth_cred])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
-            mock_cm.store.delete_creds_by_id = AsyncMock()
+            mock_cm.delete = AsyncMock()
 
             response = await client.post(
                 "/token",
@@ -711,9 +698,7 @@ class TestStoreToken:
         assert created.id != oauth_cred.id
         assert created.refresh_token is None
         assert created.scopes == []
-        mock_cm.store.delete_creds_by_id.assert_awaited_once_with(
-            "test-user-id", oauth_cred.id
-        )
+        mock_cm.delete.assert_awaited_once_with("test-user-id", oauth_cred.id)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_clears_stale_expiry_on_rotation(self, client):
@@ -735,7 +720,7 @@ class TestStoreToken:
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
-            mock_cm.store.delete_creds_by_id = AsyncMock()
+            mock_cm.delete = AsyncMock()
 
             response = await client.post(
                 "/token",

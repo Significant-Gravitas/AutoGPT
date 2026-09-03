@@ -216,23 +216,14 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        client: MCPClient | None = None
-        if creds is not None:
-            try:
-                client = MCPClient(
-                    server_url, authorization=mcp_authorization_header(creds)
-                )
-            except ValueError:
-                # Legacy rows can contain values that the stricter explicit
-                # input validator now rejects. Drop only that unusable stored
-                # row and surface the reconnect flow; never expose the secret.
-                logger.warning(
-                    "Invalid stored MCP credential %s for %s; invalidating it",
-                    creds.id,
-                    server_host(server_url),
-                )
-                await invalidate_mcp_credential(user_id, creds.id)
-                return self._build_setup_requirements(server_url, session_id)
+        # Building the header from metadata cannot fail, so there is no
+        # "unusable stored row" branch here any more: a credential the server
+        # rejects comes back as a 401 below and is invalidated there.
+        client = (
+            MCPClient(server_url, authorization=mcp_authorization_header(creds))
+            if creds is not None
+            else None
+        )
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's
