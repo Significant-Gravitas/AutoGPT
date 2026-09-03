@@ -41,7 +41,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
 
   return (
     <article className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
@@ -55,10 +55,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Text
-              variant="large-medium"
-              className="text-pretty leading-6 text-zinc-950"
-            >
+            <Text variant="body-medium" className="text-pretty text-zinc-950">
               {item.title}
             </Text>
             {item.priority === "high" ? (
@@ -69,7 +66,7 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           </div>
           <Text
             variant="body"
-            className="line-clamp-2 text-pretty leading-6 text-zinc-600"
+            className="line-clamp-2 text-pretty text-zinc-600"
           >
             {item.description}
           </Text>
