@@ -66,6 +66,14 @@ export function ConnectCredentialDialog({
     onClose();
   }
 
+  // Device auth completes inside ConnectMethodView, so it never passes through
+  // the hook's success path and has to report the connection itself.
+  function handleDeviceAuthSuccess() {
+    reset();
+    onConnected?.();
+    onClose();
+  }
+
   const connectable: ConnectableProvider = {
     id: provider,
     name: displayName,
@@ -93,7 +101,7 @@ export function ConnectCredentialDialog({
             onSelectMethod={setSelectedMethod}
             apiKeyForm={apiKeyForm}
             onApiKeySubmit={handleApiKeySubmit}
-            onDeviceAuthSuccess={handleClose}
+            onDeviceAuthSuccess={handleDeviceAuthSuccess}
           />
           <div className="flex items-center justify-end gap-3">
             <Button variant="secondary" size="small" onClick={handleClose}>
