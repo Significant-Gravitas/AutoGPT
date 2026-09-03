@@ -177,42 +177,6 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
     anonymous.assert_not_awaited()
 
 
-def _first_matching_endpoint(router: Any, method: str, path: str) -> str | None:
-    """Name of the endpoint Starlette would dispatch `method path` to."""
-    scope = {"type": "http", "method": method, "path": path, "headers": []}
-    for route in router.routes:
-        match, _ = route.matches(scope)
-        if match == Match.FULL:
-            return route.endpoint.__name__
-    return None
-
-
-async def _call_rate_limit_middleware(
-    headers: list[tuple[bytes, bytes]], capture: Optional[list[dict]] = None
-) -> None:
-    from backend.api.external.v2.global_rate_limit import GlobalRateLimitMiddleware
-
-    async def app(scope, receive, send):
-        await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b""})
-
-    async def receive():
-        return {"type": "http.request", "body": b"", "more_body": False}
-
-    async def send(message):
-        if capture is not None:
-            capture.append(message)
-
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/runs",
-        "headers": headers,
-        "client": ("1.2.3.4", 0),
-    }
-    await GlobalRateLimitMiddleware(app)(scope, receive, send)
-
-
 # ---------------------------------------------------------------------------
 # Contract shape: one envelope, one error body, deterministic status codes
 # ---------------------------------------------------------------------------
@@ -291,10 +255,6 @@ def test_every_post_declares_whether_it_creates_or_enqueues():
     }
     actual = {r.name: r.status_code or 200 for r in _v2_routes() if "POST" in r.methods}
     assert actual == expected
-
-
-def _is_page(annotation: Any) -> bool:
-    return isinstance(annotation, type) and issubclass(annotation, Page)
 
 
 def test_every_operation_documents_the_error_envelope():
@@ -389,6 +349,10 @@ def test_next_cursor_is_null_on_the_last_page():
     assert request.paged([], total_count=0).next_cursor is None
 
 
+def _is_page(annotation: Any) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, Page)
+
+
 def _v2_routes() -> list[APIRoute]:
     from backend.api.external.v2.routes import v2_router
 
@@ -411,3 +375,39 @@ def _error_client(exception: Optional[Exception]) -> fastapi.testclient.TestClie
 
     add_v2_exception_handlers(app)
     return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+
+def _first_matching_endpoint(router: Any, method: str, path: str) -> str | None:
+    """Name of the endpoint Starlette would dispatch `method path` to."""
+    scope = {"type": "http", "method": method, "path": path, "headers": []}
+    for route in router.routes:
+        match, _ = route.matches(scope)
+        if match == Match.FULL:
+            return route.endpoint.__name__
+    return None
+
+
+async def _call_rate_limit_middleware(
+    headers: list[tuple[bytes, bytes]], capture: Optional[list[dict]] = None
+) -> None:
+    from backend.api.external.v2.global_rate_limit import GlobalRateLimitMiddleware
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        if capture is not None:
+            capture.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/runs",
+        "headers": headers,
+        "client": ("1.2.3.4", 0),
+    }
+    await GlobalRateLimitMiddleware(app)(scope, receive, send)
