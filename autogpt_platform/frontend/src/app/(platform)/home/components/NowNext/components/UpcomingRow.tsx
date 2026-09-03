@@ -10,26 +10,29 @@ interface Props {
 
 export function UpcomingRow({ item }: Props) {
   return (
-    <div className="relative flex items-center gap-3 rounded-xl py-3 pl-12 pr-2">
-      <span className="absolute left-0 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+    <div className="relative flex items-center gap-3 py-2 pl-12 pr-4">
+      <span className="absolute left-4 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
         <Icon
           icon={item.kind === "followup" ? Calendar03Icon : Clock01Icon}
-          size={15}
+          size={12}
           aria-hidden="true"
         />
       </span>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium" className="truncate text-zinc-900">
+        <Text
+          variant="body-medium"
+          className="truncate text-[13px] leading-5 text-zinc-900"
+        >
           {item.title}
         </Text>
-        <Text variant="small" className="truncate text-zinc-500">
+        <Text variant="small" className="truncate text-[11px] text-zinc-500">
           {item.expert?.name ??
             (item.kind === "followup" ? "Follow-up" : "Scheduled task")}
         </Text>
       </div>
       <Text
         variant="small"
-        className="shrink-0 font-medium tabular-nums text-zinc-700"
+        className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600"
       >
         {formatUntil(item.next_run_time)}
       </Text>

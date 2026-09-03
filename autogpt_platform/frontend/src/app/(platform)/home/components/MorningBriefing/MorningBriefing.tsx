@@ -36,54 +36,44 @@ export function MorningBriefing({ dashboard, className }: Props) {
   return (
     <HomeTile
       className={className}
-      contentClassName="flex flex-col gap-4"
-      surfaceClassName="py-4 sm:py-4"
-      title={
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Icon
-              icon={TaskDone01Icon}
-              size={18}
-              className="text-zinc-500"
-              aria-hidden="true"
+      icon={TaskDone01Icon}
+      title="Your briefing"
+      meta={
+        <>
+          <span className="hidden sm:inline">
+            Since{" "}
+            {formatBriefingWindowStart(
+              briefing.window_started_at,
+              dashboard.timezone,
+            )}
+          </span>
+          <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
+            ·
+          </span>
+          <span className="tabular-nums">
+            {briefing.completed_count} completed
+          </span>
+          {briefing.failed_count > 0 ? (
+            <span className="tabular-nums text-rose-600">
+              {briefing.failed_count} failed
+            </span>
+          ) : null}
+          {hasFilters ? (
+            <HomeTileFilter
+              ariaLabelPrefix="Filter briefing outcomes"
+              value={selectedFilter}
+              options={filterOptions}
+              onChange={(value) => selectFilter(value as BriefingFilter)}
             />
-            <Text variant="h5" className="text-zinc-950">
-              Your briefing
-            </Text>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center gap-3 text-xs font-medium tabular-nums text-zinc-500">
-              <span>{briefing.completed_count} completed</span>
-              {briefing.failed_count > 0 ? (
-                <span className="text-rose-700">
-                  {briefing.failed_count} failed
-                </span>
-              ) : null}
-            </div>
-            {hasFilters ? (
-              <HomeTileFilter
-                ariaLabelPrefix="Filter briefing outcomes"
-                value={selectedFilter}
-                options={filterOptions}
-                onChange={(value) => selectFilter(value as BriefingFilter)}
-              />
-            ) : null}
-          </div>
-        </div>
-      }
-      header={
-        <Text variant="large" className="text-zinc-600">
-          The outcomes worth knowing since{" "}
-          {formatBriefingWindowStart(
-            briefing.window_started_at,
-            dashboard.timezone,
-          )}
-          .
-        </Text>
+          ) : null}
+        </>
       }
     >
       {briefing.narrative ? (
-        <Text variant="large" className="text-zinc-700">
+        <Text
+          variant="body"
+          className="text-pretty border-b border-zinc-100 px-4 py-3 text-[13px] leading-5 text-zinc-600"
+        >
           {briefing.narrative}
         </Text>
       ) : null}
@@ -95,7 +85,7 @@ export function MorningBriefing({ dashboard, className }: Props) {
           description="Completed work and useful exceptions will appear here."
         />
       ) : (
-        <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
+        <div className="divide-y divide-zinc-100">
           {visibleOutcomes.map((outcome) => (
             <OutcomeRow key={outcome.id} outcome={outcome} />
           ))}
@@ -103,8 +93,13 @@ export function MorningBriefing({ dashboard, className }: Props) {
       )}
 
       {briefing.routine_count > 0 ? (
-        <div className="inline-flex items-center gap-1.5 self-end rounded-full border border-purple-500 bg-purple-100 px-2.5 py-1 text-sm font-medium text-purple-600">
-          <Icon icon={CheckmarkCircle02Icon} size={15} aria-hidden="true" />
+        <div className="flex items-center gap-1.5 border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500">
+          <Icon
+            icon={CheckmarkCircle02Icon}
+            size={13}
+            className="text-zinc-400"
+            aria-hidden="true"
+          />
           Plus {briefing.routine_count} routine task
           {briefing.routine_count === 1 ? "" : "s"} completed quietly.
         </div>

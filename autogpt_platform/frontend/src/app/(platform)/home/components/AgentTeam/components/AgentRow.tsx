@@ -17,15 +17,19 @@ export function AgentRow({ agent }: Props) {
   return (
     <Link
       href={`/team/${agent.expert.id}`}
-      className="group -mx-2 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      className="group flex min-w-0 items-center gap-3 px-4 py-2.5 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
     >
       <ExpertAvatar
         name={agent.expert.name}
         avatarUrl={agent.expert.avatar_url}
+        size={26}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" className="truncate text-zinc-900">
+          <Text
+            variant="body-medium"
+            className="truncate text-[13px] leading-5 text-zinc-900"
+          >
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
@@ -48,15 +52,15 @@ export function AgentRow({ agent }: Props) {
       {agent.next_run_time ? (
         <Text
           variant="small"
-          className="shrink-0 tabular-nums text-zinc-400 group-hover:text-zinc-600"
+          className="shrink-0 text-[11px] tabular-nums text-zinc-400 group-hover:text-zinc-600"
         >
           {formatUntil(agent.next_run_time)}
         </Text>
       ) : (
         <Icon
           icon={ArrowRight01Icon}
-          size={15}
-          className="shrink-0 text-zinc-300 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-600"
+          size={14}
+          className="shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
           aria-hidden="true"
         />
       )}

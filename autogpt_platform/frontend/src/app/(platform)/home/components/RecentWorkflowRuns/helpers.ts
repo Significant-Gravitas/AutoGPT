@@ -19,3 +19,27 @@ export function buildRunPrompt(run: SitrepItemData): string {
 export function buildAskHref(run: SitrepItemData): string {
   return `/copilot?autosubmit=true#prompt=${encodeURIComponent(buildRunPrompt(run))}`;
 }
+
+interface RunStatus {
+  label: string;
+  dot: string;
+  pulse: boolean;
+}
+
+export function getRunStatus(run: SitrepItemData): RunStatus {
+  if (run.priority === "success") {
+    return { label: "Completed", dot: "bg-emerald-500", pulse: false };
+  }
+  switch (run.status) {
+    case "running":
+      return { label: "Running", dot: "bg-blue-500", pulse: true };
+    case "error":
+      return { label: "Error", dot: "bg-red-500", pulse: false };
+    case "listening":
+      return { label: "Listening", dot: "bg-purple-500", pulse: true };
+    case "scheduled":
+      return { label: "Scheduled", dot: "bg-amber-500", pulse: false };
+    case "idle":
+      return { label: "Idle", dot: "bg-zinc-400", pulse: false };
+  }
+}

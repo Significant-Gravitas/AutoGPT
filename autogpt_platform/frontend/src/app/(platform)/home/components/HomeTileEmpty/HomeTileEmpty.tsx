@@ -22,17 +22,17 @@ export function HomeTileEmpty({
   return (
     <div
       className={cn(
-        "flex min-h-[14rem] flex-1 flex-col items-center justify-center gap-1 px-4 py-10 text-center",
+        "flex min-h-[9rem] flex-1 flex-col items-center justify-center gap-0.5 px-4 py-8 text-center",
         className,
       )}
     >
       <Icon
         icon={icon}
-        size={22}
-        className="text-zinc-400"
+        size={18}
+        className="mb-1 text-zinc-400"
         aria-hidden="true"
       />
-      <Text variant="body-medium" className="mt-1 text-zinc-800">
+      <Text variant="small-medium" className="text-[13px] text-zinc-700">
         {title}
       </Text>
       <Text variant="small" className="max-w-xs text-pretty text-zinc-500">
@@ -44,7 +44,7 @@ export function HomeTileEmpty({
           href={action.href}
           variant="secondary"
           size="small"
-          className="mt-3"
+          className="mt-3 h-7 min-w-0 rounded-md px-2.5 text-xs"
         >
           {action.label}
         </Button>
