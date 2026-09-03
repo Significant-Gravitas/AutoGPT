@@ -320,7 +320,7 @@ export function ChatInput({
                 stacked
                   ? cn(
                       CARD_ICON_BUTTON_CLASS,
-                      "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
+                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
                     )
                   : undefined
               }
