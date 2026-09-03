@@ -262,6 +262,7 @@ async def get_or_create_library_agent(
 async def match_credentials_to_requirements(
     user_id: str,
     requirements: dict[str, CredentialsFieldInfo],
+    expert_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """
     Match user's credentials against a dictionary of credential requirements.
@@ -274,7 +275,7 @@ async def match_credentials_to_requirements(
     if not requirements:
         return matched, missing
 
-    available_creds = await get_user_credentials(user_id)
+    available_creds = await get_user_credentials(user_id, expert_id)
 
     for field_name, field_info in requirements.items():
         matching_cred = find_matching_credential(available_creds, field_info)
@@ -314,10 +315,35 @@ async def match_credentials_to_requirements(
     return matched, missing
 
 
-async def get_user_credentials(user_id: str) -> list[Credentials]:
-    """Get all available credentials for a user."""
+async def get_user_credentials(
+    user_id: str, expert_id: str | None = None
+) -> list[Credentials]:
+    """Get the credentials available for a user, scoped to an expert if given."""
     creds_manager = IntegrationCredentialsManager()
-    return await creds_manager.store.get_all_creds(user_id)
+    credentials = await creds_manager.store.get_all_creds(user_id)
+    return await scope_credentials_to_expert(user_id, expert_id, credentials)
+
+
+async def scope_credentials_to_expert(
+    user_id: str,
+    expert_id: str | None,
+    credentials: list[Credentials],
+) -> list[Credentials]:
+    """Narrow *credentials* to what *expert_id* has been granted.
+
+    A plain (non-expert) session passes ``expert_id=None`` and keeps everything.
+    Filtering at selection time — rather than only at the executor's gate — is
+    what makes an ungranted integration surface as "missing credentials", so the
+    user is offered the connect/grant step instead of a run that fails later.
+    """
+    if expert_id is None:
+        return credentials
+
+    from backend.api.features.experts.credentials import filter_credentials_for_expert
+    from backend.data.db_accessors import experts_db
+
+    allowed = set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
+    return filter_credentials_for_expert(credentials, allowed)
 
 
 def find_matching_credential(
@@ -355,6 +381,7 @@ def create_credential_meta_from_match(
 async def match_user_credentials_to_graph(
     user_id: str,
     graph: GraphModel,
+    expert_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[str]]:
     """
     Match user's available credentials against graph's required credentials.
@@ -381,9 +408,11 @@ async def match_user_credentials_to_graph(
     if not aggregated_creds:
         return graph_credentials_inputs, missing_creds
 
-    # Get all available credentials for the user
+    # Get the credentials available for the user, narrowed to the expert's grants
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await creds_manager.store.get_all_creds(user_id)
+    available_creds = await scope_credentials_to_expert(
+        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    )
 
     # For each required credential field, find a matching user credential
     # field_info.provider is a frozenset because aggregate_credentials_inputs()
@@ -502,6 +531,7 @@ def _credential_is_for_mcp_server(
 async def check_user_has_required_credentials(
     user_id: str,
     required_credentials: list[CredentialsMetaInput],
+    expert_id: str | None = None,
 ) -> list[CredentialsMetaInput]:
     """
     Check which required credentials the user is missing.
@@ -517,7 +547,9 @@ async def check_user_has_required_credentials(
         return []
 
     creds_manager = IntegrationCredentialsManager()
-    available_creds = await creds_manager.store.get_all_creds(user_id)
+    available_creds = await scope_credentials_to_expert(
+        user_id, expert_id, await creds_manager.store.get_all_creds(user_id)
+    )
 
     missing: list[CredentialsMetaInput] = []
     for required in required_credentials:

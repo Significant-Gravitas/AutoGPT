@@ -50,6 +50,7 @@ from .response_model import (
     StreamHeartbeat,
     StreamModeChanged,
     StreamPendingDrained,
+    StreamProviderFailure,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -1141,6 +1142,37 @@ async def get_active_session(
     return session, last_id
 
 
+# Every stream part the registry can rebuild on replay.
+#
+# Turns run in the executor and reach the browser by replay, so a part
+# missing from this map is emitted, published, and then silently dropped --
+# visible only as an "Unknown chunk type" warning. Add new parts here.
+CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
+    ResponseType.START.value: StreamStart,
+    ResponseType.FINISH.value: StreamFinish,
+    ResponseType.START_STEP.value: StreamStartStep,
+    ResponseType.FINISH_STEP.value: StreamFinishStep,
+    ResponseType.TEXT_START.value: StreamTextStart,
+    ResponseType.TEXT_DELTA.value: StreamTextDelta,
+    ResponseType.TEXT_END.value: StreamTextEnd,
+    ResponseType.REASONING_START.value: StreamReasoningStart,
+    ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
+    ResponseType.REASONING_END.value: StreamReasoningEnd,
+    ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
+    ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
+    ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
+    ResponseType.ERROR.value: StreamError,
+    ResponseType.USAGE.value: StreamUsage,
+    ResponseType.HEARTBEAT.value: StreamHeartbeat,
+    ResponseType.STATUS.value: StreamStatus,
+    ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
+    ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
+    ResponseType.MODE_CHANGED.value: StreamModeChanged,
+    ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
+    ResponseType.COMPACTION.value: StreamCompactionProgress,
+}
+
+
 def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     """Reconstruct a StreamBaseResponse from JSON data.
 
@@ -1150,33 +1182,8 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     Returns:
         Reconstructed response object, or None if unknown type
     """
-    # Map response types to their corresponding classes
-    type_to_class: dict[str, type[StreamBaseResponse]] = {
-        ResponseType.START.value: StreamStart,
-        ResponseType.FINISH.value: StreamFinish,
-        ResponseType.START_STEP.value: StreamStartStep,
-        ResponseType.FINISH_STEP.value: StreamFinishStep,
-        ResponseType.TEXT_START.value: StreamTextStart,
-        ResponseType.TEXT_DELTA.value: StreamTextDelta,
-        ResponseType.TEXT_END.value: StreamTextEnd,
-        ResponseType.REASONING_START.value: StreamReasoningStart,
-        ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
-        ResponseType.REASONING_END.value: StreamReasoningEnd,
-        ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
-        ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
-        ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
-        ResponseType.ERROR.value: StreamError,
-        ResponseType.USAGE.value: StreamUsage,
-        ResponseType.HEARTBEAT.value: StreamHeartbeat,
-        ResponseType.STATUS.value: StreamStatus,
-        ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
-        ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
-        ResponseType.MODE_CHANGED.value: StreamModeChanged,
-        ResponseType.COMPACTION.value: StreamCompactionProgress,
-    }
-
-    chunk_type = chunk_data.get("type")
-    chunk_class = type_to_class.get(chunk_type)  # type: ignore[arg-type]
+    chunk_type = chunk_data.get("type", "")
+    chunk_class = CHUNK_TYPE_TO_CLASS.get(chunk_type)
 
     if chunk_class is None:
         logger.warning(f"Unknown chunk type: {chunk_type}")

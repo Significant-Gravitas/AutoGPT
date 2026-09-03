@@ -129,6 +129,14 @@ model User {
 
   timezone String @default("not-set")
 
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
+
   subscriptionTier SubscriptionTier @default(NO_TIER)
 
   // Relations
@@ -141,6 +149,7 @@ model User {
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   UserBriefings        UserBriefing[]
+  ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
@@ -316,6 +325,46 @@ model UserBriefing {
   // Every read is by user + date (latest-first or exact date), so the unique
   // index above serves them all — no secondary index to pay for on write.
   @@unique([userId, briefingDate])
+}
+
+enum ActivityEventCategory {
+  FILE
+  INTEGRATION
+  RUN
+  SCHEDULE
+}
+
+// Append-only audit log of work agents performed on the user's behalf:
+// side-effecting copilot tool calls, credentialed block executions, and
+// run completions. Powers the Home "Recent work" feed.
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  // Soft references on purpose: events must outlive the expert, session or
+  // schedule that produced them, so attribution falls back to `data`.
+  expertId    String?
+  sessionId   String?
+  graphExecId String?
+  nodeExecId  String?
+  scheduleId  String?
+
+  category  ActivityEventCategory
+  eventType String
+  provider  String?
+  objectId  String?
+  title     String
+  data      Json                  @default("{}")
+
+  @@index([userId, createdAt])
+  @@index([userId, category, createdAt])
+  @@index([sessionId])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -586,6 +635,14 @@ model ChatMessage {
   // without them. Null on user/tool rows and rows predating this column.
   model         String?
   routingSource String?
+
+  // Which connection served this assistant turn. The session's metadata is
+  // the route a chat STARTS on; these record the route a turn actually RAN
+  // on, so a later route change cannot rewrite what already happened.
+  // Null on user/tool rows and on rows predating this column, where the
+  // session's own route is the answer (see `segment_of`).
+  llmAuthProvider String?
+  llmCredentialId String?
 
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
@@ -968,7 +1025,14 @@ model Expert {
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
 
+  // Null until the credential allow-list has been seeded from the expert's
+  // installed workflows. Distinguishes "never curated" from "deliberately
+  // empty": without it, revoking an expert's last credential would look
+  // identical to a fresh expert and re-seed the grant straight back.
+  credentialsSeededAt DateTime?
+
   Workflows       ExpertWorkflow[]
+  Credentials     ExpertCredential[]
   ChatSessions    ChatSession[]
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
@@ -1021,6 +1085,31 @@ model ExpertWorkflow {
 
   // Duplicate install on an expert returns the existing row.
   @@unique([expertId, storeListingVersionId])
+  @@index([expertId])
+}
+
+// Which of the owner's integration credentials an expert may use.
+// Deny-by-default: an expert with no rows here reaches nothing, so the
+// seeding marker on Expert (credentialsSeededAt) is what keeps existing
+// experts working across the migration.
+model ExpertCredential {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // IntegrationCredential.id for USER-scoped rows. Deliberately NOT a foreign
+  // key: system credentials (platform LLM keys built from settings) never have
+  // a row at all, and reads intersect grants against the user's live
+  // credentials anyway — so a deleted credential leaves an inert grant rather
+  // than blocking the delete or cascading a revoke the user did not ask for.
+  credentialId String
+  // Denormalized so listing an expert's integrations never has to decrypt a
+  // payload just to learn which logo to draw.
+  provider     String
+
+  @@unique([expertId, credentialId])
   @@index([expertId])
 }
 

@@ -97,6 +97,17 @@ class User(BaseModel):
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
+    # Default AutoPilot connection for chats nobody routed explicitly. Kept as
+    # plain strings here: the data layer stores the choice, the copilot layer
+    # decides what a given value means (and treats one it doesn't recognise as
+    # "automatic", so a value written by a newer server can't break an older one).
+    default_chat_auth_provider: Optional[str] = Field(
+        None, description="Saved default chat transport, or None for automatic"
+    )
+    default_chat_credential_id: Optional[str] = Field(
+        None, description="Credential backing the saved default chat transport"
+    )
+
     @classmethod
     def from_db(cls, prisma_user: "PrismaUser") -> "User":
         """Convert a database User object to application User model."""
@@ -145,6 +156,8 @@ class User(BaseModel):
             alerts_enabled=prisma_user.alertsEnabled,
             notify_on_store_verdict=prisma_user.notifyOnStoreVerdict,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
+            default_chat_auth_provider=prisma_user.defaultChatAuthProvider,
+            default_chat_credential_id=prisma_user.defaultChatCredentialId,
         )
 
 

@@ -24,6 +24,10 @@ vi.mock("../steps/RoleStep", () => ({
 vi.mock("../steps/PainPointsStep", () => ({
   PainPointsStep: () => <div data-testid="step-painpoints" />,
 }));
+vi.mock("../steps/ConnectStep/ConnectStep", () => ({
+  ConnectStep: () => <div data-testid="step-connect" />,
+}));
+
 vi.mock("../steps/SubscriptionStep/SubscriptionStep", () => ({
   SubscriptionStep: () => <div data-testid="step-subscription" />,
 }));
@@ -116,6 +120,15 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     flag === "ENABLE_PLATFORM_PAYMENT" ? mockFlagValue : false,
 }));
 
+vi.mock("@/services/environment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/environment")>();
+  return {
+    ...actual,
+    environment: { ...actual.environment, isLocal: () => mockIsLocal },
+  };
+});
+
 vi.mock("launchdarkly-react-client-sdk", () => ({
   useLDClient: () => ({
     waitForInitialization: () => Promise.resolve(),
@@ -123,10 +136,12 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
 }));
 
 const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
+let mockIsLocal = false;
 
 beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
+  mockIsLocal = false;
   mockSubscriptionTier = "NO_TIER";
   mockAuthState = { isLoggedIn: true, isUserLoading: false };
   authUserPutBodies.length = 0;
@@ -440,5 +455,45 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(state.name).toBe("Alice");
     expect(state.role).toBe("Engineering");
     expect(state.painPoints).toEqual(["slow builds"]);
+  });
+});
+
+describe("OnboardingPage — self-host leads with the connection", () => {
+  it("renders ConnectStep first on a self-host install", async () => {
+    // A fresh self-host install cannot answer a single message until it has
+    // a model, so asking for one comes before personalising the chat.
+    mockIsLocal = true;
+    currentSearchParams = new URLSearchParams("step=1");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-connect")).toBeDefined();
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
+  });
+
+  it("puts Welcome after it, the way the paywall does on cloud", async () => {
+    mockIsLocal = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+    currentSearchParams = new URLSearchParams("step=2");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-welcome")).toBeDefined();
+    expect(screen.queryByTestId("step-connect")).toBeNull();
+  });
+
+  it("does not insert it on cloud", async () => {
+    mockIsLocal = false;
+    currentSearchParams = new URLSearchParams("step=1");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-welcome")).toBeDefined();
+    expect(screen.queryByTestId("step-connect")).toBeNull();
+  });
+
+  it("yields to the paywall rather than showing both first steps", async () => {
+    // Payments and self-host are mutually exclusive in practice; if a
+    // deployment ever had both, only one step can be first.
+    mockIsLocal = true;
+    mockFlagValue = true;
+    currentSearchParams = new URLSearchParams("step=1");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(screen.queryByTestId("step-connect")).toBeNull();
   });
 });

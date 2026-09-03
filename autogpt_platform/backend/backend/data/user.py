@@ -36,7 +36,7 @@ from backend.data.notifications import NotificationPreference, NotificationPrefe
 from backend.data.org_migration import ensure_personal_org
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
-from backend.util.exceptions import DatabaseError
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
@@ -1012,3 +1012,69 @@ def _sign_preference_choice(user_id: str, choice: str) -> str:
     return base64.urlsafe_b64encode(
         f"{user_id}:{signature.hex()}".encode("utf-8")
     ).decode("utf-8")
+
+
+async def get_user_default_chat_route(
+    user_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """Read the saved default chat transport exactly as stored.
+
+    Returned verbatim rather than validated here: what a provider string
+    means belongs to the copilot layer, and the data layer must not import
+    it (``copilot.rate_limit`` already imports ``data.user``).
+
+    A user who has authenticated but has no platform row yet — the row is
+    created by ``POST /auth/user``, which the frontend calls separately after
+    sign-in — reads as "nothing saved". Raising here would take transport
+    discovery and session creation down for that window, neither of which
+    touched the user table before this setting existed.
+    """
+    try:
+        user = await get_user_by_id(user_id)
+    except ValueError:
+        return None, None
+    # Shared-cache entries can outlive a rolling deploy. An object pickled by
+    # the previous version has no attributes for fields introduced here, so
+    # read them defensively until that cache entry expires.
+    return (
+        getattr(user, "default_chat_auth_provider", None),
+        getattr(user, "default_chat_credential_id", None),
+    )
+
+
+async def set_user_default_chat_route(
+    user_id: str,
+    auth_provider: Optional[str],
+    credential_id: Optional[str],
+) -> None:
+    """Save (or, with ``auth_provider=None``, clear) the default chat transport."""
+    try:
+        prisma_user = PrismaUser.prisma()
+        user = await prisma_user.find_unique(where={"id": user_id})
+        if user is None:
+            raise NotFoundError(f"User {user_id} not found")
+
+        updated_count = await prisma_user.update_many(
+            where={"id": user_id},
+            data={
+                "defaultChatAuthProvider": auth_provider,
+                "defaultChatCredentialId": (
+                    credential_id if auth_provider is not None else None
+                ),
+            },
+        )
+        if updated_count == 0:
+            raise NotFoundError(f"User {user_id} not found")
+
+        # Same cache invalidation as update_user_timezone — the route is read
+        # through the cached full-user lookup on every unrouted session create.
+        get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
+        get_or_create_user.cache_clear()
+    except NotFoundError:
+        raise
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to update default chat route for user {user_id}: {e}"
+        ) from e

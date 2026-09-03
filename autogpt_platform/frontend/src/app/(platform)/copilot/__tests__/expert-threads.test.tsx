@@ -263,10 +263,10 @@ describe("useChatSession — expert sessions", () => {
     fireEvent.click(screen.getByRole("button", { name: "create" }));
 
     await waitFor(() => {
-      expect(createBody).toEqual({
-        expert_id: "expert-maria",
-        llm_auth_provider: "platform",
-      });
+      // No route travels unless the user picked one. Naming it here would
+      // make the server skip its own default, which is how a connection
+      // chosen for one chat leaked into every later chat.
+      expect(createBody).toEqual({ expert_id: "expert-maria" });
     });
   });
 
@@ -644,24 +644,15 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
-  it("shows a scheduled-workflows button that opens the schedules drawer", async () => {
+  it("opens the session activity card when the chip is clicked", async () => {
+    flagState.values["artifacts"] = true;
     server.use(
       getGetExpertMockHandler(mariaExpert),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([
-        {
-          id: "sched-1",
-          name: "Content Calendar",
-          agent_name: "Content Calendar",
-          user_id: "user-1",
-          graph_id: "graph-1",
-          graph_version: 1,
-          cron: "40 7 * * *",
-          input_data: {},
-          next_run_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-          expert_id: "expert-maria",
-        },
-      ]),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: { ...s.artifactPanel, isOpen: false, activeTab: "files" },
+    }));
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -669,48 +660,48 @@ describe("ChatMessagesContainer — expert identity", () => {
         error={undefined}
         isLoading={false}
         expertIdentity={mariaIdentity}
+        sessionID="session-1"
+        canOpenActivity
       />,
     );
 
-    const button = await screen.findByTestId("expert-schedules-button");
-    expect(button.textContent).toContain("1 workflow scheduled");
+    await userEvent.click(
+      screen.getByRole("button", { name: /Open session activity/ }),
+    );
 
-    fireEvent.click(button);
-    expect(
-      await screen.findByText("Maria's scheduled workflows"),
-    ).toBeDefined();
-    expect(await screen.findByTestId("schedule-row")).toBeDefined();
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.isOpen).toBe(true);
+    expect(panel.activeTab).toBe("files");
   });
 
-  it("does not read the fired expert's detail record for the schedules button", async () => {
-    let expertDetailRequests = 0;
+  it("stays a passive label in hosts that never mount the activity card", async () => {
+    flagState.values["artifacts"] = true;
+    let workspaceFileRequests = 0;
     server.use(
-      http.get("*/api/experts/expert-maria", () => {
-        expertDetailRequests += 1;
-        return HttpResponse.json(
-          { detail: "Expert not found" },
-          { status: 404 },
-        );
+      getGetExpertMockHandler(mariaExpert),
+      http.get("*/api/workspace/files", () => {
+        workspaceFileRequests += 1;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     );
+    // Same live sessionId the builder and memory panels pass — only the host's
+    // canOpenActivity separates them from the copilot chat.
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
         status="ready"
         error={undefined}
         isLoading={false}
-        expertIdentity={{
-          ...mariaIdentity,
-          isArchived: true,
-          readOnlyReason: "fired",
-        }}
+        expertIdentity={mariaIdentity}
+        sessionID="session-1"
       />,
     );
 
-    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
-    expect(expertDetailRequests).toBe(0);
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(
+      within(header).queryByRole("button", { name: /Open session activity/ }),
+    ).toBeNull();
+    expect(workspaceFileRequests).toBe(0);
   });
 
   it("wears the Autopilot identity on plain sessions", () => {
@@ -725,8 +716,30 @@ describe("ChatMessagesContainer — expert identity", () => {
 
     const header = screen.getByTestId("expert-thread-header");
     expect(header.textContent).toContain("Autopilot");
-    expect(screen.queryByTestId("expert-schedules-button")).toBeNull();
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
+  });
+
+  it("keeps the passive chip keyboard-reachable, since the role only exists in its tooltip", () => {
+    server.use(
+      getGetExpertMockHandler(mariaExpert),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+    );
+    render(
+      <ChatMessagesContainer
+        messages={[assistantMessage]}
+        status="ready"
+        error={undefined}
+        isLoading={false}
+        expertIdentity={mariaIdentity}
+      />,
+    );
+
+    const header = screen.getByTestId("expert-thread-header");
+    const chip = within(header).getByLabelText("Maria — Marketing Strategist");
+
+    // A tooltip opens on focus as well as hover; an unfocusable trigger
+    // hides the role from keyboard users entirely.
+    expect(chip.getAttribute("tabindex")).toBe("0");
   });
 });
 
