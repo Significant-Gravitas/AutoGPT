@@ -27,14 +27,6 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
   question: MessageQuestionIcon,
 };
 
-const KIND_LABELS: Record<HomeAttentionItem["kind"], string> = {
-  approval: "Approval",
-  setup: "Setup",
-  paused: "Paused",
-  credits: "Credits",
-  question: "Question",
-};
-
 export function AttentionRow({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
 
@@ -54,18 +46,18 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           <ExpertAvatar
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
-            size={40}
+            size={48}
           />
         ) : (
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500">
-            <Icon icon={ICONS[item.kind]} size={18} aria-hidden="true" />
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+            <Icon icon={ICONS[item.kind]} size={22} aria-hidden="true" />
           </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Text
-              variant="body-medium"
-              className="text-pretty text-[13px] leading-5 text-zinc-900"
+              variant="large-medium"
+              className="text-pretty leading-6 text-zinc-950"
             >
               {item.title}
             </Text>
@@ -76,18 +68,11 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
             ) : null}
           </div>
           <Text
-            variant="small"
-            className="line-clamp-2 text-pretty text-[13px] leading-5 text-zinc-500"
+            variant="body"
+            className="line-clamp-2 text-pretty leading-6 text-zinc-600"
           >
             {item.description}
           </Text>
-          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-zinc-500">
-            <span className="font-medium text-zinc-700">
-              {item.expert?.name ?? KIND_LABELS[item.kind]}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className="line-clamp-1 min-w-0">{item.why_it_matters}</span>
-          </div>
         </div>
       </div>
 
