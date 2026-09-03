@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
 from pydantic import JsonValue
 from starlette import status
@@ -26,17 +26,15 @@ from backend.data.workspace import get_or_create_workspace
 from backend.executor import utils as execution_utils
 from backend.util.settings import Settings
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
     AgentGraphRun,
     AgentGraphRunDetails,
-    AgentRunListResponse,
     AgentRunReview,
-    AgentRunReviewsResponse,
     AgentRunReviewsSubmitRequest,
     AgentRunReviewsSubmitResponse,
     AgentRunShareResponse,
 )
+from .pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -65,17 +63,11 @@ async def list_reviews(
         default=None,
         description="Filter by review status",
     ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN_REVIEW)
     ),
-) -> AgentRunReviewsResponse:
+) -> Page[AgentRunReview]:
     """
     List human-in-the-loop reviews for agent runs.
 
@@ -85,16 +77,13 @@ async def list_reviews(
         user_id=auth.user_id,
         graph_exec_id=run_id,
         status=status,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
     )
 
-    return AgentRunReviewsResponse(
-        reviews=[AgentRunReview.from_internal(r) for r in reviews],
-        page=pagination.current_page,
-        page_size=pagination.page_size,
+    return page.paged(
+        [AgentRunReview.from_internal(r) for r in reviews],
         total_count=pagination.total_items,
-        total_pages=pagination.total_pages,
     )
 
 
@@ -102,6 +91,7 @@ async def list_reviews(
     path="/{run_id}/reviews",
     summary="Submit agent run human-in-the-loop reviews",
     operation_id="submitAgentRunReviews",
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
@@ -206,31 +196,22 @@ async def submit_reviews(
 )
 async def list_runs(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_RUN)
     ),
-) -> AgentRunListResponse:
+) -> Page[AgentGraphRun]:
     """List agent runs, optionally filtered by graph ID."""
     result = await execution_db.get_graph_executions_paginated(
         user_id=auth.user_id,
         graph_id=graph_id,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
     )
 
-    return AgentRunListResponse(
-        runs=[AgentGraphRun.from_internal(e) for e in result.executions],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [AgentGraphRun.from_internal(e) for e in result.executions],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -265,6 +246,7 @@ async def get_run(
     path="/{run_id}/stop",
     summary="Stop agent run",
     operation_id="stopAgentRun",
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def stop_run(
     run_id: str = Path(description="Graph Execution ID"),
@@ -313,6 +295,7 @@ async def stop_run(
     path="/{run_id}",
     summary="Delete agent run",
     operation_id="deleteAgentRun",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_run(
     run_id: str = Path(description="Graph Execution ID"),
@@ -336,6 +319,7 @@ async def delete_run(
     path="/{run_id}/share",
     summary="Enable sharing for an agent run",
     operation_id="enableAgentRunShare",
+    status_code=status.HTTP_201_CREATED,
 )
 async def enable_sharing(
     run_id: str = Path(description="Graph Execution ID"),

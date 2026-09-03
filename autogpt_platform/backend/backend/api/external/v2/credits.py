@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 import stripe
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission, SubscriptionTier
 from starlette.concurrency import run_in_threadpool
 
@@ -31,16 +31,14 @@ from backend.data.execution_cost_summary import get_user_cost_summary
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .models import (
     AutomationCostSummary,
     CreditBalance,
     CreditTransaction,
-    CreditTransactionsResponse,
     InvoiceItem,
-    InvoiceListResponse,
     SubscriptionStatus,
 )
+from .pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 
@@ -75,55 +73,33 @@ async def get_balance(
     operation_id="listCreditTransactions",
 )
 async def get_transactions(
-    limit: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-    cursor: Optional[str] = Query(
-        default=None,
-        description=(
-            "Pagination cursor (ISO datetime from previous response's next_cursor)"
-        ),
-    ),
     transaction_type: Optional[str] = Query(
         default=None,
         description="Filter by transaction type (TOP_UP, USAGE, GRANT, REFUND)",
     ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_CREDITS)
     ),
-) -> CreditTransactionsResponse:
+) -> Page[CreditTransaction]:
     """Get credit transaction history for the authenticated user."""
     user_credit_model = await get_user_credit_model(auth.user_id)
 
-    transaction_time_ceiling: datetime | None = None
-    if cursor:
-        try:
-            transaction_time_ceiling = datetime.fromisoformat(cursor)
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail="Invalid cursor format (expected ISO datetime)"
-            )
-
+    token = page.token
     history = await user_credit_model.get_transaction_history(
         user_id=auth.user_id,
-        transaction_count_limit=limit,
-        transaction_time_ceiling=transaction_time_ceiling,
+        transaction_count_limit=page.limit,
+        transaction_time_ceiling=datetime.fromisoformat(token) if token else None,
         transaction_type=transaction_type,
     )
 
-    transactions = [CreditTransaction.from_internal(t) for t in history.transactions]
-    next_cursor = (
-        history.next_transaction_time.isoformat()
-        if history.next_transaction_time
-        else None
-    )
-
-    return CreditTransactionsResponse(
-        transactions=transactions,
-        next_cursor=next_cursor,
+    return page.keyset(
+        [CreditTransaction.from_internal(t) for t in history.transactions],
+        next_token=(
+            history.next_transaction_time.isoformat()
+            if history.next_transaction_time
+            else None
+        ),
     )
 
 
@@ -235,18 +211,20 @@ async def get_subscription_status(
     operation_id="listCreditInvoices",
 )
 async def list_invoices(
-    limit: int = Query(24, ge=1, le=100, description="Max invoices to return"),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_CREDITS)
     ),
-) -> InvoiceListResponse:
-    """Recent Stripe invoices for the current user."""
-    user_credit_model = await get_user_credit_model(auth.user_id)
-    invoices = await user_credit_model.list_invoices(auth.user_id, limit=limit)
+) -> Page[InvoiceItem]:
+    """Recent Stripe invoices for the current user.
 
-    return InvoiceListResponse(
-        invoices=[InvoiceItem.from_internal(inv) for inv in invoices],
-    )
+    Stripe returns at most `limit` invoices and offers no cursor here, so
+    `next_cursor` is always `null`; raise `limit` to see further back.
+    """
+    user_credit_model = await get_user_credit_model(auth.user_id)
+    invoices = await user_credit_model.list_invoices(auth.user_id, limit=page.limit)
+
+    return page.unpaginated([InvoiceItem.from_internal(inv) for inv in invoices])
 
 
 @credits_router.get(
