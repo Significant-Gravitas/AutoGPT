@@ -301,6 +301,14 @@ class GithubReadPullRequestBlock(Block):
             "mergeability (mergeable, mergeable_state, rebaseable), draft state, "
             "review/comment counts, labels, milestone, and diff/commit stats."
         )
+        head_branch: str = SchemaField(
+            description="Name of the branch the PR is created from (the head "
+            "branch). For cross-repo PRs, this branch lives in the fork — see "
+            "pull_request.head.repo for the fork's URL."
+        )
+        target_branch: str = SchemaField(
+            description="Name of the branch the PR targets (the base branch)"
+        )
         error: str = SchemaField(
             description="Error message if reading the pull request failed"
         )
@@ -324,6 +332,8 @@ class GithubReadPullRequestBlock(Block):
                 ("body", "This is the body of the pull request."),
                 ("author", "username"),
                 ("pull_request", TEST_PR_PAYLOAD),
+                ("head_branch", "feature-branch"),
+                ("target_branch", "main"),
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
@@ -348,6 +358,8 @@ class GithubReadPullRequestBlock(Block):
         yield "body", body
         yield "author", author
         yield "pull_request", pull_request
+        yield "head_branch", pull_request.get("head", {}).get("ref", "")
+        yield "target_branch", pull_request.get("base", {}).get("ref", "")
 
         if input_data.include_pr_changes:
             changes = await self.read_pr_changes(
