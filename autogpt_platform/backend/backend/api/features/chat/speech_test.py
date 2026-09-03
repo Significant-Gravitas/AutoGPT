@@ -1,5 +1,6 @@
 """Tests for the voice-mode speech route, and the metering it must perform."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -9,6 +10,8 @@ import pytest_mock
 
 from backend.api.features.chat import speech as speech_routes
 from backend.copilot import speech as speech_module
+from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.util.exceptions import UserPaywalledError
 
 app = fastapi.FastAPI()
 app.include_router(speech_routes.router)
@@ -63,6 +66,68 @@ def test_speech_404s_when_the_flag_is_off(
     record_usage.assert_not_awaited()
 
 
+def test_speech_refuses_a_paywalled_caller_before_spending(
+    record_usage: AsyncMock, mocker: pytest_mock.MockerFixture
+) -> None:
+    mocker.patch.object(
+        speech_routes,
+        "enforce_payment_paywall",
+        new=AsyncMock(side_effect=UserPaywalledError("no active subscription")),
+    )
+
+    with pytest.raises(UserPaywalledError):
+        client.post("/speech", json={"text": "hello"})
+
+    speech_module._speech_client.assert_not_called()
+    record_usage.assert_not_awaited()
+
+
+def test_speech_refuses_a_caller_over_their_usage_cap(
+    record_usage: AsyncMock, mocker: pytest_mock.MockerFixture
+) -> None:
+    mocker.patch.object(
+        speech_routes,
+        "check_rate_limit",
+        new=AsyncMock(
+            side_effect=RateLimitExceeded(
+                "daily", datetime.now(timezone.utc) + timedelta(hours=1)
+            )
+        ),
+    )
+
+    response = client.post("/speech", json={"text": "hello"})
+
+    assert response.status_code == 429
+    speech_module._speech_client.assert_not_called()
+    record_usage.assert_not_awaited()
+
+
+def test_speech_fails_closed_when_the_cap_cannot_be_read(
+    record_usage: AsyncMock, mocker: pytest_mock.MockerFixture
+) -> None:
+    mocker.patch.object(
+        speech_routes,
+        "check_rate_limit",
+        new=AsyncMock(side_effect=RateLimitUnavailable("redis down")),
+    )
+
+    response = client.post("/speech", json={"text": "hello"})
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    speech_module._speech_client.assert_not_called()
+    record_usage.assert_not_awaited()
+
+
+def test_speech_bounds_the_session_id(record_usage: AsyncMock) -> None:
+    response = client.post(
+        "/speech", json={"text": "hello", "session_id": "x" * 10_000}
+    )
+
+    assert response.status_code == 422
+    record_usage.assert_not_awaited()
+
+
 def test_speech_rejects_an_unknown_voice(record_usage: AsyncMock) -> None:
     response = client.post("/speech", json={"text": "hello", "voice": "morgan"})
 
@@ -101,6 +166,17 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(
         speech_routes, "is_feature_enabled", new=AsyncMock(return_value=True)
+    )
+    mocker.patch.object(
+        speech_routes, "enforce_payment_paywall", new=AsyncMock(return_value=None)
+    )
+    mocker.patch.object(
+        speech_routes,
+        "get_global_rate_limits",
+        new=AsyncMock(return_value=(1_000_000, 5_000_000, None)),
+    )
+    mocker.patch.object(
+        speech_routes, "check_rate_limit", new=AsyncMock(return_value=None)
     )
     yield
     app.dependency_overrides.clear()

@@ -67,6 +67,13 @@ export function useVoiceMode({
   const replyDone = useRef(false);
   const spokeThisTurn = useRef(false);
   const wasStreaming = useRef(false);
+  // Bumped by every activate and deactivate. Work started under an older
+  // token belongs to a session the user has already left.
+  const activation = useRef(0);
+  // A ref as well as state: two clicks in one tick both read the pre-render
+  // value, which is exactly the double-click that used to leak a session.
+  const starting = useRef(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
     if (stateRef.current === "thinking" || stateRef.current === "speaking") {
@@ -79,7 +86,9 @@ export function useVoiceMode({
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;
     wasStreaming.current = isStreaming;
-    if (finished && stateRef.current !== "off") finishReply();
+    const speaking =
+      stateRef.current === "thinking" || stateRef.current === "speaking";
+    if (finished && speaking) finishReply();
   }, [isStreaming]);
 
   useEffect(() => {
@@ -91,6 +100,7 @@ export function useVoiceMode({
   return {
     state,
     isActive: state !== "off",
+    isStarting,
     statusLabel: describeVoiceState(state),
     toggle,
     /** The visible stop button: cut the reply short and listen again. */
@@ -98,15 +108,19 @@ export function useVoiceMode({
   };
 
   function toggle() {
-    if (stateRef.current === "off") void activate();
+    if (stateRef.current === "off" && !starting.current) void activate();
     else deactivate();
   }
 
   async function activate() {
+    const mine = ++activation.current;
+    setStarting(true);
     // Unlocking here, inside the click, is what lets later chunks play at all.
     player().unlock();
+
+    let session: VadSession;
     try {
-      vadRef.current = await startVadSession({
+      session = await startVadSession({
         onSpeechStart: () => dispatch({ type: "SPEECH_START" }),
         onMisfire: () => dispatch({ type: "SPEECH_MISFIRE" }),
         onSpeechEnd: (wav) => void handleUtterance(wav),
@@ -114,14 +128,28 @@ export function useVoiceMode({
     } catch (error) {
       report(error);
       return;
+    } finally {
+      setStarting(false);
     }
+
+    // Model download and getUserMedia take seconds; the user may have left in
+    // the meantime. An undestroyed session here keeps the mic live for good.
+    if (mine !== activation.current) {
+      void session.destroy();
+      return;
+    }
+
+    vadRef.current = session;
     setTimer("session", MAX_SESSION_MS, deactivate);
     dispatch({ type: "ENABLE" });
   }
 
   function deactivate() {
+    activation.current += 1;
+    setStarting(false);
     clearTimers();
     playerRef.current?.stop();
+    discardReply();
     void vadRef.current?.destroy();
     vadRef.current = null;
     dispatch({ type: "DISABLE" });
@@ -129,10 +157,25 @@ export function useVoiceMode({
 
   function interrupt() {
     playerRef.current?.stop();
+    // Without this the held-back partial sentence is spoken at stream end,
+    // with the mic already back open — the echo the state machine prevents.
+    discardReply();
     dispatch({ type: "INTERRUPT" });
   }
 
+  function setStarting(value: boolean) {
+    starting.current = value;
+    setIsStarting(value);
+  }
+
+  function discardReply() {
+    chunkBuffer.current = "";
+    reader.current.reset();
+    replyDone.current = true;
+  }
+
   async function handleUtterance(wav: Blob) {
+    const mine = activation.current;
     dispatch({ type: "SPEECH_END" });
     // Spoken before the transcript exists, so the register is still unknown.
     acknowledge(null);
@@ -143,6 +186,13 @@ export function useVoiceMode({
     } catch (error) {
       report(error);
       dispatch({ type: "TRANSCRIPT_DROPPED" });
+      return;
+    }
+
+    // Transcription takes a second or two. Sending a turn the user opted out
+    // of during it is worse than losing the utterance.
+    if (mine !== activation.current || stateRef.current !== "transcribing") {
+      playerRef.current?.stop();
       return;
     }
 

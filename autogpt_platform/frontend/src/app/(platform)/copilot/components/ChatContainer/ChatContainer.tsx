@@ -365,7 +365,11 @@ export const ChatContainer = ({
                               isVoiceModeEnabled ? (
                                 <VoiceModeButton
                                   isActive={voice.isActive}
-                                  disabled={isInputDisabled || isSendLocked}
+                                  disabled={
+                                    isInputDisabled ||
+                                    isSendLocked ||
+                                    voice.isStarting
+                                  }
                                   onClick={voice.toggle}
                                 />
                               ) : undefined

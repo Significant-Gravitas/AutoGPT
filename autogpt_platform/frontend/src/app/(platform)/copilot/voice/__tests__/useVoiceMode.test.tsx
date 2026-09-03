@@ -8,25 +8,38 @@ const vad = {
   onMisfire: () => undefined as void,
   pause: vi.fn(),
   resume: vi.fn(),
-  destroy: vi.fn(async () => undefined),
 };
+
+/** Every session the hook has started, so a leaked one is visible. */
+const sessions: { destroy: ReturnType<typeof vi.fn> }[] = [];
+/** Stalls `startVadSession` the way the real model download does. */
+let vadLoad: Promise<void> = Promise.resolve();
 
 vi.mock("../vadSession", () => ({
   startVadSession: vi.fn(async (callbacks) => {
+    await vadLoad;
     Object.assign(vad, callbacks);
-    return { pause: vad.pause, resume: vad.resume, destroy: vad.destroy };
+    const session = {
+      pause: vad.pause,
+      resume: vad.resume,
+      destroy: vi.fn(async () => undefined),
+    };
+    sessions.push(session);
+    return session;
   }),
 }));
 
 const spoken: string[] = [];
 let transcript = "Build me a Slack agent";
 
+let transcribe: () => Promise<string> = async () => transcript;
+
 vi.mock("../speechApi", () => ({
   synthesizeSpeech: vi.fn(async (text: string) => {
     spoken.push(text);
     return new Blob([text]);
   }),
-  transcribeUtterance: vi.fn(async () => transcript),
+  transcribeUtterance: vi.fn(() => transcribe()),
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
@@ -38,6 +51,9 @@ import { useVoiceMode } from "../useVoiceMode";
 describe("useVoiceMode", () => {
   beforeEach(() => {
     spoken.length = 0;
+    sessions.length = 0;
+    vadLoad = Promise.resolve();
+    transcribe = async () => transcript;
     transcript = "Build me a Slack agent";
     vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(
       function (this: HTMLAudioElement) {
@@ -158,6 +174,90 @@ describe("useVoiceMode", () => {
     vi.useRealTimers();
   });
 
+  it("starts one mic session however fast the button is clicked", async () => {
+    let finishLoading!: () => void;
+    vadLoad = new Promise<void>((resolve) => (finishLoading = resolve));
+    const view = render({});
+
+    act(() => view.result.current.toggle());
+    act(() => view.result.current.toggle());
+    await act(async () => finishLoading());
+    await act(async () => undefined);
+
+    // Whichever way the second click is read, no session may outlive the UI.
+    const live = sessions.filter((s) => s.destroy.mock.calls.length === 0);
+    expect(live.length).toBeLessThanOrEqual(1);
+    if (view.result.current.state === "off") expect(live).toHaveLength(0);
+  });
+
+  it("destroys a mic session that finishes starting after the user left", async () => {
+    let finishLoading!: () => void;
+    vadLoad = new Promise<void>((resolve) => (finishLoading = resolve));
+    const onSend = vi.fn();
+    const view = render({ onSend });
+
+    act(() => view.result.current.toggle());
+    act(() => view.result.current.toggle());
+    await act(async () => finishLoading());
+    await act(async () => undefined);
+
+    expect(view.result.current.state).toBe("off");
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].destroy).toHaveBeenCalled();
+  });
+
+  it("does not send a transcript for an utterance the user opted out of", async () => {
+    vi.useFakeTimers();
+    let finishTranscribing!: (text: string) => void;
+    transcribe = () => new Promise((resolve) => (finishTranscribing = resolve));
+    const onSend = vi.fn();
+    const view = render({ onSend });
+
+    await enable(view);
+    await act(async () => vad.onSpeechStart());
+    await act(async () => vad.onSpeechEnd(new Blob(["wav"])));
+    expect(view.result.current.state).toBe("transcribing");
+
+    await act(async () => view.result.current.toggle());
+    expect(view.result.current.state).toBe("off");
+    await act(async () => finishTranscribing("Delete all my agents"));
+    await act(async () => undefined);
+
+    expect(onSend).not.toHaveBeenCalled();
+    const spokenAfterOff = spoken.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(spoken).toHaveLength(spokenAfterOff);
+    vi.useRealTimers();
+  });
+
+  it("never speaks the leftover of a reply the user stopped", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    await act(async () => {
+      view.rerender({
+        messages: assistant("First sentence. Second half"),
+        isStreaming: true,
+      });
+    });
+    expect(spoken).toContain("First sentence.");
+
+    await act(async () => view.result.current.interrupt());
+    const spokenAfterStop = spoken.length;
+    await act(async () => {
+      view.rerender({
+        messages: assistant("First sentence. Second half"),
+        isStreaming: false,
+      });
+    });
+    await act(async () => undefined);
+
+    expect(spoken).toHaveLength(spokenAfterStop);
+    expect(view.result.current.state).toBe("listening");
+  });
+
   it("shuts itself down when the flag goes off", async () => {
     const view = render({});
     await enable(view);
@@ -165,7 +265,7 @@ describe("useVoiceMode", () => {
     await act(async () => view.rerender({ enabled: false }));
 
     expect(view.result.current.state).toBe("off");
-    expect(vad.destroy).toHaveBeenCalled();
+    expect(sessions[0].destroy).toHaveBeenCalled();
   });
 });
 

@@ -26013,7 +26013,10 @@
         "properties": {
           "text": { "type": "string", "maxLength": 4096, "title": "Text" },
           "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
             "title": "Session Id",
             "description": "Attributes the cost to a chat session, as a text turn is."
           },
