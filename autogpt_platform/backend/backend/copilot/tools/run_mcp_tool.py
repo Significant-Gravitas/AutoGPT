@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
+    AUTH_STATUS_CODES,
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
     normalize_mcp_url,
@@ -45,9 +46,6 @@ _TOOL_DESCRIPTION_MAX_CHARS = 300
 _ERROR_SCHEMA_MAX_CHARS = 4000
 _DISCOVERY_MAX_TOOLS = 100
 _PARAMS_SUMMARY_MAX_CHARS = 400
-
-# HTTP status codes that indicate authentication is required
-_AUTH_STATUS_CODES = {401, 403}
 
 
 def _service_name(host: str) -> str:
@@ -242,7 +240,7 @@ class RunMCPToolTool(BaseTool):
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in _AUTH_STATUS_CODES:
+                        if probe_err.status_code in AUTH_STATUS_CODES:
                             await invalidate_mcp_credential(user_id, creds.id)
                             connected = False
                         # Other HTTP statuses (5xx, redirects, etc.) →
@@ -299,7 +297,7 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES:
+            if e.status_code in AUTH_STATUS_CODES:
                 # 401/403 → user needs to (re)authenticate.  Fire the setup
                 # card whether or not we have a stored credential row: when
                 # `creds` is None the user has never connected, and when it

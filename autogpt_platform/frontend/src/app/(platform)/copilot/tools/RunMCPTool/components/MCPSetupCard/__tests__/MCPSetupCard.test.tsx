@@ -35,15 +35,19 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 // to thread a connected state through MSW.  ``setMockLiveCreds`` lets
 // individual tests override the live state to verify the refresh path.
 let mockLiveCreds: Array<{ provider: string; host?: string | null }> = [];
+let mockLiveCredsFetching = false;
 function setMockLiveCreds(
   next: Array<{ provider: string; host?: string | null }>,
+  fetching = false,
 ) {
   mockLiveCreds = next;
+  mockLiveCredsFetching = fetching;
 }
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   useGetV1ListCredentials: () => ({
     data: mockLiveCreds,
     isLoading: false,
+    isFetching: mockLiveCredsFetching,
   }),
 }));
 
@@ -98,6 +102,35 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput()} />);
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
+  });
+
+  it("does not show Connected from a cred list that is still refetching", () => {
+    // SECRT-2592: ``refetchOnMount`` does not stop React Query serving the
+    // previous cache while the refetch is in flight.  Right after the backend
+    // invalidated a dead row that cache still lists it, and OR-ing it in
+    // painted a green pill over the backend's authoritative
+    // ``has_all_credentials=false`` — the exact contradiction users reported
+    // (UI says Connected, agent says not connected).
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      true,
+    );
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("keeps Connected while refetching when the persisted snapshot said connected", () => {
+    // The stale-cache guard must defer to the backend snapshot, not blindly
+    // render disconnected: a connected card must not flicker on every mount.
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      true,
+    );
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
   it("matches live creds across a trailing slash on the server URL", () => {

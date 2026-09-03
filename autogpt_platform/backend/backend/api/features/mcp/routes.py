@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
+    AUTH_STATUS_CODES,
     auto_lookup_mcp_credential,
     normalize_mcp_url,
     server_host,
@@ -100,7 +101,7 @@ async def discover_tools(
         init_result = await client.initialize()
         tools = await client.list_tools()
     except HTTPClientError as e:
-        if e.status_code in (401, 403):
+        if e.status_code in AUTH_STATUS_CODES:
             raise fastapi.HTTPException(
                 status_code=401,
                 detail="This MCP server requires authentication. "
@@ -436,6 +437,37 @@ async def mcp_store_token(
     # Normalize URL so trailing-slash variants match existing credentials.
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
+
+    # A 2xx from this endpoint is what turns the setup card's pill green, so
+    # it has to mean "this token authenticates against the server" rather than
+    # "a row was written".  One ``initialize`` round-trip is the cheapest
+    # proof.  Only an explicit auth rejection blocks the save: a timeout or a
+    # 5xx is the server's problem, not the token's, and refusing to store on
+    # those would strand the user during an outage.
+    probe_client = MCPClient(server_url, auth_token=token)
+    try:
+        await probe_client.initialize()
+    except HTTPClientError as e:
+        if e.status_code in AUTH_STATUS_CODES:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"{hostname} rejected this token. "
+                "Please check that you copied it correctly and try again.",
+            )
+        logger.info(
+            "Could not verify MCP token against %s (HTTP %s) — storing anyway",
+            hostname,
+            e.status_code,
+        )
+    except Exception:
+        logger.info(
+            "Could not verify MCP token against %s — storing anyway",
+            hostname,
+            exc_info=True,
+        )
+    finally:
+        # Without the DELETE the probe leaks a session row server-side.
+        await probe_client.close()
 
     # Collect IDs of old credentials to clean up after successful create.
     old_cred_ids: list[str] = []

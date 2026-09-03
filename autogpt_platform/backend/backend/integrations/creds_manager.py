@@ -79,6 +79,26 @@ def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
             )
 
 
+def _is_refreshable(credentials: OAuth2Credentials) -> bool:
+    """Whether *credentials* could ever be refreshed.
+
+    Every ``needs_refresh`` implementation keys off ``access_token_expires_at``
+    and returns ``False`` when it is unset, and every refresh grant needs a
+    ``refresh_token`` — so a credential with neither can only ever take the
+    no-op branch of the refresh paths.
+
+    Checking this *before* resolving a handler matters because resolution is
+    not free of side effects: a static MCP bearer token (stored by
+    ``POST /mcp/token`` for servers that don't support OAuth) carries no
+    ``mcp_token_url``, so ``create_mcp_oauth_handler`` raises for it — turning
+    a perfectly usable token into a lookup failure.
+    """
+    return (
+        credentials.access_token_expires_at is not None
+        or credentials.refresh_token is not None
+    )
+
+
 class IntegrationCredentialsManager:
     """
     Handles the lifecycle of integration credentials.
@@ -232,6 +252,9 @@ class IntegrationCredentialsManager:
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         if credentials.refresh_strategy == "provider_runtime":
+            return credentials
+
+        if not _is_refreshable(credentials):
             return credentials
 
         # When lock=False, skip ALL Redis locking (both the outer "refresh" scope

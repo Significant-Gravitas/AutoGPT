@@ -13,6 +13,11 @@ from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
+AUTH_STATUS_CODES = {401, 403}
+"""HTTP statuses that mean "this token is not accepted", as opposed to any
+other failure — which says nothing about the token and must not be treated as
+a rejection."""
+
 
 def normalize_mcp_url(url: str) -> str:
     """Normalize an MCP server URL for consistent credential matching.
@@ -117,6 +122,13 @@ async def auto_lookup_mcp_credential(
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if needed, or ``None`` when no match is found.
+
+    ``None`` means "no credential on file" and nothing else.  A refresh that
+    fails does *not* discard the credential: the stored token is returned
+    as-is so the caller still sends it.  If it really is dead the server
+    answers 401 and the caller invalidates the row via
+    :func:`invalidate_mcp_credential` — whereas returning ``None`` would
+    report "not connected" while leaving the dead row in place forever.
     """
     try:
         mgr = IntegrationCredentialsManager()
@@ -141,7 +153,16 @@ async def auto_lookup_mcp_credential(
                 ):
                     best = cred
         if best:
-            best = await mgr.refresh_if_needed(user_id, best)
+            try:
+                best = await mgr.refresh_if_needed(user_id, best)
+            except Exception:
+                logger.warning(
+                    "Refresh failed for MCP credential %s (%s) — using the "
+                    "stored token; the server decides whether it still works",
+                    best.id,
+                    server_url,
+                    exc_info=True,
+                )
             logger.info("Auto-resolved MCP credential %s for %s", best.id, server_url)
         return best
     except Exception:

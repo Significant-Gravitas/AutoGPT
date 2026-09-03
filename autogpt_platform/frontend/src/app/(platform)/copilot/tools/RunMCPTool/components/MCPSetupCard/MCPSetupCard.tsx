@@ -68,33 +68,43 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
-    query: {
-      select: (res) => (res.status === 200 ? res.data : null),
-      // No staleTime — when this card mounts (e.g. immediately after the
-      // backend's ``invalidate_mcp_credential`` deleted a stale row),
-      // we want a fresh fetch.  A non-zero staleTime would let the
-      // previously-cached "cred exists" override the post-invalidation
-      // truth, briefly rendering "Connected" on a card whose
-      // ``has_all_credentials=false`` snapshot is the authoritative
-      // post-invalidation state.
-      refetchOnMount: "always",
-    },
-  });
+  const { data: liveCredsRes, isFetching: liveCredsFetching } =
+    useGetV1ListCredentials({
+      query: {
+        select: (res) => (res.status === 200 ? res.data : null),
+        // No staleTime — when this card mounts (e.g. immediately after the
+        // backend's ``invalidate_mcp_credential`` deleted a stale row),
+        // we want a fresh fetch.  A non-zero staleTime would let the
+        // previously-cached "cred exists" override the post-invalidation
+        // truth, briefly rendering "Connected" on a card whose
+        // ``has_all_credentials=false`` snapshot is the authoritative
+        // post-invalidation state.
+        refetchOnMount: "always",
+      },
+    });
   // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
   // while loading or after a network/auth failure (``select`` returned
   // ``null``).  Treating an unknown live state as ``false`` would override
   // a still-valid persisted snapshot — see review for the
   // initiallyConnected=false + 5xx race that surfaces a bare Connect
   // button despite an existing cred.
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : liveCredsRes.some(
-        (c) =>
-          c.provider === "mcp" &&
-          typeof c.host === "string" &&
-          normalizeMcpUrl(c.host) === normalizedServer,
-      );
+  //
+  // ``liveCredsFetching`` is part of the guard because ``refetchOnMount``
+  // alone doesn't prevent the stale read: React Query serves the previous
+  // cache *while* the refetch is in flight.  Right after the backend
+  // invalidated a dead row that cache still lists it, which would OR a
+  // green "Connected" pill over the backend's authoritative
+  // ``has_all_credentials=false``. Holding "unknown" until the fetch lands
+  // defers to the backend snapshot instead of to a row we know is stale.
+  const liveHasCred: boolean | "unknown" =
+    liveCredsFetching || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : liveCredsRes.some(
+          (c) =>
+            c.provider === "mcp" &&
+            typeof c.host === "string" &&
+            normalizeMcpUrl(c.host) === normalizedServer,
+        );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
