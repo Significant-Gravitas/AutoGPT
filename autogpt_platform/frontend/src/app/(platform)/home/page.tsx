@@ -56,7 +56,12 @@ export default function HomePage() {
         />
         <div className={GRID_CLASS}>
           <div className="flex min-w-0 flex-col gap-7 xl:col-span-8">
-            <NeedsYou dashboard={dashboard} />
+            {/* An empty inbox is not news: the header already says nothing
+                needs you, so the tile only appears once there is something
+                to decide. */}
+            {dashboard.attention.length > 0 && (
+              <NeedsYou dashboard={dashboard} />
+            )}
             <MorningBriefing dashboard={dashboard} />
             <RecentWork dashboard={dashboard} />
           </div>

@@ -1,9 +1,7 @@
 "use client";
 
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Text } from "@/components/atoms/Text/Text";
-import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { AttentionRow } from "./components/AttentionRow";
 import { NeedsYouTitle } from "./components/NeedsYouTitle";
@@ -46,24 +44,16 @@ export function NeedsYou({ dashboard, className }: Props) {
         </Text>
       }
     >
-      {itemCount === 0 ? (
-        <HomeTileEmpty
-          icon={CheckmarkCircle02Icon}
-          title="You are all caught up"
-          description="Your agents can keep moving without you."
-        />
-      ) : (
-        <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
-          {visibleItems.map((item) => (
-            <AttentionRow
-              key={item.id}
-              item={item}
-              isProcessing={pendingIDs.has(item.id)}
-              onDecision={decide}
-            />
-          ))}
-        </div>
-      )}
+      <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
+        {visibleItems.map((item) => (
+          <AttentionRow
+            key={item.id}
+            item={item}
+            isProcessing={pendingIDs.has(item.id)}
+            onDecision={decide}
+          />
+        ))}
+      </div>
     </HomeTile>
   );
 }

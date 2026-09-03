@@ -292,7 +292,7 @@ test("keeps a Review deep link alongside the approval shortcuts", async () => {
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
 });
 
-test("shows calm, useful empty states without hiding the page structure", async () => {
+test("shows calm, useful empty states and drops the empty inbox", async () => {
   mockDashboard({
     ...dashboard,
     attention: [],
@@ -311,8 +311,11 @@ test("shows calm, useful empty states without hiding the page structure", async 
 
   render(<HomePage />);
 
-  expect(await screen.findByText("You are all caught up")).toBeDefined();
-  expect(screen.getByText("No new outcomes yet")).toBeDefined();
+  expect(await screen.findByText("No new outcomes yet")).toBeDefined();
+  // The header already says nothing needs you, so an empty "Needs you"
+  // tile would only repeat it.
+  expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
+  expect(screen.queryByText("You are all caught up")).toBeNull();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
 });
