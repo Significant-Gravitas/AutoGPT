@@ -26,7 +26,23 @@ from typing import (
     overload,
 )
 
-import httpx2 as httpx
+try:
+    import httpx2 as httpx
+except ImportError:
+    import httpx
+
+# `raise_for_status()` on a response object created by starlette's TestClient
+# raises the *real* httpx.HTTPStatusError, not httpx2's. Both libraries
+# ship a class with the same name but no inheritance relationship, so the
+# `except httpx.HTTPStatusError` clause below would silently fail to catch
+# starlette's exception when httpx2 is installed (which it is in production
+# and CI). Import the real httpx under a separate name purely so the
+# except clause can name both classes.
+try:
+    import httpx as _real_httpx
+except ImportError:
+    _real_httpx = httpx  # type: ignore[assignment]  # httpx2 is the only one available
+
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
@@ -669,7 +685,7 @@ def get_service_client(
                 # Reset failure count on successful response
                 self._connection_failure_count = 0
                 return response.json()
-            except httpx.HTTPStatusError as e:
+            except (httpx.HTTPStatusError, _real_httpx.HTTPStatusError) as e:
                 status_code = e.response.status_code
 
                 # Try to parse the error response as RemoteCallError for mapped exceptions
