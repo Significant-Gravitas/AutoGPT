@@ -113,6 +113,7 @@ from ..permissions import (
     apply_tool_permissions,
 )
 from ..prompting import (
+    build_autopilot_delegation_supplement,
     get_delegation_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
@@ -4743,6 +4744,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             Flag.HIRE_EXPERTS, user_id, default=False
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
+        # Gated independently of experts_enabled: this is about keeping THIS
+        # turn's context small, true whether or not the user has a team.
+        autopilot_delegation_supplement = await build_autopilot_delegation_supplement(
+            user_id
+        )
         # Append the builder-session block (graph id+name + full building
         # guide) AFTER the shared supplements so the system prompt is
         # byte-identical across turns of the same builder session — Claude's
@@ -4758,6 +4764,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
+            + autopilot_delegation_supplement
             + graphiti_supplement
             + builder_session_suffix
             + expert_session_suffix

@@ -176,6 +176,13 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
+    # Tells AutoPilot to hand concrete work to a fresh `run_sub_session`
+    # rather than doing it in its own transcript, and makes each such sub
+    # single-use so a resumed one cannot accumulate. Measured on 24 runs:
+    # ~5x smaller peak context in the transcript holding the user's goal,
+    # no task the flag-off arm solved that this one did not. Off by default.
+    AUTOPILOT_DELEGATION = "autopilot-delegation"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""

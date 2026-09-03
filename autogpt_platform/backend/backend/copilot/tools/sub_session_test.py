@@ -1009,3 +1009,76 @@ class TestActorParameter:
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
         assert "Sub-AutoPilot" not in (result.message or "")
+
+
+class TestRunSubSessionPerIntent:
+    """``AUTOPILOT_DELEGATION`` makes every sub single-use: a resumed sub
+    accumulates the context the delegation rules exist to keep out of the
+    parent, which measured worse than not delegating at all."""
+
+    @pytest.mark.asyncio
+    async def test_resume_refused_before_the_ownership_lookup(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        looked_up: list[str] = []
+
+        async def fake_get(session_id: str):
+            looked_up.append(session_id)
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
+        )
+        _set_delegation_flag(monkeypatch, True)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="carry on",
+            sub_autopilot_session_id="prev-sub",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "starts a fresh sub" in r.message
+        assert "get_sub_session_result" in r.message
+        assert looked_up == []
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_sub_is_unaffected(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        _set_delegation_flag(monkeypatch, True)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice"), prompt="do the thing"
+        )
+        assert not isinstance(r, ErrorResponse)
+        assert len(mock_model["created"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_flag_off_still_resumes_an_owned_sub(
+        self, monkeypatch, mock_queue, mock_waiter, mock_model
+    ):
+        """The OFF path reaches the pre-existing resume branch untouched."""
+        _set_delegation_flag(monkeypatch, False)
+
+        await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice"), prompt="first"
+        )
+        sub_id = mock_model["created"][0].session_id
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="second",
+            sub_autopilot_session_id=sub_id,
+        )
+        assert not isinstance(r, ErrorResponse)
+        assert len(mock_model["created"]) == 1, "resumed, not re-created"
+
+
+def _set_delegation_flag(monkeypatch, enabled: bool) -> AsyncMock:
+    flag = AsyncMock(return_value=enabled)
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.is_feature_enabled", flag
+    )
+    return flag

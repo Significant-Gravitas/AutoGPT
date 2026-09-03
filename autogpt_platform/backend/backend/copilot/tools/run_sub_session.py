@@ -38,6 +38,7 @@ from backend.copilot.sdk.session_waiter import (
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .models import (
@@ -140,6 +141,23 @@ class RunSubSessionTool(BaseTool):
         # sub spawned inside a dry-run conversation doesn't silently
         # escalate to a live run.
         sub_session_param = sub_autopilot_session_id.strip()
+        if sub_session_param and await is_feature_enabled(
+            Flag.AUTOPILOT_DELEGATION, user_id, default=False
+        ):
+            # A sub reused across units of work accumulates exactly the context
+            # the delegation supplement exists to keep out of the parent; it
+            # measured worse than not delegating at all. Refused rather than
+            # silently redirected so the model knows its state did not carry.
+            return ErrorResponse(
+                message=(
+                    "Each run_sub_session call starts a fresh sub — "
+                    f"sub_autopilot_session_id {sub_session_param} cannot be "
+                    "continued. Leave it empty and put whatever the sub needs "
+                    "to know into the prompt. To poll a sub that is still "
+                    "running, use get_sub_session_result instead."
+                ),
+                session_id=session.session_id,
+            )
         if sub_session_param:
             owned = await get_chat_session(sub_session_param)
             if owned is None or owned.user_id != user_id:
