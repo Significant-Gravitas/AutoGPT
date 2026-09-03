@@ -349,10 +349,10 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v1-${{ matrix.suffix }}
+            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v1-${{ matrix.suffix }}
+            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}
             single-container.attest=type=provenance,mode=max
             single-container.attest=type=sbom
