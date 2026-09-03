@@ -2,6 +2,7 @@ import * as React from "react";
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import Avatar, { AvatarFallback, AvatarImage } from "../atoms/Avatar/Avatar";
+import { isKey } from "@/lib/keyboard";
 
 interface StoreCardProps {
   agentName: string;
@@ -39,7 +40,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       tabIndex={0}
       aria-label={`${agentName} agent card`}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (isKey(e, "Enter") || isKey(e, " ")) {
           handleClick();
         }
       }}

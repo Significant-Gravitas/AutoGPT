@@ -2,6 +2,7 @@ import {
   Input as BaseInput,
   type InputProps,
 } from "@/components/__legacy__/ui/input";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { forwardRef, ReactNode, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
@@ -63,6 +64,13 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   },
   ref,
 ) {
+  function handleKeyDown(e: React.KeyboardEvent<InputElement>) {
+    if (isComposingEvent(e)) return;
+    (props.onKeyDown as React.KeyboardEventHandler<InputElement> | undefined)?.(
+      e,
+    );
+  }
+
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
       type: props.type,
@@ -122,11 +130,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
-          onKeyDown={
-            props.onKeyDown as
-              | React.KeyboardEventHandler<HTMLTextAreaElement>
-              | undefined
-          }
+          onKeyDown={handleKeyDown}
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
           id={props.id}
@@ -201,6 +205,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
         {...props}
+        onKeyDown={handleKeyDown}
         type={inputType}
       />
     );

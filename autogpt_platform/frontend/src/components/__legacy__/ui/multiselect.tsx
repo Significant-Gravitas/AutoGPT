@@ -18,6 +18,7 @@ import React, {
   useContext,
   useState,
 } from "react";
+import { isKey } from "@/lib/keyboard";
 
 type MultiSelectorProps = {
   values: string[];
@@ -102,24 +103,24 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
               );
             }
           }
-        } else if (e.key === "Enter") {
+        } else if (isKey(e, "Enter")) {
           setOpen(true);
-        } else if (e.key === "Escape") {
+        } else if (isKey(e, "Escape")) {
           if (activeIndex !== -1) {
             setActiveIndex(-1);
           } else {
             setOpen(false);
           }
         } else if (dir === "rtl") {
-          if (e.key === "ArrowRight") {
+          if (isKey(e, "ArrowRight")) {
             movePrev();
-          } else if (e.key === "ArrowLeft" && (activeIndex !== -1 || loop)) {
+          } else if (isKey(e, "ArrowLeft") && (activeIndex !== -1 || loop)) {
             moveNext();
           }
         } else {
-          if (e.key === "ArrowLeft") {
+          if (isKey(e, "ArrowLeft")) {
             movePrev();
-          } else if (e.key === "ArrowRight" && (activeIndex !== -1 || loop)) {
+          } else if (isKey(e, "ArrowRight") && (activeIndex !== -1 || loop)) {
             moveNext();
           }
         }

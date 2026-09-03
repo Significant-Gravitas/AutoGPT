@@ -5,6 +5,7 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { motion, useReducedMotion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { tickColor, tickScale, toMinimapEntries } from "./helpers";
+import { isKey } from "@/lib/keyboard";
 
 const TICK_SPRING = { type: "spring", stiffness: 200, damping: 15 } as const;
 const CARD_TRANSITION = { duration: 0.15, delay: 0.0875 } as const;
@@ -43,11 +44,11 @@ export function ChatMinimap({ messages }: Props) {
             onBlur={() => setHovered(null)}
             onClick={() => scrollToMessage(entry.id)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
+              if (isKey(e, "Enter") || isKey(e, " ")) {
                 e.preventDefault();
                 scrollToMessage(entry.id);
               }
-              if (e.key === "Escape") {
+              if (isKey(e, "Escape")) {
                 setHovered(null);
               }
             }}

@@ -21,6 +21,31 @@
         "varsIgnorePattern": "^_",
         "caughtErrorsIgnorePattern": "^_"
       }
+    ],
+    // Keyboard handlers must go through `isKey()` from `@/lib/keyboard` so that
+    // keydowns fired while an IME is composing (Japanese, Chinese, Korean input)
+    // are ignored. See AGENTS.md "Keyboard handling".
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "BinaryExpression[operator=/^[!=]==?$/] > Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight| )$/]",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "SwitchCase > Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight| )$/]",
+        "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/lib/keyboard.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "src/tests/**"
+      ],
+      "rules": { "no-restricted-syntax": "off" }
+    }
+  ]
 }

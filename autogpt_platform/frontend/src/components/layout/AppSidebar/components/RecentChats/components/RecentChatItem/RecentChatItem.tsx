@@ -27,6 +27,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Session {
   id: string;
@@ -106,12 +107,12 @@ export function RecentChatItem({
           value={editingTitle}
           onChange={(e) => onEditingTitleChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (isKey(e, "Enter")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onSubmitRename(session.id);
               e.currentTarget.blur();
-            } else if (e.key === "Escape") {
+            } else if (isKey(e, "Escape")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onCancelRename();

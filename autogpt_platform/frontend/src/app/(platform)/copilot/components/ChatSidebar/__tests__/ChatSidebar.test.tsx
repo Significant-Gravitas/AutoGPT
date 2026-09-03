@@ -430,3 +430,44 @@ describe("ChatSidebar — pagination", () => {
     });
   }, 10_000);
 });
+
+describe("ChatSidebar — rename", () => {
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  async function startRenaming(title: string) {
+    const sessionRow = (await screen.findByText(title)).closest("div.group");
+    if (!sessionRow) throw new Error(`row not found for ${title}`);
+    const moreButton = within(sessionRow as HTMLElement).getByRole("button", {
+      name: /more actions/i,
+    });
+    fireEvent.pointerDown(moreButton, { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /rename/i }));
+    return screen.findByLabelText("Rename chat");
+  }
+
+  it("keeps editing on Enter while an IME is composing, then commits on a real Enter", async () => {
+    const titleBodies: { title: string }[] = [];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      http.patch("*/api/chat/sessions/:id/title", async ({ request }) => {
+        titleBodies.push((await request.json()) as { title: string });
+        return HttpResponse.json({ status: "ok" });
+      }),
+    );
+    renderSidebar();
+
+    const input = await startRenaming("Active chat");
+    fireEvent.change(input, { target: { value: "新しいチャット" } });
+
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(screen.getByLabelText("Rename chat")).toBeDefined();
+    expect(titleBodies).toHaveLength(0);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => {
+      expect(titleBodies).toEqual([{ title: "新しいチャット" }]);
+    });
+  });
+});

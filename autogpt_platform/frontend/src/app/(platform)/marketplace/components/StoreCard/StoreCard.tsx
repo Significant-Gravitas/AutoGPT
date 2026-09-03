@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   agentName: string;
@@ -55,7 +56,7 @@ export function StoreCard({
       tabIndex={0}
       aria-label={`${agentName} workflow card`}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (isKey(e, "Enter") || isKey(e, " ")) {
           handleClick();
         }
       }}

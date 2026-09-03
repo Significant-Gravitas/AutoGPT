@@ -91,6 +91,20 @@ describe("RecentChatItem — editing mode", () => {
     expect(onSubmitRename).toHaveBeenCalledWith("s1");
   });
 
+  it("ignores Enter while an IME is still composing", () => {
+    const onSubmitRename = vi.fn();
+    renderItem(
+      makeProps({ isEditing: true, editingTitle: "新しい", onSubmitRename }),
+    );
+
+    fireEvent.keyDown(screen.getByLabelText("Rename chat"), {
+      key: "Enter",
+      isComposing: true,
+    });
+
+    expect(onSubmitRename).not.toHaveBeenCalled();
+  });
+
   it("cancels on Escape", () => {
     const onCancelRename = vi.fn();
     renderItem(makeProps({ isEditing: true, onCancelRename }));
