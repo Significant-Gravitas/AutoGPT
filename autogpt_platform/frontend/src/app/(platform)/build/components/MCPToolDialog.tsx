@@ -522,6 +522,7 @@ export function MCPToolDialog({
                 </Label>
                 <Input
                   id="mcp-auth-token"
+                  aria-describedby="mcp-auth-token-hint"
                   type="password"
                   placeholder="Paste your auth credential here"
                   value={manualToken}
@@ -534,13 +535,21 @@ export function MCPToolDialog({
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
-                <p className="text-xs text-gray-500">
+                <p id="mcp-auth-token-hint" className="text-xs text-gray-500">
                   {mcpAuthTokenHint(manualAuthScheme)}
                 </p>
               </div>
             )}
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p
+                role="alert"
+                aria-live="polite"
+                className="text-sm text-red-700"
+              >
+                {error}
+              </p>
+            )}
           </div>
         )}
 

@@ -24,8 +24,8 @@ from backend.blocks.mcp.client import (
 )
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
-    invalidate_mcp_credential,
     is_manual_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     server_host,
 )
@@ -50,7 +50,7 @@ class DiscoverToolsRequest(BaseModel):
     """Request to discover tools on an MCP server."""
 
     server_url: str = Field(description="URL of the MCP server")
-    auth_token: str | None = Field(
+    auth_token: SecretStr | None = Field(
         default=None,
         min_length=1,
         description=(
@@ -98,27 +98,25 @@ async def discover_tools(
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
-    auth_token = request.auth_token
-    stored_credential: OAuth2Credentials | None = None
-
-    # Auto-use stored MCP credential when no explicit token is provided.
-    if not auth_token:
+    authorization: str | None = None
+    explicit_token = (
+        request.auth_token.get_secret_value() if request.auth_token else None
+    )
+    if explicit_token:
+        # Fresh user input: normalize exactly here, once.
+        try:
+            authorization = normalize_mcp_authorization(explicit_token)
+        except ValueError as e:
+            raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+    else:
+        # Auto-use stored MCP credential when no explicit token is provided.
         stored_credential = await auto_lookup_mcp_credential(
             user_id, normalize_mcp_url(request.server_url)
         )
         if stored_credential:
-            auth_token = stored_credential.access_token.get_secret_value()
+            authorization = mcp_authorization_header(stored_credential)
 
-    try:
-        client = MCPClient(request.server_url, auth_token=auth_token)
-    except ValueError as e:
-        if stored_credential is not None:
-            await invalidate_mcp_credential(user_id, stored_credential.id)
-            raise fastapi.HTTPException(
-                status_code=401,
-                detail="The stored MCP credential is invalid. Please reconnect.",
-            ) from e
-        raise fastapi.HTTPException(status_code=422, detail=str(e)) from e
+    client = MCPClient(request.server_url, authorization=authorization)
 
     try:
         init_result = await client.initialize()
@@ -138,6 +136,10 @@ async def discover_tools(
             status_code=502,
             detail=f"Failed to connect to MCP server: {e}",
         )
+    finally:
+        # Discovery now runs on every connect surface, so without this each
+        # attempt leaves a session row on the remote until its timeout sweep.
+        await client.close()
 
     return DiscoverToolsResponse(
         tools=[
@@ -527,9 +529,14 @@ async def mcp_store_token(
 
     # Only after the new credential is safely stored, so a failed write leaves
     # the user with their previous credential rather than none at all.
+    #
+    # Through ``creds_manager.delete`` rather than ``store.delete_creds_by_id``:
+    # the former takes the per-credential lock and fires the credentials-changed
+    # hook that evicts cached provider tokens, and revokes an OAuth refresh
+    # token instead of orphaning it at the provider.
     for old_id in superseded_ids:
         try:
-            await creds_manager.store.delete_creds_by_id(user_id, old_id)
+            await creds_manager.delete(user_id, old_id)
         except Exception:
             logger.debug("Could not clean up superseded MCP credential", exc_info=True)
 

@@ -55,6 +55,23 @@ def is_manual_mcp_credential(credentials: OAuth2Credentials) -> bool:
     )
 
 
+def mcp_authorization_header(credentials: OAuth2Credentials) -> str:
+    """Build the Authorization value to send for a *stored* MCP credential.
+
+    Deliberately never inspects the secret.  Credentials stored since Basic
+    support landed carry ``mcp_auth_scheme`` and hold an already-canonical
+    ``"<Scheme> <credential>"`` in ``access_token``; anything older is a raw
+    bare token that was always sent as Bearer.  The metadata says which, so a
+    multi-word secret cannot be re-read as a scheme word plus a remainder --
+    the failure that turned a stored ``"Bearer orgid api-key"`` into
+    ``"Bearer Bearer orgid api-key"`` when it was normalized a second time.
+    """
+    token = credentials.access_token.get_secret_value()
+    if (credentials.metadata or {}).get("mcp_auth_scheme"):
+        return token
+    return f"Bearer {token}"
+
+
 def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
     """Parse MCP tool response content into a plain Python value.
 
@@ -161,9 +178,12 @@ async def auto_lookup_mcp_credential(
                     best = cred
         # Manually entered MCP credentials are represented as OAuth2Credentials
         # for compatibility with the existing credential plumbing, but they have
-        # no expiry or OAuth token endpoint. Trying to refresh one would attempt
-        # to construct an MCP OAuth handler and reject the otherwise valid token.
-        if best and best.access_token_expires_at is not None:
+        # no OAuth token endpoint. Trying to refresh one would construct an MCP
+        # OAuth handler and reject the otherwise valid token.  Ask that question
+        # directly rather than through expiry, which is only a proxy for it: an
+        # OAuth credential whose token endpoint omitted ``expires_in`` has no
+        # expiry either, and would never be refreshed again.
+        if best and not is_manual_mcp_credential(best):
             best = await mgr.refresh_if_needed(user_id, best)
         if best:
             logger.info("Auto-resolved MCP credential %s for %s", best.id, server_url)

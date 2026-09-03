@@ -18562,7 +18562,15 @@
             "description": "URL of the MCP server"
           },
           "auth_token": {
-            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
             "title": "Auth Token",
             "description": "Optional bare Bearer token, Basic/Bearer value, or complete Authorization header. Omit the field (or send null) for an unauthenticated server; an empty string is rejected."
           }

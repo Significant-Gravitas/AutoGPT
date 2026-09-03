@@ -13,6 +13,7 @@ from pydantic import SecretStr
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.block import TEST_CREDENTIALS_INPUT, MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, normalize_mcp_authorization
+from backend.blocks.mcp.helpers import mcp_authorization_header
 from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
 
@@ -101,17 +102,59 @@ def test_normalize_mcp_authorization_rejects_control_characters(
         normalize_mcp_authorization(f"Bearer token{control_character}X-Evil: injected")
 
 
-def test_mcp_client_preserves_explicit_basic_auth() -> None:
+def test_mcp_client_sends_the_authorization_it_was_given() -> None:
+    """The transport sends its value verbatim and parses nothing.
+
+    Normalizing here as well as at the entry point made the header depend on
+    how many layers a value had crossed: a stored ``"Bearer orgid api-key"``
+    came back out as ``"Bearer Bearer orgid api-key"``.
+    """
+    for authorization in (
+        "Basic cGstbGYtYWJjZA==",
+        "Bearer legacy-token",
+        "Bearer orgid api-key",
+    ):
+        client = MCPClient("https://mcp.example.com/mcp", authorization=authorization)
+        assert client._build_headers()["Authorization"] == authorization
+
+
+def test_stored_credential_round_trips_without_double_prefixing() -> None:
+    """Store → read → send must be stable for a multi-word bare credential.
+
+    The store path canonicalizes ``"orgid api-key"`` to ``"Bearer orgid
+    api-key"``; the read path must hand that to the transport untouched.
+    """
+    stored = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr(normalize_mcp_authorization("orgid api-key")),
+        scopes=[],
+        metadata={
+            "mcp_server_url": "https://mcp.example.com/mcp",
+            "mcp_auth_scheme": "bearer",
+        },
+    )
     client = MCPClient(
         "https://mcp.example.com/mcp",
-        auth_token="Basic cGstbGYtYWJjZA==",
+        authorization=mcp_authorization_header(stored),
     )
-    assert client._build_headers()["Authorization"] == "Basic cGstbGYtYWJjZA=="
+    assert client._build_headers()["Authorization"] == "Bearer orgid api-key"
 
 
-def test_mcp_client_keeps_bare_tokens_as_bearer() -> None:
-    client = MCPClient("https://mcp.example.com/mcp", auth_token="legacy-token")
-    assert client._build_headers()["Authorization"] == "Bearer legacy-token"
+def test_legacy_row_without_scheme_metadata_is_sent_as_bearer() -> None:
+    """A pre-Basic row holds a raw token and must never be parsed.
+
+    Parsing it is what let ``"basic auth key"`` become ``"Basic auth key"`` —
+    scheme flipped and the first word silently dropped from the secret.
+    """
+    legacy = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr("basic auth key"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+    )
+    assert mcp_authorization_header(legacy) == "Bearer basic auth key"
 
 
 def test_mcp_client_omits_auth_when_not_provided() -> None:
@@ -146,10 +189,10 @@ async def test_schema_optional_mcp_credentials_do_not_skip_execution(
     assert nodes_to_skip == set()
 
 
-@pytest.mark.parametrize("auth_token", ["", " ", "   "])
-def test_mcp_client_rejects_non_none_blank_auth(auth_token: str) -> None:
+@pytest.mark.parametrize("value", ["", " ", "   "])
+def test_normalize_rejects_blank_input(value: str) -> None:
     with pytest.raises(ValueError, match="must not be blank"):
-        MCPClient("https://mcp.example.com/mcp", auth_token=auth_token)
+        normalize_mcp_authorization(value)
 
 
 app = fastapi.FastAPI()
@@ -269,7 +312,10 @@ async def test_block_uses_the_credential_it_was_given():
         title="MCP: mcp.example.com",
         access_token=SecretStr("Basic cWE6YmFzaWM="),
         scopes=[],
-        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        metadata={
+            "mcp_server_url": "https://mcp.example.com/mcp",
+            "mcp_auth_scheme": "basic",
+        },
     )
 
     with (
@@ -295,53 +341,5 @@ async def test_block_uses_the_credential_it_was_given():
 
     auto_lookup.assert_not_awaited()
     assert call_tool.await_args is not None
-    assert call_tool.await_args.kwargs["auth_token"] == "Basic cWE6YmFzaWM="
+    assert call_tool.await_args.kwargs["authorization"] == "Basic cWE6YmFzaWM="
     assert ("result", "ok") in outputs
-
-
-@pytest.mark.asyncio
-async def test_block_drops_a_credential_it_cannot_send():
-    """A malformed stored credential is invalidated with a reconnect message.
-
-    The route and the copilot both do this; without it here the same broken row
-    surfaced as a bare "MCP tool call failed: …" and stayed stored, so every
-    later run failed identically with no way out.
-    """
-    block = MCPToolBlock()
-    credentials = OAuth2Credentials(
-        provider="mcp",
-        title="MCP: mcp.example.com",
-        access_token=SecretStr("Authorization: Digest nope"),
-        scopes=[],
-        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
-    )
-
-    with (
-        patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
-        patch(
-            "backend.blocks.mcp.block.invalidate_mcp_credential",
-            new_callable=AsyncMock,
-        ) as invalidate,
-    ):
-        outputs = [
-            output
-            async for output in block.run(
-                MCPToolBlock.Input(
-                    server_url="https://mcp.example.com/mcp",
-                    selected_tool="a_tool",
-                    tool_arguments={},
-                ),
-                user_id="test-user-id",
-                credentials=credentials,
-            )
-        ]
-
-    call_tool.assert_not_awaited()
-    invalidate.assert_awaited_once_with("test-user-id", credentials.id)
-    assert outputs == [
-        (
-            "error",
-            "The stored credential for this MCP server is no longer usable "
-            "and has been removed. Please reconnect the server.",
-        )
-    ]

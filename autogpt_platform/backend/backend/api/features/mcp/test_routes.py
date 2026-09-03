@@ -116,7 +116,7 @@ class TestDiscoverTools:
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            auth_token="my-secret-token",
+            authorization="Bearer my-secret-token",
         )
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -155,7 +155,7 @@ class TestDiscoverTools:
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            auth_token="stored-token-123",
+            authorization="Bearer stored-token-123",
         )
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -566,7 +566,7 @@ class TestStoreToken:
 
         assert discover_response.status_code == 200
         client_cls.assert_called_once_with(
-            "https://mcp.example.com/mcp", auth_token="Basic encoded-value"
+            "https://mcp.example.com/mcp", authorization="Basic encoded-value"
         )
         manager.refresh_if_needed.assert_not_awaited()
 

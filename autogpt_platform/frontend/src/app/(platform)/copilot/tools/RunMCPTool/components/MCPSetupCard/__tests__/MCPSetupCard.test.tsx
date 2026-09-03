@@ -109,6 +109,9 @@ describe("MCPSetupCard", () => {
 
   afterEach(() => {
     cleanup();
+    // Without this, call history leaks between tests and any
+    // `not.toHaveBeenCalled()` assertion silently depends on declaration order.
+    vi.clearAllMocks();
     setMockLiveCreds([]);
     currentOnSend = mockOnSend;
   });
@@ -614,8 +617,6 @@ describe("MCPSetupCard", () => {
     fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
       target: { value: "wrong-token" },
     });
-    // This file's teardown does not clear call history between tests.
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockClear();
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
 
     await waitFor(() => {
@@ -623,6 +624,39 @@ describe("MCPSetupCard", () => {
     });
     expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+  });
+
+  it("refuses an unencoded user:password before any request", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText(/authentication type/i), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+      target: { value: "pk-lf-abc:sk-lf-xyz" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/unencoded user:password/i)).toBeDefined();
+    });
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {

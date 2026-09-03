@@ -11,7 +11,7 @@ import {
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
 import { prepareMCPAuthCredential } from "@/lib/mcp-auth";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
 
 function hostOf(serverUrl: string): string | null {
@@ -26,6 +26,7 @@ function hostOf(serverUrl: string): string | null {
  *  ConnectorRow but connects through the MCP OAuth/token flow the hidden
  *  MCPSetupCard drives via the request callbacks. */
 export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
+  const hintId = useId();
   const [token, setToken] = useState("");
   const {
     scheme: authScheme,
@@ -102,6 +103,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
           <div className="flex gap-2">
             <input
               type="password"
+              aria-describedby={hintId}
               aria-label={`${mcpAuthTokenLabel(authScheme)} for ${request.service}`}
               placeholder="Paste API token"
               value={token}

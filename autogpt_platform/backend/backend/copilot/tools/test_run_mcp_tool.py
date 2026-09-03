@@ -277,9 +277,9 @@ async def test_discover_tools_with_credentials():
                     session=session,
                     server_url=_SERVER_URL,
                 )
-                # Verify MCPClient was created with the resolved auth token
+                # Verify MCPClient was created with the resolved auth header
                 MockMCPClient.assert_called_once_with(
-                    _SERVER_URL, auth_token="test-token-abc"
+                    _SERVER_URL, authorization="Bearer test-token-abc"
                 )
 
     assert isinstance(response, MCPToolsDiscoveredResponse)

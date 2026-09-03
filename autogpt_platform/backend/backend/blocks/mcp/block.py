@@ -18,14 +18,10 @@ from backend.blocks._base import (
     BlockSchemaOutput,
     BlockType,
 )
-from backend.blocks.mcp.client import (
-    MCPClient,
-    MCPClientError,
-    normalize_mcp_authorization,
-)
+from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
-    invalidate_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
 )
@@ -177,12 +173,17 @@ class MCPToolBlock(Block):
         server_url: str,
         tool_name: str,
         arguments: dict[str, Any],
-        auth_token: str | None = None,
+        authorization: str | None = None,
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
-        client = MCPClient(server_url, auth_token=auth_token)
-        await client.initialize()
-        result = await client.call_tool(tool_name, arguments)
+        client = MCPClient(server_url, authorization=authorization)
+        try:
+            await client.initialize()
+            result = await client.call_tool(tool_name, arguments)
+        finally:
+            # Without this every execution leaves a session row on the remote
+            # until its own timeout sweep.
+            await client.close()
 
         if result.is_error:
             error_text = ""
@@ -248,36 +249,16 @@ class MCPToolBlock(Block):
                 user_id, normalize_mcp_url(input_data.server_url)
             )
 
-        auth_token = (
-            credentials.access_token.get_secret_value() if credentials else None
-        )
-
-        # ``MCPClient`` normalizes the Authorization value and rejects one it
-        # cannot represent.  The route and the copilot both catch that, drop the
-        # credential and offer a reconnect; without the same handling here a
-        # malformed legacy row surfaces as a bare "MCP tool call failed: …" and
-        # stays stored, so the run fails identically forever.
-        if auth_token is not None:
-            try:
-                normalize_mcp_authorization(auth_token)
-            except ValueError:
-                if credentials is not None:
-                    await invalidate_mcp_credential(user_id, credentials.id)
-                yield (
-                    "error",
-                    (
-                        "The stored credential for this MCP server is no longer usable "
-                        "and has been removed. Please reconnect the server."
-                    ),
-                )
-                return
+        # Built from metadata rather than by re-parsing the secret, so a stored
+        # credential can no longer be misread as carrying a different scheme.
+        authorization = mcp_authorization_header(credentials) if credentials else None
 
         try:
             result = await self._call_mcp_tool(
                 server_url=input_data.server_url,
                 tool_name=input_data.selected_tool,
                 arguments=input_data.tool_arguments,
-                auth_token=auth_token,
+                authorization=authorization,
             )
             yield "result", result
         except MCPClientError as e:

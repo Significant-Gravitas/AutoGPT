@@ -10,6 +10,7 @@ from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
     server_host,
@@ -215,11 +216,12 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        auth_token = creds.access_token.get_secret_value() if creds else None
         client: MCPClient | None = None
         if creds is not None:
             try:
-                client = MCPClient(server_url, auth_token=auth_token)
+                client = MCPClient(
+                    server_url, authorization=mcp_authorization_header(creds)
+                )
             except ValueError:
                 # Legacy rows can contain values that the stricter explicit
                 # input validator now rejects. Drop only that unusable stored

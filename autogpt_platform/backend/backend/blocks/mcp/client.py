@@ -25,11 +25,19 @@ _SUPPORTED_AUTH_SCHEMES = {
 
 
 def normalize_mcp_authorization(value: str) -> str:
-    """Return a canonical Basic/Bearer Authorization header value.
+    """Turn a user-supplied credential into a canonical Authorization value.
 
-    Bare credentials remain backward-compatible and default to Bearer. Values may
-    also include an explicit ``Basic``/``Bearer`` prefix or the complete
-    ``Authorization: ...`` header copied from provider documentation.
+    Accepts a bare token (kept Bearer for backward compatibility), an explicit
+    ``Basic``/``Bearer`` prefix, or a complete ``Authorization: ...`` header
+    copied from provider documentation.
+
+    This runs **once, at the boundary where a human-supplied value enters the
+    system** — never against a value read back from storage.  Re-parsing a
+    stored secret is what makes normalization order-dependent: the scheme word
+    of the canonical form becomes the first word of a "bare" credential on the
+    second pass.  Stored credentials go through
+    ``helpers.mcp_authorization_header`` instead, which reads the scheme from
+    metadata and never inspects the secret.
     """
     if any(ord(character) < 32 or ord(character) == 127 for character in value):
         raise ValueError("Authentication credential must be a single line.")
@@ -51,17 +59,10 @@ def normalize_mcp_authorization(value: str) -> str:
     scheme_key = parts[0].casefold()
     known_scheme = scheme_key in _SUPPORTED_AUTH_SCHEMES
     remainder = parts[1].strip() if len(parts) == 2 else ""
-    # RFC 7235 credentials after a scheme are a single token68/base64 run with
-    # no internal whitespace, so a remainder that still contains a space means
-    # this is a bare multi-word credential that merely starts with
-    # "basic"/"bearer" (e.g. an "orgid api-key" pair), not a scheme-prefixed
-    # one.  Reading it as a scheme would flip the scheme *and* silently drop
-    # that first word from the secret.
-    is_scheme_prefixed = known_scheme and bool(remainder) and " " not in remainder
-    if is_scheme_prefixed:
+    if known_scheme and remainder:
         scheme = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         credential = remainder
-    elif known_scheme and not remainder:
+    elif known_scheme:
         scheme_name = _SUPPORTED_AUTH_SCHEMES[scheme_key]
         raise ValueError(f"{scheme_name} authentication requires a credential.")
     elif included_header_name:
@@ -71,6 +72,18 @@ def normalize_mcp_authorization(value: str) -> str:
     else:
         scheme = "Bearer"
         credential = candidate
+
+    if scheme == "Basic":
+        # RFC 7617 puts Base64 of `user:password` on the wire, and that alphabet
+        # contains neither.  Rejecting here as well as in the UI stops a direct
+        # API caller persisting a plaintext password as a "working" credential.
+        if ":" in credential:
+            raise ValueError(
+                "Basic authentication expects the Base64 of user:password, "
+                "not the pair itself."
+            )
+        if " " in credential:
+            raise ValueError("A Basic credential must not contain spaces.")
 
     return f"{scheme} {credential}"
 
@@ -103,22 +116,24 @@ class MCPClient:
     Async HTTP client for the MCP Streamable HTTP transport.
 
     Communicates with MCP servers using JSON-RPC 2.0 over HTTP POST.
-    Supports optional Bearer or Basic authentication. Bare ``auth_token`` values
-    keep their historical Bearer behavior, while explicitly prefixed values are
-    sent using the requested scheme.
+
+    ``authorization`` is sent verbatim as the ``Authorization`` header. The
+    transport does no parsing or normalization of its own: callers hand it a
+    value that is already canonical, from ``normalize_mcp_authorization`` for
+    fresh user input or ``helpers.mcp_authorization_header`` for a stored
+    credential. Normalizing here as well made the result depend on how many
+    layers a value had passed through.
     """
 
     def __init__(
         self,
         server_url: str,
-        auth_token: str | None = None,
+        authorization: str | None = None,
     ):
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
-        self.authorization = (
-            normalize_mcp_authorization(auth_token) if auth_token is not None else None
-        )
+        self.authorization = authorization
         self._request_id = 0
         self._session_id: str | None = None
 

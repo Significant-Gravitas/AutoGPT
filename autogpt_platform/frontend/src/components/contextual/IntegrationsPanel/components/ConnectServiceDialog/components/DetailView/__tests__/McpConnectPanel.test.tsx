@@ -280,6 +280,87 @@ describe("McpConnectPanel", () => {
     });
   });
 
+  it("hands the stored credential to onSuccess", async () => {
+    // The payload, not just the fact of being called: the dialog binds what it
+    // receives here, so returning undefined silently unbinds the connection.
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    const stored = {
+      id: "cred-1",
+      provider: "mcp",
+      type: "oauth2",
+      title: "MCP: mcp.example.com",
+      host: "https://mcp.example.com",
+      mcp_auth_scheme: "basic",
+    };
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: stored,
+      headers: new Headers(),
+    } as never);
+
+    const onSuccess = vi.fn();
+    render(<McpConnectPanel onSuccess={onSuccess} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "cGstbGYtYWJjZA==" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith(stored);
+    });
+  });
+
+  it("rejects an unencoded user:password before any request", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "OAuth not supported" },
+      headers: new Headers(),
+    } as never);
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Authentication type")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText("Authentication type"), {
+      target: { value: "basic" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "pk-lf-abc:sk-lf-xyz" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/unencoded user:password/i);
+    expect(postV2DiscoverAvailableToolsOnAnMcpServer).not.toHaveBeenCalled();
+    expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+  });
+
   it("does not store a credential the server rejects", async () => {
     const {
       postV2DiscoverAvailableToolsOnAnMcpServer,

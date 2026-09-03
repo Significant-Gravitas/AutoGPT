@@ -15,7 +15,12 @@ import {
   mcpAuthTokenLabel,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
-import { prepareMCPAuthCredential, type MCPAuthScheme } from "@/lib/mcp-auth";
+import {
+  detectMCPAuthScheme,
+  prepareMCPAuthCredential,
+  validateMCPAuthCredential,
+  type MCPAuthScheme,
+} from "@/lib/mcp-auth";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
@@ -53,6 +58,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const chainActions = useContext(ChainActionsContext);
   const actionId = useId();
   const manualTokenInputId = `${actionId}-manual-auth-token`;
+  const manualTokenHintId = `${actionId}-manual-auth-hint`;
 
   // setup_info.agent_id is set to the server_url in the backend
   const serverUrl = output.setup_info.agent_id;
@@ -261,6 +267,20 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         ? prepareMCPAuthCredential(manualToken, manualAuthScheme)
         : tokenArg.trim();
     if (!token) return;
+
+    // Guards both this card and the chain row, which submits through the same
+    // callback with an already-prepared value: the scheme is read back off the
+    // value so a row-prepared credential is checked too.
+    const invalid = validateMCPAuthCredential(
+      token,
+      detectMCPAuthScheme(token) ?? manualAuthScheme,
+    );
+    if (invalid) {
+      setForceDisconnected(true);
+      setError(invalid);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -412,7 +432,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         </Button>
 
         {error && (
-          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
@@ -434,12 +458,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
             >
               {`${mcpAuthTokenLabel(manualAuthScheme)} for ${service}`}
             </label>
-            <p className="text-xs text-gray-500">
+            <p id={manualTokenHintId} className="text-xs text-gray-500">
               {mcpAuthTokenHint(manualAuthScheme)}
             </p>
             <div className="flex gap-2">
               <input
                 id={manualTokenInputId}
+                aria-describedby={manualTokenHintId}
                 type="password"
                 placeholder="Paste API token"
                 value={manualToken}
