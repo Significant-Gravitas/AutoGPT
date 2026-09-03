@@ -82,7 +82,12 @@ async def get_transactions(
         require_permission(APIKeyPermission.READ_CREDITS)
     ),
 ) -> Page[CreditTransaction]:
-    """Get credit transaction history for the authenticated user."""
+    """Get credit transaction history for the authenticated user.
+
+    `total_count` is `null`: the history groups the raw rows (every node charge
+    of one run collapses into one item), so a row count would not match what
+    paging through this endpoint yields.
+    """
     user_credit_model = await get_user_credit_model(auth.user_id)
 
     token = page.token
@@ -218,13 +223,14 @@ async def list_invoices(
 ) -> Page[InvoiceItem]:
     """Recent Stripe invoices for the current user.
 
-    Stripe returns at most `limit` invoices and offers no cursor here, so
-    `next_cursor` is always `null`; raise `limit` to see further back.
+    Stripe returns at most `limit` invoices and offers neither a cursor nor a
+    total here, so `next_cursor` and `total_count` are always `null`; raise
+    `limit` to see further back.
     """
     user_credit_model = await get_user_credit_model(auth.user_id)
     invoices = await user_credit_model.list_invoices(auth.user_id, limit=page.limit)
 
-    return page.unpaginated([InvoiceItem.from_internal(inv) for inv in invoices])
+    return page.uncounted([InvoiceItem.from_internal(inv) for inv in invoices])
 
 
 @credits_router.get(

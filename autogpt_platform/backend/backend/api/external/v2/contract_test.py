@@ -160,6 +160,22 @@ def test_every_collection_endpoint_returns_the_page_envelope():
     assert not offenders, "\n".join(offenders)
 
 
+def test_every_page_response_carries_all_three_fields():
+    """`total_count` is present on every list, even where its value is null."""
+    from backend.api.external.v2.app import v2_app
+
+    schemas = v2_app.openapi()["components"]["schemas"]
+    page_schemas = {k: v for k, v in schemas.items() if k.startswith("Page_")}
+
+    assert page_schemas
+    for name, schema in page_schemas.items():
+        assert set(schema["required"]) == {
+            "items",
+            "next_cursor",
+            "total_count",
+        }, f"{name} requires {schema['required']}"
+
+
 def test_every_collection_endpoint_takes_limit_and_cursor():
     for route in _v2_routes():
         if not _is_page(get_type_hints(route.endpoint).get("return")):
@@ -303,6 +319,15 @@ def test_next_cursor_is_null_on_the_last_page():
     assert request.paged(["a"] * 10, total_count=25).next_cursor is not None
     assert request.paged(["a"] * 10, total_count=10).next_cursor is None
     assert request.paged([], total_count=0).next_cursor is None
+
+
+def test_total_count_reports_the_whole_result_set():
+    request = PageRequest(limit=10, cursor=None)
+
+    assert request.paged(["a"] * 10, total_count=25).total_count == 25
+    assert request.slice(["a"] * 25).total_count == 25
+    assert request.keyset(["a"], next_token=None).total_count is None
+    assert request.uncounted(["a"]).total_count is None
 
 
 def _is_page(annotation: Any) -> bool:

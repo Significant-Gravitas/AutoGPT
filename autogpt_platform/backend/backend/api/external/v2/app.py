@@ -22,7 +22,7 @@ integrations, automations, and custom applications.
 
 - **Consistent naming**: Uses `graph_id`/`graph_version` consistently
 - **One list shape**: every list endpoint takes `limit`/`cursor` and returns
-  `{"items": [...], "next_cursor": ...}`
+  `{"items": [...], "next_cursor": ..., "total_count": ...}`
 - **One error shape**: every non-2xx response is
   `{"error": {"code", "message", "details"}}`
 - **Comprehensive coverage**: Access to library, runs, schedules, credits, and more
@@ -43,8 +43,10 @@ endpoint). When a rate limit is exceeded, the API returns `429 Too Many Requests
 ### Pagination
 
 List endpoints take `limit` (1-100, default 20) and `cursor`, and return
-`{"items": [...], "next_cursor": ...}`. Pass `next_cursor` back as `cursor`
-for the next page; it is `null` on the last page. Cursors are opaque.
+`{"items": [...], "next_cursor": ..., "total_count": ...}`. Pass `next_cursor`
+back as `cursor` for the next page; it is `null` on the last page. Cursors are
+opaque. `total_count` counts the matches across all pages, and is `null` only
+where the source cannot report one.
 
 ### Status codes
 
