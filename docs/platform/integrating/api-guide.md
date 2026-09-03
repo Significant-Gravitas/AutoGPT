@@ -133,7 +133,9 @@ envelope:
 ```
 
 Pass `next_cursor` back as `cursor` for the next page; it is `null` on the last
-page. Cursors are opaque — do not parse or construct them.
+page. Cursors are opaque — do not parse or construct them, and do not carry one
+from one endpoint to another: a cursor that did not come from this endpoint's
+last response is rejected with `400 bad_request`.
 
 `total_count` is the number of items matching the request across all pages. It
 is present on every list endpoint, and `null` on the two where the source cannot

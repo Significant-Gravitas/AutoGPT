@@ -7,12 +7,15 @@ only fails once a sibling route is registered, and an auth path only the MCP
 transport exercises.
 """
 
+import base64
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, get_origin, get_type_hints
 
 import fastapi
 import fastapi.testclient
+import pydantic
 import pytest
 import pytest_mock
 from fastapi import HTTPException
@@ -23,7 +26,13 @@ from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
 from backend.api.external.middleware import resolve_auth_info
-from backend.api.external.v2.pagination import Page, PageRequest, encode_page_cursor
+from backend.api.external.v2.pagination import (
+    MAX_PAGE,
+    Page,
+    PageRequest,
+    encode_page_cursor,
+    encode_token_cursor,
+)
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
@@ -281,6 +290,43 @@ def test_validation_errors_have_the_envelope():
     assert body["error"]["details"]["errors"]
 
 
+def test_field_validator_errors_have_the_envelope():
+    """A `@field_validator` leaves a live exception in the error's `ctx`.
+
+    Serializing that without a fallback raises a `ValueError` subclass, which
+    the 400 handler then catches — turning a 422 into a 400 whose message is a
+    serializer complaint.
+    """
+    response = _error_client(None).post("/validated", json={"host": ""})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "validation_error"
+    assert "Invalid hostname" in json.dumps(body["error"]["details"])
+
+
+def test_a_paywalled_request_is_not_logged_as_a_server_warning(caplog):
+    """402 means the caller lacks credits, which is not a server event."""
+    from backend.copilot.rate_limit import UserPaywalledError
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.external.v2.errors"):
+        response = _error_client(UserPaywalledError("no credits")).get("/boom")
+
+    assert response.status_code == 402
+    assert not caplog.records
+
+
+def test_http_exception_headers_are_forwarded():
+    response = _error_client(
+        HTTPException(
+            status_code=429, detail="slow down", headers={"Retry-After": "30"}
+        )
+    ).get("/boom")
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "30"
+
+
 async def test_rate_limit_body_has_the_envelope(mocker: pytest_mock.MockFixture):
     """The limiter is ASGI middleware, outside the handlers — easy to miss."""
     from backend.api.external.v2 import global_rate_limit
@@ -307,10 +353,36 @@ async def test_rate_limit_body_has_the_envelope(mocker: pytest_mock.MockFixture)
 def test_cursors_round_trip_and_reject_garbage():
     assert PageRequest(limit=10, cursor=None).page == 1
     assert PageRequest(limit=10, cursor=encode_page_cursor(4)).page == 4
+    assert PageRequest(limit=10, cursor=encode_token_cursor("t")).token == "t"
+
+    for bad in ["not-a-cursor", _forge({"v": 99, "k": "p", "p": 2}), _forge({"p": 2})]:
+        with pytest.raises(HTTPException) as exc_info:
+            PageRequest(limit=10, cursor=bad)
+        assert exc_info.value.status_code == 400, bad
+
+
+def test_a_cursor_from_another_endpoint_is_rejected():
+    """A wrong-kind cursor must not silently reset the caller to page 1."""
+    page_cursor = PageRequest(limit=10, cursor=encode_page_cursor(3))
+    token_cursor = PageRequest(limit=10, cursor=encode_token_cursor("2026-01-01"))
+
+    for request, read in [(page_cursor, "token"), (token_cursor, "page")]:
+        with pytest.raises(HTTPException) as exc_info:
+            getattr(request, read)
+        assert exc_info.value.status_code == 400
 
     with pytest.raises(HTTPException) as exc_info:
-        PageRequest(limit=10, cursor="not-a-cursor").page
+        page_cursor.uncounted(["a"])
     assert exc_info.value.status_code == 400
+
+
+def test_an_absurd_page_is_rejected_rather_than_passed_to_the_database():
+    """An offset that deep is a forged cursor; unbounded it becomes a 500."""
+    with pytest.raises(HTTPException) as exc_info:
+        PageRequest(limit=100, cursor=encode_page_cursor(MAX_PAGE + 1)).page
+    assert exc_info.value.status_code == 400
+
+    assert PageRequest(limit=100, cursor=encode_page_cursor(MAX_PAGE)).page == MAX_PAGE
 
 
 def test_next_cursor_is_null_on_the_last_page():
@@ -328,6 +400,10 @@ def test_total_count_reports_the_whole_result_set():
     assert request.slice(["a"] * 25).total_count == 25
     assert request.keyset(["a"], next_token=None).total_count is None
     assert request.uncounted(["a"]).total_count is None
+
+
+def _forge(payload: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
 
 
 def _is_page(annotation: Any) -> bool:
@@ -353,6 +429,10 @@ def _error_client(exception: Optional[Exception]) -> fastapi.testclient.TestClie
     @app.get("/typed")
     async def typed(number: int) -> int:
         return number
+
+    @app.post("/validated")
+    async def validated(body: _ValidatedBody) -> str:
+        return body.host
 
     add_v2_exception_handlers(app)
     return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
@@ -392,3 +472,14 @@ async def _call_rate_limit_middleware(
         "client": ("1.2.3.4", 0),
     }
     await GlobalRateLimitMiddleware(app)(scope, receive, send)
+
+
+class _ValidatedBody(pydantic.BaseModel):
+    host: str
+
+    @pydantic.field_validator("host")
+    @classmethod
+    def _reject_empty(cls, value: str) -> str:
+        if not value:
+            raise ValueError("Invalid hostname: expected a domain like api.example.com")
+        return value

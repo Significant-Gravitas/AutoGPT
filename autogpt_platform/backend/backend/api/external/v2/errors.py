@@ -9,7 +9,7 @@ registers its own handlers over both rather than inheriting either.
 """
 
 import logging
-from typing import Optional
+from typing import Mapping, Optional
 
 import fastapi
 import fastapi.responses
@@ -58,7 +58,6 @@ def add_v2_exception_handlers(app: fastapi.FastAPI) -> None:
         NotFoundError: status.HTTP_404_NOT_FOUND,
         PrismaRecordNotFoundError: status.HTTP_404_NOT_FOUND,
         NotAuthorizedError: status.HTTP_403_FORBIDDEN,
-        # Not an error from the server's perspective — the user lacks entitlement.
         UserPaywalledError: status.HTTP_402_PAYMENT_REQUIRED,
         PreconditionFailed: status.HTTP_428_PRECONDITION_REQUIRED,
         FolderAlreadyExistsError: status.HTTP_409_CONFLICT,
@@ -82,6 +81,7 @@ def error_response(
     message: str,
     code: Optional[str] = None,
     details: Optional[dict[str, JsonValue]] = None,
+    headers: Optional[Mapping[str, str]] = None,
 ) -> fastapi.responses.JSONResponse:
     """Build a v2 error body. Also used outside the handlers, by the middleware."""
     body = ErrorResponse(
@@ -92,7 +92,9 @@ def error_response(
         )
     )
     return fastapi.responses.JSONResponse(
-        content=body.model_dump(mode="json"), status_code=status_code
+        content=body.model_dump(mode="json"),
+        status_code=status_code,
+        headers=headers,
     )
 
 
@@ -147,7 +149,9 @@ def _handle_http_exception(
     else:
         message = str(exc.detail)
         details = None
-    return error_response(exc.status_code, message, details=details)
+    return error_response(
+        exc.status_code, message, details=details, headers=exc.headers
+    )
 
 
 def _handle_validation_error(
@@ -163,11 +167,24 @@ def _handle_validation_error(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         f"Invalid data for {request.method} {request.url.path}",
         details={
+            # A `@field_validator` leaves its live ValueError in `ctx`; without a
+            # fallback the dump raises, and the ValueError -> 400 entry above
+            # then swallows this handler's own failure.
             "errors": pydantic.TypeAdapter(JsonValue).dump_python(
-                errors, mode="json", warnings=False
+                errors, mode="json", warnings=False, fallback=str
             )
         },
     )
+
+
+# Routine client-side outcomes: a caller without the scope, without the credits,
+# or asking for something that is not there is not a server event worth logging.
+_UNLOGGED_STATUSES = (
+    status.HTTP_401_UNAUTHORIZED,
+    status.HTTP_402_PAYMENT_REQUIRED,
+    status.HTTP_403_FORBIDDEN,
+    status.HTTP_404_NOT_FOUND,
+)
 
 
 def _log(request: fastapi.Request, status_code: int, exc: Exception) -> None:
@@ -175,9 +192,5 @@ def _log(request: fastapi.Request, status_code: int, exc: Exception) -> None:
         logger.exception(
             f"{request.method} {request.url.path} failed: {exc}", exc_info=exc
         )
-    elif status_code not in (
-        status.HTTP_401_UNAUTHORIZED,
-        status.HTTP_403_FORBIDDEN,
-        status.HTTP_404_NOT_FOUND,
-    ):
+    elif status_code not in _UNLOGGED_STATUSES:
         logger.warning(f"{request.method} {request.url.path} -> {status_code}: {exc}")
