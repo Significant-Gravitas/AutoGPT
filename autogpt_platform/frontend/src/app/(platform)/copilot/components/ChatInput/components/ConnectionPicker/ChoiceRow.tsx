@@ -2,11 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { LockIcon } from "@hugeicons/core-free-icons";
+import { LockIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 interface Props {
+  /** The mark that identifies the row at a glance — a provider logo, a glyph. */
+  leading?: React.ReactNode;
   title: string;
   subtitle?: string;
   notes?: string[];
@@ -32,6 +35,7 @@ interface Props {
 }
 
 export function ChoiceRow({
+  leading,
   title,
   subtitle,
   notes,
@@ -59,47 +63,52 @@ export function ChoiceRow({
       tabIndex={tabIndex}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors",
-        "focus-visible:bg-muted focus-visible:outline-none",
-        isSelected ? "bg-muted/60" : "hover:bg-muted/40",
+        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+        "focus-visible:bg-neutral-50 focus-visible:outline-none",
+        "hover:bg-neutral-50",
       )}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "mt-[3px] flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border",
-          isSelected ? "border-primary" : "border-muted-foreground/50",
-        )}
-      >
-        {isSelected && (
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
-        )}
-      </span>
-      <span className="flex min-w-0 flex-col">
+      {leading && (
+        <span aria-hidden className="flex-none">
+          {leading}
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-center gap-1.5">
-          <span className="text-[13px] font-semibold text-foreground">
-            {title}
-          </span>
+          <span className="text-sm font-medium text-zinc-900">{title}</span>
           {badge && (
             <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
               {badge}
             </span>
           )}
+          {/* What applies to a route matters once, when you are weighing it.
+              Spelled out on the row it competes with the choice itself, so it
+              waits behind the info mark. */}
+          {notes && notes.length > 0 && (
+            <InformationTooltip
+              description={notes.join("\n\n")}
+              iconSize={22}
+            />
+          )}
         </span>
         {subtitle && (
-          <span className="break-words text-[11px] leading-snug text-muted-foreground">
+          <span className="break-words text-sm leading-snug text-zinc-500">
             {subtitle}
           </span>
         )}
-        {notes?.map((note) => (
-          <span
-            key={note}
-            className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80"
-          >
-            {note}
-          </span>
-        ))}
       </span>
+      {/* The tick alone says which one is live: a row that is not chosen needs
+          no marker of its own, and an empty circle beside every option is one
+          more thing to read past. */}
+      <Icon
+        icon={Tick02Icon}
+        size={16}
+        aria-hidden
+        className={cn(
+          "flex-none text-primary transition-opacity",
+          isSelected ? "opacity-100" : "opacity-0",
+        )}
+      />
     </button>
   );
 }
@@ -118,37 +127,35 @@ interface LockedProps {
  */
 function LockedRow({ title, subtitle, notes, lock }: LockedProps) {
   return (
-    <div className="flex items-start gap-2.5 px-3 py-2">
+    <div className="flex items-start gap-2.5 px-3 py-2.5">
       <Icon
         icon={LockIcon}
         size={14}
         aria-hidden
-        className="mt-[3px] flex-none text-muted-foreground/70"
+        className="mt-[3px] flex-none text-zinc-400"
       />
       <span className="flex min-w-0 flex-col">
-        <span className="text-[13px] font-semibold text-muted-foreground">
-          {title}
-        </span>
+        <span className="text-sm font-medium text-zinc-500">{title}</span>
         {subtitle && (
-          <span className="break-words text-[11px] leading-snug text-muted-foreground/80">
+          <span className="break-words text-sm leading-snug text-zinc-400">
             {subtitle}
           </span>
         )}
         {notes?.map((note) => (
           <span
             key={note}
-            className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80"
+            className="mt-0.5 text-[11px] leading-snug text-zinc-400"
           >
             {note}
           </span>
         ))}
-        <span className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">
+        <span className="mt-0.5 text-[11px] leading-snug text-zinc-400">
           {lock.reason}
         </span>
         {lock.href && (
           <Link
             href={lock.href}
-            className="mt-1 w-fit text-[11px] font-medium text-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
           >
             See plans
           </Link>

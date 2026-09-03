@@ -2,6 +2,7 @@
 
 import { useGetV2ListChatConnections } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useCopilotUIStore } from "../../../../store";
 import {
@@ -45,6 +46,13 @@ export function useConnectionPicker() {
 
   const active = selected ?? fallback;
 
+  const { connect: connectChatGPT, isPending: isConnecting } = useOAuthConnect({
+    provider: "codex",
+    onSuccess: () => {
+      query.refetch();
+    },
+  });
+
   function chooseConnection(offer: AIConnectionOffer) {
     if (!isSelectable(offer)) return;
     const selection = offerToSelection(offer);
@@ -62,6 +70,15 @@ export function useConnectionPicker() {
     // actually run: a locked offer is listed to explain an absence, so it adds
     // a row to the popover without adding a decision.
     hasConnectionChoice: choosable.length > 1,
+    connectChatGPT,
+    isConnecting,
+    // A ChatGPT offer of any kind means the server has already had its say:
+    // either it is linked, or it is locked behind a plan and connecting is not
+    // the next step. Its absence is the one case where linking is what the
+    // user is missing, and the picker is where they are asking about it.
+    canConnectChatGPT:
+      query.data?.status === 200 &&
+      offers.every((offer) => offer.provider_family !== "openai"),
     isLoading: query.isLoading,
     // React Query can retain the last successful offers while a background
     // refetch fails. Keep that usable snapshot visible; the error state is

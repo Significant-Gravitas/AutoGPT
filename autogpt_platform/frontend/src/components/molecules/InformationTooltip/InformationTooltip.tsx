@@ -20,6 +20,8 @@ export function InformationTooltip({ description, iconSize = 24 }: Props) {
       <Tooltip>
         <TooltipTrigger asChild>
           <Info
+            role="img"
+            aria-label="More information"
             className="rounded-full p-1 hover:bg-slate-50"
             size={iconSize}
           />

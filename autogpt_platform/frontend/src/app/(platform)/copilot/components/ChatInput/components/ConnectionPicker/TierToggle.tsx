@@ -1,6 +1,11 @@
 "use client";
 
-import { LockIcon } from "@hugeicons/core-free-icons";
+import {
+  AiBrain01Icon,
+  FlashIcon,
+  LockIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -8,11 +13,16 @@ import { cn } from "@/lib/utils";
 
 import type { CopilotLlmModel } from "../../../../store";
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
+import { Swap } from "./Swap";
 
 interface Segment {
   tier: CopilotLlmModel;
-  /** "Balanced · Claude Sonnet 5" — the tier and the model it resolves to. */
+  /** "Balanced · Claude Sonnet 5" — the whole choice, for the accessible name. */
   label: string;
+  /** "Balanced" — the tier on its own, for the row's title line. */
+  name?: string;
+  /** "Claude Sonnet 5" — the model, on the line under the tier. */
+  model?: string | null;
   lock?: { reason: string; href: string | null };
 }
 
@@ -23,18 +33,18 @@ interface Props {
 }
 
 /**
- * The two tiers side by side, as one control rather than a list of choices.
+ * The tiers as a stacked list, matching the connection rows above it.
  *
- * A list reads as "here are some options"; a segmented control reads as "it is
- * one of these two", which is the shape of the decision — there is no third
- * tier, because absorbing that complexity is what having tiers is for.
- *
- * Each segment names its model inline. That only fits because the model now
- * arrives as a display name rather than a routing slug; while a tier read
- * "anthropic/claude-sonnet-5" the label had to wrap onto a second line.
+ * A segmented control put the two side by side, which halved the width each
+ * tier had to name its model in and made the section read as a different kind
+ * of control from the one directly above. Stacked, both sections are the same
+ * list of rows, and the tick is the only thing saying which one is live.
  */
+function tierIcon(tier: CopilotLlmModel) {
+  return tier === "advanced" ? AiBrain01Icon : FlashIcon;
+}
+
 export function TierToggle({ segments, value, onSelect }: Props) {
-  const locked = segments.filter((segment) => segment.lock);
   const options = segments.map((segment) => ({
     value: segment.tier,
     disabled: Boolean(segment.lock),
@@ -53,57 +63,58 @@ export function TierToggle({ segments, value, onSelect }: Props) {
   }
 
   return (
-    <div className="mb-3 mt-1 flex flex-col gap-1.5 px-3">
-      <div
-        role="radiogroup"
-        aria-label="Model tier"
-        onKeyDown={handleKeyDown}
-        className="flex items-stretch gap-1 rounded-full bg-muted/70 p-1"
-      >
-        {segments.map((segment) =>
-          segment.lock ? (
-            <LockedSegment key={segment.tier} segment={segment} />
-          ) : (
-            <button
-              key={segment.tier}
-              type="button"
-              role="radio"
-              aria-checked={segment.tier === value}
-              data-tier={segment.tier}
-              tabIndex={rovingTabIndex(options, { value: segment.tier }, value)}
-              onClick={() => onSelect(segment.tier)}
-              className={cn(
-                "min-w-0 flex-1 truncate rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                segment.tier === value
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
+    <div
+      role="radiogroup"
+      aria-label="Model tier"
+      onKeyDown={handleKeyDown}
+      className="divide-y divide-neutral-200"
+    >
+      {segments.map((segment) =>
+        segment.lock ? (
+          <LockedSegment key={segment.tier} segment={segment} />
+        ) : (
+          <button
+            key={segment.tier}
+            type="button"
+            role="radio"
+            aria-checked={segment.tier === value}
+            data-tier={segment.tier}
+            tabIndex={rovingTabIndex(options, { value: segment.tier }, value)}
+            aria-label={segment.label}
+            onClick={() => onSelect(segment.tier)}
+            className={cn(
+              "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+              "focus-visible:bg-neutral-50 focus-visible:outline-none",
+            )}
+          >
+            <Icon
+              icon={tierIcon(segment.tier)}
+              size={18}
+              aria-hidden
+              className="flex-none text-zinc-500"
+            />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-medium text-zinc-900">
+                {segment.name ?? segment.label}
+              </span>
+              {segment.model && (
+                <span className="text-sm leading-snug text-zinc-500">
+                  <Swap className="max-w-full truncate">{segment.model}</Swap>
+                </span>
               )}
-            >
-              {segment.label}
-            </button>
-          ),
-        )}
-      </div>
-
-      {/* A segment has room for the lock but not for why. Saying only "locked"
-          would leave the user to guess at a barrier they can actually clear. */}
-      {locked.map((segment) => (
-        <p
-          key={segment.tier}
-          className="px-1 text-[11px] leading-snug text-muted-foreground/80"
-        >
-          {segment.lock?.reason}{" "}
-          {segment.lock?.href && (
-            <Link
-              href={segment.lock.href}
-              className="font-medium text-accent underline-offset-2 hover:underline"
-            >
-              See plans
-            </Link>
-          )}
-        </p>
-      ))}
+            </span>
+            <Icon
+              icon={Tick02Icon}
+              size={16}
+              aria-hidden
+              className={cn(
+                "flex-none text-primary transition-opacity",
+                segment.tier === value ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </button>
+        ),
+      )}
     </div>
   );
 }
@@ -111,7 +122,7 @@ export function TierToggle({ segments, value, onSelect }: Props) {
 /**
  * A tier the plan excludes. It remains a disabled radio so assistive
  * technology receives a complete account of the radiogroup, while the line
- * below has room to explain the barrier.
+ * below the name has room to explain the barrier.
  */
 function LockedSegment({ segment }: { segment: Segment }) {
   return (
@@ -121,10 +132,38 @@ function LockedSegment({ segment }: { segment: Segment }) {
       aria-disabled="true"
       aria-label={`${segment.label} — ${segment.lock?.reason ?? "unavailable"}`}
       tabIndex={-1}
-      className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-muted-foreground/70"
+      className="flex items-start gap-2.5 px-3 py-2.5"
     >
-      <Icon icon={LockIcon} size={11} aria-hidden className="flex-none" />
-      <span className="truncate">{segment.label}</span>
+      <Icon
+        icon={LockIcon}
+        size={14}
+        aria-hidden
+        className="mt-[3px] flex-none text-zinc-400"
+      />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-medium text-zinc-500">
+          {segment.name ?? segment.label}
+        </span>
+        {segment.model && (
+          <span className="text-sm leading-snug text-zinc-400">
+            <Swap className="max-w-full truncate">{segment.model}</Swap>
+          </span>
+        )}
+        {/* A row has room for the lock but the name has none for why. Saying
+            only "locked" would leave the user to guess at a barrier they can
+            actually clear. */}
+        <span className="text-[11px] leading-snug text-zinc-400">
+          {segment.lock?.reason}{" "}
+          {segment.lock?.href && (
+            <Link
+              href={segment.lock.href}
+              className="font-medium text-zinc-900 underline underline-offset-2"
+            >
+              See plans
+            </Link>
+          )}
+        </span>
+      </span>
     </span>
   );
 }
