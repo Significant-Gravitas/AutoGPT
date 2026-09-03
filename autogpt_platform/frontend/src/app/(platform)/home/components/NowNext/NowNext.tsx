@@ -1,4 +1,4 @@
-import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
@@ -34,10 +34,9 @@ export function NowNext({ dashboard, className }: Props) {
         <HomeSectionLabel>Coming up</HomeSectionLabel>
         {dashboard.upcoming_tasks.length === 0 ? (
           <HomeTileEmpty
-            icon={Clock01Icon}
             title="Nothing is scheduled"
             description="Your agents are ready when you are."
-            className="min-h-0 py-6"
+            className="min-h-0 gap-4 py-6"
           />
         ) : (
           <div className={TIMELINE_CLASS}>

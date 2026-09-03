@@ -2,7 +2,6 @@
 
 import {
   CheckmarkCircle02Icon,
-  InboxIcon,
   WorkHistoryIcon,
 } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
@@ -81,7 +80,6 @@ export function RecentWork({ dashboard, className }: Props) {
     >
       {isEmpty ? (
         <HomeTileEmpty
-          icon={InboxIcon}
           title="Nothing to show yet"
           description="Completed runs, files, integrations and schedules will appear here."
         />

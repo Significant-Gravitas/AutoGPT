@@ -1,8 +1,4 @@
-import {
-  AiEraserIcon,
-  ArrowRight01Icon,
-  UserAdd01Icon,
-} from "@hugeicons/core-free-icons";
+import { AiEraserIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -39,7 +35,6 @@ export function AgentTeam({ dashboard, className }: Props) {
     >
       {agents.length === 0 ? (
         <HomeTileEmpty
-          icon={UserAdd01Icon}
           title="Build your team"
           description="Hire an expert to start delegating work."
           action={{ href: "/marketplace", label: "Browse experts" }}
