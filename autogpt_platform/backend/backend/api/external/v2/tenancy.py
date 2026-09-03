@@ -20,6 +20,7 @@ membership-verified tenant.
 import logging
 from typing import Literal, Optional
 
+from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
 from fastapi import HTTPException, Request, Security
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
@@ -31,8 +32,6 @@ from backend.data.db import prisma
 from backend.util.exceptions import NotAuthorizedError
 
 logger = logging.getLogger(__name__)
-
-TEAM_HEADER_NAME = "X-Team-Id"
 
 
 class TenantContext(BaseModel):
@@ -147,14 +146,16 @@ async def _assert_active_team_member(
 
 
 async def _personal_tenancy(user_id: str) -> tuple[str, Optional[str]]:
-    """Org and team for a credential minted before orgs, or outside one.
+    """Org for a credential minted before orgs, or outside one.
 
-    Same pair v1 external falls back to, and it bootstraps a missing personal
-    org rather than leaving the account permanently unable to call the API.
+    Org-home, not the personal org's default team: `get_graph` and friends
+    treat a team as an exact-match filter, so pinning a pre-org key to a team
+    would hide every graph it could read yesterday. Bootstraps a missing
+    personal org rather than leaving the account unable to call the API.
     """
     from backend.api.features.orgs.db import get_user_default_team
 
-    organization_id, team_id = await get_user_default_team(user_id)
+    organization_id, _ = await get_user_default_team(user_id)
     if organization_id is None:
         logger.warning(
             f"User {user_id} has no personal org and bootstrap failed — "
@@ -164,4 +165,4 @@ async def _personal_tenancy(user_id: str) -> tuple[str, Optional[str]]:
             "No organization context available. Your account may be in an "
             "inconsistent state — please contact support."
         )
-    return organization_id, team_id
+    return organization_id, None

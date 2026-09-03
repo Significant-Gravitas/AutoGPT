@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_mock
+from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from prisma.enums import APIKeyPermission
 from starlette.requests import Request
@@ -191,6 +192,27 @@ async def test_marketplace_submissions_are_scoped_to_the_key_org(
     assert list_db.await_args.kwargs["organization_id"] == ORG_A
 
 
+@pytest.mark.asyncio
+async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """`get_graph` treats a team as an exact-match filter, so a key that is
+    not pinned to one must pass None or it stops finding org-home graphs."""
+    from .graphs import get_graph
+
+    graph_db = mocker.patch(
+        "backend.data.graph.get_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    with pytest.raises(HTTPException):
+        await get_graph(graph_id="graph-1", version=None, auth=_key_for(ORG_A))
+
+    assert graph_db.await_args.kwargs["organization_id"] == ORG_A
+    assert graph_db.await_args.kwargs["team_id"] is None
+
+
 # ============================================================================
 # Resolution: what the credential and the X-Team-Id header are allowed to say
 # ============================================================================
@@ -221,9 +243,11 @@ async def test_team_pinned_key_resolves_to_its_team(
 
 
 @pytest.mark.asyncio
-async def test_key_without_org_falls_back_to_the_personal_org(
+async def test_key_without_org_falls_back_to_the_personal_org_at_org_home(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    """Org-home, never the default team: a team is an exact-match read filter,
+    so a team here would hide graphs a pre-org key could read yesterday."""
     mocker.patch(
         "backend.api.features.orgs.db.get_user_default_team",
         new_callable=AsyncMock,
@@ -232,7 +256,7 @@ async def test_key_without_org_falls_back_to_the_personal_org(
 
     tenant = await resolve_tenant(_request(), _credential())
 
-    assert (tenant.organization_id, tenant.team_id) == (PERSONAL_ORG, "personal-team")
+    assert (tenant.organization_id, tenant.team_id) == (PERSONAL_ORG, None)
 
 
 @pytest.mark.asyncio
