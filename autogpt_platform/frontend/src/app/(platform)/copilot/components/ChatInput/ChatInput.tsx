@@ -74,9 +74,6 @@ interface Props {
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
   recipientPicker?: ReactNode;
-  /** Card composer: the text always keeps its own row above the controls,
-   *  instead of sharing a single pill row until it wraps. Empty state only. */
-  stacked?: boolean;
 }
 
 export function ChatInput({
@@ -95,7 +92,6 @@ export function ChatInput({
   sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
-  stacked = false,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -280,10 +276,6 @@ export function ChatInput({
       <InputGroup
         className={cn(
           "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
-          // Card composer: a hairline ring and a shallow drop instead of the
-          // pill's deep shadow, so it reads as a surface the text sits on.
-          stacked &&
-            "!rounded-[1.25rem] border-zinc-200/80 px-1.5 pb-1.5 pt-1 shadow-[0_0_0_0.5px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.05),0_2px_6px_rgba(0,0,0,0.03)]",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
@@ -316,7 +308,7 @@ export function ChatInput({
           <div
             className={cn(
               "relative",
-              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+              isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
             <PromptInputTextarea
