@@ -2,23 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSpeechPlayer } from "../speechPlayer";
 
-/** jsdom has no media pipeline: play() resolves and "ended" fires on demand. */
-function stubAudio() {
-  const elements: HTMLAudioElement[] = [];
-  vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(
-    function (this: HTMLAudioElement) {
-      elements.push(this);
-      queueMicrotask(() => this.dispatchEvent(new Event("ended")));
-      return Promise.resolve();
-    },
-  );
-  return elements;
-}
-
-async function settle() {
-  for (let i = 0; i < 20; i++) await Promise.resolve();
-}
-
 describe("createSpeechPlayer", () => {
   beforeEach(() => {
     stubAudio();
@@ -115,3 +98,17 @@ describe("createSpeechPlayer", () => {
     expect(global.URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
 });
+
+/** jsdom has no media pipeline: play() resolves and "ended" fires on demand. */
+function stubAudio() {
+  vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(
+    function (this: HTMLAudioElement) {
+      queueMicrotask(() => this.dispatchEvent(new Event("ended")));
+      return Promise.resolve();
+    },
+  );
+}
+
+async function settle() {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
