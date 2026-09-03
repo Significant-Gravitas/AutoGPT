@@ -327,37 +327,27 @@ class GithubReadPullRequestBlock(Block):
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
-                "read_pr": lambda *args, **kwargs: (
-                    "Title of the pull request",
-                    "This is the body of the pull request.",
-                    "username",
-                ),
                 "read_pr_full_object": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
         )
 
     @staticmethod
-    async def read_pr(
-        credentials: GithubCredentials, pr_url: str
-    ) -> tuple[str, str, str]:
-        api = get_api(credentials)
-        issue_url = pr_url.replace("/pull/", "/issues/")
-        response = await api.get(issue_url)
-        data = response.json()
-        title = data.get("title", "No title found")
-        body = data.get("body", "No body content found")
-        author = data.get("user", {}).get("login", "Unknown author")
-        return title, body, author
-
-    @staticmethod
     async def read_pr_full_object(credentials: GithubCredentials, pr_url: str) -> dict:
         api = get_api(credentials)
-        # The issues endpoint (used by read_pr) omits head/base/mergeability;
-        # only the pulls endpoint itself returns the full PR object.
+        # The full object (incl. title/body/author) only lives on the pulls
+        # endpoint; the issues endpoint returns the same title/body/author
+        # but omits head/base/mergeability.
         pr_api_url = prepare_pr_api_url(pr_url=pr_url, path="").rstrip("/")
         response = await api.get(pr_api_url)
         return response.json()
+
+    @staticmethod
+    def _pr_summary(pull_request: dict) -> tuple[str, str, str]:
+        title = pull_request.get("title", "No title found")
+        body = pull_request.get("body", "No body content found")
+        author = pull_request.get("user", {}).get("login", "Unknown author")
+        return title, body, author
 
     @staticmethod
     async def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
@@ -395,18 +385,14 @@ class GithubReadPullRequestBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        title, body, author = await self.read_pr(
-            credentials,
-            input_data.pr_url,
-        )
-        yield "title", title
-        yield "body", body
-        yield "author", author
-
         pull_request = await self.read_pr_full_object(
             credentials,
             input_data.pr_url,
         )
+        title, body, author = self._pr_summary(pull_request)
+        yield "title", title
+        yield "body", body
+        yield "author", author
         yield "pull_request", pull_request
 
         if input_data.include_pr_changes:
