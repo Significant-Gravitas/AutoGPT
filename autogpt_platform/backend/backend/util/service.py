@@ -31,6 +31,11 @@ try:
 except ImportError:
     import httpx
 
+# Also keep `httpx2` as a module name in scope so type-checkers (pyright)
+# can resolve references like `httpx2.Limits(...)` without the runtime
+# cost of re-importing (Python's module cache makes this a no-op).
+import httpx2  # noqa: F401
+
 # `raise_for_status()` on a response object created by starlette's TestClient
 # raises the *real* httpx.HTTPStatusError, not httpx2's. Both libraries
 # ship a class with the same name but no inheritance relationship, so the
@@ -605,10 +610,10 @@ def get_service_client(
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
         def _create_sync_client(self) -> httpx.Client:
-            return httpx.Client(
+            return httpx2.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
@@ -616,10 +621,10 @@ def get_service_client(
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
-            return httpx.AsyncClient(
+            return httpx2.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
