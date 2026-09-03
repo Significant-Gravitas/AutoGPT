@@ -132,20 +132,24 @@ test("lists each workflow's latest state under Recent work", async () => {
   expect(
     within(workflows).getByText("Waiting for trigger event"),
   ).toBeDefined();
-  expect(within(workflows).getByText("Daily Blog Draft")).toBeDefined();
-  expect(within(workflows).getByText("Scheduled to run in 2d")).toBeDefined();
   expect(
-    within(workflows)
-      .getAllByRole("link", { name: /See/ })
-      .map((link) => link.getAttribute("href")),
-  ).toContain("/library/agents/agent-1");
+    within(workflows).getByRole("link", { name: /See/ }).getAttribute("href"),
+  ).toBe("/library/agents/agent-0");
+  // Scheduled runs belong to Now & next's Coming up, so they do not repeat.
+  expect(within(workflows).queryByText("Daily Blog Draft")).toBeNull();
   // Rows are content, so the card's empty state stands down.
   expect(screen.queryByText("Nothing to show yet")).toBeNull();
 });
 
-test("keeps the empty state when no workflow has anything to report", async () => {
+test("keeps the empty state when only scheduled workflows exist", async () => {
   mockDashboard(dashboard);
-  mockLibraryAgents([{ name: "Nightly Report" }]);
+  mockLibraryAgents([
+    {
+      name: "Daily Blog Draft",
+      is_scheduled: true,
+      next_scheduled_run: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    },
+  ]);
 
   render(<HomePage />);
 
