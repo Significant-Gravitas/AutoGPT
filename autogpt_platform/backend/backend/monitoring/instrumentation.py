@@ -29,6 +29,16 @@ GRAPH_EXECUTIONS_BY_USER = Counter(
     labelnames=["status"],  # Only status, user_id tracked separately when needed
 )
 
+# Terminal outcome of a graph RUN, recorded by the executor when the run's
+# final status is persisted. Distinct from GRAPH_EXECUTIONS above, which counts
+# execute *requests* at the API and cannot see a run that starts fine and then
+# fails ten nodes in. This is the series an "agents are failing" alert reads.
+GRAPH_RUN_COMPLETIONS = Counter(
+    "autogpt_graph_run_completions_total",
+    "Graph runs reaching a terminal status, by status",
+    labelnames=["status"],  # COMPLETED / FAILED / TERMINATED — bounded
+)
+
 BLOCK_EXECUTIONS = Counter(
     "autogpt_block_executions_total",
     "Total number of block executions",
@@ -228,6 +238,11 @@ def record_graph_execution(graph_id: str, status: str, user_id: str):
     # Optionally track per-user executions (implement sampling if needed)
     # For now, just track status to avoid cardinality explosion
     GRAPH_EXECUTIONS_BY_USER.labels(status=status).inc()
+
+
+def record_graph_run_completion(status: str):
+    """Record a graph run reaching a terminal status (COMPLETED/FAILED/TERMINATED)."""
+    GRAPH_RUN_COMPLETIONS.labels(status=status).inc()
 
 
 def record_block_execution(block_type: str, status: str, duration: float):
