@@ -11,7 +11,7 @@ interface Props {
 
 export function UpcomingRow({ item }: Props) {
   return (
-    <div className="relative flex items-end gap-3 py-2 pl-[3.75rem] pr-4">
+    <div className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4">
       {/* The expert who will do the work is the marker; the glyph only
           stands in when no expert owns the task. */}
       <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
@@ -41,14 +41,12 @@ export function UpcomingRow({ item }: Props) {
         <Text variant="body" className="truncate text-zinc-500">
           {item.expert?.name ??
             (item.kind === "followup" ? "Follow-up" : "Scheduled task")}
+          <span aria-hidden="true"> · </span>
+          <span className="tabular-nums">
+            {formatUntil(item.next_run_time)}
+          </span>
         </Text>
       </div>
-      <Text
-        variant="small"
-        className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-600"
-      >
-        {formatUntil(item.next_run_time)}
-      </Text>
     </div>
   );
 }

@@ -41,10 +41,10 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
         dateTime={new Date(dashboard.generated_at).toISOString()}
         className="shrink-0 text-right"
       >
-        <Text variant="large-medium" className="text-zinc-700">
+        <Text variant="large-medium" className="text-zinc-950">
           {date.weekday}
         </Text>
-        <Text variant="body" className="text-zinc-400">
+        <Text variant="body" className="text-zinc-950">
           {date.calendarDate}
         </Text>
       </time>
