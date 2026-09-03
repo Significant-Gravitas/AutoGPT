@@ -66,6 +66,7 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     const prevState = {
       nodes: useNodeStore.getState().nodes,
       edges: get().edges,
+      nodeCounter: useNodeStore.getState().nodeCounter,
     };
 
     set((state) => ({ edges: [...state.edges, newEdge] }));
@@ -78,6 +79,7 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     const prevState = {
       nodes: useNodeStore.getState().nodes,
       edges: get().edges,
+      nodeCounter: useNodeStore.getState().nodeCounter,
     };
 
     set((state) => ({

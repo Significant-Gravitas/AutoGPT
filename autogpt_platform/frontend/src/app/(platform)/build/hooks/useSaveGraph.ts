@@ -1,8 +1,22 @@
+/**
+ * REL-004 classification — CANONICAL mutable owner for flowID/flowVersion:
+ * - Fields read: flowID, flowVersion
+ * - Calls setter: YES — setBuilderQueryStates({flowID, flowVersion}) on
+ *   create/update success (lines 64-66, 101-104) — single authority for
+ *   advancing URL version
+ * - Hydrates/mutates graph state indirectly: YES — setGraphSchemas,
+ *   draftService.deleteDraft, graphsEquivalent baseline check
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ *   — this hook now delegates URL writes to that hook; failed save leaves
+ *   local edits, baseline, hash, version untouched (onError does not advance)
+ * Verdict: canonical writer — migrated to useBuilderQueryStates
+ */
 // Creating this hook, because we are using same saving stuff at multiple places in our builder
 
 import { useCallback } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useBuilderQueryStates } from "./useBuilderQueryStates";
 import {
   useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
@@ -36,10 +50,8 @@ export const useSaveGraph = ({
 }: SaveGraphOptions) => {
   const { toast } = useToast();
 
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-  });
+  const [{ flowID, flowVersion }, setBuilderQueryStates] =
+    useBuilderQueryStates();
 
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
@@ -61,7 +73,7 @@ export const useSaveGraph = ({
       mutation: {
         onSuccess: async (response) => {
           const data = response.data as GraphModel;
-          setQueryStates({
+          setBuilderQueryStates({
             flowID: data.id,
             flowVersion: data.version,
           });
@@ -82,6 +94,8 @@ export const useSaveGraph = ({
           }
         },
         onError: (error) => {
+          // REL-004: failed save must preserve local edits and not advance
+          // saved baseline/hash/version — do not touch URL, draft, or schemas
           onError?.(error);
           toast({
             title: "Error saving graph",
@@ -98,7 +112,7 @@ export const useSaveGraph = ({
       mutation: {
         onSuccess: async (response) => {
           const data = (response.data as UpdateGraphResponse).graph;
-          setQueryStates({
+          setBuilderQueryStates({
             flowID: data.id,
             flowVersion: data.version,
           });
@@ -118,6 +132,7 @@ export const useSaveGraph = ({
           }
         },
         onError: (error) => {
+          // REL-004: failed save must not advance baseline/hash/version
           onError?.(error);
           toast({
             title: "Error saving graph",

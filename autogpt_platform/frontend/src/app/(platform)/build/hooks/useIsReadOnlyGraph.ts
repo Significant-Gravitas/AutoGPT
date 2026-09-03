@@ -3,6 +3,16 @@ import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 
+/**
+ * REL-004 classification — projection (read-only):
+ * - Fields read: flowID, flowVersion
+ * - Calls setter: NO
+ * - Hydrates/mutates graph state indirectly: NO — derives isReadOnly boolean
+ *   from useGetV1GetSpecificGraph, does not write Zustand or URL
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ * Verdict: genuine projection — leave as useQueryStates
+ */
 // Read-only detection is a UX affordance only — the backend is the security
 // boundary and already rejects mutations (save, etc.) from non-owners. This
 // hook just hides controls that would otherwise fail silently.

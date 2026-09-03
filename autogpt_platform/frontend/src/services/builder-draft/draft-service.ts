@@ -114,5 +114,23 @@ export const draftService = {
     return nodesDifferent || edgesDifferent;
   },
 
+  /**
+   * REL-004: draft version compatibility — a draft tagged with flowVersion
+   * must not overwrite a newer canonical graph. If draft.flowVersion <
+   * canonicalVersion the draft is stale and must be discarded.
+   */
+  isDraftCompatible(
+    draft: BuilderDraft,
+    canonicalVersion: number | null,
+  ): boolean {
+    if (draft.flowVersion == null) return true;
+    if (canonicalVersion == null) return true;
+    return draft.flowVersion >= canonicalVersion;
+  },
+
+  isDraftStale(draft: BuilderDraft, canonicalVersion: number | null): boolean {
+    return !this.isDraftCompatible(draft, canonicalVersion);
+  },
+
   cleanupExpired: cleanupExpiredDrafts,
 };

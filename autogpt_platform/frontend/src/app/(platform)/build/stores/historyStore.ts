@@ -34,8 +34,12 @@ const MAX_HISTORY = 50;
 let pendingState: HistoryState | null = null;
 let batchScheduled = false;
 
+function normalizeHistoryState(s: HistoryState): HistoryState {
+  return { nodes: s.nodes, edges: s.edges, nodeCounter: s.nodeCounter ?? 0 };
+}
+
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
-  past: [{ nodes: [], edges: [] }],
+  past: [{ nodes: [], edges: [], nodeCounter: 0 }],
   future: [],
   isApplyingHistory: false,
 
@@ -58,16 +62,28 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         const { past } = get();
         const lastState = past[past.length - 1];
 
-        if (lastState && isEqual(lastState, stateToCommit)) {
+        if (
+          lastState &&
+          isEqual(
+            normalizeHistoryState(lastState),
+            normalizeHistoryState(stateToCommit),
+          )
+        ) {
           return;
         }
 
-        const actualCurrentState = {
+        const actualCurrentState: HistoryState = {
           nodes: useNodeStore.getState().nodes,
           edges: useEdgeStore.getState().edges,
+          nodeCounter: useNodeStore.getState().nodeCounter,
         };
 
-        if (isEqual(stateToCommit, actualCurrentState)) {
+        if (
+          isEqual(
+            normalizeHistoryState(stateToCommit),
+            normalizeHistoryState(actualCurrentState),
+          )
+        ) {
           return;
         }
 
@@ -97,7 +113,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const { past, future } = get();
     if (past.length === 0) return;
 
-    const actualCurrentState = {
+    const actualCurrentState: HistoryState = {
       nodes: useNodeStore.getState().nodes,
       edges: useEdgeStore.getState().edges,
       nodeCounter: useNodeStore.getState().nodeCounter,
@@ -105,7 +121,12 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
 
     const previousState = past[past.length - 1];
 
-    if (isEqual(actualCurrentState, previousState)) {
+    if (
+      isEqual(
+        normalizeHistoryState(actualCurrentState),
+        normalizeHistoryState(previousState),
+      )
+    ) {
       return;
     }
 
@@ -127,7 +148,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const { past, future } = get();
     if (future.length === 0) return;
 
-    const actualCurrentState = {
+    const actualCurrentState: HistoryState = {
       nodes: useNodeStore.getState().nodes,
       edges: useEdgeStore.getState().edges,
       nodeCounter: useNodeStore.getState().nodeCounter,
@@ -144,7 +165,11 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
 
     const lastPast = past[past.length - 1];
     const shouldPushToPast =
-      !lastPast || !isEqual(actualCurrentState, lastPast);
+      !lastPast ||
+      !isEqual(
+        normalizeHistoryState(actualCurrentState),
+        normalizeHistoryState(lastPast),
+      );
 
     set({
       past: shouldPushToPast ? [...past, actualCurrentState] : past,
@@ -157,16 +182,20 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const { past } = get();
     if (past.length === 0) return false;
 
-    const actualCurrentState = {
+    const actualCurrentState: HistoryState = {
       nodes: useNodeStore.getState().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: useNodeStore.getState().nodeCounter,
     };
-    return !isEqual(actualCurrentState, past[past.length - 1]);
+    return !isEqual(
+      normalizeHistoryState(actualCurrentState),
+      normalizeHistoryState(past[past.length - 1]),
+    );
   },
   canRedo: () => get().future.length > 0,
 
   clear: () => {
     pendingState = null;
-    set({ past: [{ nodes: [], edges: [] }], future: [] });
+    set({ past: [{ nodes: [], edges: [], nodeCounter: 0 }], future: [] });
   },
 }));

@@ -9,7 +9,11 @@ vi.mock("nuqs", () => ({
   parseAsString: {},
   parseAsInteger: {},
   useQueryStates: vi.fn(() => [
-    { flowID: "graph-1", flowVersion: 1, flowExecutionID: null },
+    {
+      flowID: "11111111-1111-1111-1111-111111111111",
+      flowVersion: 1,
+      flowExecutionID: null,
+    },
     mockSetQueryStates,
   ]),
 }));
@@ -90,9 +94,15 @@ describe("useRunInputDialog", () => {
       await result.current.handleManualRun();
     });
 
-    expect(mockExecuteGraph).toHaveBeenCalledWith(
-      expect.objectContaining({ graphId: "graph-1", graphVersion: 2 }),
-    );
+    expect(mockExecuteGraph).toHaveBeenCalledWith({
+      graphId: "graph-1",
+      graphVersion: 2,
+      data: {
+        inputs: {},
+        credentials_inputs: {},
+        source: "builder",
+      },
+    });
   });
 
   it("falls back to the URL version when no version is passed in", async () => {
@@ -104,8 +114,14 @@ describe("useRunInputDialog", () => {
       await result.current.handleManualRun();
     });
 
-    expect(mockExecuteGraph).toHaveBeenCalledWith(
-      expect.objectContaining({ graphId: "graph-1", graphVersion: 1 }),
-    );
+    expect(mockExecuteGraph).toHaveBeenCalledWith({
+      graphId: "11111111-1111-1111-1111-111111111111",
+      graphVersion: 1,
+      data: {
+        inputs: {},
+        credentials_inputs: {},
+        source: "builder",
+      },
+    });
   });
 });

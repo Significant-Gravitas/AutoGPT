@@ -16,12 +16,12 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useBuilderQueryStates } from "@/app/(platform)/build/hooks/useBuilderQueryStates";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -75,10 +75,7 @@ export function useBuilderChatPanel({
   // surfaced by the panel.  Cleared on each retry attempt and on success.
   const [bindError, setBindError] = useState<string | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-  });
+  const [{ flowID, flowVersion }, setQueryStates] = useBuilderQueryStates();
   // REL-004 draft lifecycle: Copilot edits leave a stale IndexedDB draft
   // from before the edit. We do not import draftService at the top to avoid
   // a bundle split; dynamic import keeps it lazy.

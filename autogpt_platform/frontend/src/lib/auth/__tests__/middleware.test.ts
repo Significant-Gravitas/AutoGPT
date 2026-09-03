@@ -116,13 +116,41 @@ describe("authMiddleware", () => {
     expect(response.headers.get("location")).toBe("http://localhost:3000/");
   });
 
-  it("lets admins through to admin pages via the cookie cache", async () => {
+  it("verifies cached admins against the DB so revoked admin sessions lose access", async () => {
+    // REL-001: the cookie cache is a hint. A cached admin role must be
+    // confirmed by the session endpoint — a revoked/demoted admin cannot
+    // keep admin access via a stale signed cookie.
     getSessionCookie.mockReturnValue("session-token");
     getCookieCache.mockResolvedValue({ user: { role: "admin" } });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ user: { role: "admin" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
 
     const response = await authMiddleware(makeRequest("/admin"));
 
+    expect(fetchSpy).toHaveBeenCalled();
     expect(response.headers.get("location")).toBeNull();
+    fetchSpy.mockRestore();
+  });
+
+  it("drops a cached admin to a non-admin DB verdict", async () => {
+    // Stale cache says admin, DB says user — DB must win.
+    getSessionCookie.mockReturnValue("session-token");
+    getCookieCache.mockResolvedValue({ user: { role: "admin" } });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ user: { role: "user" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const response = await authMiddleware(makeRequest("/admin"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/");
+    fetchSpy.mockRestore();
   });
 
   it("falls back to the session endpoint when the cookie cache is empty", async () => {

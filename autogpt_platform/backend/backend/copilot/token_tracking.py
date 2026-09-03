@@ -56,6 +56,14 @@ _pending_log_tasks_lock = threading.Lock()
 # shared across event loops running in different threads.
 _log_semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
 
+# REL-006: loop-agnostic durable queue for copilot cost entries. Thread-safe
+# list + lock (Queue can't remove arbitrary entry on success). Enqueue
+# synchronously, drain on ANY loop with bounded retries (5).
+_pending_copilot_entries: list[PlatformCostEntry] = []
+_pending_copilot_entries_lock = threading.Lock()
+_COPILOT_LOG_MAX_RETRIES = 5
+_COPILOT_LOG_TIMEOUT = 5.0
+
 
 def _get_log_semaphore() -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
@@ -66,22 +74,96 @@ def _get_log_semaphore() -> asyncio.Semaphore:
     return sem
 
 
+async def drain_pending_copilot_cost_logs(timeout: float = 30.0) -> None:
+    """REL-006: loop-agnostic drain for copilot cost queue with bounded retries."""
+    with _pending_copilot_entries_lock:
+        queued = list(_pending_copilot_entries)
+    if queued:
+        logger.info("Draining %d queued copilot cost entries", len(queued))
+        for entry in queued:
+            success = False
+            for attempt in range(_COPILOT_LOG_MAX_RETRIES):
+                try:
+                    await asyncio.wait_for(
+                        platform_cost_db().log_platform_cost(entry), timeout=_COPILOT_LOG_TIMEOUT
+                    )
+                    success = True
+                    break
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    if attempt == _COPILOT_LOG_MAX_RETRIES - 1:
+                        logger.exception(
+                            "Failed to log copilot cost after %d attempts for user=%s block=%s",
+                            _COPILOT_LOG_MAX_RETRIES,
+                            entry.user_id,
+                            entry.block_name,
+                        )
+                    else:
+                        await asyncio.sleep(0.05 * (2**attempt))
+            if success:
+                with _pending_copilot_entries_lock:
+                    try:
+                        _pending_copilot_entries.remove(entry)
+                    except ValueError:
+                        pass
+
+    # Also drain legacy task set for backward compat
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    with _pending_log_tasks_lock:
+        all_tasks = list(_pending_log_tasks)
+        pending = [t for t in all_tasks if t.get_loop() is current_loop]
+    if pending:
+        _, still = await asyncio.wait(pending, timeout=timeout)
+        if still:
+            logger.warning("%d copilot cost tasks did not complete in %.1fs", len(still), timeout)
+
+
 def _schedule_cost_log(entry: PlatformCostEntry) -> None:
-    """Schedule a fire-and-forget cost log via DatabaseManagerAsyncClient RPC."""
+    """Schedule a fire-and-forget cost log via DatabaseManagerAsyncClient RPC.
+
+    REL-006: enqueue synchronously (loop-agnostic), then fast-path async
+    task with bounded retries. Task removes from queue on success.
+    """
+    with _pending_copilot_entries_lock:
+        _pending_copilot_entries.append(entry)
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
 
     async def _safe_log() -> None:
         async with _get_log_semaphore():
-            try:
-                await platform_cost_db().log_platform_cost(entry)
-            except Exception:
-                logger.exception(
-                    "Failed to log platform cost for user=%s provider=%s block=%s",
-                    entry.user_id,
-                    entry.provider,
-                    entry.block_name,
-                )
+            for attempt in range(_COPILOT_LOG_MAX_RETRIES):
+                try:
+                    await platform_cost_db().log_platform_cost(entry)
+                    with _pending_copilot_entries_lock:
+                        try:
+                            _pending_copilot_entries.remove(entry)
+                        except ValueError:
+                            pass
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    if attempt == _COPILOT_LOG_MAX_RETRIES - 1:
+                        logger.exception(
+                            "Failed to log platform cost for user=%s provider=%s block=%s",
+                            entry.user_id,
+                            entry.provider,
+                            entry.block_name,
+                        )
+                    else:
+                        await asyncio.sleep(0.05 * (2**attempt))
 
-    task = asyncio.create_task(_safe_log())
+    try:
+        task = asyncio.create_task(_safe_log())
+    except RuntimeError:
+        return
     with _pending_log_tasks_lock:
         _pending_log_tasks.add(task)
 

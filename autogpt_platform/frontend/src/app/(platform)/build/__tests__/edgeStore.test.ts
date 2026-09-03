@@ -141,6 +141,7 @@ describe("edgeStore", () => {
       expect(pushSpy).toHaveBeenCalledWith({
         nodes: [],
         edges: [],
+        nodeCounter: expect.any(Number),
       });
 
       pushSpy.mockRestore();
@@ -178,6 +179,7 @@ describe("edgeStore", () => {
       expect(pushSpy).toHaveBeenCalledWith({
         nodes: [],
         edges: existingEdges,
+        nodeCounter: expect.any(Number),
       });
 
       pushSpy.mockRestore();

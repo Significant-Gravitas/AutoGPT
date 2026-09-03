@@ -15,6 +15,17 @@ const formSchema = z.object({
 
 type SaveableGraphFormValues = z.infer<typeof formSchema>;
 
+/**
+ * REL-004 classification — projection (read-only):
+ * - Fields read: flowID, flowVersion
+ * - Calls setter: NO
+ * - Hydrates/mutates graph state indirectly: NO — delegates mutation to
+ *   useSaveGraph (which owns flowID/flowVersion URL writes via
+ *   useBuilderQueryStates); local form reset is UI-only
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ * Verdict: genuine projection — leave as useQueryStates
+ */
 export const useNewSaveControl = () => {
   const { setSaveControlOpen } = useControlPanelStore();
 

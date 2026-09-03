@@ -104,6 +104,49 @@ _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
 
+# REL-006: finite durable bound for chargeable requeues. Reuses func_retry's
+# default max_attempts=5 (backend/util/retry.py:334) as the durable limit for
+# graph execution redeliveries that would otherwise re-charge.  Redis counter
+# + DB cancel check make the bound durable across restarts.
+MAX_EXECUTION_REQUEUE_ATTEMPTS = 5
+_EXECUTION_RETRY_TTL_SECONDS = 86400  # 24h window for retry counter
+
+def _should_requeue_execution(graph_exec_id: str, user_id: str | None = None) -> bool:
+    """REL-006: durable bounded requeue for chargeable executions.
+
+    Returns True if the execution should be requeued, False if the retry
+    budget is exhausted or the execution was durably cancelled. Uses Redis
+    counter ``retry:{graph_exec_id}`` (TTL 24h) so the bound survives
+    executor restarts, and checks ``cancelRequestedAt`` so cancellation
+    prevents further chargeable work. Bound reuses func_retry default
+    (5 attempts, backend/util/retry.py:334) — the existing finite constant
+    for chargeable retries.
+    """
+    # Cancellation prevents continued chargeable retry where appropriate
+    if user_id:
+        try:
+            meta = get_database_manager_client().get_graph_execution_meta(
+                execution_id=graph_exec_id, user_id=user_id
+            )
+            if meta and getattr(meta, "cancelRequestedAt", None) is not None:
+                logger.info(f"Not requeueing {graph_exec_id}: durably cancelled")
+                return False
+        except Exception:
+            pass
+    try:
+        r = redis.get_redis()
+        count = incr_with_ttl_sync(r, f"retry:{graph_exec_id}", _EXECUTION_RETRY_TTL_SECONDS)
+        if count > MAX_EXECUTION_REQUEUE_ATTEMPTS:
+            logger.warning(
+                f"Retry budget exhausted for {graph_exec_id}: {count}/{MAX_EXECUTION_REQUEUE_ATTEMPTS} — dropping to DLQ"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Retry counter unavailable for {graph_exec_id}: {e} — allowing one requeue")
+        return True
+
+
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
 )
@@ -1021,6 +1064,8 @@ class ExecutionProcessor:
 
             # REL-002 durable check: if cancel was persisted before this
             # execution started (e.g. executor was down), honor it now.
+            # This is the durable counterpart to the in-memory
+            # `cancel.is_set()` fanout path — DB is SoR, survives restart.
             try:
                 _meta = db_client.get_graph_execution_meta(
                     user_id=graph_exec.user_id,
@@ -1031,7 +1076,11 @@ class ExecutionProcessor:
                         f"Execution {graph_exec.graph_exec_id} cancelled (durable flag) before dispatch"
                     )
                     execution_status = ExecutionStatus.TERMINATED
-                    break
+                    # Return now — skips workload, still runs `finally:`
+                    # cleanup and the outer `on_graph_execution` FINAL
+                    # persist of TERMINATED.  Previous revision used `break`
+                    # outside any loop (SyntaxError — py_compile failed).
+                    return execution_status
             except Exception:
                 pass
 
@@ -1633,13 +1682,24 @@ class ExecutionManager(AppProcess):
             logger.info(
                 f"[{self.service_name}] Rejecting new execution during shutdown"
             )
-            _ack_message(reject=True, requeue=True)
+            try:
+                tmp_entry = GraphExecutionEntry.model_validate_json(body)
+                should = _should_requeue_execution(tmp_entry.graph_exec_id, tmp_entry.user_id)
+            except Exception:
+                should = True
+            _ack_message(reject=True, requeue=should)
             return
 
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
-            _ack_message(reject=True, requeue=True)
+            # REL-006: bounded requeue even for pool-full (still chargeable once dequeued)
+            try:
+                tmp_entry = GraphExecutionEntry.model_validate_json(body)
+                should = _should_requeue_execution(tmp_entry.graph_exec_id, tmp_entry.user_id)
+            except Exception:
+                should = True
+            _ack_message(reject=True, requeue=should)
             return
 
         try:
@@ -1699,7 +1759,7 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
-                _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=_should_requeue_execution(graph_exec_id, user_id))
                 return
 
         except Exception as e:
@@ -1713,7 +1773,7 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Graph {graph_exec_id} already running locally; rejecting duplicate."
             )
-            _ack_message(reject=True, requeue=True)
+            _ack_message(reject=True, requeue=_should_requeue_execution(graph_exec_id, user_id))
             return
 
         # Try to acquire cluster-wide execution lock
@@ -1735,7 +1795,7 @@ class ExecutionManager(AppProcess):
                 logger.warning(
                     f"[{self.service_name}] Could not acquire lock for {graph_exec_id} - Redis unavailable"
                 )
-                _ack_message(reject=True, requeue=True)
+                _ack_message(reject=True, requeue=_should_requeue_execution(graph_exec_id, user_id))
             return
 
         # Wrap entire block after successful lock acquisition
@@ -1759,7 +1819,7 @@ class ExecutionManager(AppProcess):
             cluster_lock.release()
             if graph_exec_id in self._execution_locks:
                 del self._execution_locks[graph_exec_id]
-            _ack_message(reject=True, requeue=True)
+            _ack_message(reject=True, requeue=_should_requeue_execution(graph_exec_id, user_id))
             return
         self._update_prompt_metrics()
 
@@ -1770,7 +1830,17 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
                     )
-                    _ack_message(reject=True, requeue=True)
+                    # REL-006: bounded durable requeue — prevents unbounded chargeable retries
+                    should_requeue = _should_requeue_execution(graph_exec_id, user_id)
+                    _ack_message(reject=True, requeue=should_requeue)
+                    if not should_requeue:
+                        # Exhausted retry budget — mark FAILED to avoid orphan QUEUED
+                        try:
+                            get_database_manager_client().update_graph_execution_stats(
+                                graph_exec_id=graph_exec_id, status=ExecutionStatus.FAILED
+                            )
+                        except Exception as mark_e:
+                            logger.warning(f"Failed to mark {graph_exec_id} FAILED after retry exhaustion: {mark_e}")
                 else:
                     _ack_message(reject=False, requeue=False)
             except BaseException as e:

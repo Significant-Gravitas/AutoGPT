@@ -1,9 +1,21 @@
+/**
+ * REL-004 classification — mutable for flowExecutionID (execution domain):
+ * - Fields read: flowID, flowVersion, flowExecutionID
+ * - Calls setter: YES — setBuilderQueryStates({flowExecutionID}) on
+ *   executeGraph success (line ~83); flowID/flowVersion are read-only here
+ *   (only passed through from saveGraph's canonical version)
+ * - Hydrates/mutates graph state indirectly: NO (execution launch only;
+ *   save is via useSaveGraph canonical owner)
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ *   — migrated from competing useQueryStates declaration
+ */
 import {
   usePostV1ExecuteGraphAgent,
   usePostV1StopGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useBuilderQueryStates } from "@/app/(platform)/build/hooks/useBuilderQueryStates";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
@@ -67,12 +79,8 @@ export const useRunGraph = () => {
     }
   };
 
-  const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
-    useQueryStates({
-      flowID: parseAsString,
-      flowVersion: parseAsInteger,
-      flowExecutionID: parseAsString,
-    });
+  const [{ flowID, flowVersion, flowExecutionID }, setBuilderQueryStates] =
+    useBuilderQueryStates();
 
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
     usePostV1ExecuteGraphAgent({
@@ -80,7 +88,7 @@ export const useRunGraph = () => {
         onSuccess: (response: any) => {
           clearAllNodeErrors();
           const { id } = response.data as GraphExecutionMeta;
-          setQueryStates({
+          setBuilderQueryStates({
             flowExecutionID: id,
           });
         },

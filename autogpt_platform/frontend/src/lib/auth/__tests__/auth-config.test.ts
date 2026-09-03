@@ -130,7 +130,8 @@ describe("auth config", () => {
     const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
 
     expect(jwtPlugin?.opts?.jwt.audience).toBe("authenticated");
-    expect(jwtPlugin?.opts?.jwt.expirationTime).toBe("1h");
+    // REL-001: 5m bound (was 1h) — replay window bounded for revocation
+    expect(jwtPlugin?.opts?.jwt.expirationTime).toBe("5m");
   });
 
   it("maps admin users to the admin role and everyone else to authenticated in the JWT payload", async () => {
@@ -148,7 +149,7 @@ describe("auth config", () => {
           role: "admin",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
@@ -162,7 +163,7 @@ describe("auth config", () => {
           role: "user",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },

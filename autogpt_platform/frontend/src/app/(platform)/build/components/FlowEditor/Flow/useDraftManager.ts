@@ -33,6 +33,19 @@ interface DraftRecoveryState {
  * - Saves on beforeunload event
  * - Checks for and manages unsaved drafts on load
  */
+/**
+ * REL-004 classification — projection for URL reads + mutable for draft domain:
+ * - Fields read: flowID, flowVersion
+ * - Calls setter: NO (does not write URL)
+ * - Hydrates/mutates graph state indirectly: YES (loadDraft sets nodes/edges/
+ *   nodeCounter/graphSchemas/history via setNodes/setEdges/setGraphSchemas;
+ *   saveDraft persists DraftData with flowVersion)
+ * - Canonical mutable owner: useBuilderQueryStates for URL; draftService for
+ *   IndexedDB drafts (with flowVersion compatibility guard:
+ *   frontend/src/services/builder-draft/draft-service.ts:isDraftCompatible)
+ * Verdict: projection for URL — leave as useQueryStates; draft mutation owns
+ * draft domain, version guard prevents stale overwrite
+ */
 export function useDraftManager(isInitialLoadComplete: boolean) {
   const [state, setState] = useState<DraftRecoveryState>({
     isOpen: false,
@@ -208,6 +221,13 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
         return;
       }
 
+      // REL-004: draft with older flowVersion must not silently replace newer
+      // canonical graph state. Reject stale drafts explicitly.
+      if (!draftService.isDraftCompatible(draft, flowVersion ?? null)) {
+        await draftService.deleteDraft(effectiveFlowId);
+        return;
+      }
+
       const currentNodes = useNodeStore.getState().nodes;
       const currentEdges = useEdgeStore.getState().edges;
 
@@ -235,7 +255,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
     } catch (error) {
       console.error("[DraftRecovery] Failed to check for draft:", error);
     }
-  }, [flowID]);
+  }, [flowID, flowVersion]);
 
   useEffect(() => {
     if (isInitialLoadComplete && !hasCheckedForDraft.current) {

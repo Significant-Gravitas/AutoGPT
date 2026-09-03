@@ -63,6 +63,13 @@ from backend.data.credit import (
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
 )
+from backend.data.schedule_occurrence import (
+    claim_occurrence as _claim_occurrence,
+    create_missed_occurrence as _create_missed_occurrence,
+    get_occurrence as _get_occurrence,
+    link_execution as _link_execution,
+    mark_dispatched as _mark_dispatched,
+)
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
@@ -289,6 +296,13 @@ class DatabaseManager(AppService):
     get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
     get_frequently_executed_graphs = _(get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
+
+    # ============ Schedule Occurrence (REL-005) ============ #
+    claim_occurrence = _(_claim_occurrence, name="claim_occurrence")
+    get_occurrence = _(_get_occurrence, name="get_occurrence")
+    mark_dispatched = _(_mark_dispatched, name="mark_dispatched")
+    link_execution = _(_link_execution, name="link_execution")
+    create_missed_occurrence = _(_create_missed_occurrence, name="create_missed_occurrence")
 
     # ============ Graphs ============ #
     get_node = _(get_node)

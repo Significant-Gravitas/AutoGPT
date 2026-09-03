@@ -66,6 +66,7 @@ export const useCustomEdge = () => {
         ? {
             nodes: useNodeStore.getState().nodes,
             edges: edges,
+            nodeCounter: useNodeStore.getState().nodeCounter,
           }
         : null;
 

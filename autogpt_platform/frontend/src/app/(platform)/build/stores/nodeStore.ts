@@ -159,13 +159,17 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     });
 
     let shouldTrack = changes.some((change) => change.type === "remove");
-    let stateToTrack: { nodes: CustomNode[]; edges: CustomEdge[] } | null =
-      null;
+    let stateToTrack: {
+      nodes: CustomNode[];
+      edges: CustomEdge[];
+      nodeCounter?: number;
+    } | null = null;
 
     if (shouldTrack) {
       stateToTrack = {
         nodes: get().nodes,
         edges: useEdgeStore.getState().edges,
+        nodeCounter: get().nodeCounter,
       };
     }
 
@@ -213,6 +217,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     const prevState = {
       nodes: get().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: get().nodeCounter,
     };
 
     const customNodeData = convertBlockInfoIntoCustomNodeData(
@@ -257,6 +262,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     const prevState = {
       nodes: get().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: get().nodeCounter,
     };
 
     set((state) => ({
@@ -572,6 +578,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     const prevState = {
       nodes: get().nodes,
       edges: useEdgeStore.getState().edges,
+      nodeCounter: get().nodeCounter,
     };
 
     set((state) => ({

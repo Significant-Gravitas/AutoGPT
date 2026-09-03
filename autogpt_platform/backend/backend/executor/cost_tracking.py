@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import queue
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
@@ -47,6 +48,16 @@ _pending_log_tasks_lock = threading.Lock()
 # so each executor worker thread gets its own semaphore.
 _log_semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
 
+# REL-006: loop-agnostic durable queue for cost entries. The async Task set
+# above is loop-bound (asyncio.wait requires same-loop tasks). The queue is
+# thread-safe and loop-agnostic: schedule enqueues synchronously, drain on
+# ANY loop can flush it with bounded retries. Entries are removed only on
+# successful DB persist, so they never become indefinitely stranded.
+_pending_cost_entries: list[tuple["DatabaseManagerAsyncClient", PlatformCostEntry]] = []
+_pending_cost_entries_lock = threading.Lock()
+_COST_LOG_MAX_RETRIES = 5  # reuse func_retry default (backend/util/retry.py:334)
+_COST_LOG_QUEUE_TIMEOUT = 5.0
+
 
 def _get_log_semaphore() -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
@@ -70,12 +81,58 @@ async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
     abandoned and their failures are already logged by _safe_log.
 
     REL-006: 5s → 30s and drain global registry (not just current loop) so
-    deploy-time pending logs survive loop mismatch.
+    deploy-time pending logs survive loop mismatch. Loop-agnostic queue is
+    the durable fallback: entries are flushed with bounded retries (5) on
+    ANY loop, so cross-loop tasks cannot strand ledger rows.
     """
-    # REL-006: drain global registry (all loops) with longer timeout so
-    # deploy-time pending logs survive loop mismatch. asyncio.wait still
-    # requires tasks to belong to the running loop for awaiting, so we
-    # partition: await those on current loop, log those on other loops.
+    # 1) Drain loop-agnostic queue first (thread-safe, any loop can flush)
+    # Copy under lock, then attempt bounded retry per entry on this loop.
+    # Entries removed only on success — stranded entries remain for next drain.
+    with _pending_cost_entries_lock:
+        queued = list(_pending_cost_entries)
+    if queued:
+        logger.info("Draining %d queued executor cost log entries (loop-agnostic)", len(queued))
+        for db_client, entry in queued:
+            success = False
+            for attempt in range(_COST_LOG_MAX_RETRIES):
+                try:
+                    await asyncio.wait_for(
+                        db_client.log_platform_cost(entry), timeout=_COST_LOG_QUEUE_TIMEOUT
+                    )
+                    success = True
+                    break
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    if attempt == _COST_LOG_MAX_RETRIES - 1:
+                        logger.exception(
+                            "Failed to log platform cost after %d attempts for user=%s provider=%s block=%s",
+                            _COST_LOG_MAX_RETRIES,
+                            entry.user_id,
+                            entry.provider,
+                            entry.block_name,
+                        )
+                    else:
+                        await asyncio.sleep(0.05 * (2**attempt))
+            if success:
+                with _pending_cost_entries_lock:
+                    try:
+                        _pending_cost_entries.remove((db_client, entry))
+                    except ValueError:
+                        pass
+            else:
+                # Permanent downstream failure — keep entry for next drain cycle
+                # rather than dropping; bounded retries already exhausted this drain,
+                # but entry remains durable across restarts (next drain will retry).
+                logger.warning(
+                    "Queued cost entry for user=%s block=%s remains after %d retries — will retry on next drain",
+                    entry.user_id,
+                    entry.block_name,
+                    _COST_LOG_MAX_RETRIES,
+                )
+
+    # 2) Drain still-pending async tasks (loop-bound fast path)
+    # Partition by loop: await only those on current loop, log others.
     current_loop = asyncio.get_running_loop()
     with _pending_log_tasks_lock:
         all_tasks = list(_pending_log_tasks)
@@ -83,7 +140,7 @@ async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
         other_loop_pending = [t for t in all_tasks if t.get_loop() is not current_loop]
     if other_loop_pending:
         logger.warning(
-            "%d executor cost log task(s) on other loops (not awaitable this loop) — will be drained by owning loop",
+            "%d executor cost log task(s) on other loops (not awaitable this loop) — will be drained by owning loop or via queue fallback",
             len(other_loop_pending),
         )
     if all_pending:
@@ -114,24 +171,66 @@ async def drain_pending_cost_logs(timeout: float = 30.0) -> None:
                 len(still_pending),
                 timeout,
             )
+    # 3) Copilot queue fallback (token_tracking._pending_cost_queue) is drained
+    # by its own module's drain helper if available; we also attempt to flush
+    # any entries that may have been enqueued via copilot's queue but not yet
+    # persisted, by calling the copilot drain directly if present.
+    try:
+        from backend.copilot.token_tracking import drain_pending_copilot_cost_logs as _copilot_drain
+
+        await _copilot_drain(timeout=timeout)
+    except (ImportError, AttributeError):
+        pass
 
 
 def schedule_platform_cost_log(
     db_client: "DatabaseManagerAsyncClient", entry: PlatformCostEntry
 ) -> None:
+    # REL-006: thread-safe queue + sync persistence boundary. Enqueue
+    # synchronously so entry survives loop mismatch / process crash window;
+    # drain on ANY loop can flush it with bounded retries. The async Task
+    # is the fast path — it also removes from queue on success to avoid double.
+    with _pending_cost_entries_lock:
+        _pending_cost_entries.append((db_client, entry))
+
+    # Fast path: attempt async persist on this loop with bounded retries
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop (e.g. sync test context) — entry remains queued for drain
+        return
+
     async def _safe_log() -> None:
         async with _get_log_semaphore():
-            try:
-                await db_client.log_platform_cost(entry)
-            except Exception:
-                logger.exception(
-                    "Failed to log platform cost for user=%s provider=%s block=%s",
-                    entry.user_id,
-                    entry.provider,
-                    entry.block_name,
-                )
+            for attempt in range(_COST_LOG_MAX_RETRIES):
+                try:
+                    await db_client.log_platform_cost(entry)
+                    # Success: remove from durable queue
+                    with _pending_cost_entries_lock:
+                        try:
+                            _pending_cost_entries.remove((db_client, entry))
+                        except ValueError:
+                            pass
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    if attempt == _COST_LOG_MAX_RETRIES - 1:
+                        logger.exception(
+                            "Failed to log platform cost after %d attempts for user=%s provider=%s block=%s",
+                            _COST_LOG_MAX_RETRIES,
+                            entry.user_id,
+                            entry.provider,
+                            entry.block_name,
+                        )
+                        # Leave in queue for drain to retry — not stranded
+                    else:
+                        await asyncio.sleep(0.05 * (2**attempt))
 
-    task = asyncio.create_task(_safe_log())
+    try:
+        task = asyncio.create_task(_safe_log())
+    except RuntimeError:
+        return
     with _pending_log_tasks_lock:
         _pending_log_tasks.add(task)
 

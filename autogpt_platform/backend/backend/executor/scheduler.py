@@ -151,6 +151,31 @@ def job_missed_listener(event):
         f"Job {event.job_id} was missed at scheduled time {event.scheduled_run_time}. "
         f"This can happen if the scheduler is overloaded or if previous executions are still running."
     )
+    # REL-005: create technical missed-occurrence record without billing decision.
+    # Must not raise — listener failures must not break scheduler.
+    try:
+        fire_time = getattr(event, "scheduled_run_time", None)
+        if fire_time is not None:
+            # Fire-and-forget async create; swallow errors.
+            run_async(_record_missed_occurrence(event.job_id, fire_time))
+    except Exception:
+        logger.warning("Failed to record missed occurrence for job %s", getattr(event, "job_id", "?"), exc_info=True)
+
+
+async def _record_missed_occurrence(job_id: str, scheduled_run_time) -> None:
+    """Create ScheduleOccurrence(status=missed) for a missed tick."""
+    try:
+        from datetime import timezone as _tz
+
+        from backend.data.schedule_occurrence import create_missed_occurrence
+
+        fire_time = scheduled_run_time
+        if getattr(fire_time, "tzinfo", None) is None:
+            fire_time = fire_time.replace(tzinfo=_tz.utc)
+        await create_missed_occurrence(job_id, fire_time)
+        logger.info("Recorded missed occurrence for job %s at %s", job_id, fire_time)
+    except Exception:
+        logger.warning("Failed to create missed occurrence for job %s", job_id, exc_info=True)
 
 
 def job_max_instances_listener(event):
@@ -195,8 +220,129 @@ async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     start_time = asyncio.get_event_loop().time()
     db = get_database_manager_async_client()
+    # REL-005: durable occurrence claim before dispatch. Canonical fireTime is
+    # minute-truncated UTC wall clock — deterministic for same tick across
+    # concurrent schedulers. Blind INSERT + UniqueViolationError → converge.
+    from prisma.errors import UniqueViolationError
+    from prisma.models import ScheduleOccurrence
+
+    from backend.data.schedule_occurrence import canonical_fire_time
+
+    schedule_id = args.schedule_id or args.graph_id
+    fire_time = canonical_fire_time(datetime.now(timezone.utc))
+    occurrence = None
+    is_winner = False
     try:
-        logger.info(f"Executing recurring job for graph #{args.graph_id}")
+        occurrence = await ScheduleOccurrence.prisma().create(
+            data={"scheduleId": schedule_id, "fireTime": fire_time, "status": "claimed"}
+        )
+        is_winner = True
+    except UniqueViolationError:
+        # Duplicate — converge to existing row
+        try:
+            occurrence = await ScheduleOccurrence.prisma().find_unique(
+                where={"scheduleId_fireTime": {"scheduleId": schedule_id, "fireTime": fire_time}}  # type: ignore[arg-type]
+            )
+        except Exception:
+            occurrence = None
+        if occurrence is None:
+            logger.warning(
+                f"Duplicate claim for schedule {schedule_id}@{fire_time.isoformat()} but no row found — skipping"
+            )
+            return None
+        # Already dispatched → one logical execution, do not duplicate
+        if occurrence.status == "dispatched" and occurrence.executionId:
+            logger.info(
+                f"Converged duplicate occurrence {occurrence.id} already dispatched as {occurrence.executionId}"
+            )
+            return occurrence.executionId
+        if occurrence.status == "missed":
+            logger.info(f"Converged duplicate occurrence {occurrence.id} already missed — skipping")
+            return None
+        if occurrence.status == "claimed" and occurrence.executionId:
+            # Queue publish previously failed or crash after DB recorded but before
+            # dispatched — retry dispatch for the same logical execution.
+            logger.info(
+                f"Retrying dispatch for claimed occurrence {occurrence.id} execution {occurrence.executionId}"
+            )
+            try:
+                graph_exec_retry: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
+                    user_id=args.user_id,
+                    graph_id=args.graph_id,
+                    graph_version=args.graph_version,
+                    inputs=args.input_data,
+                    graph_credentials_inputs=args.input_credentials,
+                    organization_id=args.organization_id,
+                    team_id=args.team_id,
+                    graph_exec_id=occurrence.executionId,
+                )
+                # Publish succeeded → mark dispatched (retryable until this succeeds)
+                try:
+                    await ScheduleOccurrence.prisma().update(
+                        where={"id": occurrence.id}, data={"status": "dispatched"}
+                    )
+                except Exception as ue:
+                    logger.warning(f"Failed to mark retry occurrence {occurrence.id} dispatched: {ue}")
+                await db.increment_onboarding_runs(args.user_id)
+                elapsed = asyncio.get_event_loop().time() - start_time
+                logger.info(
+                    f"Retry graph execution {graph_exec_retry.id} for occurrence {occurrence.id} "
+                    f"(took {elapsed:.2f}s)"
+                )
+                return graph_exec_retry.id
+            except Exception as e:
+                # Leave as claimed for next retry — not dispatched, not permanently skipped
+                logger.warning(f"Retry dispatch failed for occurrence {occurrence.id}: {e}")
+                raise
+        # Claimed with no executionId yet — winner crashed before linking.
+        # Attempt to become writer: create execution and atomically claim the slot.
+        # If we lose the race (another writer set executionId), converge without duplicate.
+        logger.info(
+            f"Duplicate claim for schedule {schedule_id}@{fire_time.isoformat()} occurrence {occurrence.id} "
+            f"claimed with no executionId yet — attempting to claim execution slot"
+        )
+        try:
+            graph_exec_claim: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
+                user_id=args.user_id,
+                graph_id=args.graph_id,
+                graph_version=args.graph_version,
+                inputs=args.input_data,
+                graph_credentials_inputs=args.input_credentials,
+                organization_id=args.organization_id,
+                team_id=args.team_id,
+            )
+            # Try to claim the occurrence's executionId slot — only winner's update succeeds
+            try:
+                # Fetch fresh to check if someone else already set it
+                fresh = await ScheduleOccurrence.prisma().find_unique(where={"id": occurrence.id})
+                if fresh and fresh.executionId and fresh.executionId != graph_exec_claim.id:
+                    # Lost race — another writer already linked a different execution
+                    logger.info(
+                        f"Lost execution slot race for occurrence {occurrence.id}: "
+                        f"existing {fresh.executionId} vs ours {graph_exec_claim.id} — converging"
+                    )
+                    return fresh.executionId
+                if fresh and not fresh.executionId:
+                    await ScheduleOccurrence.prisma().update(
+                        where={"id": occurrence.id}, data={"executionId": graph_exec_claim.id}
+                    )
+            except Exception as ce:
+                logger.warning(f"Failed to claim execution slot for occurrence {occurrence.id}: {ce}")
+            try:
+                await ScheduleOccurrence.prisma().update(
+                    where={"id": occurrence.id}, data={"status": "dispatched"}
+                )
+            except Exception as de:
+                logger.warning(f"Failed to mark occurrence {occurrence.id} dispatched after claim: {de}")
+            await db.increment_onboarding_runs(args.user_id)
+            return graph_exec_claim.id
+        except Exception as e:
+            logger.warning(f"Claim execution slot failed for occurrence {occurrence.id}: {e}")
+            raise
+
+    # Winner path — create and dispatch exactly once
+    try:
+        logger.info(f"Executing recurring job for graph #{args.graph_id} occurrence {occurrence.id}")
         graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
             user_id=args.user_id,
             graph_id=args.graph_id,
@@ -206,6 +352,20 @@ async def _execute_graph(**kwargs):
             organization_id=args.organization_id,
             team_id=args.team_id,
         )
+        # Link occurrence to execution so duplicates and crash-recoveries converge
+        try:
+            await ScheduleOccurrence.prisma().update(
+                where={"id": occurrence.id}, data={"executionId": graph_exec.id}
+            )
+        except Exception as le:
+            logger.warning(f"Failed to link occurrence {occurrence.id} to execution {graph_exec.id}: {le}")
+        # Queue publish succeeded (add_graph_execution returns only on publish success) → mark dispatched
+        try:
+            await ScheduleOccurrence.prisma().update(
+                where={"id": occurrence.id}, data={"status": "dispatched"}
+            )
+        except Exception as de:
+            logger.warning(f"Failed to mark occurrence {occurrence.id} dispatched after publish: {de}")
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
@@ -217,18 +377,38 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+        return graph_exec.id
     except GraphNotFoundError as e:
+        # Not retryable — mark missed without billing and unschedule
+        try:
+            await ScheduleOccurrence.prisma().update(where={"id": occurrence.id}, data={"status": "missed"})
+        except Exception:
+            pass
         await _handle_graph_not_available(e, args, start_time)
+        return None
     except GraphNotInLibraryError as e:
+        try:
+            await ScheduleOccurrence.prisma().update(where={"id": occurrence.id}, data={"status": "missed"})
+        except Exception:
+            pass
         await _handle_graph_not_available(e, args, start_time)
+        return None
     except GraphValidationError:
+        try:
+            await ScheduleOccurrence.prisma().update(where={"id": occurrence.id}, data={"status": "missed"})
+        except Exception:
+            pass
         await _handle_graph_validation_error(args)
+        return None
     except Exception as e:
+        # Queue publish failure or other transient — leave as claimed (retryable, not dispatched)
         elapsed = asyncio.get_event_loop().time() - start_time
-        logger.error(
-            f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
-            f"{type(e).__name__}: {e}"
+        logger.warning(
+            f"Dispatch failed for occurrence {occurrence.id} graph {args.graph_id} after {elapsed:.2f}s "
+            f"(leaving claimed for retry): {type(e).__name__}: {e}"
         )
+        # Do not mark dispatched — claimed remains retryable
+        raise
 
 
 def execute_copilot_turn(**kwargs):

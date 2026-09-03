@@ -30,6 +30,17 @@ import { useFlowRealtime } from "./useFlowRealtime";
 import "@xyflow/react/dist/style.css";
 import "./flow.css";
 
+/**
+ * REL-004 classification — projection (read-only):
+ * - Fields read: flowID, flowExecutionID
+ * - Calls setter: NO
+ * - Hydrates/mutates graph state indirectly: NO — consumes Zustand nodes via
+ *   useNodeStore, does not setNodes; useGetV1GetSpecificGraph fetch here is
+ *   secondary read for FloatingSafeModeToggle only, canonical loader is useFlow
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ * Verdict: genuine projection — leave as useQueryStates
+ */
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,

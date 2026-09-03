@@ -1,12 +1,22 @@
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
+/**
+ * REL-004 classification — mutable for flowExecutionID (execution domain):
+ * - Fields read: flowID, flowVersion, flowExecutionID (latter via setter)
+ * - Calls setter: YES — setBuilderQueryStates({flowExecutionID}) on
+ *   executeGraph success (line ~48); flowID/flowVersion are read-only here
+ * - Hydrates/mutates graph state indirectly: NO — execution launch only
+ * - Canonical mutable owner: useBuilderQueryStates
+ *   (frontend/src/app/(platform)/build/hooks/useBuilderQueryStates.ts:18)
+ *   — migrated from competing useQueryStates declaration
+ */
 import {
   ApiError,
   CredentialsMetaInput,
   GraphExecutionMeta,
 } from "@/lib/autogpt-server-api";
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useBuilderQueryStates } from "@/app/(platform)/build/hooks/useBuilderQueryStates";
 import { useCallback, useMemo, useState } from "react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -32,11 +42,8 @@ export const useRunInputDialog = ({
   const [credentialValues, setCredentialValues] = useState<
     Record<string, CredentialsMetaInput>
   >({});
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
-    flowExecutionID: parseAsString,
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-  });
+  const [{ flowID, flowVersion }, setBuilderQueryStates] =
+    useBuilderQueryStates();
   const { toast } = useToast();
   const { setViewport } = useReactFlow();
 
@@ -45,7 +52,7 @@ export const useRunInputDialog = ({
       mutation: {
         onSuccess: (response) => {
           const { id } = response.data as GraphExecutionMeta;
-          setQueryStates({
+          setBuilderQueryStates({
             flowExecutionID: id,
           });
         },

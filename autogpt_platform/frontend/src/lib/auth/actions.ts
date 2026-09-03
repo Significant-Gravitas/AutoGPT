@@ -110,6 +110,33 @@ export async function serverLogout(_options: ServerLogoutOptions = {}) {
     "serverLogout",
     {},
     async () => {
+      // REL-001 write path: before the session row is deleted, mint the
+      // current JWT and ask the backend to denylist its jti/sid for 300s.
+      // Bounded 5m replay window, fail-open if backend/Redis is down.
+      // Import lazily to avoid pulling pg into the edge bundle.
+      try {
+        const token = await getServerAuthToken();
+        if (token) {
+          const baseUrl =
+            process.env.AGPT_SERVER_URL ||
+            process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
+            "http://localhost:8006/api";
+          const url = baseUrl.endsWith("/api")
+            ? `${baseUrl}/auth/revoke`
+            : `${baseUrl}/api/auth/revoke`;
+          // Best-effort: backend validates the token itself and extracts
+          // jti/sid, so we don't decode here. Timeout 2s to avoid hanging
+          // logout on a slow backend; fail-open (bounded 5m) on error.
+          await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(2000),
+          }).catch(() => undefined);
+        }
+      } catch {
+        // Revocation best-effort only; signOut + cookie clear still happen.
+      }
+
       try {
         // Better Auth's signOut revokes the current session and clears the
         // cookie; other devices' sessions stay valid (matching the previous

@@ -49,12 +49,12 @@ async def test_get_graph_execution_meta_cross_user_denied(mocker: pytest_mock.Mo
     execution_id = "exec-cross-test"
     # Prisma returns None when where filter mismatches userId
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         result = await exec_data.get_graph_execution_meta(caller, execution_id)
         assert result is None
         # Prove the WHERE actually contained userId (not just id)
-        assert mock.find_first.call_count == 1
-        where = mock.find_first.call_args.kwargs["where"]
+        assert mock.return_value.find_first.call_count == 1
+        where = mock.return_value.find_first.call_args.kwargs["where"]
         assert where["userId"] == caller
         assert where["id"] == execution_id
 
@@ -62,10 +62,10 @@ async def test_get_graph_execution_meta_cross_user_denied(mocker: pytest_mock.Mo
 @pytest.mark.asyncio
 async def test_get_graph_execution_cross_user_denied(mocker: pytest_mock.MockFixture):
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         result = await exec_data.get_graph_execution("user-a", "exec-1")
         assert result is None
-        where = mock.find_first.call_args.kwargs["where"]
+        where = mock.return_value.find_first.call_args.kwargs["where"]
         assert where["userId"] == "user-a"
 
 
@@ -75,7 +75,7 @@ async def test_get_graph_execution_foreign_parent_attack_denied():
     # Parent ownership is encoded in the WHERE of the child fetch (same data path).
     # This test documents the invariant: child lookup is still scoped to userId.
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         result = await exec_data.get_graph_execution("user-a", "child-exec-owned-by-b")
         assert result is None
 
@@ -88,10 +88,10 @@ async def test_user_supplied_user_id_ignored(mocker: pytest_mock.MockFixture):
     # this test proves the data layer rejects the wrong user even if attacker sends
     # `{"user_id": "victim"}` as JSON.
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         # API layer derived user_id is attacker, not victim
         result = await exec_data.get_graph_execution_meta("attacker", "victim-exec")
-        where = mock.find_first.call_args.kwargs["where"]
+        where = mock.return_value.find_first.call_args.kwargs["where"]
         assert where["userId"] == "attacker"  # never "victim"
 
 
@@ -102,7 +102,7 @@ async def test_user_supplied_user_id_ignored(mocker: pytest_mock.MockFixture):
 @pytest.mark.asyncio
 async def test_get_graph_cross_user_denied():
     with patch("backend.data.graph.AgentGraph.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         # graph.get_graph coerces through same pattern — prove where includes userId
         try:
             result = await graph_data.get_graph("attacker-id", "graph-owned-by-victim", version=1)
@@ -113,8 +113,8 @@ async def test_get_graph_cross_user_denied():
             # If it returned a graph, it should not be victim's graph
             assert False, "cross-user graph read must not return victim resource"
         # Verify mock was scoped; if get_graph uses different prisma call, still check
-        if mock.find_first.called:
-            where = mock.find_first.call_args.kwargs.get("where", {})
+        if mock.return_value.find_first.called:
+            where = mock.return_value.find_first.call_args.kwargs.get("where", {})
             if "userId" in where:
                 assert where["userId"] == "attacker-id"
 
@@ -190,9 +190,9 @@ async def test_schedule_cross_user_denied():
     # Schedules are stored as APScheduler jobs + AgentPreset linking userId.
     # The data path is preset lookup where={"id": preset_id, "userId": caller}.
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         result = await exec_data.get_graph_execution_meta("attacker", "schedule-exec-owned-by-victim")
-        where = mock.find_first.call_args.kwargs["where"]
+        where = mock.return_value.find_first.call_args.kwargs["where"]
         assert where["userId"] == "attacker"
 
 
@@ -200,7 +200,7 @@ async def test_schedule_cross_user_denied():
 async def test_workspace_cross_user_denied():
     """Workspace files are per-user — foreign workspace ID must not leak."""
     with patch("backend.data.execution.AgentGraphExecution.prisma") as mock:
-        mock.find_first = AsyncMock(return_value=None)
+        mock.return_value.find_first = AsyncMock(return_value=None)
         result = await exec_data.get_graph_execution("attacker", "exec-in-victim-workspace")
         assert result is None
 

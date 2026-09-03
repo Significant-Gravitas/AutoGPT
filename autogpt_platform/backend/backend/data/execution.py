@@ -1278,10 +1278,19 @@ async def delete_graph_execution(
 async def set_cancel_requested(
     graph_exec_id: str, user_id: str
 ) -> None:
-    """REL-002: persist cancel intent durably before fanout."""
+    """REL-002: persist cancel intent durably before fanout.
+
+    Uses ``update_many`` with ``where: {id, userId}`` so the DB itself
+    enforces ownership — a caller who bypassed the route's
+    ``get_graph_executions(where userId)`` gate still cannot set the flag
+    on a foreign execution.  Caller interprets ``updated==0`` as
+    "not found or not owned" (route already filtered, so this is a no-op
+    guard).  Idempotent: callers treat already-cancelled as success, like
+    the route's idempotent repeated-cancel contract.
+    """
     now = datetime.now(tz=timezone.utc)
-    await AgentGraphExecution.prisma().update(
-        where={"id": graph_exec_id},
+    await AgentGraphExecution.prisma().update_many(
+        where={"id": graph_exec_id, "userId": user_id},  # type: ignore[arg-type]
         data={"cancelRequestedAt": now, "cancelRequestedBy": user_id},  # type: ignore[arg-type]
     )
 

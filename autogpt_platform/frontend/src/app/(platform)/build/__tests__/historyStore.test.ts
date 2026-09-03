@@ -315,7 +315,7 @@ describe("historyStore", () => {
       useHistoryStore.getState().clear();
 
       const { past, future } = useHistoryStore.getState();
-      expect(past).toEqual([{ nodes: [], edges: [] }]);
+      expect(past).toEqual([{ nodes: [], edges: [], nodeCounter: 0 }]);
       expect(future).toEqual([]);
     });
   });
