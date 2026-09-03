@@ -133,6 +133,10 @@ class SearchFeatureRequestsTool(BaseTool):
         return "search_feature_requests"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return "Search existing feature requests. Check before creating a new one."
 
@@ -227,6 +231,10 @@ class CreateFeatureRequestTool(BaseTool):
     @property
     def name(self) -> str:
         return "create_feature_request"
+
+    @property
+    def allow_external_use(self):
+        return True, []
 
     @property
     def description(self) -> str:

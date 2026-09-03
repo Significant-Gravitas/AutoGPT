@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.api.features.library.db import get_library_agent
@@ -99,6 +100,10 @@ class ListSchedulesTool(BaseTool):
         return "list_schedules"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_SCHEDULE]
+
+    @property
     def description(self) -> str:
         return (
             "List the user's scheduled jobs (agent runs and copilot "
@@ -188,6 +193,10 @@ class DeleteScheduleTool(BaseTool):
     @property
     def name(self) -> str:
         return "delete_schedule"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_SCHEDULE]
 
     @property
     def description(self) -> str:

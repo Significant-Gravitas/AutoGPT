@@ -36,6 +36,10 @@ class SearchDocsTool(BaseTool):
         return "search_docs"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return "Search platform documentation by keyword. Use get_doc_page to read full results."
 

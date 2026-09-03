@@ -13,7 +13,7 @@ from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.exceptions import VirusDetectedError
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
@@ -22,7 +22,6 @@ from backend.copilot.tools.skills import (
 )
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
-from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import InsufficientBalanceError
 
 from .v1 import upload_file, v1_router
@@ -44,9 +43,9 @@ def _test_ctx(user_id: str) -> RequestContext:
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
-# Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
-# tests below verify the same behaviour the real app exposes.
-app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
+# Same handler set as the real app (GraphActivationError → 400 included), so
+# the atomicity tests below verify the behaviour it actually exposes.
+add_exception_handlers(app)
 
 client = fastapi.testclient.TestClient(app)
 
@@ -842,7 +841,7 @@ def test_get_graphs(
 
     mocker.patch(
         "backend.data.graph.list_graphs_paginated",
-        return_value=Mock(graphs=[mock_graph]),
+        return_value=([mock_graph], Mock()),
     )
 
     response = client.get("/graphs")
@@ -1028,7 +1027,7 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
         "backend.api.features.v1.graph_db.create_graph", new=AsyncMock()
     )
     update_lib_agent_mock = mocker.patch(
-        "backend.api.features.v1.library_db.update_library_agent_version_and_settings",
+        "backend.api.features.v1.library_db.update_agent_version_in_library",
         new=AsyncMock(),
     )
 

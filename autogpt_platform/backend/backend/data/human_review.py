@@ -6,7 +6,7 @@ Handles all database operations for pending human reviews.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import Awaitable, Optional
 
 from prisma.enums import ReviewStatus
 from prisma.models import (
@@ -16,7 +16,7 @@ from prisma.models import (
     LibraryAgent,
     PendingHumanReview,
 )
-from prisma.types import PendingHumanReviewUpdateInput
+from prisma.types import PendingHumanReviewUpdateInput, PendingHumanReviewWhereInput
 from pydantic import BaseModel
 
 from backend.api.features.executions.review.model import (
@@ -31,9 +31,7 @@ from backend.copilot.constants import (
 from backend.data.execution import get_graph_execution_meta
 from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
-
-if TYPE_CHECKING:
-    pass
+from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +270,7 @@ async def get_or_create_human_review(
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional["PendingHumanReviewModel"]:
+) -> Optional[PendingHumanReviewModel]:
     """
     Get a pending review by its node execution ID.
 
@@ -375,45 +373,77 @@ async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     return count > 0
 
 
-async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
-    """Resolve node_id from a node_exec_id.
-
-    For CoPilot synthetic IDs (e.g. copilot-node-block-id:abc12345),
-    extract the node_id portion (copilot-node-block-id).
-    For real graph executions, look up the NodeExecution record.
+async def get_reviews(
+    user_id: str,
+    graph_exec_id: Optional[str] = None,
+    status: Optional[ReviewStatus] = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> tuple[list[PendingHumanReviewModel], Pagination]:
     """
-    if is_copilot_synthetic_id(node_exec_id):
-        return parse_node_id_from_exec_id(node_exec_id)
-    node_exec = await get_node_execution(node_exec_id)
-    return node_exec.node_id if node_exec else node_exec_id
-
-
-async def get_pending_reviews_for_user(
-    user_id: str, page: int = 1, page_size: int = 25
-) -> list["PendingHumanReviewModel"]:
-    """
-    Get all pending reviews for a user with pagination.
+    Get reviews for a user with pagination, optionally filtered by execution and status.
 
     Args:
         user_id: User ID to get reviews for
+        graph_exec_id: Optional graph execution ID to scope to
+        status: Optional review status filter
         page: Page number (1-indexed)
         page_size: Number of reviews per page
 
     Returns:
-        List of pending review models, enriched with node_id and (where
-        resolvable) expert/agent attribution.
+        List of reviews and pagination info
     """
+    where: PendingHumanReviewWhereInput = {"userId": user_id}
+    if graph_exec_id:
+        where["graphExecId"] = graph_exec_id
+    if status:
+        where["status"] = status
+
     offset = (page - 1) * page_size
 
-    reviews = await PendingHumanReview.prisma().find_many(
-        where={"userId": user_id, "status": ReviewStatus.WAITING},
+    total_count = await PendingHumanReview.prisma().count(where=where)
+
+    _reviews = await PendingHumanReview.prisma().find_many(
+        where=where,
         order={"createdAt": "desc"},
         skip=offset,
         take=page_size,
     )
 
-    models = [PendingHumanReviewModel.from_db(review, node_id="") for review in reviews]
-    return await _enrich_pending_reviews(user_id, models)
+    # node_id is filled in by the batched enrichment step.
+    reviews = await _enrich_pending_reviews(
+        user_id,
+        [PendingHumanReviewModel.from_db(r, node_id="") for r in _reviews],
+    )
+
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    return reviews, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
+    )
+
+
+async def get_pending_reviews_for_user(
+    user_id: str, page: int = 1, page_size: int = 25
+) -> list[PendingHumanReviewModel]:
+    """Get all pending reviews for a user with pagination."""
+    reviews, _ = await get_reviews(
+        user_id=user_id, status=ReviewStatus.WAITING, page=page, page_size=page_size
+    )
+    return reviews
+
+
+async def get_pending_reviews_for_execution(
+    graph_exec_id: str, user_id: str
+) -> list[PendingHumanReviewModel]:
+    """Get all pending reviews for a specific graph execution."""
+    reviews, _ = await get_reviews(
+        user_id=user_id, graph_exec_id=graph_exec_id, status=ReviewStatus.WAITING
+    )
+    return reviews
 
 
 async def _enrich_pending_reviews(
@@ -546,40 +576,6 @@ async def _chat_sessions_for(user_id: str, session_ids: list[str]) -> list[ChatS
     )
 
 
-async def get_pending_reviews_for_execution(
-    graph_exec_id: str, user_id: str
-) -> list[PendingHumanReviewModel]:
-    """
-    Get all pending reviews for a specific graph execution.
-
-    Args:
-        graph_exec_id: Graph execution ID
-        user_id: User ID for security validation
-
-    Returns:
-        List of pending review models with node_id included
-    """
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
-
-    reviews = await PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "graphExecId": graph_exec_id,
-            "status": ReviewStatus.WAITING,
-        },
-        order={"createdAt": "asc"},
-    )
-
-    # Fetch node_id for each review from NodeExecution
-    result = []
-    for review in reviews:
-        node_id = await _resolve_node_id(review.nodeExecId, get_node_execution)
-        result.append(PendingHumanReviewModel.from_db(review, node_id=node_id))
-
-    return result
-
-
 async def process_all_reviews_for_execution(
     user_id: str,
     review_decisions: dict[str, tuple[ReviewStatus, SafeJsonData | None, str | None]],
@@ -610,8 +606,8 @@ async def process_all_reviews_for_execution(
     )
 
     # Separate into pending and already-processed reviews
-    reviews_to_process = []
-    already_processed = []
+    reviews_to_process: list[PendingHumanReview] = []
+    already_processed: list[PendingHumanReview] = []
     for review in all_reviews:
         if review.status == ReviewStatus.WAITING:
             reviews_to_process.append(review)
@@ -645,7 +641,7 @@ async def process_all_reviews_for_execution(
         )
 
     # Create parallel update tasks for reviews that still need processing
-    update_tasks = []
+    update_tasks: list[Awaitable[PendingHumanReview | None]] = []
 
     for review in reviews_to_process:
         new_status, reviewed_data, message = review_decisions[review.nodeExecId]
@@ -689,8 +685,11 @@ async def process_all_reviews_for_execution(
     # Combine updated reviews with already-processed ones (for idempotent response)
     all_result_reviews = list(updated_reviews) + already_processed
 
-    result = {}
+    result: dict[str, PendingHumanReviewModel] = {}
     for review in all_result_reviews:
+        if review is None:
+            continue
+
         if is_copilot_synthetic_id(review.nodeExecId):
             # CoPilot synthetic node_exec_ids encode node_id as "{node_id}:{random}"
             node_id = parse_node_id_from_exec_id(review.nodeExecId)

@@ -43,7 +43,12 @@ def test_server_host_standard_url():
 
 def test_server_host_strips_credentials():
     """hostname must not expose user:pass."""
-    assert server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
+    assert (
+        server_host(
+            "https://user:secret@mcp.example.com/mcp"  # pragma: allowlist secret
+        )
+        == "mcp.example.com"
+    )
 
 
 def test_server_host_with_port():

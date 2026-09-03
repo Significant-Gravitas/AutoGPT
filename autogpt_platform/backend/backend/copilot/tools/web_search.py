@@ -71,6 +71,10 @@ class WebSearchTool(BaseTool):
         return "web_search"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Search the web for live info (news, recent docs). Returns a "

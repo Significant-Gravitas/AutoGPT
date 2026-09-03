@@ -132,7 +132,7 @@ class RaisedExpertLifetimeLimitExceededError(Exception):
         return f"Raised expert lifetime limit of {self.limit} reached"
 
 
-class GraphNotFoundError(ValueError):
+class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
@@ -154,6 +154,13 @@ class GraphNotInLibraryError(GraphNotAccessibleError):
 
 class PreconditionFailed(Exception):
     """The user must do something else first before trying the current operation"""
+
+
+class ConflictError(ValueError):
+    """
+    The request can't be applied to the resource's current state (HTTP 409),
+    e.g. "already exists" / "already taken" conditions.
+    """
 
 
 class InsufficientBalanceError(ValueError):

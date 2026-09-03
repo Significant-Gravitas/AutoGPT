@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any, Literal
 
+from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 
 from backend.copilot.model import ChatSession
@@ -66,6 +67,10 @@ class ListAgentTriggersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_agent_triggers"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:

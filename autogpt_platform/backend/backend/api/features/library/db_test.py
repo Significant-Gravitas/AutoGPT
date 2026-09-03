@@ -417,17 +417,20 @@ async def test_add_agent_to_library(mocker):
         return_value=mock_library_agent_data
     )
 
-    # Mock graph_db.get_graph function that's called in resolve_graph_for_library
-    # (lives in _add_to_library.py after refactor, not db.py)
+    # Mock _fetch_schedule_info used by add_graph_to_library
+    mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    # Mock graph_db.get_graph, called by resolve_graph_model_for_library
     mock_graph_db = mocker.patch(
         "backend.api.features.library._add_to_library.graph_db"
     )
     mock_graph_model = mocker.Mock()
     mock_graph_model.id = "agent1"
     mock_graph_model.version = 1
-    mock_graph_model.nodes = (
-        []
-    )  # Empty list so _has_human_in_the_loop_blocks returns False
+    mock_graph_model.nodes = []
     mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
 
     # Mock the model conversion
@@ -658,7 +661,7 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         new=mocker.AsyncMock(return_value=current_library_agent),
     )
     mock_update_library_agent = mocker.patch(
-        "backend.api.features.library.db.update_library_agent_version_and_settings",
+        "backend.api.features.library.db.update_agent_version_in_library",
         new=mocker.AsyncMock(return_value=updated_library_agent),
     )
 
@@ -678,7 +681,7 @@ async def test_update_graph_in_library_allows_archived_library_agent(mocker):
         "graph-id",
         include_archived=True,
     )
-    mock_update_library_agent.assert_awaited_once_with("test-user", created_graph)
+    mock_update_library_agent.assert_awaited_once_with("test-user", "graph-id", 2)
 
 
 @pytest.mark.asyncio
@@ -847,10 +850,6 @@ async def test_get_library_agent_exposes_matching_store_version_id(mocker):
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library_agent.return_value.find_first = mocker.AsyncMock(
         return_value=library_agent
-    )
-    mocker.patch(
-        "backend.api.features.library.db._fetch_marketplace_details",
-        new=mocker.AsyncMock(return_value=(None, None)),
     )
     mocker.patch(
         "backend.api.features.library.db._fetch_schedule_info",

@@ -1,0 +1,5 @@
+{
+  "detail": "Agent #nonexistent not found",
+  "hint": "Adjust the request and retry.",
+  "message": "Failed to process GET /library/agents/nonexistent"
+}

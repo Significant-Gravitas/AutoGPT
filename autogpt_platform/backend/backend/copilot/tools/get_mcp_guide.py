@@ -37,6 +37,10 @@ class GetMCPGuideTool(BaseTool):
         return "get_mcp_guide"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return "Get MCP server URLs and auth guide. Call before run_mcp_tool if you need a server URL or auth info."
 

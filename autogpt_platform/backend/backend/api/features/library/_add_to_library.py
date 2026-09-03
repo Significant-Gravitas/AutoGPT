@@ -189,7 +189,7 @@ async def add_graph_to_library(
     atomic with the caller's other writes; catching a uniqueness error inside
     PostgreSQL's transaction would leave that transaction aborted.
     """
-    settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
+    settings_json = SafeJson(GraphSettings().model_dump())
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
