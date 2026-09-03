@@ -196,6 +196,30 @@ function reportResize(textarea: HTMLTextAreaElement) {
   });
 }
 
+// Every layout the host puts the composer through, not just the one it lands
+// on. A wrong measurement that corrects itself on the next frame still settles
+// on the right layout, so the settled state alone cannot tell a fix from the
+// blink it was meant to remove; the record of what the row passed through can.
+function recordLayouts(textarea: HTMLTextAreaElement) {
+  const row = textarea.parentElement as HTMLElement;
+  const passedThrough: boolean[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      passedThrough.push((record.oldValue ?? "").split(" ").includes("w-full"));
+    }
+  });
+  observer.observe(row, {
+    attributes: true,
+    attributeFilter: ["class"],
+    attributeOldValue: true,
+  });
+  return {
+    // The states it left, plus the one it is in now.
+    seen: () => [...passedThrough, isStacked(textarea)],
+    stop: () => observer.disconnect(),
+  };
+}
+
 function renderComposer(placeholder: string) {
   render(<ChatInput onSend={vi.fn()} placeholder={placeholder} />);
   return screen.getByLabelText("Chat message input") as HTMLTextAreaElement;
@@ -302,6 +326,34 @@ describe("ChatInput composer row layout", () => {
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(false);
     expect(fitsInRow(singleRowWidth())).toBeGreaterThan(value.length);
+  });
+
+  it("never measures against a single row wider than the row it now has", async () => {
+    const textarea = renderComposer("Ask");
+    fireEvent.change(textarea, { target: { value: wrapsInRowOnly() } });
+    expect(isStacked(textarea)).toBe(true);
+
+    // The window narrows past what the addons themselves take, so subtracting
+    // them from the row leaves nothing: the offset can say nothing about this
+    // row, and the remembered width now describes one wider than the whole
+    // composer.
+    const remembered = singleRowWidth();
+    rowWidth = ADDONS_WIDTH - 40;
+    reportResize(textarea);
+    expect(isStacked(textarea)).toBe(true);
+
+    // Text that would fit the row the box remembers but wraps in the one it
+    // actually has. Judged against the stale width the composer unstacks, then
+    // wraps in the real row on the very next measurement and stacks again.
+    const value = "x".repeat(fitsInRow(rowWidth) + 4);
+    expect(value.length).toBeLessThan(fitsInRow(remembered));
+
+    const layouts = recordLayouts(textarea);
+    fireEvent.change(textarea, { target: { value } });
+    await act(async () => undefined);
+    layouts.stop();
+
+    expect(layouts.seen()).toEqual([true]);
   });
 
   it("measures the single row at its border-box width", () => {

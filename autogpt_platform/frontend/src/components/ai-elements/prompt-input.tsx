@@ -179,13 +179,21 @@ export function PromptInputTextarea({
       // it had when it last sat in the row would leave it stacked over text
       // that now fits, or unstack it into a row it no longer fits.
       if (width > 0) {
+        let singleRow = rememberedWidth;
         if (addonsWidthRef.current === null) {
           const addonsWidth = width - rememberedWidth;
           if (addonsWidth > 0) addonsWidthRef.current = addonsWidth;
         } else {
-          const singleRowWidth = width - addonsWidthRef.current;
-          if (singleRowWidth > 0) singleRowWidthRef.current = singleRowWidth;
+          const candidate = width - addonsWidthRef.current;
+          if (candidate > 0) singleRow = candidate;
         }
+        // The single row sits inside the full row, so it can never be the
+        // wider of the two. Once the row has narrowed past what the addons
+        // take, neither branch above can say anything, and the remembered
+        // width describes a row the composer no longer has -- measuring there
+        // would call text that now wraps a fit. The full row is the most the
+        // box can know then.
+        singleRowWidthRef.current = Math.min(singleRow, width);
       }
       const ownWidth = el.style.width;
       el.style.width = `${singleRowWidthRef.current}px`;
