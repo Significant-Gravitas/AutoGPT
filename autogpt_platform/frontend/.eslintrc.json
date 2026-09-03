@@ -28,11 +28,11 @@
     "no-restricted-syntax": [
       "error",
       {
-        "selector": "BinaryExpression[operator=/^[!=]==?$/] > Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight| )$/]",
+        "selector": "BinaryExpression[operator=/^[!=]==?$/] > MemberExpression[computed=false][property.name='key']",
         "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       },
       {
-        "selector": "SwitchCase > Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight| )$/]",
+        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key']",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       }
     ]
