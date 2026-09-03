@@ -7,6 +7,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
+import { HomeBackdrop } from "./components/HomeBackdrop/HomeBackdrop";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
 import { NeedsYou } from "./components/NeedsYou/NeedsYou";
 import { NowNext } from "./components/NowNext/NowNext";
@@ -14,8 +15,9 @@ import { RecentWork } from "./components/RecentWork/RecentWork";
 import { getTimeOfDayGreeting } from "./helpers";
 import { useHomePage } from "./useHomePage";
 
-const SHELL_CLASS = "min-h-screen bg-zinc-50 px-4 pb-16 pt-6 sm:px-6 lg:px-8";
-const CONTENT_CLASS = "mx-auto w-full max-w-[1120px]";
+const SHELL_CLASS =
+  "relative min-h-screen bg-zinc-50 px-4 pb-16 pt-6 sm:px-6 lg:px-8";
+const CONTENT_CLASS = "relative mx-auto w-full max-w-[1120px]";
 const GRID_CLASS = "grid grid-cols-1 items-start gap-4 xl:grid-cols-12";
 
 export default function HomePage() {
@@ -34,6 +36,7 @@ export default function HomePage() {
   if (isError || !dashboard) {
     return (
       <main className={SHELL_CLASS}>
+        <HomeBackdrop />
         <div className={CONTENT_CLASS}>
           <ErrorCard
             context="home"
@@ -47,6 +50,7 @@ export default function HomePage() {
 
   return (
     <main className={SHELL_CLASS}>
+      <HomeBackdrop />
       <div className={CONTENT_CLASS}>
         <HomeHeader
           greeting={getTimeOfDayGreeting()}
@@ -76,6 +80,7 @@ export default function HomePage() {
 function HomeSkeleton() {
   return (
     <main className={SHELL_CLASS} aria-label="Loading Home…">
+      <HomeBackdrop />
       <div className={CONTENT_CLASS}>
         <div className="flex items-end justify-between gap-6 px-1 pb-5 pt-1">
           <div className="space-y-2">
