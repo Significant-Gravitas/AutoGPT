@@ -193,7 +193,7 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your briefing" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
   expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
   expect(screen.getByRole("heading", { name: "Your agents" })).toBeDefined();
@@ -311,7 +311,7 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
 
   render(<HomePage />);
 
-  expect(await screen.findByText("No new outcomes yet")).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   // The header already says nothing needs you, so an empty "Needs you"
   // tile would only repeat it.
   expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
@@ -430,7 +430,7 @@ test("renders the briefing unchanged when no narrative was generated", async () 
   render(<HomePage />);
 
   expect(
-    await screen.findByRole("heading", { name: "Your briefing" }),
+    await screen.findByRole("heading", { name: "Recent work" }),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
 });

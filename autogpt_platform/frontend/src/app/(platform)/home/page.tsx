@@ -8,7 +8,6 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { AgentTeam } from "./components/AgentTeam/AgentTeam";
 import { HomeHeader } from "./components/HomeHeader/HomeHeader";
-import { MorningBriefing } from "./components/MorningBriefing/MorningBriefing";
 import { NeedsYou } from "./components/NeedsYou/NeedsYou";
 import { NowNext } from "./components/NowNext/NowNext";
 import { RecentWork } from "./components/RecentWork/RecentWork";
@@ -62,7 +61,6 @@ export default function HomePage() {
             {dashboard.attention.length > 0 && (
               <NeedsYou dashboard={dashboard} />
             )}
-            <MorningBriefing dashboard={dashboard} />
             <RecentWork dashboard={dashboard} />
           </div>
           <div className="flex min-w-0 flex-col gap-4 xl:col-span-4">

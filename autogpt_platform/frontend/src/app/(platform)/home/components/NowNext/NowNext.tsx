@@ -1,6 +1,6 @@
 import { Calendar03Icon, Clock01Icon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Text } from "@/components/atoms/Text/Text";
+import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { ActiveRow } from "./components/ActiveRow";
@@ -21,7 +21,7 @@ export function NowNext({ dashboard, className }: Props) {
     <HomeTile className={className} icon={Calendar03Icon} title="Now & next">
       {dashboard.active_tasks.length > 0 ? (
         <div className="border-b border-zinc-100 pb-2">
-          <SectionLabel>Working now</SectionLabel>
+          <HomeSectionLabel>Working now</HomeSectionLabel>
           <div className={TIMELINE_CLASS}>
             {dashboard.active_tasks.map((item) => (
               <ActiveRow key={item.id} item={item} />
@@ -31,7 +31,7 @@ export function NowNext({ dashboard, className }: Props) {
       ) : null}
 
       <div className="pb-2">
-        <SectionLabel>Coming up</SectionLabel>
+        <HomeSectionLabel>Coming up</HomeSectionLabel>
         {dashboard.upcoming_tasks.length === 0 ? (
           <HomeTileEmpty
             icon={Clock01Icon}
@@ -48,16 +48,5 @@ export function NowNext({ dashboard, className }: Props) {
         )}
       </div>
     </HomeTile>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text
-      variant="small-medium"
-      className="px-4 pb-1 pt-3 text-[11px] uppercase tracking-[0.06em] text-zinc-400"
-    >
-      {children}
-    </Text>
   );
 }

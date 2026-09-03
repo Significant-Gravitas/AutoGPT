@@ -82,8 +82,8 @@ function mockDashboard(response: HomeDashboardResponse) {
   );
 }
 
-// The runs strip reads the library's own agent and execution feeds, not the
-// home aggregate, so those are what decide whether it shows.
+// The listening line reads the library's own agent list, not the home
+// aggregate, so that is what decides whether it shows.
 function mockLibraryAgents(agents: Array<Partial<LibraryAgent>>) {
   const base = getGetV2ListLibraryAgentsResponseMock();
   server.use(
@@ -108,37 +108,38 @@ function mockLibraryAgents(agents: Array<Partial<LibraryAgent>>) {
   );
 }
 
-test("surfaces recent workflow runs under the briefing", async () => {
+test("names the agents waiting on a trigger under Recent work", async () => {
   mockDashboard(dashboard);
-  mockLibraryAgents([{ name: "Inbox Watcher", has_external_trigger: true }]);
+  mockLibraryAgents([
+    { name: "Inbox Watcher", has_external_trigger: true },
+    { name: "Nightly Report", has_external_trigger: false },
+  ]);
 
   render(<HomePage />);
 
-  const runs = await screen.findByRole("region", {
-    name: "Recent workflow runs",
+  const line = await screen.findByRole("region", {
+    name: "Listening for triggers",
   });
-  const briefing = screen
-    .getByRole("heading", { name: "Your briefing" })
+  const card = screen
+    .getByRole("heading", { name: "Recent work" })
     .closest("section");
-  expect(briefing?.contains(runs)).toBe(true);
-  expect(within(runs).getByText("Inbox Watcher")).toBeDefined();
-  expect(within(runs).getByText("Waiting for trigger event")).toBeDefined();
+  expect(card?.contains(line)).toBe(true);
   expect(
-    within(runs).getByRole("link", { name: /See/ }).getAttribute("href"),
+    within(line)
+      .getByRole("link", { name: "Inbox Watcher" })
+      .getAttribute("href"),
   ).toBe("/library/agents/agent-0");
-  expect(
-    within(runs).getByRole("link", { name: /Ask/ }).getAttribute("href"),
-  ).toContain("/copilot?autosubmit=true#prompt=");
+  expect(within(line).queryByText("Nightly Report")).toBeNull();
 });
 
-test("keeps the briefing's empty state clean when no workflow has run", async () => {
+test("stays silent when no agent is waiting on a trigger", async () => {
   mockDashboard(dashboard);
-  mockLibraryAgents([]);
+  mockLibraryAgents([{ name: "Nightly Report", has_external_trigger: false }]);
 
   render(<HomePage />);
 
-  expect(await screen.findByText("No new outcomes yet")).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   expect(
-    screen.queryByRole("region", { name: "Recent workflow runs" }),
+    screen.queryByRole("region", { name: "Listening for triggers" }),
   ).toBeNull();
 });
