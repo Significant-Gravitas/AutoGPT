@@ -1,5 +1,5 @@
 import {
-  AiBackgroundEraserIcon,
+  AiEraserIcon,
   ArrowRight01Icon,
   UserAdd01Icon,
 } from "@hugeicons/core-free-icons";
@@ -27,7 +27,7 @@ export function AgentTeam({ dashboard, className }: Props) {
   return (
     <HomeTile
       className={className}
-      icon={AiBackgroundEraserIcon}
+      icon={AiEraserIcon}
       title="Your agents"
       meta={
         team.total > 0 ? (
