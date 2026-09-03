@@ -352,6 +352,21 @@ async def get_feature_flag_value(
     Returns:
         The flag value from LaunchDarkly
     """
+    value, _ = await _evaluate_flag_value(flag_key, user_id, default)
+    return value
+
+
+async def _evaluate_flag_value(
+    flag_key: str, user_id: str, default: Any = None
+) -> tuple[Any, bool]:
+    """``(value, evaluated)`` for one raw flag read.
+
+    ``evaluated`` is False whenever *default* is standing in for an answer
+    LaunchDarkly could not give — no client, an uninitialised one, a failed
+    user-context lookup, or an evaluation that raised. An initialised client
+    is not on its own enough: the context lookup is a database read, so a
+    live client can still fail to produce a value.
+    """
     try:
         client = get_client()
 
@@ -360,7 +375,7 @@ async def get_feature_flag_value(
             logger.debug(
                 f"LaunchDarkly not initialized, using default={default} for {flag_key}"
             )
-            return default
+            return default, False
 
         # Get user context (role/email) from the Better Auth user table
         context = await _fetch_user_context_data(user_id)
@@ -371,13 +386,13 @@ async def get_feature_flag_value(
         logger.debug(
             f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
         )
-        return result
+        return result, True
 
     except Exception as e:
         logger.warning(
             f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
         )
-        return default
+        return default, False
 
 
 def _env_flag_override(flag_key: Flag) -> bool | None:
@@ -420,16 +435,33 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    enabled, _ = await evaluate_feature_flag(flag_key, user_id, default)
+    return enabled
+
+
+async def evaluate_feature_flag(
+    flag_key: Flag,
+    user_id: str,
+    default: bool = False,
+) -> tuple[bool, bool]:
+    """``(enabled, authoritative)`` for one flag read.
+
+    ``authoritative`` is False when *enabled* is only the default, because the
+    flag could not be evaluated or came back as a non-boolean. Use this rather
+    than :func:`is_feature_enabled` wherever "off" triggers something
+    irreversible — a failed read is indistinguishable from a real "off" on the
+    value alone.
+    """
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
-        return override
+        return override, True
 
-    result = await get_feature_flag_value(flag_key.value, user_id, default)
+    result, evaluated = await _evaluate_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
-        return result
+        return result, evaluated
 
     # Log a warning if the flag is not returning a boolean
     logger.warning(
@@ -437,28 +469,9 @@ async def is_feature_enabled(
         f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
     )
 
-    # Return the default if we get a non-boolean value
-    # This prevents objects from being incorrectly treated as True
-    return default
-
-
-def is_flag_source_available(flag_key: Flag) -> bool:
-    """Whether a ``False`` from :func:`is_feature_enabled` is authoritative.
-
-    A missing SDK key or an uninitialised client makes every read return its
-    default, which the caller cannot tell apart from a genuine "off". Callers
-    that take an irreversible action on "off" must consult this first.
-    """
-    if _env_flag_override(flag_key) is not None:
-        return True
-    try:
-        return get_client().is_initialized()
-    except Exception:
-        logger.warning(
-            f"Could not determine LaunchDarkly availability for {flag_key}",
-            exc_info=True,
-        )
-        return False
+    # A misconfigured flag is not an answer either: fall back to the default,
+    # but never let a caller take an irreversible action on it.
+    return default, False
 
 
 def feature_flag(

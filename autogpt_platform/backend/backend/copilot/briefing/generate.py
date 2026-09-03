@@ -21,7 +21,7 @@ from backend.data.db_accessors import (
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.clients import get_database_manager_async_client
-from backend.util.feature_flag import Flag, is_feature_enabled, is_flag_source_available
+from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
@@ -253,11 +253,14 @@ async def _compose_fresh_briefing(
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
-    if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-        # Only a flag source that actually answered may unregister the cron
-        # (see ``execute_morning_briefing``); an unreachable one reads as
-        # False too, and would delete every user's schedule on one bad boot.
-        if not is_flag_source_available(Flag.HIRE_EXPERTS):
+    enabled, authoritative = await evaluate_feature_flag(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    if not enabled:
+        # Only a flag that actually evaluated may unregister the cron (see
+        # ``execute_morning_briefing``). A failed read yields False too, and
+        # would delete every user's schedule on one bad boot or DB blip.
+        if not authoritative:
             return {"status": "skipped", "reason": "flag_unavailable"}
         return {"status": "skipped", "reason": "flag_disabled"}
 
