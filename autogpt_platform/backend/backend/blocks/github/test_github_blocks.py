@@ -567,6 +567,10 @@ class TestReadPr:
 
 
 class TestPrSummary:
+    def test_null_title_falls_back_instead_of_yielding_none(self):
+        pr = {**TEST_PR_PAYLOAD, "title": None}
+        assert GithubReadPullRequestBlock._pr_summary(pr)[0] == "No title found"
+
     def test_null_body_falls_back_instead_of_yielding_none(self):
         # GitHub returns an explicit "body": null for PRs with no description.
         pr = {**TEST_PR_PAYLOAD, "body": None}
