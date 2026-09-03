@@ -266,8 +266,25 @@ async def test_generate_skips_when_flag_off(monkeypatch):
         return False
 
     monkeypatch.setattr(generate, "is_feature_enabled", flag_off)
+    monkeypatch.setattr(generate, "is_flag_source_available", lambda _flag: True)
     result = await generate.generate_and_deliver_briefing("user-1")
     assert result == {"status": "skipped", "reason": "flag_disabled"}
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_an_unreachable_flag_source_separately(monkeypatch):
+    """An uninitialised LaunchDarkly reads as False, same as a real "off".
+    Only the latter may unregister the cron, so the two must not share a
+    reason string."""
+    from backend.copilot.briefing import generate
+
+    async def flag_off(*a, **kw):
+        return False
+
+    monkeypatch.setattr(generate, "is_feature_enabled", flag_off)
+    monkeypatch.setattr(generate, "is_flag_source_available", lambda _flag: False)
+    result = await generate.generate_and_deliver_briefing("user-1")
+    assert result == {"status": "skipped", "reason": "flag_unavailable"}
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ from backend.util.feature_flag import (
     feature_flag,
     get_client,
     is_feature_enabled,
+    is_flag_source_available,
     mock_flag_variation,
     shutdown_launchdarkly,
 )
@@ -499,3 +500,40 @@ class TestShutdown:
         get_client()
 
         assert warn.call_count == 1
+
+
+class TestIsFlagSourceAvailable:
+    """Callers that delete state on a False need to know it was a real answer."""
+
+    @pytest.fixture(autouse=True)
+    def no_env_override(self, monkeypatch: pytest.MonkeyPatch):
+        """`.env` may force unrelated flags; pin this one to LaunchDarkly."""
+        monkeypatch.delenv("FORCE_FLAG_HIRE_EXPERTS", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", raising=False)
+
+    def test_an_initialised_client_is_authoritative(self, ld_client):
+        assert is_flag_source_available(Flag.HIRE_EXPERTS) is True
+
+    def test_an_uninitialised_client_is_not(self, ld_client):
+        ld_client.is_initialized.return_value = False
+        assert is_flag_source_available(Flag.HIRE_EXPERTS) is False
+
+    def test_a_client_that_cannot_be_built_is_not(self, mocker):
+        """No SDK key configured: ``ldclient.get()`` raises rather than
+        returning an unusable client."""
+        mocker.patch(
+            "backend.util.feature_flag.get_client",
+            side_effect=Exception("set_config was not called"),
+        )
+        assert is_flag_source_available(Flag.HIRE_EXPERTS) is False
+
+    def test_an_env_override_answers_without_launchdarkly(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A forced flag is a real answer, so acting on its False is safe."""
+        mocker.patch(
+            "backend.util.feature_flag.get_client",
+            side_effect=Exception("set_config was not called"),
+        )
+        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "false")
+        assert is_flag_source_available(Flag.HIRE_EXPERTS) is True

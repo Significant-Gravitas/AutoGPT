@@ -1806,6 +1806,8 @@ class TestMorningBriefingSchedule:
         [
             {"status": "skipped", "reason": "nothing_to_say"},
             {"status": "skipped", "reason": "already_delivered"},
+            # An unreachable LaunchDarkly must cost one morning, not the cron.
+            {"status": "skipped", "reason": "flag_unavailable"},
             {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
         ],
     )

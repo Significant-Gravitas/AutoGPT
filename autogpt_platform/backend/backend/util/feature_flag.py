@@ -442,6 +442,25 @@ async def is_feature_enabled(
     return default
 
 
+def is_flag_source_available(flag_key: Flag) -> bool:
+    """Whether a ``False`` from :func:`is_feature_enabled` is authoritative.
+
+    A missing SDK key or an uninitialised client makes every read return its
+    default, which the caller cannot tell apart from a genuine "off". Callers
+    that take an irreversible action on "off" must consult this first.
+    """
+    if _env_flag_override(flag_key) is not None:
+        return True
+    try:
+        return get_client().is_initialized()
+    except Exception:
+        logger.warning(
+            f"Could not determine LaunchDarkly availability for {flag_key}",
+            exc_info=True,
+        )
+        return False
+
+
 def feature_flag(
     flag_key: str,
     default: bool = False,
