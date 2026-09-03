@@ -38,7 +38,7 @@ from .models import (
     InvoiceItem,
     SubscriptionStatus,
 )
-from .pagination import Page, PageRequest, page_request
+from .pagination import Page, PageRequest, page_request, single_page_request
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,7 @@ async def get_subscription_status(
     operation_id="listCreditInvoices",
 )
 async def list_invoices(
-    page: PageRequest = Depends(page_request),
+    page: PageRequest = Depends(single_page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_CREDITS)
     ),
