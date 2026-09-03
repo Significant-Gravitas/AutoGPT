@@ -279,6 +279,10 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           branches, so ``build_sdk_env`` now pins the window
         #           explicitly rather than inheriting the CLI's guess — see
         #           ``TestContextWindowPin`` in ``env_test.py``.
+        "2.1.259",  # claude-agent-sdk 0.2.152 -- wire shape measured identical
+        #           to 2.1.248 on both the bare and the build_sdk_env-pinned
+        #           path: same anthropic-beta list, same message roles, same
+        #           body keys.  Verified via cli_openrouter_compat_test.py.
     }
 )
 

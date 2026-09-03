@@ -983,18 +983,18 @@ files = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.2.146"
+version = "0.2.152"
 description = "Python SDK for Claude Code"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "claude_agent_sdk-0.2.146-py3-none-macosx_11_0_arm64.whl", hash = "sha256:7bcb91dd34c2e0e5b4f006648d457bbfba9aa1e44cf2e5d02abb441dcbbaff98"},
-    {file = "claude_agent_sdk-0.2.146-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:9285b3dd900376b045a06d2d6f5e19bfd96a3f6cb88d21166bb840aff14ee505"},
-    {file = "claude_agent_sdk-0.2.146-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:ad536806e6c6fc1972ae3950b1bb171f1494e6f47002c24dbc68f19af1c34997"},
-    {file = "claude_agent_sdk-0.2.146-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:1f2bae0759f3962be2714c786c1a6961824c5ce3d4b7f44f0828191bd44ccebe"},
-    {file = "claude_agent_sdk-0.2.146-py3-none-win_amd64.whl", hash = "sha256:dc2c4773dc02492b52c74f957a059ecbc0aec7063bd1a16c039b78613194b3cf"},
-    {file = "claude_agent_sdk-0.2.146.tar.gz", hash = "sha256:9e402548466018421cfd0725a7601e14d9e3e879276a6a4a877c5a2ff6633546"},
+    {file = "claude_agent_sdk-0.2.152-py3-none-macosx_11_0_arm64.whl", hash = "sha256:6cc1e949743c7634274ae526bfd1c0a216ff9d71c6b36d94cab80f32b0d32b4c"},
+    {file = "claude_agent_sdk-0.2.152-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:9c79c4ef91b15e5fae6aba62a82afb983dc360bc159902c541046227e2852c86"},
+    {file = "claude_agent_sdk-0.2.152-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:1e5b619e6fa3c98f06ddc107652f7820c4573fb73a9a24263568d9974078bbc2"},
+    {file = "claude_agent_sdk-0.2.152-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:f885bd935054082a599dcf92bbdaf3c0b853117a79375cb3aae74674a8124326"},
+    {file = "claude_agent_sdk-0.2.152-py3-none-win_amd64.whl", hash = "sha256:f422c256358997ffa3a740f9fdc8127aa8404a9d57493502dc7d2ac05ecb5486"},
+    {file = "claude_agent_sdk-0.2.152.tar.gz", hash = "sha256:0822bbdf700ccdd1acecf8365345a56bde07833afe7f8bd1bee68cba0e2fcf9a"},
 ]
 
 [package.dependencies]

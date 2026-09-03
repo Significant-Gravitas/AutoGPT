@@ -457,7 +457,7 @@ def _assert_no_forbidden_patterns(
 
 @pytest.mark.asyncio
 @pytest.mark.xfail(
-    reason="CLI 2.1.248 (SDK 0.2.146) still sends the "
+    reason="CLI 2.1.259 (SDK 0.2.152) still sends the "
     "context-management-2025-06-27 beta header against a non-Anthropic base "
     "URL without CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (observed, same as "
     "CLI 2.1.97 / SDK 0.1.58). This is expected — the env var guard in "
