@@ -22,7 +22,7 @@ integrations, automations, and custom applications.
 | Version             | End of Life | Path                   | Documentation |
 |---------------------|-------------|------------------------|---------------|
 | **v2**              |             | `/external-api/v2/...` | [v2 docs](v2/docs) |
-| **v1** (deprecated) | 2025-05-01  | `/external-api/v1/...` | [v1 docs](v1/docs) |
+| **v1** (deprecated) | 2026-12-31  | `/external-api/v1/...` | [v1 docs](v1/docs) |
 
 **Recommendation**: New integrations should use v2.
 

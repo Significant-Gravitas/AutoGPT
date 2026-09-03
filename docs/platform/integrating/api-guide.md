@@ -111,7 +111,7 @@ A few endpoints require two scopes at once:
 | Endpoint | Scopes |
 |----------|--------|
 | `POST /graphs/{graph_id}/schedules` | `WRITE_SCHEDULE` + `RUN_AGENT` |
-| `POST /library/presets/{preset_id}/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
+| `POST /library/presets/setup-trigger` | `WRITE_LIBRARY` + `RUN_AGENT` |
 | `POST /runs/{run_id}/share` | `READ_RUN` + `SHARE_RUN` |
 
 Public marketplace reads (`GET /marketplace/agents`, `/creators`, and their detail
