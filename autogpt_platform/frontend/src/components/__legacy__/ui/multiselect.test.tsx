@@ -18,7 +18,7 @@ function renderMultiSelector({
 } = {}) {
   render(
     <MultiSelector
-      values={["One"]}
+      values={["One", "Two"]}
       onValuesChange={onValuesChange}
       dir={dir}
       loop={loop}
@@ -33,6 +33,10 @@ function renderMultiSelector({
   );
 
   return { input: screen.getByLabelText("Options"), onValuesChange };
+}
+
+function isActive(name: string) {
+  return screen.getByText(name).parentElement?.classList.contains("ring-2");
 }
 
 describe("MultiSelector keyboard handling", () => {
@@ -54,7 +58,7 @@ describe("MultiSelector keyboard handling", () => {
 
       fireEvent.keyDown(input, { key });
 
-      expect(onValuesChange).toHaveBeenCalledWith([]);
+      expect(onValuesChange).toHaveBeenCalledWith(["One"]);
     },
   );
 
@@ -98,33 +102,47 @@ describe("MultiSelector keyboard handling", () => {
 
     fireEvent.keyDown(input, { key });
 
-    expect(
-      screen.getByText("One").parentElement?.classList.contains("ring-2"),
-    ).toBe(true);
+    expect(isActive("Two")).toBe(true);
+    expect(isActive("One")).toBe(false);
   });
 
   it.each([
-    { dir: "ltr" as const, key: "ArrowRight" },
-    { dir: "rtl" as const, key: "ArrowLeft" },
-  ])("loops to the first value with $dir $key", ({ dir, key }) => {
-    const { input } = renderMultiSelector({ dir, loop: true });
+    { dir: "ltr" as const, back: "ArrowLeft", forward: "ArrowRight" },
+    { dir: "rtl" as const, back: "ArrowRight", forward: "ArrowLeft" },
+  ])(
+    "wraps from the final value to the first with $dir $forward when looping",
+    ({ dir, back, forward }) => {
+      const { input } = renderMultiSelector({ dir, loop: true });
 
-    fireEvent.keyDown(input, { key });
+      fireEvent.keyDown(input, { key: back });
+      expect(isActive("Two")).toBe(true);
 
-    expect(
-      screen.getByText("One").parentElement?.classList.contains("ring-2"),
-    ).toBe(true);
+      fireEvent.keyDown(input, { key: forward });
+      expect(isActive("One")).toBe(true);
+      expect(isActive("Two")).toBe(false);
+    },
+  );
+
+  it("clears the selection past the final value without looping", () => {
+    const { input } = renderMultiSelector();
+
+    fireEvent.keyDown(input, { key: "ArrowLeft" });
+    fireEvent.keyDown(input, { key: "ArrowRight" });
+
+    expect(isActive("One")).toBe(false);
+    expect(isActive("Two")).toBe(false);
   });
 
   it("moves forward from an active value in RTL mode", () => {
     const { input } = renderMultiSelector({ dir: "rtl" });
 
     fireEvent.keyDown(input, { key: "ArrowRight" });
-    fireEvent.keyDown(input, { key: "ArrowLeft" });
+    fireEvent.keyDown(input, { key: "ArrowRight" });
+    expect(isActive("One")).toBe(true);
 
-    expect(
-      screen.getByText("One").parentElement?.classList.contains("ring-2"),
-    ).toBe(false);
+    fireEvent.keyDown(input, { key: "ArrowLeft" });
+    expect(isActive("Two")).toBe(true);
+    expect(isActive("One")).toBe(false);
   });
 
   it("does not move forward from no active value without looping", () => {
@@ -132,8 +150,7 @@ describe("MultiSelector keyboard handling", () => {
 
     fireEvent.keyDown(input, { key: "ArrowLeft" });
 
-    expect(
-      screen.getByText("One").parentElement?.classList.contains("ring-2"),
-    ).toBe(false);
+    expect(isActive("One")).toBe(false);
+    expect(isActive("Two")).toBe(false);
   });
 });
