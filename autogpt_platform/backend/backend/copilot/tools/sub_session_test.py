@@ -1012,9 +1012,7 @@ class TestActorParameter:
 
 
 class TestRunSubSessionPerIntent:
-    """``AUTOPILOT_DELEGATION`` makes every sub single-use: a resumed sub
-    accumulates the context the delegation rules exist to keep out of the
-    parent, which measured worse than not delegating at all."""
+    """``AUTOPILOT_DELEGATION`` makes every sub single-use."""
 
     @pytest.mark.asyncio
     async def test_resume_refused_before_the_ownership_lookup(
@@ -1038,7 +1036,7 @@ class TestRunSubSessionPerIntent:
             sub_autopilot_session_id="prev-sub",
         )
         assert isinstance(r, ErrorResponse)
-        assert "starts a fresh sub" in r.message
+        assert "single-use" in r.message
         assert "get_sub_session_result" in r.message
         assert looked_up == []
 

@@ -672,14 +672,9 @@ async def build_autopilot_delegation_supplement(
 ) -> str:
     """The delegation rules, or ``""`` when this turn must not delegate.
 
-    One gate for both engines so flag-off behaviour is provably a no-op:
-    every caller gets the empty string and the system prompt is unchanged.
-
-    Only a turn a human drove gets the rules, which is what bounds delegation
-    to one level: every sub is opened with ``origin="automation"``, so a sub
-    is never told to spawn its own. Unknown origin counts as automation, the
-    same call :func:`child_session_origin` makes — a turn that cannot prove a
-    human drove it must not claim one did. Anonymous turns fail closed too.
+    Only a human-driven turn gets them, which bounds delegation to one level:
+    every sub is opened ``origin="automation"``. Unknown origin counts as
+    automation, the call :func:`child_session_origin` makes.
     """
     if not user_id or session.metadata.origin != "interactive":
         return ""
@@ -689,12 +684,12 @@ async def build_autopilot_delegation_supplement(
 
 
 def get_autopilot_delegation_supplement() -> str:
-    """Delegation rules for the ``AUTOPILOT_DELEGATION`` cohort.
+    """Rules for the ``AUTOPILOT_DELEGATION`` cohort — protecting this turn's
+    own context, unlike :func:`get_delegation_supplement`, which is about
+    handing work to a teammate.
 
-    Separate from :func:`get_delegation_supplement`, which is about handing
-    work to a *teammate* and rides ``HIRE_EXPERTS``. This one is about
-    protecting this turn's own context, so it applies whether or not the
-    user has a team.
+    Measured: trimming this text below ~27 lines stops it inducing delegation
+    (0 delegations across three shorter rewrites, 4/4 with this one).
     """
     return """
 

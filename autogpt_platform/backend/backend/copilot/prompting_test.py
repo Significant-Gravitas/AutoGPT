@@ -101,8 +101,7 @@ class TestGraphitiMemoryScope:
 
 
 class TestAutopilotDelegationSupplement:
-    """The AUTOPILOT_DELEGATION gate: one seam both engines go through, so
-    flag-off is provably a no-op on the system prompt."""
+    """One gate both engines go through, so flag-off is provably a no-op."""
 
     @pytest.mark.asyncio
     async def test_flag_off_leaves_the_prompt_byte_identical(self, monkeypatch):
@@ -140,8 +139,8 @@ class TestAutopilotDelegationSupplement:
 
     @pytest.mark.asyncio
     async def test_a_sub_session_is_never_told_to_delegate(self, monkeypatch):
-        """Every sub is opened origin="automation". Handing it these rules
-        would tell it to spawn its own subs, with nothing bounding the chain."""
+        """A sub told to delegate would spawn its own, with nothing bounding
+        the chain."""
         flag = _set_flag(monkeypatch, True)
         result = await prompting.build_autopilot_delegation_supplement(
             "u1", _session_with_origin("automation")
@@ -151,8 +150,7 @@ class TestAutopilotDelegationSupplement:
 
     @pytest.mark.asyncio
     async def test_unknown_origin_counts_as_automation(self, monkeypatch):
-        """Matches child_session_origin: a turn that cannot prove a human
-        drove it must not claim one did."""
+        """Matches child_session_origin."""
         _set_flag(monkeypatch, True)
         assert (
             await prompting.build_autopilot_delegation_supplement(
@@ -165,7 +163,7 @@ class TestAutopilotDelegationSupplement:
         rules = prompting.get_autopilot_delegation_supplement()
         assert "run_sub_session" in rules
         assert "Do not try to continue a previous one" in rules
-        # Polling a still-running sub is a different thing and must stay allowed.
+        # Polling a still-running sub must stay allowed.
         assert "get_sub_session_result" in rules
 
     def test_both_engines_append_the_gated_supplement(self):

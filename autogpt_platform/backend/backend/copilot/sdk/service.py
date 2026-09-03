@@ -4744,8 +4744,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             Flag.HIRE_EXPERTS, user_id, default=False
         )
         delegation_supplement = get_delegation_supplement() if experts_enabled else ""
-        # Gated independently of experts_enabled: this is about keeping THIS
-        # turn's context small, true whether or not the user has a team.
+        # Independent of experts_enabled: about this turn's context, not a team.
         autopilot_delegation_supplement = await build_autopilot_delegation_supplement(
             user_id, session
         )

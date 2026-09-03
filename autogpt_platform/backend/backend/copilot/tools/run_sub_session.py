@@ -99,11 +99,11 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    # Worded for both flag states because `parameters` is a
-                    # property with no user or request context to gate on.
+                    # `parameters` has no request context, so one wording
+                    # has to cover both flag states.
                     "description": (
-                        "Continue/queue-into a prior sub; empty = new. Refused "
-                        "when single-use subs are enabled — leave empty then."
+                        "Continue a prior sub; empty = new. Refused when "
+                        "single-use subs are enabled."
                     ),
                     "default": "",
                 },
@@ -149,17 +149,13 @@ class RunSubSessionTool(BaseTool):
         if sub_session_param and await is_feature_enabled(
             Flag.AUTOPILOT_DELEGATION, user_id, default=False
         ):
-            # A sub reused across units of work accumulates exactly the context
-            # the delegation supplement exists to keep out of the parent; it
-            # measured worse than not delegating at all. Refused rather than
-            # silently redirected so the model knows its state did not carry.
+            # A reused sub accumulates the context delegation exists to
+            # avoid; it measured worse than not delegating at all.
             return ErrorResponse(
                 message=(
-                    "Each run_sub_session call starts a fresh sub — "
-                    f"sub_autopilot_session_id {sub_session_param} cannot be "
-                    "continued. Leave it empty and put whatever the sub needs "
-                    "to know into the prompt. To poll a sub that is still "
-                    "running, use get_sub_session_result instead."
+                    "Subs are single-use: leave sub_autopilot_session_id empty "
+                    "and put what the sub needs into the prompt. To poll a "
+                    "running sub, use get_sub_session_result."
                 ),
                 session_id=session.session_id,
             )
