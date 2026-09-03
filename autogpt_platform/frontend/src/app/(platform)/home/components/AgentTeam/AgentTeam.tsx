@@ -1,7 +1,7 @@
 import {
+  AiBackgroundEraserIcon,
   ArrowRight01Icon,
   UserAdd01Icon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
@@ -27,7 +27,7 @@ export function AgentTeam({ dashboard, className }: Props) {
   return (
     <HomeTile
       className={className}
-      icon={UserGroupIcon}
+      icon={AiBackgroundEraserIcon}
       title="Your agents"
       meta={
         team.total > 0 ? (
