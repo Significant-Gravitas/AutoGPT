@@ -58,6 +58,10 @@ queue_forced_check() {
   fi
 }
 
+notify_check_timer_started() {
+  :
+}
+
 wait_for_next_check() {
   local timer_pid
   local timer_status
@@ -72,6 +76,7 @@ wait_for_next_check() {
   sleep "${CHECK_INTERVAL}" &
   timer_pid=$!
   CHECK_TIMER_PID="${timer_pid}"
+  notify_check_timer_started
   if [[ "${FORCED_CHECK_PENDING}" == true ]]; then
     if ! kill -TERM "${timer_pid}" 2>/dev/null; then
       :

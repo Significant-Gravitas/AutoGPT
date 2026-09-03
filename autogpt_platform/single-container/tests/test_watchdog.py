@@ -50,8 +50,15 @@ stop_appliance() {
 }
 
 if [[ "${WATCHDOG_TEST_MODE}" == forced ]]; then
-  sleep() {
+  notify_check_timer_started() {
+    local watchdog_pid="$$"
     printf 'timer-ready\n'
+    (
+      "${REAL_SLEEP}" 0.05
+      kill -USR1 "${watchdog_pid}"
+    ) &
+  }
+  sleep() {
     exec "${REAL_SLEEP}" "$@"
   }
 elif [[ "${WATCHDOG_TEST_MODE}" == periodic ]]; then
@@ -188,7 +195,6 @@ wait_for_next_check
             try:
                 self._wait_for_line(process, output, lines, "harness-ready")
                 self._wait_for_line(process, output, lines, "timer-ready")
-                process.send_signal(signal.SIGUSR1)
                 self._wait_for_line(
                     process,
                     output,
@@ -197,7 +203,6 @@ wait_for_next_check
                 )
                 for failure in range(1, 4):
                     self._wait_for_line(process, output, lines, "timer-ready")
-                    process.send_signal(signal.SIGUSR1)
                     self._wait_for_line(
                         process,
                         output,
