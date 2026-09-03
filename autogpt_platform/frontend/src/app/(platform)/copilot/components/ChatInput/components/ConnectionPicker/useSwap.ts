@@ -26,7 +26,15 @@ export function useSwap<T>(key: string, value: T) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (key === shownKey) return;
+    if (key === shownKey) {
+      // Back to what is already on screen while its own exit was still
+      // running: a second click inside SWAP_MS. The timer was cleared on the
+      // way in, so nothing is left to bring the content back, and an exit left
+      // standing holds it at opacity 0 until some later swap happens to clear
+      // it. There is no longer anything to animate, so it simply stays.
+      setPhase((current) => (current === "exit" ? "idle" : current));
+      return;
+    }
     if (prefersReducedMotion()) {
       setShownKey(key);
       setShown(value);
