@@ -13,8 +13,6 @@ from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
 
-from backend.api.external.middleware import require_permission
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
@@ -23,6 +21,7 @@ from backend.data.model import (
 
 from ..models import CredentialCreateRequest, CredentialInfo
 from ..pagination import Page, PageRequest, page_request
+from ..tenancy import TenantContext, require_permission
 from .helpers import creds_manager
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,7 @@ async def list_credentials(
         description="Filter by provider name (e.g., 'github', 'google')",
     ),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> Page[CredentialInfo]:
@@ -62,7 +61,7 @@ async def list_credentials(
 )
 async def create_credential(
     request: Annotated[CredentialCreateRequest, Body(discriminator="type")],
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
 ) -> CredentialInfo:
@@ -110,7 +109,7 @@ async def create_credential(
 )
 async def delete_credential(
     credential_id: str,
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
 ) -> None:

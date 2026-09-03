@@ -10,13 +10,12 @@ from fastapi import APIRouter, Depends, Security
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import APIKeyPermission
 
-from backend.api.external.middleware import require_permission
 from backend.blocks import get_blocks
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.cache import cached
 
 from .models import BlockInfo
 from .pagination import Page, PageRequest, page_request
+from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +61,7 @@ async def _get_cached_blocks() -> list[BlockInfo]:
 )
 async def list_available_blocks(
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_BLOCK)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_BLOCK)),
 ) -> Page[BlockInfo]:
     """List all available blocks with their input/output schemas and cost information."""
     return page.slice(await _get_cached_blocks())

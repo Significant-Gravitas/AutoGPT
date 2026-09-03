@@ -11,14 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.api.features.library.model import (
     TriggeredPresetSetupRequest as _TriggeredPresetSetupRequest,
 )
-from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.credit import get_user_credit_model
+from backend.data.credit import get_credit_model
 from backend.executor import utils as execution_utils
 
 from ..models import (
@@ -31,6 +29,7 @@ from ..models import (
 )
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
+from ..tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +44,7 @@ presets_router = APIRouter(tags=["library", "presets"])
 async def list_presets(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[AgentPreset]:
     """List presets in the user's library, optionally filtered by graph ID."""
     result = await library_db.list_presets(
@@ -70,9 +67,7 @@ async def list_presets(
 )
 async def get_preset(
     preset_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> AgentPreset:
     """Get details of a specific preset."""
     preset = await library_db.get_preset(
@@ -96,9 +91,7 @@ async def get_preset(
 )
 async def create_preset(
     request: AgentPresetCreateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> AgentPreset:
     """Create a new preset with saved inputs and credentials for an agent."""
     creatable = LibraryAgentPresetCreatable(
@@ -126,7 +119,7 @@ async def create_preset(
 )
 async def setup_trigger(
     request: AgentTriggerSetupRequest,
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentPreset:
@@ -166,9 +159,7 @@ async def setup_trigger(
 async def update_preset(
     request: AgentPresetUpdateRequest,
     preset_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated."""
     preset = await library_db.update_preset(
@@ -191,9 +182,7 @@ async def update_preset(
 )
 async def delete_preset(
     preset_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
     """Delete a preset."""
     await library_db.delete_preset(
@@ -211,9 +200,7 @@ async def delete_preset(
 async def execute_preset(
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.RUN_AGENT)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
     Execute a preset, optionally overriding saved inputs and credentials.
@@ -223,7 +210,7 @@ async def execute_preset(
     await graph_exec_limiter.check(auth.user_id)
 
     # Check credit balance
-    user_credit_model = await get_user_credit_model(auth.user_id)
+    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
     current_balance = await user_credit_model.get_credits(auth.user_id)
     if current_balance <= 0:
         raise HTTPException(
@@ -253,5 +240,7 @@ async def execute_preset(
         graph_version=preset.graph_version,
         graph_credentials_inputs=merged_credentials,
         preset_id=preset_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     return AgentGraphRun.from_internal(result)

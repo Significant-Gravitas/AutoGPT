@@ -7,11 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
-from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.credit import get_user_credit_model
+from backend.data.credit import get_credit_model
 from backend.executor import utils as execution_utils
 
 from ..integrations.helpers import get_credential_requirements
@@ -24,6 +22,7 @@ from ..models import (
 )
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
+from ..tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +49,7 @@ async def list_library_agents(
         description="Filter by `isFavorite` attribute",
     ),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[LibraryAgent]:
     """List agents in the user's library."""
     result = await library_db.list_library_agents(
@@ -61,6 +58,7 @@ async def list_library_agents(
         page_size=page.limit,
         published=published,
         favorite=favorite,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -76,9 +74,7 @@ async def list_library_agents(
 )
 async def get_library_agent(
     agent_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryAgent:
     """Get detailed information about a specific agent in the user's library."""
     agent = await library_db.get_library_agent(
@@ -96,9 +92,7 @@ async def get_library_agent(
 async def update_library_agent(
     request: LibraryAgentUpdateRequest,
     agent_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryAgent:
     """Update properties of a library agent."""
     updated = await library_db.update_library_agent(
@@ -121,9 +115,7 @@ async def update_library_agent(
 )
 async def delete_library_agent(
     agent_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
     """Remove an agent from the user's library."""
     await library_db.delete_library_agent(
@@ -140,9 +132,7 @@ async def delete_library_agent(
 )
 async def fork_library_agent(
     agent_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryAgent:
     """Fork (clone) a library agent.
 
@@ -166,9 +156,7 @@ async def fork_library_agent(
 async def execute_agent(
     request: AgentRunRequest,
     agent_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.RUN_AGENT)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
     Execute an agent from the library.
@@ -178,7 +166,7 @@ async def execute_agent(
     await graph_exec_limiter.check(auth.user_id)
 
     # Check credit balance
-    user_credit_model = await get_user_credit_model(auth.user_id)
+    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
     current_balance = await user_credit_model.get_credits(auth.user_id)
     if current_balance <= 0:
         raise HTTPException(
@@ -198,6 +186,8 @@ async def execute_agent(
         inputs=request.inputs,
         graph_version=library_agent.graph_version,
         graph_credentials_inputs=request.credentials_inputs,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     return AgentGraphRun.from_internal(result)
 
@@ -210,7 +200,7 @@ async def execute_agent(
 async def list_agent_credential_requirements(
     agent_id: str,
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> Page[CredentialRequirement]:
@@ -222,6 +212,8 @@ async def list_agent_credential_requirements(
         version=library_agent.graph_version,
         user_id=auth.user_id,
         include_subgraphs=True,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(

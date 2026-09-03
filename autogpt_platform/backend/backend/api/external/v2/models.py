@@ -51,6 +51,49 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
+class TenantedResource(BaseModel):
+    """Fields identifying which organization and team a resource belongs to."""
+
+    organization_id: Optional[str] = Field(
+        default=None, description="Organization the resource belongs to"
+    )
+    team_id: Optional[str] = Field(
+        default=None,
+        description="Team within the organization; null means organization-wide",
+    )
+
+
+class TenantOrganization(BaseModel):
+    """The organization a request acts in."""
+
+    id: str
+    name: str
+    is_personal: bool = Field(
+        description="Whether this is the caller's own single-member organization"
+    )
+
+
+class TenantTeam(BaseModel):
+    """The team a request acts in, within its organization."""
+
+    id: str
+    name: str
+
+
+class Identity(BaseModel):
+    """Who the credentials act as, and where."""
+
+    user_id: str
+    email: str
+    organization: TenantOrganization
+    team: Optional[TenantTeam] = Field(
+        default=None,
+        description="Team the request acts in; null means organization-wide",
+    )
+    scopes: list[str] = Field(description="Permissions granted to these credentials")
+    credential_type: Literal["api_key", "oauth"]
+
+
 # ============================================================================
 # Graph Models
 # ============================================================================
@@ -130,7 +173,7 @@ class GraphCreateRequest(BaseModel):
         )
 
 
-class GraphMeta(BaseModel):
+class GraphMeta(TenantedResource):
     """Existing agent graph metadata (summary information)."""
 
     id: str
@@ -158,6 +201,8 @@ class GraphMeta(BaseModel):
             created_at=graph.created_at,
             forked_from_id=graph.forked_from_id,
             forked_from_version=graph.forked_from_version,
+            organization_id=graph.organization_id,
+            team_id=graph.team_id,
         )
 
 
@@ -187,6 +232,8 @@ class Graph(GraphMeta):
             created_at=graph.created_at,
             forked_from_id=graph.forked_from_id,
             forked_from_version=graph.forked_from_version,
+            organization_id=graph.organization_id,
+            team_id=graph.team_id,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             credentials_input_schema=graph.credentials_input_schema,
@@ -562,7 +609,7 @@ class LibraryFolderMoveRequest(BaseModel):
 # ============================================================================
 
 
-class AgentPreset(BaseModel):
+class AgentPreset(TenantedResource):
     """A saved preset configuration for running an agent."""
 
     id: str
@@ -592,6 +639,8 @@ class AgentPreset(BaseModel):
             webhook_id=p.webhook_id,
             created_at=p.created_at,
             updated_at=p.updated_at,
+            organization_id=p.organization_id,
+            team_id=p.team_id,
         )
 
 
@@ -660,7 +709,7 @@ class CredentialInputInfo(BaseModel):
     type: str
 
 
-class AgentGraphRun(BaseModel):
+class AgentGraphRun(TenantedResource):
     id: str
     graph_id: str
     graph_version: int
@@ -707,6 +756,8 @@ class AgentGraphRun(BaseModel):
             duration=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
             correctness_score=exec.stats.correctness_score if exec.stats else None,
+            organization_id=exec.organization_id,
+            team_id=exec.team_id,
         )
 
     @classmethod
@@ -753,6 +804,8 @@ class AgentGraphRunDetails(AgentGraphRun):
             duration=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
             correctness_score=exec.stats.correctness_score if exec.stats else None,
+            organization_id=exec.organization_id,
+            team_id=exec.team_id,
             node_executions=[
                 AgentNodeExecution(
                     node_id=node.node_id,

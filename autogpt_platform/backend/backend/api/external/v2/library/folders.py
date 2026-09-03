@@ -7,9 +7,7 @@ from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.api.features.library import db as library_db
-from backend.data.auth.base import APIAuthorizationInfo
 
 from ..models import (
     LibraryFolder,
@@ -19,6 +17,7 @@ from ..models import (
     LibraryFolderUpdateRequest,
 )
 from ..pagination import Page, PageRequest, page_request
+from ..tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,7 @@ async def list_folders(
         default=None, description="Filter by parent folder ID. Omit for root folders."
     ),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[LibraryFolder]:
     """List folders in the user's library."""
     folders = await library_db.list_folders(
@@ -55,9 +52,7 @@ async def list_folders(
 )
 async def get_folder_tree(
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[LibraryFolderTree]:
     """Get the full folder tree for the user's library.
 
@@ -75,9 +70,7 @@ async def get_folder_tree(
 )
 async def get_folder(
     folder_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryFolder:
     """Get details of a specific folder."""
     folder = await library_db.get_folder(
@@ -95,9 +88,7 @@ async def get_folder(
 )
 async def create_folder(
     request: LibraryFolderCreateRequest,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Create a new folder in the user's library."""
     folder = await library_db.create_folder(
@@ -118,9 +109,7 @@ async def create_folder(
 async def update_folder(
     request: LibraryFolderUpdateRequest,
     folder_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Update properties of a folder."""
     folder = await library_db.update_folder(
@@ -141,9 +130,7 @@ async def update_folder(
 async def move_folder(
     request: LibraryFolderMoveRequest,
     folder_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Move a folder to a new parent. Set target_parent_id to null to move to root."""
     folder = await library_db.move_folder(
@@ -162,9 +149,7 @@ async def move_folder(
 )
 async def delete_folder(
     folder_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
     """
     Delete a folder and its subfolders. Agents in this folder will be moved to root.

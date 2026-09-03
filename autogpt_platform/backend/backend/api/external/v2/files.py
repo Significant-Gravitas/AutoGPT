@@ -14,8 +14,6 @@ from fastapi.responses import RedirectResponse, Response
 from prisma.enums import APIKeyPermission
 from starlette import status
 
-from backend.api.external.middleware import require_permission
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.workspace import (
     count_workspace_files,
     get_workspace,
@@ -31,6 +29,7 @@ from backend.util.workspace_storage import get_workspace_storage
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import file_upload_limiter
+from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -50,9 +49,7 @@ file_workspace_router = APIRouter(tags=["files"])
 )
 async def list_files(
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_FILES)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_FILES)),
 ) -> Page[WorkspaceFileInfo]:
     """List files in the user's workspace."""
     workspace = await get_workspace(auth.user_id)
@@ -90,9 +87,7 @@ async def list_files(
 )
 async def get_file(
     file_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_FILES)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_FILES)),
 ) -> WorkspaceFileInfo:
     """Get metadata for a specific file in the user's workspace."""
     workspace = await get_workspace(auth.user_id)
@@ -128,9 +123,7 @@ async def get_file(
 )
 async def delete_file(
     file_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_FILES)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_FILES)),
 ) -> None:
     """Soft-delete a file from the user's workspace."""
     workspace = await get_workspace(auth.user_id)
@@ -170,9 +163,7 @@ async def upload_file(
     expiration_hours: int = Query(
         default=24, ge=1, le=48, description="Hours until file expires (1-48)"
     ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_FILES)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_FILES)),
 ) -> UploadWorkspaceFileResponse:
     """
     Upload a file to cloud storage for use with agents.
@@ -263,9 +254,7 @@ def _sanitize_filename_for_header(filename: str) -> str:
 )
 async def download_file(
     file_id: str,
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_FILES)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_FILES)),
 ) -> Response:
     """Download a file from the user's workspace."""
     workspace = await get_workspace(auth.user_id)
