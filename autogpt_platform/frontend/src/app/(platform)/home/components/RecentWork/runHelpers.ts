@@ -41,5 +41,9 @@ export function getRunStatus(run: SitrepItemData): RunStatus {
       return { label: "Scheduled", dot: "bg-amber-500", pulse: false };
     case "idle":
       return { label: "Idle", dot: "bg-zinc-400", pulse: false };
+    default:
+      // The union is exhaustive today; a status the feed adds later reads as
+      // idle rather than crashing the row.
+      return { label: "Idle", dot: "bg-zinc-400", pulse: false };
   }
 }
