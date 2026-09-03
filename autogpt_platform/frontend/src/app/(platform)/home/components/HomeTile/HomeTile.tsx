@@ -48,7 +48,7 @@ export function HomeTile({
           <Text
             variant="body-medium"
             as="h2"
-            className="truncate text-[13px] leading-5 text-zinc-900"
+            className="truncate text-sm text-zinc-900"
           >
             {title}
           </Text>

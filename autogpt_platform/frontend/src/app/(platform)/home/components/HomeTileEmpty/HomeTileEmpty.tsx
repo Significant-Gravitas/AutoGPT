@@ -32,10 +32,10 @@ export function HomeTileEmpty({
         className="mb-1 text-zinc-400"
         aria-hidden="true"
       />
-      <Text variant="small-medium" className="text-[13px] text-zinc-700">
+      <Text variant="large-medium" className="text-zinc-700">
         {title}
       </Text>
-      <Text variant="small" className="max-w-xs text-pretty text-zinc-500">
+      <Text variant="body" className="max-w-xs text-pretty text-zinc-500">
         {description}
       </Text>
       {action ? (
