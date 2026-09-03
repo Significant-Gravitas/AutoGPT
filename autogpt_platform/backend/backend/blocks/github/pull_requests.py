@@ -259,6 +259,24 @@ class GithubMakePullRequestBlock(Block):
             yield "error", str(e)
 
 
+TEST_PR_PAYLOAD = {
+    "title": "Title of the pull request",
+    "body": "This is the body of the pull request.",
+    "user": {"login": "username"},
+    "draft": False,
+    "mergeable": True,
+    "mergeable_state": "clean",
+    "head": {
+        "ref": "feature-branch",
+        "repo": {"full_name": "someone/repo"},
+    },
+    "base": {
+        "ref": "main",
+        "repo": {"full_name": "owner/repo"},
+    },
+}
+
+
 class GithubReadPullRequestBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -277,6 +295,12 @@ class GithubReadPullRequestBlock(Block):
         body: str = SchemaField(description="Body of the pull request")
         author: str = SchemaField(description="User who created the pull request")
         changes: str = SchemaField(description="Changes made in the pull request")
+        pull_request: dict = SchemaField(
+            description="The full pull request object from the API, including "
+            "head/base refs (with fork repo and branch name for cross-repo PRs), "
+            "mergeability (mergeable, mergeable_state, rebaseable), draft state, "
+            "review/comment counts, labels, milestone, and diff/commit stats."
+        )
         error: str = SchemaField(
             description="Error message if reading the pull request failed"
         )
@@ -284,7 +308,8 @@ class GithubReadPullRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
-            description="This block reads the body, title, user, and changes of a specified GitHub pull request.",
+            description="This block reads the body, title, user, changes, and full "
+            "raw object of a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadPullRequestBlock.Input,
             output_schema=GithubReadPullRequestBlock.Output,
@@ -298,6 +323,7 @@ class GithubReadPullRequestBlock(Block):
                 ("title", "Title of the pull request"),
                 ("body", "This is the body of the pull request."),
                 ("author", "username"),
+                ("pull_request", TEST_PR_PAYLOAD),
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
@@ -306,6 +332,7 @@ class GithubReadPullRequestBlock(Block):
                     "This is the body of the pull request.",
                     "username",
                 ),
+                "read_pr_full_object": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
         )
@@ -322,6 +349,15 @@ class GithubReadPullRequestBlock(Block):
         body = data.get("body", "No body content found")
         author = data.get("user", {}).get("login", "Unknown author")
         return title, body, author
+
+    @staticmethod
+    async def read_pr_full_object(credentials: GithubCredentials, pr_url: str) -> dict:
+        api = get_api(credentials)
+        # The issues endpoint (used by read_pr) omits head/base/mergeability;
+        # only the pulls endpoint itself returns the full PR object.
+        pr_api_url = prepare_pr_api_url(pr_url=pr_url, path="").rstrip("/")
+        response = await api.get(pr_api_url)
+        return response.json()
 
     @staticmethod
     async def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
@@ -366,6 +402,12 @@ class GithubReadPullRequestBlock(Block):
         yield "title", title
         yield "body", body
         yield "author", author
+
+        pull_request = await self.read_pr_full_object(
+            credentials,
+            input_data.pr_url,
+        )
+        yield "pull_request", pull_request
 
         if input_data.include_pr_changes:
             changes = await self.read_pr_changes(

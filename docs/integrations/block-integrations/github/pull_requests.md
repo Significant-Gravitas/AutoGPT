@@ -206,7 +206,7 @@ You can optionally provide a custom commit title and message for merge and squas
 ## Github Read Pull Request
 
 ### What it is
-This block reads the body, title, user, and changes of a specified GitHub pull request.
+This block reads the body, title, user, changes, and full raw object of a specified GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -231,6 +231,7 @@ When include_pr_changes is enabled, the block also retrieves the full diff of al
 | body | Body of the pull request | str |
 | author | User who created the pull request | str |
 | changes | Changes made in the pull request | str |
+| pull_request | The full pull request object from the API, including head/base refs (with fork repo and branch name for cross-repo PRs), mergeability (mergeable, mergeable_state, rebaseable), draft state, review/comment counts, labels, milestone, and diff/commit stats. | Dict[str, Any] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
