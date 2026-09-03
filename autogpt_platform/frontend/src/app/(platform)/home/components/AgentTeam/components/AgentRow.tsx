@@ -28,20 +28,20 @@ export function AgentRow({ agent }: Props) {
         <div className="flex items-center gap-2">
           <Text
             variant="body-medium"
-            className="truncate text-[13px] leading-5 text-zinc-900"
+            className="truncate text-[13px] leading-4 text-zinc-900"
           >
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
         </div>
-        <div className="flex min-w-0 items-center gap-1 text-zinc-500">
-          <Text variant="small" className="min-w-0 truncate">
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-zinc-500">
+          <Text variant="small" className="min-w-0 truncate leading-4">
             {agent.detail}
           </Text>
           {spend ? (
             <Text
               variant="small"
-              className="shrink-0 tabular-nums"
+              className="shrink-0 tabular-nums leading-4"
               unmask={false}
             >
               {`· ${spend}`}
