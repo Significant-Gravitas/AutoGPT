@@ -1,5 +1,5 @@
 """
-Tests for v2 API error handling behavior.
+Tests for the v2 API error envelope.
 
 The v2 app registers its own exception handlers (since mounted sub-apps don't
 inherit handlers from the parent app). These tests verify that exceptions from
@@ -22,10 +22,10 @@ from prisma.enums import APIKeyPermission
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.external.middleware import require_auth
-from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import DatabaseError, NotFoundError
 
+from .errors import add_v2_exception_handlers
 from .library.agents import agents_router
 from .marketplace import marketplace_router
 
@@ -46,7 +46,7 @@ _mock_auth = APIAuthorizationInfo(
 app = fastapi.FastAPI()
 app.include_router(agents_router, prefix="/library")
 app.include_router(marketplace_router, prefix="/marketplace")
-add_exception_handlers(app)
+add_v2_exception_handlers(app)
 
 
 @pytest.fixture(autouse=True)
@@ -84,9 +84,8 @@ def test_not_found_error_returns_404(
 
     assert response.status_code == 404
     body = response.json()
-    assert body["detail"] == "Agent #nonexistent not found"
-    assert "message" in body
-    assert body["hint"] == "Adjust the request and retry."
+    assert body["error"]["code"] == "not_found"
+    assert body["error"]["message"] == "Agent #nonexistent not found"
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
@@ -108,8 +107,7 @@ def test_not_found_error_on_delete_returns_404(
     response = client.delete("/library/agents/gone")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Agent #gone not found"
-    assert "message" in response.json()
+    assert response.json()["error"]["message"] == "Agent #gone not found"
 
 
 def test_not_found_error_on_marketplace_returns_404(
@@ -125,8 +123,7 @@ def test_not_found_error_on_marketplace_returns_404(
     response = client.get("/marketplace/agents/by-version/nonexistent")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Store listing not found"
-    assert "message" in response.json()
+    assert response.json()["error"]["message"] == "Store listing not found"
 
 
 # ============================================================================
@@ -152,9 +149,8 @@ def test_value_error_returns_400(
 
     assert response.status_code == 400
     body = response.json()
-    assert body["detail"] == "Invalid graph version: -1"
-    assert "message" in body
-    assert body["hint"] == "Adjust the request and retry."
+    assert body["error"]["code"] == "bad_request"
+    assert body["error"]["message"] == "Invalid graph version: -1"
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
@@ -210,9 +206,8 @@ def test_unhandled_exception_returns_500(
 
     assert response.status_code == 500
     body = response.json()
-    assert "message" in body
-    assert "detail" in body
-    assert body["hint"] == "Check server logs and dependent services."
+    assert body["error"]["code"] == "internal_error"
+    assert "connection refused" not in json.dumps(body)
 
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
@@ -234,8 +229,7 @@ def test_runtime_error_returns_500(
     response = client.delete("/library/agents/some-id")
 
     assert response.status_code == 500
-    assert "detail" in response.json()
-    assert response.json()["hint"] == "Check server logs and dependent services."
+    assert response.json()["error"]["code"] == "internal_error"
 
 
 # ============================================================================
@@ -246,7 +240,7 @@ def test_runtime_error_returns_500(
 def test_all_error_responses_have_consistent_format(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """All error responses should use {"message": ..., "detail": ..., "hint": ...} format."""
+    """Every error response is `{"error": {"code", "message", "details"}}`."""
     cases = [
         (NotFoundError("not found"), 404),
         (ValueError("bad value"), 400),
@@ -267,10 +261,11 @@ def test_all_error_responses_have_consistent_format(
             f"got {response.status_code}"
         )
         body = response.json()
-        assert (
-            "message" in body
-        ), f"Missing 'message' key for {type(exc).__name__}: {body}"
-        assert (
-            "detail" in body
-        ), f"Missing 'detail' key for {type(exc).__name__}: {body}"
-        assert "hint" in body, f"Missing 'hint' key for {type(exc).__name__}: {body}"
+        assert set(body) == {
+            "error"
+        }, f"Extra top-level keys for {type(exc).__name__}: {body}"
+        assert set(body["error"]) == {
+            "code",
+            "message",
+            "details",
+        }, f"Wrong error keys for {type(exc).__name__}: {body}"

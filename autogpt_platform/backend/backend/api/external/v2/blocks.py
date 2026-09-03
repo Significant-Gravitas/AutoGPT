@@ -6,7 +6,7 @@ Provides read-only access to available building blocks.
 
 import logging
 
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, Depends, Security
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import APIKeyPermission
 
@@ -16,6 +16,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.cache import cached
 
 from .models import BlockInfo
+from .pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,10 @@ async def _get_cached_blocks() -> list[BlockInfo]:
     operation_id="listAvailableBlocks",
 )
 async def list_available_blocks(
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_BLOCK)
     ),
-) -> list[BlockInfo]:
+) -> Page[BlockInfo]:
     """List all available blocks with their input/output schemas and cost information."""
-    return await _get_cached_blocks()
+    return page.slice(await _get_cached_blocks())

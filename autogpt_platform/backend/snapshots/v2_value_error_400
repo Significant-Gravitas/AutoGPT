@@ -1,5 +1,7 @@
 {
-  "detail": "Invalid graph version: -1",
-  "hint": "Adjust the request and retry.",
-  "message": "Failed to process PATCH /library/agents/some-id"
+  "error": {
+    "code": "bad_request",
+    "details": null,
+    "message": "Invalid graph version: -1"
+  }
 }

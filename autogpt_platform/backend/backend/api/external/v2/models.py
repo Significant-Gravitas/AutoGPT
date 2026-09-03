@@ -51,15 +51,6 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class PaginatedResponse(BaseModel):
-    """Base class for paginated responses."""
-
-    page: int = Field(description="Current page number (1-indexed)")
-    page_size: int = Field(description="Number of items per page")
-    total_count: int = Field(description="Total number of items across all pages")
-    total_pages: int = Field(description="Total number of pages")
-
-
 # ============================================================================
 # Graph Models
 # ============================================================================
@@ -244,12 +235,6 @@ class GraphSetActiveVersionRequest(BaseModel):
     active_graph_version: int = Field(description="Version number to set as active")
 
 
-class GraphListResponse(PaginatedResponse):
-    """Response for listing graphs."""
-
-    graphs: list[GraphMeta]
-
-
 # ============================================================================
 # Block Models
 # ============================================================================
@@ -380,12 +365,6 @@ class AgentRunScheduleCreateRequest(BaseModel):
     )
 
 
-class AgentRunScheduleListResponse(PaginatedResponse):
-    """Response for listing agent run schedules."""
-
-    schedules: list[AgentRunSchedule]
-
-
 # ============================================================================
 # Library Models
 # ============================================================================
@@ -473,12 +452,6 @@ class LibraryAgent(BaseModel):
         )
 
 
-class LibraryAgentListResponse(PaginatedResponse):
-    """Response for listing library agents."""
-
-    agents: list[LibraryAgent]
-
-
 class LibraryAgentUpdateRequest(BaseModel):
     """Request to update a library agent."""
 
@@ -557,18 +530,6 @@ class LibraryFolderTree(BaseModel):
         )
 
 
-class LibraryFolderListResponse(BaseModel):
-    """Response for listing folders."""
-
-    folders: list[LibraryFolder]
-
-
-class LibraryFolderTreeResponse(BaseModel):
-    """Response for folder tree."""
-
-    tree: list[LibraryFolderTree]
-
-
 class LibraryFolderCreateRequest(BaseModel):
     """Request to create a folder."""
 
@@ -632,12 +593,6 @@ class AgentPreset(BaseModel):
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
-
-
-class AgentPresetListResponse(PaginatedResponse):
-    """Response for listing presets."""
-
-    presets: list[AgentPreset]
 
 
 class AgentPresetCreateRequest(BaseModel):
@@ -825,12 +780,6 @@ class AgentNodeExecution(BaseModel):
     ended_at: datetime | None
 
 
-class AgentRunListResponse(PaginatedResponse):
-    """Response for listing agent runs."""
-
-    runs: list[AgentGraphRun]
-
-
 class AgentRunShareResponse(BaseModel):
     """Response after enabling sharing for an agent run."""
 
@@ -880,12 +829,6 @@ class AgentRunReview(BaseModel):
             processed=review.processed,
             reviewer_comment=review.review_message,
         )
-
-
-class AgentRunReviewsResponse(PaginatedResponse):
-    """Response for listing run reviews."""
-
-    reviews: list[AgentRunReview]
 
 
 class AgentRunReviewDecision(BaseModel):
@@ -974,20 +917,6 @@ class CreditTransaction(BaseModel):
         )
 
 
-class CreditTransactionsResponse(BaseModel):
-    """Response for listing credit transactions (cursor-paginated)."""
-
-    transactions: list[CreditTransaction]
-    next_cursor: Optional[str] = Field(
-        default=None,
-        description=(
-            "Cursor for the next page (ISO datetime). "
-            "Pass as the `cursor` query parameter to fetch the next page. "
-            "Null when there are no more results."
-        ),
-    )
-
-
 # ============================================================================
 # Subscription Models
 # ============================================================================
@@ -1064,12 +993,6 @@ class InvoiceItem(BaseModel):
             hosted_invoice_url=inv.hosted_invoice_url,
             invoice_pdf_url=inv.invoice_pdf_url,
         )
-
-
-class InvoiceListResponse(BaseModel):
-    """Response for listing invoices."""
-
-    invoices: list[InvoiceItem]
 
 
 # ============================================================================
@@ -1205,12 +1128,6 @@ class CredentialInfo(BaseModel):
         )
 
 
-class CredentialListResponse(BaseModel):
-    """Response for listing credentials."""
-
-    credentials: list[CredentialInfo]
-
-
 class _CredentialCreateBase(BaseModel):
     provider: str = Field(description="Provider name (e.g., 'github', 'openai')")
     title: Optional[str] = Field(
@@ -1333,12 +1250,6 @@ class CredentialRequirement(BaseModel):
     )
 
 
-class CredentialRequirementsResponse(BaseModel):
-    """Response for listing credential requirements for an agent (graph)."""
-
-    requirements: list[CredentialRequirement]
-
-
 # ============================================================================
 # File Workspace Models
 # ============================================================================
@@ -1364,12 +1275,6 @@ class WorkspaceFileInfo(BaseModel):
     size_bytes: int = Field(description="File size in bytes")
     created_at: datetime
     updated_at: datetime
-
-
-class WorkspaceFileListResponse(PaginatedResponse):
-    """Response for listing workspace files."""
-
-    files: list[WorkspaceFileInfo]
 
 
 # ============================================================================
@@ -1450,12 +1355,6 @@ class MarketplaceAgentDetails(MarketplaceAgent):
         )
 
 
-class MarketplaceAgentListResponse(PaginatedResponse):
-    """Response for listing marketplace agents."""
-
-    agents: list[MarketplaceAgent]
-
-
 class MarketplaceUserProfile(BaseModel):
     """User's marketplace profile."""
 
@@ -1512,12 +1411,6 @@ class MarketplaceCreatorDetails(MarketplaceUserProfile):
             agent_rating=creator.agent_rating,
             top_categories=creator.top_categories,
         )
-
-
-class MarketplaceCreatorsResponse(PaginatedResponse):
-    """Response for listing marketplace creators."""
-
-    creators: list[MarketplaceCreatorDetails]
 
 
 SubmissionStatus: TypeAlias = Literal["DRAFT", "PENDING", "APPROVED", "REJECTED"]
@@ -1606,12 +1499,6 @@ class MarketplaceAgentSubmissionCreateRequest(BaseModel):
     )
 
 
-class MarketplaceAgentSubmissionsListResponse(PaginatedResponse):
-    """Response for listing submissions."""
-
-    submissions: list[MarketplaceAgentSubmission]
-
-
 class MarketplaceAgentSubmissionEditRequest(BaseModel):
     """Request to edit a marketplace submission."""
 
@@ -1648,9 +1535,3 @@ class MarketplaceSearchResult(BaseModel):
     metadata: Optional[dict]
     updated_at: Optional[datetime]
     combined_score: Optional[float]
-
-
-class MarketplaceSearchResponse(PaginatedResponse):
-    """Response for marketplace search."""
-
-    results: list[MarketplaceSearchResult]
