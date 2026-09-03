@@ -126,44 +126,52 @@ export function TierToggle({ segments, value, onSelect }: Props) {
  */
 function LockedSegment({ segment }: { segment: Segment }) {
   return (
-    <span
-      role="radio"
-      aria-checked={false}
-      aria-disabled="true"
-      aria-label={`${segment.label} — ${segment.lock?.reason ?? "unavailable"}`}
-      tabIndex={-1}
-      className="flex items-start gap-2.5 px-3 py-2.5"
-    >
-      <Icon
-        icon={LockIcon}
-        size={14}
-        aria-hidden
-        className="mt-[3px] flex-none text-zinc-400"
-      />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-500">
-          {segment.name ?? segment.label}
-        </span>
-        {segment.model && (
-          <span className="text-sm leading-snug text-zinc-400">
-            <Swap className="max-w-full truncate">{segment.model}</Swap>
+    /* The upgrade link is a sibling of the radio, not a child of it: a radio's
+       descendants are presentational to assistive technology, so a link nested
+       inside one can lose its link semantics and strand the one action the row
+       exists to offer. */
+    <div className="flex flex-col px-3 py-2.5">
+      <span
+        role="radio"
+        aria-checked={false}
+        aria-disabled="true"
+        aria-label={`${segment.label} — ${segment.lock?.reason ?? "unavailable"}`}
+        tabIndex={-1}
+        className="flex items-start gap-2.5"
+      >
+        <Icon
+          icon={LockIcon}
+          size={14}
+          aria-hidden
+          className="mt-[3px] flex-none text-zinc-400"
+        />
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium text-zinc-500">
+            {segment.name ?? segment.label}
           </span>
-        )}
-        {/* A row has room for the lock but the name has none for why. Saying
-            only "locked" would leave the user to guess at a barrier they can
-            actually clear. */}
-        <span className="text-[11px] leading-snug text-zinc-400">
-          {segment.lock?.reason}{" "}
-          {segment.lock?.href && (
-            <Link
-              href={segment.lock.href}
-              className="font-medium text-zinc-900 underline underline-offset-2"
-            >
-              See plans
-            </Link>
+          {segment.model && (
+            <span className="text-sm leading-snug text-zinc-400">
+              <Swap className="max-w-full truncate">{segment.model}</Swap>
+            </span>
           )}
+          {/* A row has room for the lock but the name has none for why. Saying
+              only "locked" would leave the user to guess at a barrier they can
+              actually clear. */}
+          <span className="text-[11px] leading-snug text-zinc-400">
+            {segment.lock?.reason}
+          </span>
         </span>
       </span>
-    </span>
+      {segment.lock?.href && (
+        <Link
+          href={segment.lock.href}
+          // Indented past the lock glyph so it lines up under the reason it
+          // answers, the way it reads when it follows that sentence inline.
+          className="ml-6 mt-1 w-fit text-[11px] font-medium text-zinc-900 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+        >
+          See plans
+        </Link>
+      )}
+    </div>
   );
 }
