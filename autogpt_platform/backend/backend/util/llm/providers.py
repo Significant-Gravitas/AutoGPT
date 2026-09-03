@@ -78,22 +78,24 @@ logger = logging.getLogger(__name__)
 # budget has to span the entire generation, not time-to-first-byte.
 DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
-# Connect and pool are pinned because no generation happens while a SYN goes
-# unanswered or while queueing for a free connection; only read/write carry the
-# generation budget. 5.0 matches the OpenAI/Anthropic SDK connect default.
-CONNECT_TIMEOUT_SECONDS = 5.0
+# The phases where no generation happens: waiting on a SYN, or queueing for a
+# free connection. Only read/write carry the generation budget. 5.0 matches the
+# OpenAI/Anthropic SDK connect default.
+FAST_FAIL_TIMEOUT_SECONDS = 5.0
 
 
 def request_timeout(timeout_seconds: float) -> httpx.Timeout:
     """Bound one request: generation budget on read/write, fast-fail elsewhere.
 
-    A scalar would set every phase, so a blackholed SYN — or a saturated pool
-    on the shared aux client — would park a worker for the whole deadline.
+    A scalar would set every phase, so a blackholed SYN — or, on the one shared
+    client (the copilot aux singleton), a saturated pool — would park a worker
+    for the whole deadline. Per-call clients are uncontended on the pool phase;
+    the pin costs them nothing.
     """
     return httpx.Timeout(
         timeout_seconds,
-        connect=CONNECT_TIMEOUT_SECONDS,
-        pool=CONNECT_TIMEOUT_SECONDS,
+        connect=FAST_FAIL_TIMEOUT_SECONDS,
+        pool=FAST_FAIL_TIMEOUT_SECONDS,
     )
 
 
@@ -235,7 +237,9 @@ async def call_provider(
     Raises ``TimeoutError`` if the call exceeds ``timeout_seconds``
     (sync mode only; batch submissions are bounded by the provider's
     own SLA and the poller's own timeout policy). ``timeout_seconds=None``
-    resolves to the configured default at call time, not import time.
+    reads ``DEFAULT_REQUEST_TIMEOUT_SECONDS`` when the call is made, so a
+    test can monkeypatch it; the value itself is still read from settings
+    once, at import.
     """
     if timeout_seconds is None:
         timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 from typing import Any, cast
@@ -13,7 +14,7 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
-from backend.util.llm.providers import CONNECT_TIMEOUT_SECONDS
+from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS
 from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -159,7 +160,7 @@ class TestLLMStatsTracking:
         block = llm.AITextGeneratorBlock()
 
         # Mock the underlying structured response block
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Simulate the structured block setting stats
             block.execution_stats = NodeExecutionStats(
                 input_token_count=30,
@@ -398,7 +399,7 @@ class TestLLMStatsTracking:
         # Track calls to simulate multiple chunks
         call_count = 0
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             nonlocal call_count
             call_count += 1
 
@@ -513,7 +514,7 @@ class TestLLMStatsTracking:
         block = llm.AIConversationBlock()
 
         # Mock the llm_call method
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             block.execution_stats = NodeExecutionStats(
                 input_token_count=100,
                 output_token_count=50,
@@ -556,7 +557,7 @@ class TestLLMStatsTracking:
         block = llm.AIListGeneratorBlock()
 
         # Mock the llm_call to return a structured response
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Update stats to simulate LLM call
             block.execution_stats = NodeExecutionStats(
                 input_token_count=50,
@@ -701,7 +702,7 @@ class TestAIConversationBlockValidation:
         """Empty messages but a non-empty prompt should proceed without error."""
         block = llm.AIConversationBlock()
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"response": "OK"}
 
         with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
@@ -725,7 +726,7 @@ class TestAIConversationBlockValidation:
         """Non-empty messages with no prompt should proceed without error."""
         block = llm.AIConversationBlock()
 
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"response": "response from conversation"}
 
         with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
@@ -836,7 +837,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a list instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Simulate LLM returning a list when it should return a string
             return {"summary": ["bullet point 1", "bullet point 2", "bullet point 3"]}
 
@@ -871,7 +872,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a list instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             # Check if this is the final summary call
             if "final_summary" in input_data.expected_format:
                 # Simulate LLM returning a list when it should return a string
@@ -917,7 +918,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a valid string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"summary": "This is a valid string summary"}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -947,7 +948,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a valid string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"final_summary": "This is a valid final summary string"}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -978,7 +979,7 @@ class TestAITextSummarizerValidation:
         block = llm.AITextSummarizerBlock()
 
         # Mock llm_call to return a dict instead of a string
-        async def mock_llm_call(input_data, credentials):
+        async def mock_llm_call(input_data, credentials, *_, **__):
             return {"summary": {"nested": "object", "with": "data"}}
 
         block.llm_call = mock_llm_call  # type: ignore
@@ -1544,7 +1545,7 @@ class TestLLMRequestTimeout:
         sdk_timeout = captured_kwargs["timeout"]
         assert isinstance(sdk_timeout, httpx.Timeout)
         assert sdk_timeout.read == llm.LLM_REQUEST_TIMEOUT_SECONDS
-        assert sdk_timeout.connect == CONNECT_TIMEOUT_SECONDS
+        assert sdk_timeout.connect == FAST_FAIL_TIMEOUT_SECONDS
 
     @pytest.mark.parametrize(
         "exc_factory",
@@ -1614,14 +1615,72 @@ class TestLLMRequestTimeout:
                 ):
                     pass
 
+    @staticmethod
+    @contextlib.contextmanager
+    def _captured_logs():
+        """Attach to the module logger directly. Going through caplog's root
+        handler silently captured nothing under the app's logging config, which
+        is how a batch of assert-absence tests passed without ever running."""
+        records: list[logging.LogRecord] = []
+
+        class _Collect(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        target = llm.logger.logger
+        handler = _Collect(level=logging.DEBUG)
+        target.addHandler(handler)
+        previous = target.level
+        target.setLevel(logging.DEBUG)
+        try:
+            yield records
+        finally:
+            target.removeHandler(handler)
+            target.setLevel(previous)
+
+    @staticmethod
+    def _alerts(records):
+        # Containment, not equality: the app's log config wraps record.msg in
+        # ANSI colour codes, so an == match silently finds nothing.
+        return [r for r in records if llm.SPEND_BURNED_ALERT in r.getMessage()]
+
+    @pytest.mark.parametrize(
+        "elapsed, budget, alerts",
+        [
+            (0.5, 100, False),  # fast fail: nothing was generated
+            (89.0, 100, False),  # just under the threshold
+            (91.0, 100, True),  # just over: inference ran, provider billed
+            (100.0, 100, True),  # the full budget
+        ],
+    )
+    def test_burn_threshold_classifies_by_elapsed_fraction(
+        self, monkeypatch, elapsed, budget, alerts
+    ):
+        """The 0.9 threshold is the new business logic, so pin it either side.
+        Both degenerate budgets (0 / 3600) leave it free to be any value."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", budget)
+        with self._captured_logs() as records:
+            llm._log_timeout_outcome(
+                elapsed=elapsed,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                execution_context=None,
+                error=TimeoutError("x"),
+            )
+        assert bool(self._alerts(records)) is alerts
+
     @pytest.mark.asyncio
-    async def test_mid_inference_cutoff_alerts_once(self, monkeypatch, caplog):
-        """A cutoff that ate the budget burned provider spend we refund to the
-        user, so it must page exactly once (#14292's alerting requirement).
-        Budget 0 puts any real elapsed time over the burn threshold, which
-        avoids patching time.monotonic — that is module-global and asyncio
-        reads it too."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0)
+    async def test_real_cutoff_alerts_once_with_searchable_ids(self, monkeypatch):
+        """End-to-end through the seam: a provider that never answers, cut off by
+        a real (small, non-zero) budget. The ids are what an on-call needs to find
+        the run that burned money — they live in json_fields, not the message, so
+        Sentry aggregates a provider incident into one issue."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+        provider_calls = {"n": 0}
+
+        async def never_answers(**kwargs):
+            provider_calls["n"] += 1
+            await asyncio.sleep(30)
+
         ctx = ExecutionContext(
             user_id="u-1",
             graph_id="g-1",
@@ -1629,60 +1688,100 @@ class TestLLMRequestTimeout:
             node_id="n-1",
             node_exec_id="ne-1",
         )
+        with self._captured_logs() as records:
+            await self._run_block_expecting_failure(never_answers, ctx=ctx)
 
-        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
-            await self._run_block_expecting_failure(TimeoutError("hung"), ctx=ctx)
-
-        alerts = [
-            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
-        ]
+        assert provider_calls["n"] == 1, "the provider mock was never actually called"
+        alerts = self._alerts(records)
         assert len(alerts) == 1, f"expected exactly 1 alert, got {len(alerts)}"
         assert alerts[0].levelno == logging.ERROR, "must be ERROR so Sentry raises it"
-        # The ids are what an on-call needs to find the run that burned money.
-        text = alerts[0].getMessage()
-        for field in (
-            "provider=openai",
-            "configured_timeout=",
-            "user_id=u-1",
-            "graph_id=g-1",
-            "graph_exec_id=ge-1",
-            "node_id=n-1",
-            "node_exec_id=ne-1",
-        ):
-            assert field in text, f"alert is missing {field}: {text}"
+        fields = alerts[0].json_fields
+        assert fields["user_id"] == "u-1"
+        assert fields["graph_id"] == "g-1"
+        assert fields["graph_exec_id"] == "ge-1"
+        assert fields["node_id"] == "n-1"
+        assert fields["node_exec_id"] == "ne-1"
+        assert fields["provider"] == "openai"
+        assert fields["configured_timeout_seconds"] == 0.2
 
     @pytest.mark.asyncio
-    async def test_fast_failure_does_not_alert(self, monkeypatch, caplog):
-        """A connect-phase failure burns no provider spend; paging on it during
-        an outage would bury the cutoffs that cost money. A large budget puts
-        the near-instant mocked failure well under the burn threshold."""
+    async def test_ids_survive_the_run_once_delegation(self, monkeypatch):
+        """AITextGeneratorBlock reaches the structured block through run_once,
+        which forwards only what it is handed. An alert with every id None is
+        useless to the on-call it wakes."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+
+        async def never_answers(**kwargs):
+            await asyncio.sleep(30)
+
+        ctx = ExecutionContext(
+            user_id="u-2",
+            graph_id="g-2",
+            graph_exec_id="ge-2",
+            node_id="n-2",
+            node_exec_id="ne-2",
+        )
+        with self._captured_logs() as records:
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_openai.return_value = mock_client
+                mock_client.responses.create = AsyncMock(side_effect=never_answers)
+                block = llm.AITextGeneratorBlock()
+                input_data = llm.AITextGeneratorBlock.Input(
+                    prompt="Hello",
+                    model=llm.DEFAULT_LLM_MODEL,
+                    credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                )
+                with pytest.raises(RuntimeError):
+                    async for _ in block.run(
+                        input_data,
+                        credentials=llm.TEST_CREDENTIALS,
+                        execution_context=ctx,
+                    ):
+                        pass
+
+        alerts = self._alerts(records)
+        assert len(alerts) == 1, f"expected exactly 1 alert, got {len(alerts)}"
+        assert alerts[0].json_fields["user_id"] == "u-2"
+        assert alerts[0].json_fields["node_exec_id"] == "ne-2"
+
+    @pytest.mark.asyncio
+    async def test_fast_failure_warns_instead_of_alerting(self, monkeypatch):
+        """A connect-phase failure burns no provider spend; paging on it during an
+        outage would bury the cutoffs that cost money. Asserts the warning is
+        actually emitted — absence alone would pass against a no-op helper."""
         monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
 
-        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
-            await self._run_block_expecting_failure(TimeoutError("connect"))
+        with self._captured_logs() as records:
+            await self._run_block_expecting_failure(
+                openai.APITimeoutError(request=httpx.Request("POST", "http://x"))
+            )
 
-        assert not [
-            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
-        ]
+        assert not self._alerts(records)
+        assert [
+            r
+            for r in records
+            if r.levelno == logging.WARNING
+            and "below the mid-inference alert threshold" in r.getMessage()
+        ], "the sub-threshold branch must still say what happened"
 
     @pytest.mark.asyncio
-    async def test_ordinary_failure_does_not_alert(self, caplog):
+    async def test_ordinary_failure_does_not_alert(self):
         """Only timeouts burn a full generation; a 500 must not page."""
-        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+        with self._captured_logs() as records:
             await self._run_block_expecting_failure(ValueError("boom"), retry=1)
 
-        assert not [
-            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
-        ]
+        assert not self._alerts(records)
 
     @pytest.mark.asyncio
-    async def test_success_does_not_alert(self, caplog):
+    async def test_success_does_not_alert(self):
         mock_response = MagicMock()
         mock_response.output_text = '{"key": "value"}'
         mock_response.output = []
         mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+        outputs = []
 
-        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+        with self._captured_logs() as records:
             with patch("openai.AsyncOpenAI") as mock_openai:
                 mock_client = AsyncMock()
                 mock_openai.return_value = mock_client
@@ -1695,12 +1794,13 @@ class TestLLMRequestTimeout:
                     credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
                     force_json_output=True,
                 )
-                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                    pass
+                async for name, data in block.run(
+                    input_data, credentials=llm.TEST_CREDENTIALS
+                ):
+                    outputs.append(name)
 
-        assert not [
-            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
-        ]
+        assert "response" in outputs, "the success path did not actually run"
+        assert not self._alerts(records)
 
     @pytest.mark.asyncio
     async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):

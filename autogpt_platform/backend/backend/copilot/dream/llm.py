@@ -40,12 +40,7 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
-from backend.util.llm.providers import (
-    DEFAULT_REQUEST_TIMEOUT_SECONDS,
-    ProviderLiteral,
-    ProviderResponse,
-    call_provider,
-)
+from backend.util.llm.providers import ProviderLiteral, ProviderResponse, call_provider
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +93,7 @@ async def structured_completion(
     response_model: type[T],
     temperature: float = 0.2,
     max_output_tokens: int = 4096,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> StructuredCompletion[T]:
     """Call the LLM in JSON mode and parse into ``response_model``.
 

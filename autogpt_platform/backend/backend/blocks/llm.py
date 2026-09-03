@@ -48,6 +48,7 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.providers import timeout_error
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
@@ -67,6 +68,14 @@ USER_ERROR_STATUS_CODES = (401, 403, 429)
 # Non-streaming calls emit no bytes until the completion is done, so this
 # budget has to span the entire generation, not time-to-first-byte.
 LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
+
+# Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
+# nothing, and paging on those during an outage would bury the ones that cost.
+_SPEND_BURNED_ELAPSED_FRACTION = 0.9
+
+# Stable, greppable Sentry title — never interpolate into it (see #14292).
+SPEND_BURNED_ALERT = "LLM call cut off mid-inference — provider billed, user refunded"
+_spend_alert_logger = logging.getLogger(__name__)
 
 LLMProviderName = Literal[
     ProviderName.AIML_API,
@@ -234,9 +243,16 @@ async def llm_call(
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
+    execution_context: "ExecutionContext | None" = None,
 ) -> LLMResponse:
     """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
-    so that no single request can park an executor thread indefinitely."""
+    so that no single request can park an executor thread indefinitely.
+
+    Every LLM path in the codebase funnels through here, so this is where a
+    timed-out call is classified for spend alerting (#14292) — callers that
+    never reach the block retry loop are covered too.
+    """
+    started = time.monotonic()
     try:
         return await asyncio.wait_for(
             _llm_call(
@@ -250,15 +266,29 @@ async def llm_call(
                 parallel_tool_calls=parallel_tool_calls,
                 compress_prompt_to_fit=compress_prompt_to_fit,
             ),
+            # Same budget as the provider layer, but this one starts before
+            # prompt compression, so it always fires first for block callers;
+            # the provider deadline is there for callers that skip this seam.
             timeout=LLM_REQUEST_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError as e:
-        raise TimeoutError(
-            f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
-            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled. If the "
-            "model was still generating, shorten the prompt or pick a faster "
-            "model, or lower the advanced Max Tokens setting."
-        ) from e
+        _log_timeout_outcome(
+            elapsed=time.monotonic() - started,
+            llm_model=llm_model,
+            execution_context=execution_context,
+            error=e,
+        )
+        raise _block_timeout_error(llm_model, max_tokens) from e
+    except (openai.APITimeoutError, anthropic.APITimeoutError) as e:
+        # SDK-native timeouts never reach the wait_for above; classify them here
+        # so the seam stays the single place that reports burned spend.
+        _log_timeout_outcome(
+            elapsed=time.monotonic() - started,
+            llm_model=llm_model,
+            execution_context=execution_context,
+            error=e,
+        )
+        raise
 
 
 async def _llm_call(
@@ -516,6 +546,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         compress_prompt_to_fit: bool = True,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
+        execution_context: "ExecutionContext | None" = None,
     ) -> LLMResponse:
         """
         Test mocks work only on class functions, this wraps the llm_call function
@@ -531,6 +562,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             tools=tools,
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
+            execution_context=execution_context,
         )
 
     async def run(
@@ -581,7 +613,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         for retry_count in range(input_data.retry):
             logger.debug(f"LLM request: {prompt}")
-            attempt_started = time.monotonic()
             try:
                 llm_response = await self.llm_call(
                     credentials=credentials,
@@ -594,6 +625,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
+                    execution_context=kwargs.get("execution_context"),
                 )
                 response_text = llm_response.response
                 # Accumulate token counts and provider_cost for every attempt
@@ -728,12 +760,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     e,
                     (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
                 ):
-                    _alert_if_spend_was_burned(
-                        elapsed=time.monotonic() - attempt_started,
-                        llm_model=llm_model,
-                        execution_context=kwargs.get("execution_context"),
-                        error=e,
-                    )
+                    # Already classified and logged at the llm_call seam.
                     # A request that hung once will most likely hang again on
                     # retry — the underlying issue (server-side starvation,
                     # network partition, etc.) doesn't clear on a fresh socket.
@@ -889,39 +916,57 @@ def trim_prompt(s: str) -> str:
     return "\n".join([line.strip().lstrip("|") for line in lines])
 
 
-# Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
-# nothing, and paging on those during an outage would bury the ones that cost.
-_SPEND_BURNED_ELAPSED_FRACTION = 0.9
-
-
-def _alert_if_spend_was_burned(
+def _log_timeout_outcome(
     *,
     elapsed: float,
     llm_model: LLMModel,
     execution_context: "ExecutionContext | None",
     error: BaseException,
 ) -> None:
-    """ERROR-level so Sentry raises it as an event (LoggingIntegration ships
-    event_level=ERROR); see #14292 for why this has to page rather than log."""
+    """Classify a timed-out LLM call: burned provider spend, or a fast fail.
+
+    The alert branch is ERROR so Sentry raises an event (LoggingIntegration
+    ships event_level=ERROR); ids go in json_fields rather than the message so
+    a provider incident aggregates into one issue instead of thousands. Sentry
+    is the only surface — see #14292 for the paging decision.
+    """
     budget = LLM_REQUEST_TIMEOUT_SECONDS
     if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
         logger.warning(
-            f"LLM call failed fast after {elapsed:.1f}s, not retrying "
-            f"(no provider spend burned): {error}"
+            f"LLM call timed out after {elapsed:.1f}s, below the "
+            f"mid-inference alert threshold, not retrying: {error}"
         )
         return
 
     ctx = execution_context
-    logger.error(
-        f"LLM call cut off mid-inference after {elapsed:.1f}s "
-        f"— provider billed, user refunded. "
-        f"provider={llm_model.metadata.provider} model={llm_model.value} "
-        f"configured_timeout={budget}s "
-        f"user_id={ctx.user_id if ctx else None} "
-        f"graph_id={ctx.graph_id if ctx else None} "
-        f"graph_exec_id={ctx.graph_exec_id if ctx else None} "
-        f"node_id={ctx.node_id if ctx else None} "
-        f"node_exec_id={ctx.node_exec_id if ctx else None}"
+    # Plain stdlib logger: TruncatedLogger appends str(extra) to the message
+    # text, which would re-fragment Sentry grouping by the very ids below.
+    _spend_alert_logger.error(
+        SPEND_BURNED_ALERT,
+        extra={
+            "json_fields": {
+                "elapsed_seconds": round(elapsed, 1),
+                "configured_timeout_seconds": budget,
+                "provider": llm_model.metadata.provider,
+                "model": llm_model.value,
+                "error": str(error),
+                "user_id": ctx.user_id if ctx else None,
+                "graph_id": ctx.graph_id if ctx else None,
+                "graph_exec_id": ctx.graph_exec_id if ctx else None,
+                "node_id": ctx.node_id if ctx else None,
+                "node_exec_id": ctx.node_exec_id if ctx else None,
+            }
+        },
+    )
+
+
+def _block_timeout_error(llm_model: LLMModel, max_tokens: int | None) -> TimeoutError:
+    """Provider-agnostic timeout text plus the one remedy only blocks expose."""
+    budget = max_tokens or llm_model.max_output_tokens
+    hint = f" (currently {budget})" if budget else ""
+    return TimeoutError(
+        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', LLM_REQUEST_TIMEOUT_SECONDS)}"
+        f" You can also lower the advanced Max Tokens setting{hint}."
     )
 
 
@@ -993,9 +1038,15 @@ class AITextGeneratorBlock(AIBlockBase):
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(
+            input_data,
+            "response",
+            credentials=credentials,
+            execution_context=execution_context,
+        )
         self.merge_llm_stats(block)
         return response["response"]
 
@@ -1009,7 +1060,9 @@ class AITextGeneratorBlock(AIBlockBase):
             },
             expected_format={},
         )
-        response = await self.llm_call(object_input_data, credentials)
+        response = await self.llm_call(
+            object_input_data, credentials, kwargs.get("execution_context")
+        )
         yield "response", response
         yield "prompt", self.prompt
 
@@ -1094,11 +1147,16 @@ class AITextSummarizerBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        async for output_name, output_data in self._run(input_data, credentials):
+        async for output_name, output_data in self._run(
+            input_data, credentials, kwargs.get("execution_context")
+        ):
             yield output_name, output_data
 
     async def _run(
-        self, input_data: Input, credentials: APIKeyCredentials
+        self,
+        input_data: Input,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
@@ -1106,11 +1164,13 @@ class AITextSummarizerBlock(AIBlockBase):
         summaries = []
 
         for chunk in chunks:
-            chunk_summary = await self._summarize_chunk(chunk, input_data, credentials)
+            chunk_summary = await self._summarize_chunk(
+                chunk, input_data, credentials, execution_context
+            )
             summaries.append(chunk_summary)
 
         final_summary = await self._combine_summaries(
-            summaries, input_data, credentials
+            summaries, input_data, credentials, execution_context
         )
         yield "summary", final_summary
         yield "prompt", self.prompt
@@ -1147,14 +1207,24 @@ class AITextSummarizerBlock(AIBlockBase):
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(
+            input_data,
+            "response",
+            credentials=credentials,
+            execution_context=execution_context,
+        )
         self.merge_llm_stats(block)
         return response
 
     async def _summarize_chunk(
-        self, chunk: str, input_data: Input, credentials: APIKeyCredentials
+        self,
+        chunk: str,
+        input_data: Input,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
@@ -1166,6 +1236,7 @@ class AITextSummarizerBlock(AIBlockBase):
                 expected_format={"summary": "The summary of the given text."},
             ),
             credentials=credentials,
+            execution_context=execution_context,
         )
 
         summary = llm_response["summary"]
@@ -1184,7 +1255,11 @@ class AITextSummarizerBlock(AIBlockBase):
         return summary
 
     async def _combine_summaries(
-        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
+        self,
+        summaries: list[str],
+        input_data: Input,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> str:
         combined_text = "\n\n".join(summaries)
 
@@ -1201,6 +1276,7 @@ class AITextSummarizerBlock(AIBlockBase):
                     },
                 ),
                 credentials=credentials,
+                execution_context=execution_context,
             )
 
             final_summary = llm_response["final_summary"]
@@ -1229,6 +1305,7 @@ class AITextSummarizerBlock(AIBlockBase):
                     chunk_overlap=input_data.chunk_overlap,
                 ),
                 "summary",
+                execution_context=execution_context,
                 credentials=credentials,
             )
 
@@ -1306,9 +1383,15 @@ class AIConversationBlock(AIBlockBase):
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = await block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(
+            input_data,
+            "response",
+            credentials=credentials,
+            execution_context=execution_context,
+        )
         self.merge_llm_stats(block)
         return response
 
@@ -1339,6 +1422,7 @@ class AIConversationBlock(AIBlockBase):
                 ollama_host=input_data.ollama_host,
             ),
             credentials=credentials,
+            execution_context=kwargs.get("execution_context"),
         )
         yield "response", response["response"]
         yield "prompt", self.prompt
@@ -1452,10 +1536,14 @@ class AIListGeneratorBlock(AIBlockBase):
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext | None" = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
         response = await llm_block.run_once(
-            input_data, "response", credentials=credentials
+            input_data,
+            "response",
+            credentials=credentials,
+            execution_context=execution_context,
         )
         self.merge_llm_stats(llm_block)
         return response
@@ -1508,6 +1596,7 @@ class AIListGeneratorBlock(AIBlockBase):
                 ollama_host=input_data.ollama_host,
             ),
             credentials=credentials,
+            execution_context=kwargs.get("execution_context"),
         )
         logger.debug(f"Response object: {response_obj}")
 

@@ -21,8 +21,8 @@ from pydantic import ValidationError
 
 from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
-    CONNECT_TIMEOUT_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    FAST_FAIL_TIMEOUT_SECONDS,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
@@ -1412,7 +1412,8 @@ class TestUtf8Sanitization:
 
 
 class TestTimeoutThreading:
-    """Every SDK call site must receive the bounded ``httpx.Timeout``.
+    """Every SDK call site reached through ``call_provider`` must receive the
+    bounded ``httpx.Timeout``.
 
     A site that silently loses it reverts to the SDK default. On Anthropic
     that is worse than slow: ``_calculate_nonstreaming_timeout`` raises
@@ -1492,6 +1493,83 @@ class TestTimeoutThreading:
                 timeout_seconds=42.0,
             )
         assert captured["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_openai_responses_receives_bounded_timeout(self):
+        """The default ``openai`` branch — the one the LLM block uses."""
+        async_create = AsyncMock(return_value=SimpleNamespace())
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="ok",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="gpt-4.1",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=42.0,
+            )
+        assert async_create.call_args.kwargs["timeout"] == request_timeout(42.0)
+
+    @pytest.mark.asyncio
+    async def test_call_provider_omitted_timeout_resolves_at_call_time(
+        self, monkeypatch
+    ):
+        """The headline configurability, on the PRIMARY dispatch path. Hardcoding
+        the default back to 120 passed every other test in this file."""
+        monkeypatch.setattr(providers_mod, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 321.0)
+        async_create = AsyncMock(return_value=SimpleNamespace())
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="ok",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(1, 1),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="gpt-4.1",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
+        assert async_create.call_args.kwargs["timeout"] == request_timeout(321.0)
 
     @pytest.mark.asyncio
     async def test_openai_compat_sync_helper_receives_bounded_timeout(self):
@@ -1597,11 +1675,11 @@ class TestDefaults:
         # No generation happens while a SYN goes unanswered, so connect is
         # pinned; read/write/pool carry the generation budget.
         t = request_timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS)
-        assert t.connect == CONNECT_TIMEOUT_SECONDS
+        assert t.connect == FAST_FAIL_TIMEOUT_SECONDS
         assert t.read == DEFAULT_REQUEST_TIMEOUT_SECONDS
         assert t.write == DEFAULT_REQUEST_TIMEOUT_SECONDS
         # Queueing for a connection is not generation either.
-        assert t.pool == CONNECT_TIMEOUT_SECONDS
+        assert t.pool == FAST_FAIL_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------
