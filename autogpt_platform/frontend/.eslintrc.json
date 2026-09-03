@@ -28,11 +28,27 @@
     "no-restricted-syntax": [
       "error",
       {
-        "selector": "BinaryExpression[operator=/^[!=]==?$/] > MemberExpression[computed=false][property.name='key']",
+        "selector": "BinaryExpression[operator=/^[!=]==?$/][right.type='Literal'][right.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/] > MemberExpression.left[computed=false][property.name='key']",
         "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       },
       {
-        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key']",
+        "selector": "BinaryExpression[operator=/^[!=]==?$/][left.type='Literal'][left.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/] > MemberExpression.right[computed=false][property.name='key']",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "BinaryExpression[operator=/^[!=]==?$/][right.type='Identifier'][right.name=/(^KEY_|_KEY$)/] > MemberExpression.left[computed=false][property.name='key']",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "BinaryExpression[operator=/^[!=]==?$/][left.type='Identifier'][left.name=/(^KEY_|_KEY$)/] > MemberExpression.right[computed=false][property.name='key']",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] SwitchCase > Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/]",
+        "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] SwitchCase > Identifier[name=/(^KEY_|_KEY$)/]",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       }
     ]
