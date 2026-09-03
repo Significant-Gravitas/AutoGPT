@@ -196,9 +196,9 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
   expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your agents" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
   expect(
-    screen.getByRole("link", { name: /View all 10 agents/ }),
+    screen.getByRole("link", { name: /View all 10 experts/ }),
   ).toBeDefined();
   expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
   expect(

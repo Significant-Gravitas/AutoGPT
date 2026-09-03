@@ -28,7 +28,7 @@ export function AgentTeam({ dashboard, className }: Props) {
     <HomeTile
       className={className}
       icon={AiEraserIcon}
-      title="Your agents"
+      title="Your team"
       meta={
         team.total > 0 ? (
           <span className="tabular-nums">
@@ -57,7 +57,7 @@ export function AgentTeam({ dashboard, className }: Props) {
           href="/team"
           className="flex items-center justify-between border-t border-zinc-100 px-4 py-2 text-xs font-medium text-zinc-500 outline-none transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:bg-zinc-50"
         >
-          View all {team.total} agents
+          View all {team.total} experts
           <Icon icon={ArrowRight01Icon} size={14} aria-hidden="true" />
         </Link>
       ) : null}
