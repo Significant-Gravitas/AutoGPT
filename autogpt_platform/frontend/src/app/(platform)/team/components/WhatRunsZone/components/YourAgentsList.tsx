@@ -3,6 +3,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { workflowSubtitle } from "@/components/molecules/InstallWorkflowPicker/helpers";
 import { getAdoptableExperts } from "../helpers";
 import { AdoptAgentButton } from "./AdoptAgentButton";
 
@@ -40,7 +41,7 @@ export function YourAgentsList({
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
             {libraryAgentCount === 0
-              ? "No available workflows to adopt."
+              ? "No workflows available to install."
               : "Every workflow is already on your team."}
           </Text>
         ) : null
@@ -67,8 +68,8 @@ export function YourAgentsList({
                   <Text variant="body" className="truncate">
                     {agent.name}
                   </Text>
-                  <Text variant="small" className="text-zinc-500">
-                    {agent.creator_name}
+                  <Text variant="small" className="truncate text-zinc-500">
+                    {workflowSubtitle(agent.description)}
                   </Text>
                 </div>
                 <AdoptAgentButton

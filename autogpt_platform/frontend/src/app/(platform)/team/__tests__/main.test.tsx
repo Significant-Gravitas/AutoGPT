@@ -1230,7 +1230,7 @@ describe("TeamPage", () => {
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).getByText("My Private Agent")).toBeDefined();
     expect(
-      within(agents).getAllByRole("button", { name: "Adopt" }),
+      within(agents).getAllByRole("button", { name: "Install" }),
     ).toHaveLength(2);
   });
 
@@ -1255,7 +1255,7 @@ describe("TeamPage", () => {
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("My Private Agent")).toBeNull();
     expect(
-      within(agents).getAllByRole("button", { name: "Adopt" }),
+      within(agents).getAllByRole("button", { name: "Install" }),
     ).toHaveLength(1);
   });
 
@@ -1287,14 +1287,14 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-maria"));
     expect(installBody).toEqual({ library_agent_id: "lib-research" });
     expect(within(agents).queryByText("Research Assistant")).toBeNull();
   });
 
-  test("asks which expert to adopt into when more than one is hired", async () => {
+  test("asks which expert to install onto when more than one is hired", async () => {
     const user = userEvent.setup();
     const john: Expert = {
       ...hiredMaria,
@@ -1326,11 +1326,11 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
     expect(screen.queryByText(/undo anytime/i)).toBeNull();
     await user.click(
       await screen.findByRole("button", {
-        name: /Adds this agent to John's workflows/i,
+        name: /Installs on John/i,
       }),
     );
 
@@ -1383,7 +1383,7 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
     expect(screen.queryByText("Choose an expert")).toBeNull();
@@ -1403,7 +1403,7 @@ describe("TeamPage", () => {
     await screen.findByRole("region", { name: "Maria runs" });
     await screen.findByRole("region", { name: "Your workflows" });
 
-    await user.click(screen.getByRole("button", { name: "Agents" }));
+    await user.click(screen.getByRole("button", { name: "Unassigned" }));
     expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
     expect(
       screen.getByRole("region", { name: "Your workflows" }),
@@ -1553,17 +1553,17 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Couldn't adopt Research Assistant",
+          title: "Couldn't install on Maria",
           variant: "destructive",
         }),
       ),
     );
-    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
+    const adoptButton = within(agents).getByRole("button", { name: "Install" });
     expect(adoptButton.hasAttribute("disabled")).toBe(false);
   });
 
@@ -1582,12 +1582,12 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          description: "This agent is no longer available.",
+          description: "This workflow is no longer available.",
         }),
       ),
     );
@@ -1626,8 +1626,10 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     const rows = within(agents).getAllByTestId("what-runs-agent-row");
-    const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
-    const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
+    const firstAdopt = within(rows[0]).getByRole("button", { name: "Install" });
+    const secondAdopt = within(rows[1]).getByRole("button", {
+      name: "Install",
+    });
     await user.click(firstAdopt);
     await waitFor(() => expect(firstAdopt.hasAttribute("disabled")).toBe(true));
     expect(secondAdopt.hasAttribute("disabled")).toBe(false);
@@ -1692,7 +1694,7 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     expect(
-      await within(agents).findByText("No available workflows to adopt."),
+      await within(agents).findByText("No workflows available to install."),
     ).toBeDefined();
   });
 

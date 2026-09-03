@@ -163,6 +163,16 @@ export function useInstallWorkflowPicker({
     }
   }
 
+  // Only the library source can tell: a marketplace row carries no listing
+  // version until its detail is fetched at click time.
+  function isLibraryAgentInstalled(agent: LibraryAgent) {
+    return (
+      targetExpert?.workflows.some(
+        (workflow) => workflow.library_agent_id === agent.id,
+      ) ?? false
+    );
+  }
+
   const title =
     mode === "pick-expert"
       ? "Install on an expert"
@@ -174,6 +184,7 @@ export function useInstallWorkflowPicker({
   return {
     title,
     hiredExperts,
+    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,

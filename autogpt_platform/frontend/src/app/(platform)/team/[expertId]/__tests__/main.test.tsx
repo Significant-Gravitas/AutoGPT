@@ -387,4 +387,43 @@ describe("ExpertDetailPage", () => {
       expect(installBody).toEqual({ library_agent_id: "lib-private" }),
     );
   });
+
+  test("marks an already-installed workflow instead of offering Install", async () => {
+    const user = userEvent.setup();
+    const installed = { ...ownLibraryAgent, id: "lib-1" } as LibraryAgent;
+    server.use(
+      getListExpertsMockHandler([maria]),
+      getGetV2ListLibraryAgentsMockHandler200(libraryResponse([installed])),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await user.click(screen.getByRole("button", { name: "Install workflow" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const row = await within(dialog).findByTestId("install-workflow-option");
+    expect(within(row).getByText("Installed")).toBeDefined();
+    expect(within(row).queryByRole("button", { name: "Install" })).toBeNull();
+  });
+
+  test("shows the workflow description rather than an unknown creator", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([maria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([{ ...ownLibraryAgent, description: "" }]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await user.click(screen.getByRole("button", { name: "Install workflow" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const row = await within(dialog).findByTestId("install-workflow-option");
+    expect(within(row).getByText("From your library")).toBeDefined();
+    expect(within(row).queryByText("Unknown")).toBeNull();
+  });
 });

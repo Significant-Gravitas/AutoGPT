@@ -10,7 +10,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
-import { INSTALL_WORKFLOW_SOURCES } from "./helpers";
+import { INSTALL_WORKFLOW_SOURCES, workflowSubtitle } from "./helpers";
 import { useInstallWorkflowPicker } from "./useInstallWorkflowPicker";
 
 interface Props {
@@ -31,6 +31,7 @@ export function InstallWorkflowPicker({
   const {
     title,
     hiredExperts,
+    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,
@@ -135,7 +136,7 @@ export function InstallWorkflowPicker({
               hideLabel
               placeholder={
                 source === "library"
-                  ? "Search your agents"
+                  ? "Search your workflows"
                   : "Search the marketplace"
               }
               value={searchQuery}
@@ -148,7 +149,7 @@ export function InstallWorkflowPicker({
             ) : isEmpty ? (
               <Text variant="small" className="py-2 text-center !text-zinc-500">
                 {source === "library"
-                  ? "No agents in your library."
+                  ? "No workflows in your library."
                   : "No workflows found."}
               </Text>
             ) : (
@@ -173,18 +174,30 @@ export function InstallWorkflowPicker({
                           <Text variant="body-medium" className="truncate">
                             {agent.name}
                           </Text>
-                          <Text variant="small" className="!text-zinc-500">
-                            {agent.creator_name}
+                          <Text
+                            variant="small"
+                            className="truncate !text-zinc-500"
+                          >
+                            {workflowSubtitle(agent.description)}
                           </Text>
                         </div>
-                        <Button
-                          variant="secondary"
-                          size="small"
-                          loading={pendingKey === agent.id}
-                          onClick={() => installLibraryAgent(agent)}
-                        >
-                          Install
-                        </Button>
+                        {isLibraryAgentInstalled(agent) ? (
+                          <Text
+                            variant="small"
+                            className="shrink-0 !text-zinc-400"
+                          >
+                            Installed
+                          </Text>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            loading={pendingKey === agent.id}
+                            onClick={() => installLibraryAgent(agent)}
+                          >
+                            Install
+                          </Button>
+                        )}
                       </div>
                     ))
                   : marketplaceResults.map((agent) => (

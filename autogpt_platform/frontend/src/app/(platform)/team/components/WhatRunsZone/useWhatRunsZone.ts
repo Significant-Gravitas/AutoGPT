@@ -87,15 +87,12 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
       await queryClient.invalidateQueries({
         queryKey: getListExpertsQueryKey(),
       });
-      toast({
-        title: `Added to ${expert.name}'s workflows`,
-        variant: "success",
-      });
+      toast({ title: `Installed on ${expert.name}`, variant: "success" });
     } catch (error) {
       toast({
-        title: `Couldn't adopt ${agent.name}`,
+        title: `Couldn't install on ${expert.name}`,
         description: hasStatus(error, 404)
-          ? "This agent is no longer available."
+          ? "This workflow is no longer available."
           : "Something went wrong. Please try again.",
         variant: "destructive",
       });

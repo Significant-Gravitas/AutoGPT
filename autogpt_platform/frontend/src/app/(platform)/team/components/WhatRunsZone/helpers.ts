@@ -18,7 +18,7 @@ export type WhatRunsFilter =
 export const WHAT_RUNS_FILTERS: { id: WhatRunsFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "members", label: "Members" },
-  { id: "agents", label: "Agents" },
+  { id: "agents", label: "Unassigned" },
   { id: "workflows", label: "Workflows" },
   { id: "scheduled", label: "Scheduled" },
 ];
