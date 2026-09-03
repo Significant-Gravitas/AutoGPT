@@ -15,6 +15,9 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
 from pydantic import BaseModel, Field, JsonValue, field_validator
 
 import backend.blocks._base as block_types
+from backend.api.features.search.hybrid_search import (
+    ContentTypeValue as SearchContentType,
+)
 
 if TYPE_CHECKING:
     from backend.api.features.executions.review.model import PendingHumanReviewModel
@@ -25,9 +28,6 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryFolder as _LibraryFolder
     from backend.api.features.library.model import (
         LibraryFolderTree as _LibraryFolderTree,
-    )
-    from backend.api.features.search.hybrid_search import (
-        ContentTypeValue as SearchContentType,
     )
     from backend.api.features.store.model import CreatorDetails
     from backend.api.features.store.model import ProfileDetails as _ProfileDetails
