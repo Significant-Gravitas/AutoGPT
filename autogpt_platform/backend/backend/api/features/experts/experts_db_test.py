@@ -161,6 +161,28 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
     return slv_id
 
 
+async def _seed_own_library_agent(
+    server: SpinTestServer, user_id: str
+) -> tuple[str, str]:
+    """Create an unpublished graph owned by *user_id*, returning its
+    LibraryAgent id and name — the private case that has no store listing."""
+    name = f"Private graph {uuid.uuid4().hex[:8]}"
+    graph = Graph(
+        name=name,
+        description="Never published to the marketplace",
+        nodes=[Node(block_id=AgentInputBlock().id, input_default={"name": "input_1"})],
+        links=[],
+    )
+    created_graph = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), user_id
+    )
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"userId": user_id, "agentGraphId": created_graph.id}
+    )
+    assert library_agent is not None, "Graph creation did not make a LibraryAgent"
+    return library_agent.id, name
+
+
 async def _load_roster_store_assets() -> dict[str, str]:
     """Load the checked-in production store assets (StoreAgent_rows.csv plus
     the matching graph JSONs) for every ROSTER preload slug into the test DB,
@@ -1249,7 +1271,9 @@ async def test_install_workflow_on_archived_expert_raises(
     await experts_db.archive_expert(test_user.id, hired.expert.id)
 
     with pytest.raises(experts_db.ExpertNotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1866,8 +1890,12 @@ async def test_install_workflow_duplicate_returns_existing(
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    a = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
-    b = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
     assert a.id == b.id
     assert a.library_agent_id is not None
     assert a.store_listing_version_id == slv_id
@@ -1900,7 +1928,7 @@ async def test_install_workflow_returns_concurrent_winner(
         prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
     ):
         installed = await experts_db.install_workflow(
-            test_user.id, hired.expert.id, slv_id
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
         )
 
     assert installed.id == winner.id
@@ -1925,7 +1953,9 @@ async def test_install_workflow_reraises_race_without_winner(
         ),
         pytest.raises(prisma.errors.UniqueViolationError),
     ):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
     assert workflow_client.find_first.await_count == 2
 
@@ -1953,7 +1983,9 @@ async def test_install_workflow_reuses_library_agent_without_resetting_settings(
         where={"userId": test_user.id}
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     persisted = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -1991,7 +2023,9 @@ async def test_install_workflow_restores_archived_deleted_library_agent(
         },
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     restored = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -2016,7 +2050,131 @@ async def test_install_workflow_rejects_unapproved_store_version(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     with pytest.raises(NotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_own_library_agent(
+    server: SpinTestServer, test_user
+):
+    """The unpublished-agent case: no listing version, and the row still
+    carries the agent's own name so the UI is not left with a placeholder."""
+    library_agent_id, agent_name = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert installed.library_agent_id == library_agent_id
+    assert installed.store_listing_version_id is None
+    assert installed.name == agent_name
+    assert installed.graph_id is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_library_agent_is_idempotent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert a.id == b.id
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id, "libraryAgentId": library_agent_id}
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_other_users_library_agent(
+    server: SpinTestServer, test_user, other_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, other_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id}
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_deleted_library_agent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent_id}, data={"isDeleted": True}
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_library_path_dedupes_marketplace_row(
+    server: SpinTestServer, test_user
+):
+    """Installing a listing and then its resulting library agent is one
+    attachment, not two — the marketplace install already set libraryAgentId."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    from_listing = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    assert from_listing.library_agent_id is not None
+    from_library = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=from_listing.library_agent_id
+    )
+
+    assert from_library.id == from_listing.id
+    assert from_library.store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_requires_exactly_one_source(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(test_user.id, hired.expert.id)
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(
+            test_user.id,
+            hired.expert.id,
+            store_listing_version_id="slv-1",
+            library_agent_id="library-agent-1",
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3198,7 +3356,22 @@ def _run_execution(**overrides) -> SimpleNamespace:
 def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
     return SimpleNamespace(
         libraryAgentId="library-agent-1",
+        LibraryAgent=None,
         StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def _library_run_workflow(name: str, graph_name: str | None) -> SimpleNamespace:
+    """A library-only workflow row: no listing, so the name comes from the
+    library agent — or from its graph when the agent was never published."""
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        LibraryAgent=SimpleNamespace(
+            name=name,
+            description=None,
+            AgentGraph=SimpleNamespace(name=graph_name, description=None),
+        ),
+        StoreListingVersion=None,
     )
 
 
@@ -3214,6 +3387,17 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     assert run.link == (
         "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
     )
+
+
+def test_to_expert_run_names_a_library_only_workflow():
+    run = experts_db._to_expert_run(
+        _run_execution(),
+        _library_run_workflow(None, "My Private Agent"),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert run.agent_name == "My Private Agent"
 
 
 def test_to_expert_run_falls_back_when_workflow_unresolved():

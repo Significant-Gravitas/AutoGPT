@@ -12,7 +12,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   getAdoptTargetKey,
-  getAdoptTargetVersionID,
   getUnadoptedAgents,
   getVisibleGroups,
   pruneAdoptedTargetKeys,
@@ -70,14 +69,13 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
   const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
-    const versionID = getAdoptTargetVersionID(agent);
-    if (!versionID || pendingLibraryAgentIDs.has(agent.id)) return;
+    if (pendingLibraryAgentIDs.has(agent.id)) return;
     const targetKey = getAdoptTargetKey(agent, expert);
     setPendingLibraryAgentIDs((current) => new Set(current).add(agent.id));
     try {
       await installWorkflow({
         expertId: expert.id,
-        data: { store_listing_version_id: versionID },
+        data: { library_agent_id: agent.id },
       });
       setAdoptedTargetKeys((current) => {
         const next = new Set(
@@ -94,11 +92,10 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
         variant: "success",
       });
     } catch (error) {
-      const versionUnavailable = hasStatus(error, 404);
       toast({
         title: `Couldn't adopt ${agent.name}`,
-        description: versionUnavailable
-          ? "This Marketplace version is no longer available."
+        description: hasStatus(error, 404)
+          ? "This agent is no longer available."
           : "Something went wrong. Please try again.",
         variant: "destructive",
       });
