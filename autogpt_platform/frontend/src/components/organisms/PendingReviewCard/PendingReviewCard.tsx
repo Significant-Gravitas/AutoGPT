@@ -49,10 +49,10 @@ export function PendingReviewCard({
     }
   }, [externalDataValue]);
 
-  const handleDataChange = (newValue: ReviewPayload) => {
+  function handleDataChange(newValue: ReviewPayload) {
     setCurrentData(newValue);
     onReviewDataChange(review.node_exec_id, JSON.stringify(newValue, null, 2));
-  };
+  }
 
   const renderDataInput = () => {
     const data = currentData;

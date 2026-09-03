@@ -2,6 +2,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { getPostV2ProcessReviewActionMockHandler200 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import type { ReviewRequest } from "@/app/api/__generated__/models/reviewRequest";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { PendingReviewsList } from "../PendingReviewsList";
@@ -26,10 +27,10 @@ function makeReview(
 }
 
 function captureReviewAction() {
-  const captured: { body?: any } = {};
+  const captured: { body?: ReviewRequest } = {};
   server.use(
     getPostV2ProcessReviewActionMockHandler200(async (info) => {
-      captured.body = await info.request.json();
+      captured.body = (await info.request.json()) as ReviewRequest;
       return { approved_count: 1, rejected_count: 0, failed_count: 0 };
     }),
   );
@@ -58,7 +59,7 @@ test("a decision covers only the group it was made in", async () => {
   );
 
   await waitFor(() => expect(captured.body).toBeDefined());
-  const ids = captured.body.reviews.map((r: any) => r.node_exec_id);
+  const ids = captured.body?.reviews.map((r) => r.node_exec_id) ?? [];
   expect(ids.sort()).toEqual(["ne-1", "ne-2"]);
   expect(ids).not.toContain("ne-3");
 });
@@ -92,7 +93,7 @@ test("rejecting a single-review group submits only that review as rejected", asy
   await userEvent.click(screen.getByRole("button", { name: "Reject" }));
 
   await waitFor(() => expect(captured.body).toBeDefined());
-  expect(captured.body.reviews).toEqual([
+  expect(captured.body?.reviews).toEqual([
     expect.objectContaining({ node_exec_id: "ne-1", approved: false }),
   ]);
 });
