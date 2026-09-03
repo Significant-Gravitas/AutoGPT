@@ -10,6 +10,7 @@ on:
       - ".github/scripts/run_command_junit.py"
       - ".github/scripts/run_unittest_junit.py"
       - ".github/scripts/verify_single_container_reports.py"
+      - ".github/scripts/single_container_cache.py"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/backend/Dockerfile"
@@ -112,20 +113,8 @@ jobs:
         id: cache
         shell: bash
         env:
-          CACHE_ENABLED: ${{ github.event_name != 'pull_request' }}
-          CACHE_WRITE_ENABLED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
-        run: |
-          set -euo pipefail
-          echo "set<<CACHE_EOF" >> "$GITHUB_OUTPUT"
-          if [[ "$CACHE_ENABLED" == "true" ]]; then
-            echo "backend-server.cache-from=type=registry,ref=$CACHE_REF" >> "$GITHUB_OUTPUT"
-            echo "single-container.cache-from=type=registry,ref=$CACHE_REF" >> "$GITHUB_OUTPUT"
-          fi
-          if [[ "$CACHE_WRITE_ENABLED" == "true" ]]; then
-            echo "single-container.cache-to=type=registry,ref=$CACHE_REF,mode=max,oci-mediatypes=true,image-manifest=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "CACHE_EOF" >> "$GITHUB_OUTPUT"
+          BUILD_CACHE_ARCH: ${{ matrix.suffix }}
+        run: python3 .github/scripts/single_container_cache.py
 
       - name: Test appliance runtime helpers
         shell: bash
@@ -349,10 +338,10 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
+            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v4-${{ matrix.suffix }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
+            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v4-${{ matrix.suffix }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}
             single-container.attest=type=provenance,mode=max
             single-container.attest=type=sbom
