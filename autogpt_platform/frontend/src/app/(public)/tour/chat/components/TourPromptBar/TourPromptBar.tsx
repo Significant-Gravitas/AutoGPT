@@ -34,7 +34,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (isKey(event, "Enter") || isKey(event, " ")) {
+    if (isKey(event, "Enter", " ")) {
       event.preventDefault();
       send();
     }

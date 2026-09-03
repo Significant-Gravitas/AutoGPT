@@ -38,7 +38,7 @@ export function MultiToggle({
   }
 
   function handleKeyDown(event: React.KeyboardEvent, value: string) {
-    if (isKey(event, " ") || isKey(event, "Enter")) {
+    if (isKey(event, " ", "Enter")) {
       event.preventDefault();
       handleToggle(value);
     }

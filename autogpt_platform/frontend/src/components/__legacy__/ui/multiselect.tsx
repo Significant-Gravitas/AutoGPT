@@ -89,7 +89,7 @@ const MultiSelector = forwardRef<HTMLDivElement, MultiSelectorProps>(
           setActiveIndex(prevIndex < 0 ? value.length - 1 : prevIndex);
         };
 
-        if ((isKey(e, "Backspace") || isKey(e, "Delete")) && value.length > 0) {
+        if (isKey(e, "Backspace", "Delete") && value.length > 0) {
           if (inputValue.length === 0) {
             if (activeIndex !== -1 && activeIndex < value.length) {
               onValueChange(

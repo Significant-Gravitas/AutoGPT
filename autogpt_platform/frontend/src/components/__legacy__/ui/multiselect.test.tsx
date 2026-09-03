@@ -14,7 +14,7 @@ function renderMultiSelector({
 }: {
   dir?: "ltr" | "rtl";
   loop?: boolean;
-  onValuesChange?: ReturnType<typeof vi.fn>;
+  onValuesChange?: (value: string[]) => void;
 } = {}) {
   render(
     <MultiSelector

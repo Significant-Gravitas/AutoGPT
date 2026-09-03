@@ -51,12 +51,11 @@ export function QuestionOptionList({
       else onChange(options[index]);
       return;
     }
-    const step =
-      isKey(event, "ArrowDown") || isKey(event, "ArrowRight")
-        ? 1
-        : isKey(event, "ArrowUp") || isKey(event, "ArrowLeft")
-          ? -1
-          : 0;
+    const step = isKey(event, "ArrowDown", "ArrowRight")
+      ? 1
+      : isKey(event, "ArrowUp", "ArrowLeft")
+        ? -1
+        : 0;
     if (step === 0) return;
     event.preventDefault();
     moveTo((index + step + options.length) % options.length);

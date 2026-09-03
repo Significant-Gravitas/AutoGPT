@@ -44,7 +44,7 @@ export function ChatMinimap({ messages }: Props) {
             onBlur={() => setHovered(null)}
             onClick={() => scrollToMessage(entry.id)}
             onKeyDown={(e) => {
-              if (isKey(e, "Enter") || isKey(e, " ")) {
+              if (isKey(e, "Enter", " ")) {
                 e.preventDefault();
                 scrollToMessage(entry.id);
               }

@@ -56,7 +56,8 @@ export function StoreCard({
       tabIndex={0}
       aria-label={`${agentName} workflow card`}
       onKeyDown={(e) => {
-        if (isKey(e, "Enter") || isKey(e, " ")) {
+        if (isKey(e, "Enter", " ")) {
+          e.preventDefault();
           handleClick();
         }
       }}

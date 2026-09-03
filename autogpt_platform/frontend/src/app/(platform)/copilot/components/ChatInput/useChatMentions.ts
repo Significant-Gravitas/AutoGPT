@@ -109,7 +109,7 @@ export function useChatMentions({
       moveHighlight(-1);
       return true;
     }
-    if (isKey(e, "Enter") || isKey(e, "Tab")) {
+    if (isKey(e, "Enter", "Tab")) {
       e.preventDefault();
       accept(files[highlightedIndex]);
       return true;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StoreCard } from "../StoreCard";
 
@@ -28,11 +28,13 @@ describe("StoreCard keyboard handling", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it.each(["Enter", " "])("activates on %s", (key) => {
+  it.each(["Enter", " "])("activates on %s without scrolling", (key) => {
     const { card, onClick } = renderStoreCard();
+    const event = createEvent.keyDown(card, { key });
 
-    fireEvent.keyDown(card, { key });
+    fireEvent(card, event);
 
     expect(onClick).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
   });
 });

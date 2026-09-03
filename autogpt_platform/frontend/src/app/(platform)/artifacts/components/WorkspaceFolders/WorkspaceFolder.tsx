@@ -65,7 +65,7 @@ export function WorkspaceFolder({
       data-folder-id={id}
       onClick={onClick}
       onKeyDown={(e) => {
-        if (isKey(e, "Enter") || isKey(e, " ")) {
+        if (isKey(e, "Enter", " ")) {
           e.preventDefault();
           onClick();
         }
