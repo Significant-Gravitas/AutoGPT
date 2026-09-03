@@ -2,25 +2,32 @@
 V2 External API - Pagination
 
 One envelope and one set of query parameters for every list endpoint:
-`?limit=&cursor=` in, `{"items": [...], "next_cursor": ...}` out.
+`?limit=&cursor=` in, `{"items", "next_cursor", "total_count"}` out.
 
-The cursor is opaque on purpose. Most sources underneath are page-based and one
-is keyset-based; encoding which is which inside the token means a source can
-switch without changing the contract clients wrote against.
+The cursor is opaque. It carries a version and a kind, so a cursor from another
+endpoint, a stale format, or a hand-made one is rejected rather than silently
+read as page 1 — which is the failure a later move to keyset pagination would
+otherwise hit.
 """
 
 import base64
 import binascii
 import json
-from typing import Annotated, Generic, Optional, Sequence, TypeVar
+from typing import Annotated, Any, Generic, Optional, Sequence, TypeVar
 
-from fastapi import HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import Depends, HTTPException, Query
+from pydantic import BaseModel, Field, model_validator
 from starlette import status
 
 from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 T = TypeVar("T")
+
+CURSOR_VERSION = 1
+
+# An offset this deep is a forged cursor, not a caller walking a list. Without a
+# bound, Prisma raises a DataError on the skip and the caller gets a 500.
+MAX_PAGE = 1_000_000
 
 
 class Page(BaseModel, Generic[T]):
@@ -28,8 +35,13 @@ class Page(BaseModel, Generic[T]):
 
     items: list[T]
     next_cursor: Optional[str] = Field(
-        default=None,
-        description="Pass as `cursor` to fetch the next page. `null` on the last page.",
+        description="Pass as `cursor` to fetch the next page. `null` on the last page."
+    )
+    total_count: Optional[int] = Field(
+        description=(
+            "Items matching the request across all pages, or `null` where the "
+            "underlying source cannot report one. Always present."
+        )
     )
 
 
@@ -38,24 +50,39 @@ class PageRequest(BaseModel):
 
     limit: int
     cursor: Optional[str] = None
+    position: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    @model_validator(mode="after")
+    def _decode_cursor(self) -> "PageRequest":
+        # Decoded here rather than where it is read, so a malformed cursor is a
+        # 400 even on an endpoint that ignores the value.
+        self.position = _decode(self.cursor)
+        return self
 
     @property
     def page(self) -> int:
         """1-indexed page, for the offset-paginated sources."""
-        page = _decode(self.cursor).get("p", 1)
-        if not isinstance(page, int) or page < 1:
+        if not self.position:
+            return 1
+        self.require_cursor_kind("p", "a page")
+        page = self.position.get("p")
+        if not isinstance(page, int) or not 1 <= page <= MAX_PAGE:
             raise _malformed_cursor()
         return page
 
     @property
     def token(self) -> Optional[str]:
         """Opaque position, for the keyset-paginated sources."""
-        token = _decode(self.cursor).get("t")
-        if token is not None and not isinstance(token, str):
+        if not self.position:
+            return None
+        self.require_cursor_kind("t", "a keyset token")
+        token = self.position.get("t")
+        if not isinstance(token, str):
             raise _malformed_cursor()
         return token
 
     def paged(self, items: Sequence[T], total_count: int) -> Page[T]:
+        """For an offset-paginated source that reports a total."""
         return Page[T](
             items=list(items),
             next_cursor=(
@@ -63,22 +90,39 @@ class PageRequest(BaseModel):
                 if self.page * self.limit < total_count
                 else None
             ),
+            total_count=total_count,
         )
 
-    def keyset(self, items: Sequence[T], next_token: Optional[str]) -> Page[T]:
+    def slice(self, items: Sequence[T]) -> Page[T]:
+        """For a source that returns everything it has; paginate in memory."""
+        start = (self.page - 1) * self.limit
+        return self.paged(items[start : start + self.limit], len(items))
+
+    def keyset(
+        self,
+        items: Sequence[T],
+        next_token: Optional[str],
+        total_count: Optional[int] = None,
+    ) -> Page[T]:
+        """For a keyset-paginated source, which may not be able to report a total."""
+        # Checked here too: a caller that never reads `token` would otherwise
+        # accept a page cursor and answer with the first page.
+        self.require_cursor_kind("t", "a keyset token")
         return Page[T](
             items=list(items),
             next_cursor=encode_token_cursor(next_token) if next_token else None,
+            total_count=total_count,
         )
 
-    def unpaginated(self, items: Sequence[T]) -> Page[T]:
-        """For sources that return everything they have in one call."""
-        return Page[T](items=list(items), next_cursor=None)
+    def uncounted(self, items: Sequence[T]) -> Page[T]:
+        """For a source that answers in one shot: no second page, no total."""
+        _reject_any_cursor(self)
+        return Page[T](items=list(items), next_cursor=None, total_count=None)
 
-    def slice(self, items: Sequence[T]) -> Page[T]:
-        """For sources that return everything they have; paginate in memory."""
-        start = (self.page - 1) * self.limit
-        return self.paged(items[start : start + self.limit], len(items))
+    def require_cursor_kind(self, kind: str, expected: str) -> None:
+        """No-op without a cursor; a cursor of another kind is a 400."""
+        if self.position and self.position.get("k") != kind:
+            raise _wrong_cursor(expected)
 
 
 def page_request(
@@ -98,20 +142,32 @@ def page_request(
     return PageRequest(limit=limit, cursor=cursor)
 
 
+def single_page_request(
+    request: Annotated[PageRequest, Depends(page_request)],
+) -> PageRequest:
+    """For endpoints whose source answers in one shot.
+
+    Rejects a cursor here rather than in the route body, so a request carrying
+    one never reaches the upstream call it would then discard.
+    """
+    _reject_any_cursor(request)
+    return request
+
+
 def encode_page_cursor(page: int) -> str:
-    return _encode({"p": page})
+    return _encode({"k": "p", "p": page})
 
 
 def encode_token_cursor(token: str) -> str:
-    return _encode({"t": token})
+    return _encode({"k": "t", "t": token})
 
 
-def _encode(payload: dict) -> str:
-    raw = json.dumps(payload, separators=(",", ":")).encode()
+def _encode(payload: dict[str, Any]) -> str:
+    raw = json.dumps({"v": CURSOR_VERSION, **payload}, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def _decode(cursor: Optional[str]) -> dict:
+def _decode(cursor: Optional[str]) -> dict[str, Any]:
     if not cursor:
         return {}
     try:
@@ -120,13 +176,28 @@ def _decode(cursor: Optional[str]) -> dict:
         )
     except (binascii.Error, UnicodeDecodeError, ValueError, TypeError):
         raise _malformed_cursor()
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict) or payload.get("v") != CURSOR_VERSION:
         raise _malformed_cursor()
     return payload
+
+
+def _reject_any_cursor(request: PageRequest) -> None:
+    if request.position:
+        raise _wrong_cursor("no cursor — this endpoint returns a single page")
 
 
 def _malformed_cursor() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Malformed cursor. Pass back the `next_cursor` of a previous response.",
+    )
+
+
+def _wrong_cursor(expected: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"This endpoint expects {expected}. "
+            "Cursors are not interchangeable between endpoints."
+        ),
     )
