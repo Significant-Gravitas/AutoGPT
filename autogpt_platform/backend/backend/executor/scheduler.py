@@ -2241,8 +2241,6 @@ class Scheduler(AppService):
         # only take the lock briefly inside ``_invalidate_jobs_cache``)
         # don't queue behind a slow scheduler query.
         jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
-        # The one scheduler metric with an alert on it was never set.
-        SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(len(jobs))
         with self._jobs_cache_lock:
             # If an invalidation happened while we were querying, the
             # list we just fetched might already be stale.  Skip the
@@ -2250,6 +2248,13 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                # The one scheduler metric with an alert on it was never set.
+                # Only an accepted read may publish it: a read that was
+                # invalidated mid-query is stale by definition and must not
+                # overwrite a newer count another reader has already set.
+                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
+                    len(jobs)
+                )
         return jobs
 
     def _invalidate_jobs_cache(self) -> None:
