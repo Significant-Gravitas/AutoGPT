@@ -32,9 +32,10 @@ function fakeTextarea(value: string, caret = value.length) {
   return { value, selectionStart: caret } as HTMLTextAreaElement;
 }
 
-function keyEvent(key: string) {
+function keyEvent(key: string, isComposing = false) {
   return {
     key,
+    isComposing,
     preventDefault: vi.fn(),
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
@@ -165,6 +166,45 @@ describe("useChatMentions", () => {
 
     expect(result.current.isOpen).toBe(false);
     expect(addWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("navigates results with arrow keys but ignores composing keydowns", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: {
+        files: [FILE, { ...FILE, id: "file-2", name: "beta.txt" }],
+        has_more: false,
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @")));
+    await waitFor(() => expect(result.current.files).toHaveLength(2));
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
+    });
+    expect(result.current.highlightedIndex).toBe(1);
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowUp"))).toBe(true);
+    });
+    expect(result.current.highlightedIndex).toBe(0);
+
+    act(() => {
+      expect(result.current.onKeyDown(keyEvent("ArrowDown", true))).toBe(false);
+    });
+    expect(result.current.highlightedIndex).toBe(0);
   });
 
   it("ignores accept when the highlighted item is out of bounds", async () => {
