@@ -8,7 +8,6 @@ from pydantic import SecretStr
 
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
-
 from backend.data.model import OAuth2Credentials
 
 from ._test_data import make_session
