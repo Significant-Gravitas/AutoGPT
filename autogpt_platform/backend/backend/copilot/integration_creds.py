@@ -15,9 +15,9 @@ Both caches are bounded to _CACHE_MAX_SIZE entries; cachetools evicts the
 least-recently-used entry when the limit is reached.
 
 Multi-worker note: the cached values are per-process, but invalidation is not.
-Credential writes happen in the API process while this cache lives in the
-copilot executor, so a subscription to the Redis creds-changed bus drops the
-affected entry wherever it is held.  See ``_ensure_cache_invalidation_listener``.
+The API server and the copilot executor each hold their own copy of these
+caches, so a write in one cannot evict the other's; a subscription to the Redis
+creds-changed bus does.  See ``_ensure_cache_invalidation_listener``.
 """
 
 import asyncio
@@ -52,6 +52,10 @@ _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
 _CACHE_MAX_SIZE = 10_000
 
 
+# Sentinel so ``pop`` keeps ``Cache.pop``'s "raise without a default" contract.
+_MISSING = object()
+
+
 class _LockedTTLCache(TTLCache):
     """TTLCache with a lock: the invalidation listener evicts entries from its
     own thread while copilot workers read them from theirs."""
@@ -76,9 +80,15 @@ class _LockedTTLCache(TTLCache):
         with self._lock:
             return super().__contains__(key)
 
-    def pop(self, key, default=None):
+    def pop(self, key, default=_MISSING):
         with self._lock:
+            if default is _MISSING:
+                return super().pop(key)
             return super().pop(key, default)
+
+    def popitem(self):
+        with self._lock:
+            return super().popitem()
 
 
 # (user_id, provider) → token string.  TTLCache handles expiry + eviction.
@@ -191,6 +201,8 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                 # preventing the LLM from receiving a non-functional token.
                 refresh_failed = True
                 continue
+            # A refresh here publishes, and this process's own listener may evict
+            # the entry just written; the cost is one extra lookup, not a leak.
             _token_cache[cache_key] = token
             return token
 
@@ -213,9 +225,9 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
 def _ensure_cache_invalidation_listener() -> None:
     """Subscribe this process to credential changes, once.
 
-    Started from the cache read path so the subscription cannot be wired up
-    separately from the cache, and then silently forgotten — which is exactly
-    how the in-process hook came to invalidate nothing.
+    Started from the cache read path so that every process holding a cache
+    subscribes, and only those do — the in-process hook covers a write served
+    by this process, and this covers the ones served elsewhere.
     """
     global _listener_thread
     with _listener_start_lock:

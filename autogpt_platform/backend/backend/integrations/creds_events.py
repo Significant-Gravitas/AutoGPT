@@ -1,10 +1,9 @@
 """Cross-process broadcast of credential changes.
 
-A credential write happens in whichever process serves the request — the API
-process for an OAuth callback — while the caches holding the stale token live
-in other processes, such as the copilot executor.  An in-process callback
-cannot cross that boundary, so every write is also published here and picked
-up by subscribers wherever they run.
+The API server and the copilot executor are separate processes and each holds
+its own credential caches.  A write serves one request in one of them, so an
+in-process callback only ever reaches that process's copy; every write is also
+published here so the other processes drop theirs.
 """
 
 from collections.abc import AsyncGenerator

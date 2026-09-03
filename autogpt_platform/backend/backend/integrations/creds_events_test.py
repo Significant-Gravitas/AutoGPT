@@ -1,6 +1,7 @@
 """Tests for the credentials-changed bus — the cross-process half of invalidation."""
 
 import contextlib
+import socket
 import subprocess
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,28 +52,32 @@ async def test_credential_write_publishes_creds_changed():
     publish.assert_awaited_once_with(_USER, "github")
 
 
-def test_write_publishes_in_a_process_that_has_no_in_process_hook():
-    """The regression: the OAuth callback runs in the API process, which never
-    imports the copilot cache, so its in-process hook is None."""
+@pytest.mark.parametrize(
+    "module", ["backend.api.rest_api", "backend.copilot.executor.manager"]
+)
+def test_every_process_holding_the_cache_broadcasts_its_writes(module: str):
+    """The regression: the API server and the copilot executor each hold their
+    own copy of the token cache, so the in-process hook only ever evicts the
+    writer's copy and the OAuth callback could not reach the executor's."""
     result = subprocess.run(
-        [sys.executable, "-c", _API_PROCESS_SCRIPT],
+        [sys.executable, "-c", _PROCESS_PROBE.replace("__MODULE__", module)],
         capture_output=True,
         text=True,
         timeout=300,
     )
     assert result.returncode == 0, result.stderr
-    assert "hook=None published=('user-1', 'github')" in result.stdout
+    assert "cache=True hook=True published=('user-1', 'github')" in result.stdout
 
 
 def _has_live_cluster() -> bool:
+    """Probe the socket, not ``redis_client.connect()``: this runs at collection
+    time and that helper retries a dead host for ~45 minutes before giving up."""
     from backend.data import redis_client
 
     try:
-        client = redis_client.connect()
-    except Exception:
+        socket.create_connection((redis_client.HOST, redis_client.PORT), 1).close()
+    except OSError:
         return False
-    with contextlib.suppress(Exception):
-        client.close()
     return True
 
 
@@ -123,15 +128,21 @@ def _oauth_creds(token: str = "tok") -> OAuth2Credentials:
     )
 
 
-_API_PROCESS_SCRIPT = """
+_PROCESS_PROBE = """
 import asyncio
+import sys
 from unittest.mock import AsyncMock, patch
 
-import backend.api.features.integrations.router  # noqa: F401 - API process import set
+import __MODULE__  # noqa: F401 - the process under test loads this
 import backend.integrations.creds_manager as cm
 
 with patch.object(cm, "publish_creds_changed", new_callable=AsyncMock) as publish:
     asyncio.run(cm._invoke_creds_changed_hook("user-1", "github"))
 
-print(f"hook={cm._on_creds_changed} published={publish.await_args[0]}")
+cached = "backend.copilot.integration_creds" in sys.modules
+print(
+    "cache=" + str(cached)
+    + " hook=" + str(cm._on_creds_changed is not None)
+    + " published=" + str(publish.await_args[0])
+)
 """

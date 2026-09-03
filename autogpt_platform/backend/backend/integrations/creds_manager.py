@@ -73,9 +73,8 @@ def unregister_creds_changed_hook() -> None:
 async def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
     """Notify this process's hook, then every other process over Redis.
 
-    The hook alone is not enough: it is registered by the module owning the
-    cache (copilot), while writes happen in the API process, where the global
-    is never set. The broadcast is what actually reaches the stale cache.
+    The hook alone is not enough: it evicts only the writing process's caches,
+    and the copilot executor holds its own in a different process.
     """
     if _on_creds_changed is not None:
         try:
