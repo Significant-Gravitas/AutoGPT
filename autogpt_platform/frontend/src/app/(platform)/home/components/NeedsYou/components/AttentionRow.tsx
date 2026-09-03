@@ -54,12 +54,11 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           <ExpertAvatar
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
-            size={24}
-            className="mt-0.5"
+            size={40}
           />
         ) : (
-          <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500">
-            <Icon icon={ICONS[item.kind]} size={13} aria-hidden="true" />
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500">
+            <Icon icon={ICONS[item.kind]} size={18} aria-hidden="true" />
           </span>
         )}
         <div className="min-w-0 flex-1">
@@ -78,11 +77,11 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           </div>
           <Text
             variant="small"
-            className="mt-0.5 line-clamp-2 text-pretty text-[13px] leading-5 text-zinc-500"
+            className="line-clamp-2 text-pretty text-[13px] leading-5 text-zinc-500"
           >
             {item.description}
           </Text>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-zinc-500">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-zinc-500">
             <span className="font-medium text-zinc-700">
               {item.expert?.name ?? KIND_LABELS[item.kind]}
             </span>
