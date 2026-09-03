@@ -210,9 +210,9 @@ This block reads the body, title, user, changes, and full raw object of a specif
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block reads the details of a GitHub pull request including its title, description, author, and optionally the code diff. It fetches this information via the GitHub API using your credentials.
+This block fetches the pull request object from the `pulls/{number}` GitHub API endpoint and emits it unmodified as `pull_request`, while also pulling out `title`, `body`, and `author` as discrete outputs for convenience — if any of those fields are missing from the response, they fall back to placeholder strings (`"No title found"`, etc.) rather than failing the block. Because this uses the pulls endpoint rather than the issues endpoint, a fine-grained personal access token needs `Pull requests: read`; the default OAuth `repo` scope already covers this.
 
-When include_pr_changes is enabled, the block also retrieves the full diff of all changes in the PR, which can be useful for code review automation or analysis.
+When `include_pr_changes` is enabled, the block makes a second call to fetch the diff of every changed file and joins them into one `changes` string, prefixed with `--- <old path>` / `+++ <new path>` headers similar to a unified diff — useful for feeding a PR's full changeset to code review automation.
 <!-- END MANUAL -->
 
 ### Inputs
