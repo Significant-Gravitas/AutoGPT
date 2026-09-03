@@ -36,6 +36,7 @@ _init_attempted = False
 # Strong references to in-flight shadow evaluations; without them asyncio only
 # holds a weak one and the task can be collected mid-flight.
 _shadow_evaluations: set[asyncio.Task] = set()
+_shadow_evaluations_stopped = False
 MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 
 
@@ -219,6 +220,8 @@ LD_UNPORTED_TARGETING = frozenset(
 
 def initialize_feature_flags() -> None:
     """Start whichever vendor(s) the configured backend reads from."""
+    global _shadow_evaluations_stopped
+    _shadow_evaluations_stopped = False
     backend = settings.config.feature_flag_backend
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
@@ -234,11 +237,27 @@ def initialize_feature_flags() -> None:
 
 def shutdown_feature_flags() -> None:
     """Reverse of :func:`initialize_feature_flags`."""
+    _stop_shadow_evaluations()
     backend = settings.config.feature_flag_backend
     if backend is not FeatureFlagBackend.POSTHOG:
         shutdown_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
         feature_flag_posthog.shutdown_posthog_flags()
+
+
+def _stop_shadow_evaluations() -> None:
+    """Cancel in-flight shadow reads and refuse new ones until the next init.
+
+    A shadow read that resumed after teardown would call ``get_flag_client()``
+    again and, since shutdown clears the "did we try" gate so an in-process
+    restart works, build a fresh PostHog client with a poller thread nothing
+    closes. This is the same hazard ``shutdown_launchdarkly`` documents.
+    """
+    global _shadow_evaluations_stopped
+    _shadow_evaluations_stopped = True
+    for task in list(_shadow_evaluations):
+        task.cancel()
+    _shadow_evaluations.clear()
 
 
 def serves_launchdarkly() -> bool:
@@ -484,6 +503,9 @@ def _probe_posthog(
     latency to the request path — up to a 3s remote ``/flags`` call wherever
     ``POSTHOG_PERSONAL_API_KEY`` is unset and local evaluation is off.
     """
+    if _shadow_evaluations_stopped:
+        return
+
     if len(_shadow_evaluations) >= MAX_CONCURRENT_SHADOW_EVALUATIONS:
         # A slow PostHog must cost the diff week its samples, not the process
         # its memory.

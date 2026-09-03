@@ -481,6 +481,67 @@ class TestDualStaysOffTheRequestPath:
         assert _mismatch_record(message)["expected_until_cohorts_exist"] is True
 
 
+class TestShutdownStopsShadowEvaluations:
+    """A shadow read that outlives teardown rebuilds the client it just closed:
+    shutdown clears the "did we try" gate so an in-process restart works, and
+    ``get_flag_client()`` then constructs a fresh one with a poller thread
+    nothing will close."""
+
+    @pytest.fixture(autouse=True)
+    def restart_after(self):
+        yield
+        ff._shadow_evaluations_stopped = False
+
+    @pytest.mark.asyncio
+    async def test_shutdown_cancels_the_in_flight_reads(
+        self, mocker, ld_client, user_context
+    ):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        mocker.patch.object(ff, "shutdown_launchdarkly")
+        mocker.patch.object(ph, "shutdown_posthog_flags")
+        ld_client.variation.return_value = True
+
+        async def never_finishes(*args, **kwargs):
+            await asyncio.sleep(30)
+            return False, True
+
+        mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
+        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        assert len(ff._shadow_evaluations) == 1
+
+        ff.shutdown_feature_flags()
+
+        assert ff._shadow_evaluations == set()
+
+    @pytest.mark.asyncio
+    async def test_a_read_during_teardown_starts_no_new_client(
+        self, mocker, ld_client, user_context
+    ):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        mocker.patch.object(ff, "shutdown_launchdarkly")
+        mocker.patch.object(ph, "shutdown_posthog_flags")
+        ld_client.variation.return_value = True
+        get_client = mocker.patch.object(ph, "get_flag_client")
+
+        ff.shutdown_feature_flags()
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
+        await drain_shadow_evaluations()
+
+        get_client.assert_not_called()
+
+    def test_a_restart_resumes_shadow_evaluation(self, mocker):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        mocker.patch.object(ff, "shutdown_launchdarkly")
+        mocker.patch.object(ff, "initialize_launchdarkly")
+        mocker.patch.object(ph, "shutdown_posthog_flags")
+        mocker.patch.object(ph, "initialize_posthog_flags")
+
+        ff.shutdown_feature_flags()
+        ff.initialize_feature_flags()
+
+        assert ff._shadow_evaluations_stopped is False
+
+
 class TestForcedFlagsInEveryBackend:
     @pytest.mark.parametrize("backend", list(FeatureFlagBackend))
     @pytest.mark.asyncio

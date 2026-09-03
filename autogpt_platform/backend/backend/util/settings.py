@@ -52,9 +52,10 @@ class BehaveAs(str, Enum):
 class FeatureFlagBackend(str, Enum):
     """Which vendor answers a feature flag read.
 
-    ``DUAL`` evaluates both and returns LaunchDarkly's answer, so a
-    disagreement is measurable before the switch without changing what
-    any user sees.
+    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
+    disagreement is measurable before the switch. The backend always serves
+    LaunchDarkly in this mode; the frontend falls back to PostHog where
+    LaunchDarkly is not configured, because there its answer never arrives.
     """
 
     LAUNCHDARKLY = "launchdarkly"
