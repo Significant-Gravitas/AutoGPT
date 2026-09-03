@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { StoreCard } from "@/components/__legacy__/StoreCard";
+import { StoreCard } from "@/app/(platform)/marketplace/components/StoreCard/StoreCard";
 import {
   Carousel,
   CarouselContent,
