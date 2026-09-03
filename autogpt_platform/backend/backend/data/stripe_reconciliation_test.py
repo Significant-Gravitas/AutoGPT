@@ -59,7 +59,7 @@ def _patch_stripe_pages(
         return page
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
     )
 
@@ -237,7 +237,7 @@ async def test_sweep_incomplete_map_skips_downgrades(
     )
     # Stripe list fails -> _collect_status_page returns capped -> map incomplete.
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=stripe.StripeError("rate limited"),
     )
     candidates = [_candidate("u_down", "cus_gone", SubscriptionTier.PRO)]
@@ -387,7 +387,7 @@ async def test_collect_status_page_follows_pagination(
         return pages.pop(0)
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
     )
     price_to_tier = {
@@ -428,7 +428,7 @@ async def test_collect_status_page_highest_tier_wins_across_pages(
     for first, second in (("price_basic", "price_pro"), ("price_pro", "price_basic")):
         pages = _run(first, second)
         mocker.patch(
-            "backend.data.stripe_reconciliation.stripe.Subscription.list",
+            "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
             side_effect=lambda *, status, limit, starting_after=None: pages.pop(0),
         )
         tiers: dict[str, SubscriptionTier] = {}
@@ -450,7 +450,7 @@ async def test_collect_status_page_stops_at_cap(
         return _page([_sub(f"cus_{call_count['n']}", "price_pro")], has_more=True)
 
     mocker.patch(
-        "backend.data.stripe_reconciliation.stripe.Subscription.list",
+        "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
         side_effect=_list,
     )
     tiers: dict[str, SubscriptionTier] = {}
