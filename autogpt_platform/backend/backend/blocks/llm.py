@@ -5,10 +5,11 @@ import logging
 import math
 import re
 import secrets
+import time
 from abc import ABC
 from enum import Enum
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Iterable, List, Literal, Optional, cast
 
 import anthropic
 import openai
@@ -51,6 +52,10 @@ from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
+
+if TYPE_CHECKING:
+    # Runtime import would cycle: data.execution imports backend.blocks.
+    from backend.data.execution import ExecutionContext
 
 settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -576,6 +581,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         for retry_count in range(input_data.retry):
             logger.debug(f"LLM request: {prompt}")
+            attempt_started = time.monotonic()
             try:
                 llm_response = await self.llm_call(
                     credentials=credentials,
@@ -722,11 +728,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     e,
                     (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
                 ):
+                    _alert_if_spend_was_burned(
+                        elapsed=time.monotonic() - attempt_started,
+                        llm_model=llm_model,
+                        execution_context=kwargs.get("execution_context"),
+                        error=e,
+                    )
                     # A request that hung once will most likely hang again on
                     # retry — the underlying issue (server-side starvation,
                     # network partition, etc.) doesn't clear on a fresh socket.
                     # Skip retries to avoid the N×timeout wait cascade.
-                    logger.warning(f"LLM call timed out, not retrying: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
                     break
                 logger.exception(f"Error calling LLM: {e}")
@@ -876,6 +887,42 @@ def trim_prompt(s: str) -> str:
     """Removes indentation up to and including `|` from a multi-line prompt."""
     lines = s.strip().split("\n")
     return "\n".join([line.strip().lstrip("|") for line in lines])
+
+
+# Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
+# nothing, and paging on those during an outage would bury the ones that cost.
+_SPEND_BURNED_ELAPSED_FRACTION = 0.9
+
+
+def _alert_if_spend_was_burned(
+    *,
+    elapsed: float,
+    llm_model: LLMModel,
+    execution_context: "ExecutionContext | None",
+    error: BaseException,
+) -> None:
+    """ERROR-level so Sentry raises it as an event (LoggingIntegration ships
+    event_level=ERROR); see #14292 for why this has to page rather than log."""
+    budget = LLM_REQUEST_TIMEOUT_SECONDS
+    if elapsed < budget * _SPEND_BURNED_ELAPSED_FRACTION:
+        logger.warning(
+            f"LLM call failed fast after {elapsed:.1f}s, not retrying "
+            f"(no provider spend burned): {error}"
+        )
+        return
+
+    ctx = execution_context
+    logger.error(
+        f"LLM call cut off mid-inference after {elapsed:.1f}s "
+        f"— provider billed, user refunded. "
+        f"provider={llm_model.metadata.provider} model={llm_model.value} "
+        f"configured_timeout={budget}s "
+        f"user_id={ctx.user_id if ctx else None} "
+        f"graph_id={ctx.graph_id if ctx else None} "
+        f"graph_exec_id={ctx.graph_exec_id if ctx else None} "
+        f"node_id={ctx.node_id if ctx else None} "
+        f"node_exec_id={ctx.node_exec_id if ctx else None}"
+    )
 
 
 class AITextGeneratorBlock(AIBlockBase):

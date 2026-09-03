@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,6 +11,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
 from backend.util.llm.providers import CONNECT_TIMEOUT_SECONDS
 from backend.util.settings import Config
@@ -1591,6 +1593,114 @@ class TestLLMRequestTimeout:
                     pass
 
         assert calls["n"] == 1, f"timeout was retried {calls['n']}x instead of breaking"
+
+    async def _run_block_expecting_failure(self, side_effect, retry=3, ctx=None):
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=side_effect)
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=retry,
+            )
+            extra = {"execution_context": ctx} if ctx is not None else {}
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(
+                    input_data, credentials=llm.TEST_CREDENTIALS, **extra
+                ):
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_mid_inference_cutoff_alerts_once(self, monkeypatch, caplog):
+        """A cutoff that ate the budget burned provider spend we refund to the
+        user, so it must page exactly once (#14292's alerting requirement).
+        Budget 0 puts any real elapsed time over the burn threshold, which
+        avoids patching time.monotonic — that is module-global and asyncio
+        reads it too."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0)
+        ctx = ExecutionContext(
+            user_id="u-1",
+            graph_id="g-1",
+            graph_exec_id="ge-1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+        )
+
+        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+            await self._run_block_expecting_failure(TimeoutError("hung"), ctx=ctx)
+
+        alerts = [
+            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
+        ]
+        assert len(alerts) == 1, f"expected exactly 1 alert, got {len(alerts)}"
+        assert alerts[0].levelno == logging.ERROR, "must be ERROR so Sentry raises it"
+        # The ids are what an on-call needs to find the run that burned money.
+        text = alerts[0].getMessage()
+        for field in (
+            "provider=openai",
+            "configured_timeout=",
+            "user_id=u-1",
+            "graph_id=g-1",
+            "graph_exec_id=ge-1",
+            "node_id=n-1",
+            "node_exec_id=ne-1",
+        ):
+            assert field in text, f"alert is missing {field}: {text}"
+
+    @pytest.mark.asyncio
+    async def test_fast_failure_does_not_alert(self, monkeypatch, caplog):
+        """A connect-phase failure burns no provider spend; paging on it during
+        an outage would bury the cutoffs that cost money. A large budget puts
+        the near-instant mocked failure well under the burn threshold."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 3600)
+
+        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+            await self._run_block_expecting_failure(TimeoutError("connect"))
+
+        assert not [
+            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
+        ]
+
+    @pytest.mark.asyncio
+    async def test_ordinary_failure_does_not_alert(self, caplog):
+        """Only timeouts burn a full generation; a 500 must not page."""
+        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+            await self._run_block_expecting_failure(ValueError("boom"), retry=1)
+
+        assert not [
+            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
+        ]
+
+    @pytest.mark.asyncio
+    async def test_success_does_not_alert(self, caplog):
+        mock_response = MagicMock()
+        mock_response.output_text = '{"key": "value"}'
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        with caplog.at_level(logging.ERROR, logger=llm.logger.logger.name):
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_openai.return_value = mock_client
+                mock_client.responses.create = AsyncMock(return_value=mock_response)
+                block = llm.AIStructuredResponseGeneratorBlock()
+                input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                    prompt="Hello",
+                    expected_format={"key": "value"},
+                    model=llm.DEFAULT_LLM_MODEL,
+                    credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                    force_json_output=True,
+                )
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert not [
+            r for r in caplog.records if "cut off mid-inference" in r.getMessage()
+        ]
 
     @pytest.mark.asyncio
     async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):
