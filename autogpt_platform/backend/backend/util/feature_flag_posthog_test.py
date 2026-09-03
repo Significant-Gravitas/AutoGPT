@@ -85,6 +85,18 @@ class TestClientConstruction:
     def test_shutdown_without_a_client_is_a_no_op(self, mocker):
         ph.shutdown_posthog_flags()
 
+    def test_the_client_can_be_rebuilt_after_shutdown(self, mocker):
+        """An in-process restart — SpinTestServer spins the app repeatedly —
+        must not leave every flag read answering with its default forever."""
+        configure(mocker)
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+        ph.shutdown_posthog_flags()
+
+        assert ph.get_flag_client() is not None
+        assert posthog.call_count == 2
+
 
 class TestRawRead:
     @pytest.mark.asyncio
@@ -127,6 +139,18 @@ class TestRawRead:
             {"daily": 5},
             True,
         )
+
+    @pytest.mark.asyncio
+    async def test_a_conclusive_off_wins_over_a_stale_payload(self, mocker):
+        """Serving the payload here would make an authoritative "off" read as
+        a non-boolean, i.e. as "could not evaluate"."""
+        client = mocker.Mock()
+        client.evaluate_flags.return_value = snapshot(
+            mocker, value=False, payload={"daily": 5}
+        )
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+
+        assert await ph.evaluate_flag("hire-experts", "u-1") == (False, True)
 
     @pytest.mark.asyncio
     async def test_a_variant_key_is_returned_as_the_value(self, mocker):

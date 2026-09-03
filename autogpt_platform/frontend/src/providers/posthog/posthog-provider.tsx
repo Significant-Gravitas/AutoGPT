@@ -43,8 +43,10 @@ export function PostHogUserTracker() {
         posthog.identify(user.id, {
           email: user.email,
           ...(user.user_metadata?.name && { name: user.user_metadata.name }),
-          // Only when PostHog answers flag reads: in LaunchDarkly mode this
-          // call is analytics-only and must stay byte-identical.
+          // Signup date and role become PostHog person properties here, and
+          // that is intended: they are what the ported targeting rules match
+          // on. Sent only when PostHog answers flag reads — in LaunchDarkly
+          // mode this call stays analytics-only and byte-identical.
           ...(usesPostHog() && buildFlagPersonProperties(user)),
         });
         previousUserIdRef.current = user.id;

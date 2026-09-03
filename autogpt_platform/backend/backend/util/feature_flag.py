@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -31,6 +32,11 @@ T = TypeVar("T")
 
 _is_initialized = False
 _init_attempted = False
+
+# Strong references to in-flight shadow evaluations; without them asyncio only
+# holds a weak one and the task can be collected mid-flight.
+_shadow_evaluations: set[asyncio.Task] = set()
+MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 
 
 class Flag(str, Enum):
@@ -182,12 +188,47 @@ class Flag(str, Enum):
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
 
+# LaunchDarkly keys whose targeting is segment membership or an individual-user
+# target — neither of which any PostHog cohort reproduces until phase 2 creates
+# one. From ld-targeting-summary.md; attribute rules (email domain, role,
+# signup date) are not listed because `_person_properties` already carries them.
+LD_UNPORTED_TARGETING = frozenset(
+    {
+        "ai-agent-execution-summary",
+        "artifacts",
+        "artifacts-page",
+        "autogpt-new-layout",
+        "AutoMod",
+        "beta-blocks",
+        "chat",
+        "chat-mode-option",
+        "chat-search",
+        "chat-sharing",
+        "copilot-bot-platforms",
+        "dream-pass-enabled",
+        "enable-platform-payment",
+        "generic-trigger-agents",
+        "graphiti-memory",
+        "new-tool-ui",
+        "nightly-copilot",
+        "SHOW_ORG_SETTINGS",
+        "task-progress-bar",
+    }
+)
+
+
 def initialize_feature_flags() -> None:
     """Start whichever vendor(s) the configured backend reads from."""
     backend = settings.config.feature_flag_backend
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
+        if not settings.secrets.posthog_personal_api_key:
+            logger.warning(
+                f"Feature flag backend is {backend.value} without "
+                "POSTHOG_PERSONAL_API_KEY: every flag read becomes a remote "
+                "/flags call instead of an in-process evaluation"
+            )
         feature_flag_posthog.initialize_posthog_flags()
 
 
@@ -198,6 +239,11 @@ def shutdown_feature_flags() -> None:
         shutdown_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
         feature_flag_posthog.shutdown_posthog_flags()
+
+
+def serves_launchdarkly() -> bool:
+    """Whether LaunchDarkly answers flag reads under the configured backend."""
+    return settings.config.feature_flag_backend is not FeatureFlagBackend.POSTHOG
 
 
 def is_configured() -> bool:
@@ -417,36 +463,83 @@ async def _evaluate_dual(
     Serving LaunchDarkly is what makes the diff week free of user-visible
     risk: PostHog's answer is only ever observed, never acted on.
     """
-    ld_result = await _evaluate_launchdarkly(flag_key, user_id, default)
-
-    try:
-        ph_result = await _evaluate_posthog(flag_key, user_id, default)
-    except Exception as e:
-        logger.warning(f"PostHog shadow evaluation raised for {flag_key}: {e}")
-        return ld_result
-
-    if ld_result != ph_result:
-        ld_value, ld_evaluated = ld_result
-        ph_value, ph_evaluated = ph_result
-        mismatch_logger.warning(
-            "feature-flag mismatch: "
-            + json.dumps(
-                {
-                    "flag": flag_key,
-                    "user": _user_digest(user_id),
-                    "launchdarkly": {"value": ld_value, "evaluated": ld_evaluated},
-                    "posthog": {"value": ph_value, "evaluated": ph_evaluated},
-                },
-                default=repr,
-                sort_keys=True,
-            )
-        )
-
+    # One lookup for both vendors: the failure path is deliberately uncached,
+    # so evaluating them independently would double its database reads.
+    context = await _fetch_user_context_status(user_id)
+    ld_result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
+    _probe_posthog(flag_key, user_id, default, context, ld_result)
     return ld_result
 
 
+def _probe_posthog(
+    flag_key: str,
+    user_id: str,
+    default: Any,
+    context: tuple[Context, bool],
+    ld_result: tuple[Any, bool],
+) -> None:
+    """Compare PostHog's answer to LaunchDarkly's without making a caller wait.
+
+    The shadow answer is never served, so awaiting it would only add PostHog's
+    latency to the request path — up to a 3s remote ``/flags`` call wherever
+    ``POSTHOG_PERSONAL_API_KEY`` is unset and local evaluation is off.
+    """
+    if len(_shadow_evaluations) >= MAX_CONCURRENT_SHADOW_EVALUATIONS:
+        # A slow PostHog must cost the diff week its samples, not the process
+        # its memory.
+        logger.debug(f"Shadow evaluation backlog full, skipping {flag_key}")
+        return
+
+    task = asyncio.create_task(
+        _record_mismatch(flag_key, user_id, default, context, ld_result)
+    )
+    _shadow_evaluations.add(task)
+    task.add_done_callback(_shadow_evaluations.discard)
+
+
+async def _record_mismatch(
+    flag_key: str,
+    user_id: str,
+    default: Any,
+    context: tuple[Context, bool],
+    ld_result: tuple[Any, bool],
+) -> None:
+    try:
+        ph_result = await _evaluate_posthog(flag_key, user_id, default, context)
+    except Exception as e:
+        logger.warning(f"PostHog shadow evaluation raised for {flag_key}: {e}")
+        return
+
+    if ld_result == ph_result:
+        return
+
+    ld_value, ld_evaluated = ld_result
+    ph_value, ph_evaluated = ph_result
+    mismatch_logger.warning(
+        "feature-flag mismatch: "
+        + json.dumps(
+            {
+                "flag": flag_key,
+                "user": _user_digest(user_id),
+                "launchdarkly": {"value": ld_value, "evaluated": ld_evaluated},
+                "posthog": {"value": ph_value, "evaluated": ph_evaluated},
+                # Segment and individual-user targeting has no PostHog cohort
+                # until phase 2 builds one, so these flags are expected to
+                # disagree — the diff-week report has to separate them from
+                # real divergence rather than drown in them.
+                "expected_until_cohorts_exist": flag_key in LD_UNPORTED_TARGETING,
+            },
+            default=repr,
+            sort_keys=True,
+        )
+    )
+
+
 async def _evaluate_posthog(
-    flag_key: str, user_id: str, default: Any = None
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    context: tuple[Context, bool] | None = None,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` from PostHog for one raw flag read.
 
@@ -454,18 +547,23 @@ async def _evaluate_posthog(
     reason it does on LaunchDarkly: the flag evaluates fine, it just answers
     for a user without the targeted attributes.
     """
-    context, context_resolved = await _fetch_user_context_status(user_id)
+    user_context, context_resolved = context or await _fetch_user_context_status(
+        user_id
+    )
     value, evaluated = await feature_flag_posthog.evaluate_flag(
         flag_key,
         user_id,
-        _person_properties(context),
+        _person_properties(user_context),
         default,
     )
     return value, evaluated and context_resolved
 
 
 async def _evaluate_launchdarkly(
-    flag_key: str, user_id: str, default: Any = None
+    flag_key: str,
+    user_id: str,
+    default: Any = None,
+    context: tuple[Context, bool] | None = None,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` from LaunchDarkly for one raw flag read.
 
@@ -486,10 +584,12 @@ async def _evaluate_launchdarkly(
             return default, False
 
         # Get user context (role/email) from the Better Auth user table
-        context, context_resolved = await _fetch_user_context_status(user_id)
+        user_context, context_resolved = context or await _fetch_user_context_status(
+            user_id
+        )
 
         # Evaluate flag
-        result = client.variation(flag_key, context, default)
+        result = client.variation(flag_key, user_context, default)
 
         logger.debug(
             f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
@@ -733,17 +833,17 @@ def create_feature_flag_dependency(
 
 def _flag_backend_configured() -> bool:
     """Whether the configured backend has the credentials a read needs."""
-    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
-        return feature_flag_posthog.is_configured()
     # Dual serves LaunchDarkly's answer, so LaunchDarkly is what gates a route.
-    return is_configured()
+    if serves_launchdarkly():
+        return is_configured()
+    return feature_flag_posthog.is_configured()
 
 
 def _flag_backend_initialized() -> bool:
     """Whether the configured backend can answer right now."""
-    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
-        return feature_flag_posthog.get_flag_client() is not None
-    return get_client().is_initialized()
+    if serves_launchdarkly():
+        return get_client().is_initialized()
+    return feature_flag_posthog.get_flag_client() is not None
 
 
 @contextlib.contextmanager

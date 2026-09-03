@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from enum import Enum
@@ -20,6 +21,8 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -701,6 +704,25 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
         "every disagreement).",
     )
+
+    @field_validator("feature_flag_backend", mode="before")
+    @classmethod
+    def _default_unknown_flag_backend(cls, v):
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
+        if not isinstance(v, str):
+            return v
+        try:
+            return FeatureFlagBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
+                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+            )
+            return FeatureFlagBackend.LAUNCHDARKLY
 
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,

@@ -66,6 +66,12 @@ async def evaluate_flag(
         logger.debug(f"PostHog returned no answer for {flag_key}, using {default}")
         return default, False
 
+    # A conclusive "off" is the answer. Serving a payload here instead would
+    # turn it into a non-boolean, which every caller reads as "could not
+    # evaluate" — the one distinction this evaluator exists to preserve.
+    if value is False:
+        return False, True
+
     payload = snapshot.get_flag_payload(flag_key)
     return (payload if payload is not None else value), True
 
@@ -76,12 +82,16 @@ def initialize_posthog_flags() -> None:
 
 
 def shutdown_posthog_flags() -> None:
-    global _client
+    global _client, _init_attempted
     if _client is None:
         return
 
     _client.shutdown()
     _client = None
+    # Clear the "did we try" gate too, or a re-init in the same process — an
+    # in-process app restart, as SpinTestServer does — silently never rebuilds
+    # and every flag read answers with its default forever.
+    _init_attempted = False
     logger.info("PostHog feature flag client closed successfully")
 
 

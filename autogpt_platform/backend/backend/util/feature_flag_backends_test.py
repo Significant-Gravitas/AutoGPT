@@ -1,5 +1,6 @@
 """Backend selection: launchdarkly (default), posthog, and the dual diff run."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -10,7 +11,14 @@ from ldclient import Context, LDClient
 import backend.util.feature_flag as ff
 import backend.util.feature_flag_posthog as ph
 from backend.util.feature_flag import Flag, evaluate_feature_flag, is_feature_enabled
-from backend.util.settings import FeatureFlagBackend
+from backend.util.settings import Config, FeatureFlagBackend
+
+
+@pytest.fixture(autouse=True)
+async def no_leaked_shadow_evaluations():
+    """A dual probe left pending would surface inside the NEXT test's caplog."""
+    yield
+    await drain_shadow_evaluations()
 
 
 @pytest.fixture(autouse=True)
@@ -41,6 +49,12 @@ def user_context(mocker):
 def _mismatch_record(message: str) -> dict:
     """The log formatter wraps the message in ANSI colour codes."""
     return json.loads(message[message.index("{") : message.rindex("}") + 1])
+
+
+async def drain_shadow_evaluations() -> None:
+    """Dual reports off the caller's path, so a test has to wait for it."""
+    while ff._shadow_evaluations:
+        await asyncio.gather(*list(ff._shadow_evaluations))
 
 
 def use_backend(mocker, backend: FeatureFlagBackend):
@@ -103,6 +117,19 @@ class TestDefaultBackendIsUnchanged:
 
         ld_client.is_initialized.assert_called_once()
         posthog.assert_not_called()
+
+
+class TestAnUnknownBackendValue:
+    """Settings is built at import of every module that reads a flag, so a
+    rejected value is a boot crash rather than a misconfigured flag read."""
+
+    def test_a_typo_falls_back_to_launchdarkly(self, monkeypatch):
+        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "posthogg")
+        assert Config().feature_flag_backend is FeatureFlagBackend.LAUNCHDARKLY
+
+    def test_the_value_is_case_insensitive(self, monkeypatch):
+        monkeypatch.setenv("FEATURE_FLAG_BACKEND", "PostHog")
+        assert Config().feature_flag_backend is FeatureFlagBackend.POSTHOG
 
 
 class TestPostHogBackend:
@@ -258,6 +285,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             await evaluate_feature_flag(Flag.HIRE_EXPERTS, user_id)
+            await drain_shadow_evaluations()
 
         [message] = [
             record.getMessage()
@@ -283,6 +311,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await drain_shadow_evaluations()
 
         assert not [
             r for r in caplog.records if r.name == "backend.util.feature_flag.mismatch"
@@ -302,6 +331,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+            await drain_shadow_evaluations()
 
         assert result == (False, True)
         [message] = [
@@ -323,6 +353,7 @@ class TestDualBackend:
         mocker.patch.object(ph, "evaluate_flag", side_effect=Exception("boom"))
 
         assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        await drain_shadow_evaluations()
 
     @pytest.mark.asyncio
     async def test_an_unserializable_value_still_logs(
@@ -337,6 +368,7 @@ class TestDualBackend:
             logging.WARNING, logger="backend.util.feature_flag.mismatch"
         ):
             await ff.get_feature_flag_value("copilot-cost-limits", "u-1")
+            await drain_shadow_evaluations()
 
         assert [
             r for r in caplog.records if r.name == "backend.util.feature_flag.mismatch"
@@ -358,6 +390,95 @@ class TestDualBackend:
         ld_client.is_initialized.return_value = False
 
         assert ff._flag_backend_initialized() is False
+
+
+class TestDualStaysOffTheRequestPath:
+    """The shadow answer is discarded, so nobody may wait for it."""
+
+    @pytest.mark.asyncio
+    async def test_the_caller_does_not_wait_for_posthog(
+        self, mocker, ld_client, user_context
+    ):
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        posthog_started = asyncio.Event()
+
+        async def slow_posthog(*args, **kwargs):
+            posthog_started.set()
+            await asyncio.sleep(30)
+            return False, True
+
+        mocker.patch.object(ph, "evaluate_flag", side_effect=slow_posthog)
+
+        result = await asyncio.wait_for(
+            evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1"), timeout=5
+        )
+
+        assert result == (True, True)
+        await posthog_started.wait()
+        for task in list(ff._shadow_evaluations):
+            task.cancel()
+
+    @pytest.mark.asyncio
+    async def test_both_vendors_share_one_context_lookup(self, mocker, ld_client):
+        """The failed-lookup path is deliberately uncached, so evaluating the
+        two vendors independently would double its database reads."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=True)
+        lookup = mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create("u-1"), False),
+        )
+
+        await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        await drain_shadow_evaluations()
+
+        lookup.assert_called_once_with("u-1")
+
+    @pytest.mark.asyncio
+    async def test_a_probe_backlog_is_bounded(self, mocker, ld_client, user_context):
+        """A slow PostHog costs the diff week its samples, not the process
+        its memory."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        mocker.patch.object(ff, "MAX_CONCURRENT_SHADOW_EVALUATIONS", 2)
+
+        async def never_finishes(*args, **kwargs):
+            await asyncio.sleep(30)
+            return False, True
+
+        mocker.patch.object(ph, "evaluate_flag", side_effect=never_finishes)
+
+        for _ in range(5):
+            await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+
+        assert len(ff._shadow_evaluations) == 2
+        for task in list(ff._shadow_evaluations):
+            task.cancel()
+
+    @pytest.mark.asyncio
+    async def test_segment_targeted_flags_are_marked_as_expected(
+        self, mocker, ld_client, user_context, caplog
+    ):
+        """Until phase 2 builds the cohorts these disagree by construction, and
+        the diff-week report has to be able to set them aside."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation.return_value = True
+        stub_posthog(mocker, value=False)
+
+        with caplog.at_level(
+            logging.WARNING, logger="backend.util.feature_flag.mismatch"
+        ):
+            await evaluate_feature_flag(Flag.GRAPHITI_MEMORY, "u-1")
+            await drain_shadow_evaluations()
+
+        [message] = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == "backend.util.feature_flag.mismatch"
+        ]
+        assert _mismatch_record(message)["expected_until_cohorts_exist"] is True
 
 
 class TestForcedFlagsInEveryBackend:

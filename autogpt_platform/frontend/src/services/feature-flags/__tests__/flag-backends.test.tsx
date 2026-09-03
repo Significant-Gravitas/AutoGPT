@@ -24,8 +24,10 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
 }));
 
+const env = vi.hoisted(() => ({ launchDarklyEnabled: true }));
+
 vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
+  environment: { areFeatureFlagsEnabled: () => env.launchDarklyEnabled },
 }));
 
 const HIRE_EXPERTS = "hire-experts";
@@ -131,19 +133,66 @@ describe("dual backend", () => {
     expect(postHog.capture).not.toHaveBeenCalled();
   });
 
-  it("treats one vendor having no answer as a disagreement", async () => {
+  it("stays quiet while only one vendor has answered", async () => {
+    // The two never resolve on the same render, so comparing before both
+    // have answered reports the load order rather than a disagreement.
     const { Flag, useGetFlag } = await loadWithBackend("dual");
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    launchDarkly.flags = {};
+    postHog.enabled.mockReturnValue(true);
+
+    const { rerender } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    rerender();
+
+    expect(postHog.capture).not.toHaveBeenCalled();
+  });
+
+  it("reports once LaunchDarkly catches up and still disagrees", async () => {
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    postHog.enabled.mockReturnValue(true);
+    const { rerender } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    expect(postHog.capture).not.toHaveBeenCalled();
+
     launchDarkly.flags = { [HIRE_EXPERTS]: false };
-    postHog.enabled.mockReturnValue(undefined);
+    rerender();
+
+    expect(postHog.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves PostHog when LaunchDarkly is not configured", async () => {
+    // Dual must degrade to whichever vendor can actually answer: with no
+    // LDProvider mounted, LaunchDarkly's empty flag set never resolves.
+    env.launchDarklyEnabled = false;
+    const { Flag, useFlagStatus } = await loadWithBackend("dual");
+    launchDarkly.flags = {};
+    postHog.enabled.mockReturnValue(true);
+
+    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toEqual({ enabled: true, ready: true });
+  });
+
+  it("does not report a disagreement when only one vendor is configured", async () => {
+    env.launchDarklyEnabled = false;
+    const { Flag, useGetFlag } = await loadWithBackend("dual");
+    postHog.enabled.mockReturnValue(true);
 
     renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
 
-    expect(postHog.capture).toHaveBeenCalledWith("feature_flag_mismatch", {
-      flag: HIRE_EXPERTS,
-      launchdarkly: { value: false, resolved: true },
-      posthog: { value: undefined, resolved: false },
-    });
+    expect(postHog.capture).not.toHaveBeenCalled();
+  });
+});
+
+describe("posthog flags follow the provider's gate", () => {
+  it("falls back to defaults outside cloud, where no PostHogProvider mounts", async () => {
+    process.env.NEXT_PUBLIC_BEHAVE_AS = "LOCAL";
+    const { Flag, useFlagStatus } = await loadWithBackend("posthog");
+    postHog.enabled.mockReturnValue(true);
+
+    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+
+    expect(result.current).toEqual({ enabled: false, ready: true });
   });
 });
 
@@ -155,6 +204,8 @@ beforeEach(() => {
   Object.keys(process.env)
     .filter((key) => key.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
     .forEach((key) => delete process.env[key]);
+  env.launchDarklyEnabled = true;
+  process.env.NEXT_PUBLIC_BEHAVE_AS = "CLOUD";
   process.env.NEXT_PUBLIC_POSTHOG_KEY = "phc_test";
   process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://eu.i.posthog.com";
 });
