@@ -93,7 +93,11 @@ export function ExpertChatGroup({
 }
 
 function GroupBody({ children }: { children: ReactNode }) {
+  // A hard border reads heavier than the rail deserves — a 1px gradient
+  // strip fades out toward the bottom instead.
   return (
-    <div className="ml-[17px] border-l border-zinc-200 pl-1.5">{children}</div>
+    <div className="relative ml-[17px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
+      {children}
+    </div>
   );
 }

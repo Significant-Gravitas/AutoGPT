@@ -86,7 +86,6 @@ function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
     is_latest_version: true,
     is_favorite: false,
     marketplace_listing: null,
-    store_listing_version_id: null,
     ...over,
   } as unknown as LibraryAgent;
 }
@@ -95,14 +94,12 @@ const adoptableAgent = makeLibraryAgent({
   id: "lib-research",
   graph_id: "graph-research",
   name: "Research Assistant",
-  store_listing_version_id: "slv-adopt",
 });
 
-const localOnlyAgent = makeLibraryAgent({
+const unpublishedAgent = makeLibraryAgent({
   id: "lib-local",
   graph_id: "graph-local",
   name: "My Private Agent",
-  store_listing_version_id: null,
 });
 
 function makeSchedule(
@@ -1217,12 +1214,11 @@ describe("TeamPage", () => {
     expect(within(group).getByText(/nothing installed yet/i)).toBeDefined();
   });
 
-  test("lists adoptable and local-only agents under Your workflows", async () => {
-    const user = userEvent.setup();
+  test("offers Adopt for unpublished agents too", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent, localOnlyAgent]),
+        libraryResponse([adoptableAgent, unpublishedAgent]),
       ),
     );
 
@@ -1233,21 +1229,16 @@ describe("TeamPage", () => {
     });
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).getByText("My Private Agent")).toBeDefined();
-    expect(within(agents).getByRole("button", { name: "Adopt" })).toBeDefined();
-    const localOnly = within(agents).getByText("Local only");
-    expect(localOnly).toBeDefined();
-    await user.hover(localOnly);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Publish this agent to the Marketplace before adopting it.",
-    );
+    expect(
+      within(agents).getAllByRole("button", { name: "Install" }),
+    ).toHaveLength(2);
   });
 
   test("hides already-installed agents from Your workflows", async () => {
     const installedAgent = makeLibraryAgent({
-      id: "lib-installed",
+      id: "lib-1",
       graph_id: "graph-1",
       name: "Content Calendar",
-      store_listing_version_id: "slv-1",
     });
     server.use(
       getListExpertsMockHandler([hiredMaria]),
@@ -1264,7 +1255,7 @@ describe("TeamPage", () => {
     expect(within(agents).getByText("Research Assistant")).toBeDefined();
     expect(within(agents).queryByText("My Private Agent")).toBeNull();
     expect(
-      within(agents).getAllByRole("button", { name: "Adopt" }),
+      within(agents).getAllByRole("button", { name: "Install" }),
     ).toHaveLength(1);
   });
 
@@ -1296,14 +1287,14 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-maria"));
-    expect(installBody).toEqual({ store_listing_version_id: "slv-adopt" });
+    expect(installBody).toEqual({ library_agent_id: "lib-research" });
     expect(within(agents).queryByText("Research Assistant")).toBeNull();
   });
 
-  test("asks which expert to adopt into when more than one is hired", async () => {
+  test("asks which expert to install onto when more than one is hired", async () => {
     const user = userEvent.setup();
     const john: Expert = {
       ...hiredMaria,
@@ -1335,18 +1326,18 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
     expect(screen.queryByText(/undo anytime/i)).toBeNull();
     await user.click(
       await screen.findByRole("button", {
-        name: /Adds this agent to John's workflows/i,
+        name: /Installs on John/i,
       }),
     );
 
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
   });
 
-  test("offers an exact version only to experts that have not adopted it", async () => {
+  test("offers an agent only to experts that have not adopted it", async () => {
     const user = userEvent.setup();
     const mariaWithAgent: Expert = {
       ...hiredMaria,
@@ -1354,7 +1345,7 @@ describe("TeamPage", () => {
         ...hiredMaria.workflows,
         {
           id: "wf-adopted",
-          store_listing_version_id: "slv-adopt",
+          store_listing_version_id: null,
           library_agent_id: "lib-research",
           graph_id: "graph-research",
           name: "Research Assistant",
@@ -1392,7 +1383,7 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() => expect(installExpertId).toBe("expert-john"));
     expect(screen.queryByText("Choose an expert")).toBeNull();
@@ -1412,7 +1403,7 @@ describe("TeamPage", () => {
     await screen.findByRole("region", { name: "Maria runs" });
     await screen.findByRole("region", { name: "Your workflows" });
 
-    await user.click(screen.getByRole("button", { name: "Agents" }));
+    await user.click(screen.getByRole("button", { name: "Unassigned" }));
     expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
     expect(
       screen.getByRole("region", { name: "Your workflows" }),
@@ -1562,21 +1553,21 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Couldn't adopt Research Assistant",
+          title: "Couldn't install on Maria",
           variant: "destructive",
         }),
       ),
     );
-    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
+    const adoptButton = within(agents).getByRole("button", { name: "Install" });
     expect(adoptButton.hasAttribute("disabled")).toBe(false);
   });
 
-  test("explains when an adopt version is no longer available", async () => {
+  test("explains when an adopted agent is no longer available", async () => {
     const user = userEvent.setup();
     server.use(
       getListExpertsMockHandler([hiredMaria]),
@@ -1591,12 +1582,12 @@ describe("TeamPage", () => {
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
     });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
+    await user.click(within(agents).getByRole("button", { name: "Install" }));
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          description: "This Marketplace version is no longer available.",
+          description: "This workflow is no longer available.",
         }),
       ),
     );
@@ -1635,8 +1626,10 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     const rows = within(agents).getAllByTestId("what-runs-agent-row");
-    const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
-    const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
+    const firstAdopt = within(rows[0]).getByRole("button", { name: "Install" });
+    const secondAdopt = within(rows[1]).getByRole("button", {
+      name: "Install",
+    });
     await user.click(firstAdopt);
     await waitFor(() => expect(firstAdopt.hasAttribute("disabled")).toBe(true));
     expect(secondAdopt.hasAttribute("disabled")).toBe(false);
@@ -1701,7 +1694,7 @@ describe("TeamPage", () => {
       name: "Your workflows",
     });
     expect(
-      await within(agents).findByText("No available workflows to adopt."),
+      await within(agents).findByText("No workflows available to install."),
     ).toBeDefined();
   });
 
@@ -1711,7 +1704,6 @@ describe("TeamPage", () => {
       id: "lib-second",
       graph_id: "graph-second",
       name: "Second-page Agent",
-      store_listing_version_id: "slv-second",
     });
     const requestedPages: string[] = [];
     const hiddenFilters: string[] = [];
@@ -1748,10 +1740,9 @@ describe("TeamPage", () => {
 
   test("does not claim every agent is adopted while more pages remain", async () => {
     const installedAgent = makeLibraryAgent({
-      id: "lib-installed",
+      id: "lib-1",
       graph_id: "graph-1",
       name: "Content Calendar",
-      store_listing_version_id: "slv-1",
     });
     server.use(
       getListExpertsMockHandler([hiredMaria]),
@@ -1780,7 +1771,6 @@ describe("TeamPage", () => {
       id: "lib-second",
       graph_id: "graph-second",
       name: "Recovered Agent",
-      store_listing_version_id: "slv-second",
     });
     server.use(
       getListExpertsMockHandler([hiredMaria]),

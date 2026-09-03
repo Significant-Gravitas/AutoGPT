@@ -7,8 +7,6 @@ from typing import cast
 
 import pytest
 from aiohttp import ClientSession
-from openai_codex.generated.v2_all import AgentMessageDeltaNotification
-from openai_codex.models import Notification
 
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
@@ -20,6 +18,7 @@ from backend.integrations.codex.models import (
     CodexDynamicToolSpec,
     CodexInvocationRequest,
     CodexInvocationResult,
+    CodexStreamEvent,
     CodexTokenUsage,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -55,14 +54,8 @@ class _FakeAgentSession:
                 )
             if event_handler is not None:
                 await event_handler(
-                    Notification(
-                        method="item/agentMessage/delta",
-                        payload=AgentMessageDeltaNotification(
-                            delta="done" if self.use_tool else "hello",
-                            itemId="item-1",
-                            threadId="thread-1",
-                            turnId="turn-1",
-                        ),
+                    CodexStreamEvent(
+                        type="text_delta", delta="done" if self.use_tool else "hello"
                     )
                 )
             return _result("done" if self.use_tool else "hello")
@@ -95,17 +88,7 @@ class _FinalWithoutDeltaSession:
         event_handler=None,
     ) -> CodexInvocationResult:
         assert event_handler is not None
-        await event_handler(
-            Notification(
-                method="item/agentMessage/delta",
-                payload=AgentMessageDeltaNotification(
-                    delta="before tool",
-                    itemId="item-before",
-                    threadId="thread-before",
-                    turnId="turn-before",
-                ),
-            )
-        )
+        await event_handler(CodexStreamEvent(type="text_delta", delta="before tool"))
         await tool_handler(
             CodexDynamicToolCall(
                 thread_id="thread-before",
@@ -144,15 +127,7 @@ class _CollidingCallSession:
         self.results[invocation_index] = result
         assert event_handler is not None
         await event_handler(
-            Notification(
-                method="item/agentMessage/delta",
-                payload=AgentMessageDeltaNotification(
-                    delta=f"completed:{result.content}",
-                    itemId=f"item-{invocation_index}",
-                    threadId=f"thread-{invocation_index}",
-                    turnId=f"turn-{invocation_index}",
-                ),
-            )
+            CodexStreamEvent(type="text_delta", delta=f"completed:{result.content}")
         )
         return _result(f"completed:{result.content}")
 

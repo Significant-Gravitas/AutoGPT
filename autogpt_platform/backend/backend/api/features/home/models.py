@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 
@@ -122,6 +122,40 @@ class HomeWeekSummary(BaseModel):
     daily: list[HomeDailyActivity]
 
 
+class HomeWorkActor(BaseModel):
+    # "expert" = a hired expert did it, "autopilot" = the default copilot
+    # assistant, "agent" = a graph run with no expert attribution.
+    kind: Literal["expert", "autopilot", "agent"]
+    name: str
+    expert: HomeExpert | None = None
+
+
+class HomeRecentWorkItem(BaseModel):
+    id: str
+    category: Literal["file", "integration", "schedule"]
+    event_type: str
+    title: str
+    occurred_at: datetime
+    provider: str | None = None
+    file_id: str | None = None
+    mime_type: str | None = None
+
+
+class HomeRecentWorkGroup(BaseModel):
+    actor: HomeWorkActor
+    session_id: str | None = None
+    session_title: str | None = None
+    link: str | None = None
+    latest_at: datetime
+    items: list[HomeRecentWorkItem]
+    more_count: int = 0
+
+
+class HomeRecentWork(BaseModel):
+    groups: list[HomeRecentWorkGroup] = Field(default_factory=list)
+    total_count: int = 0
+
+
 class HomeDashboardResponse(BaseModel):
     generated_at: datetime
     timezone: str
@@ -132,3 +166,6 @@ class HomeDashboardResponse(BaseModel):
     team: HomeTeamSummary
     agents: list[HomeAgentStatus]
     week: HomeWeekSummary
+    # Optional with a default so pre-existing clients (and their fixtures)
+    # keep validating; the backend always populates it.
+    recent_work: HomeRecentWork = Field(default_factory=HomeRecentWork)

@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import {
   getGreetingName,
   getInputPlaceholder,
@@ -26,10 +26,10 @@ import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { CopilotHome } from "../CopilotHome/CopilotHome";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
+import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
 
 interface Props {
-  inputLayoutId: string;
   isCreatingSession: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (
@@ -46,7 +46,6 @@ interface Props {
 }
 
 export function EmptySession({
-  inputLayoutId,
   isCreatingSession,
   onSend,
   isUploadingFiles,
@@ -81,7 +80,12 @@ export function EmptySession({
     getInputPlaceholder(),
   );
 
-  useEffect(() => {
+  // Layout effect (not a regular effect) so the width-dependent placeholder
+  // is swapped in before the browser paints — otherwise the shorter default
+  // string flashes on screen first and visibly reflows into the longer one,
+  // which is what caused the placeholder to jump between wrapping above the
+  // icons and sitting next to them.
+  useLayoutEffect(() => {
     function handleResize() {
       setInputPlaceholder(getInputPlaceholder(window.innerWidth));
     }
@@ -116,6 +120,11 @@ export function EmptySession({
         isOpen={intro.isWelcomeOpen}
         onClose={intro.closeWelcome}
       />
+      {/* Which connection the new chat runs on, kept out of the composer and
+          in the page corner, level with the inset header's controls. */}
+      <div className="absolute right-3 top-3 z-30 empty:hidden">
+        <ConnectionPicker className="ml-0" />
+      </div>
       <motion.div
         className={cn(
           "relative z-10 w-full max-w-[52rem] text-center",
@@ -155,23 +164,23 @@ export function EmptySession({
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-              <motion.div
-                layoutId={inputLayoutId}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.65 }}
+              <div
                 className={cn(
                   isBrainDumpEnabled
-                    ? "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out"
+                    ? "text-left transition-colors duration-300 ease-out"
                     : "w-full px-2",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
-                  // borders line up. The regular hero keeps it centered.
+                  // borders line up. The regular hero keeps it centered, and
+                  // drops the card chrome so the composer pill is the only
+                  // outline on screen.
                   isBrainDumpEnabled &&
                     (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem]"
+                      ? "-mx-5 max-w-[50.5rem] overflow-hidden rounded-xlarge border"
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
                 style={
-                  isBrainDumpEnabled
+                  isBrainDumpEnabled && intro.isVisible
                     ? {
                         borderColor: "#e4e4e7",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
@@ -181,9 +190,9 @@ export function EmptySession({
               >
                 <ChatInput
                   inputId="chat-input-empty"
+                  stacked
                   onSend={onSend}
                   disabled={isComposerDisabled}
-                  hideSubmitWhenEmpty={Boolean(isBrainDumpEnabled)}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={inputPlaceholder}
                   className={
@@ -204,7 +213,7 @@ export function EmptySession({
                     ) : undefined
                   }
                 />
-              </motion.div>
+              </div>
             </div>
           )}
 

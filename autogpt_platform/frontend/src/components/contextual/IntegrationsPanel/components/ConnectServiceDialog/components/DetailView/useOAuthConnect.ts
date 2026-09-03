@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  getGetV1ListCredentialsQueryKey,
   getV1InitiateOauthFlow,
   postV1ExchangeOauthCodeForTokens,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import {
   OAUTH_ERROR_POPUP_BLOCKED,
   openOAuthPopup,
@@ -19,7 +20,7 @@ import { getOAuthErrorMessage } from "./helpers";
 
 interface Args {
   provider: string;
-  onSuccess: () => void;
+  onSuccess: (credential?: CredentialsMetaResponse) => void;
 }
 
 export function useOAuthConnect({ provider, onSuccess }: Args) {
@@ -108,16 +109,16 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       const { code, state } = await promise;
       abortRef.current = null;
 
-      await postV1ExchangeOauthCodeForTokens(provider, {
+      const exchanged = await postV1ExchangeOauthCodeForTokens(provider, {
         code,
         state_token: state,
       });
 
       toast({ title: "Connected via OAuth", variant: "success" });
-      await queryClient.invalidateQueries({
-        queryKey: getGetV1ListCredentialsQueryKey(),
-      });
-      onSuccess();
+      await invalidateConnectionQueries(queryClient);
+      // customMutator rejects non-2xx, so a 200 is the only way to get here;
+      // the check narrows the union rather than guarding a real branch.
+      onSuccess(exchanged.status === 200 ? exchanged.data : undefined);
     } catch (error) {
       // Close the dangling about:blank window only while this flow still
       // owns it — i.e. the error occurred before openOAuthPopup adopted the

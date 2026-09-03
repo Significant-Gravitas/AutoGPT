@@ -11,6 +11,12 @@ from prisma.enums import ResourceVisibility
 from pydantic import JsonValue, ValidationError
 
 from backend.api.features.experts import raise_attachments, scheduling
+
+# Re-exported so `db_accessors.experts_db()` resolves the same attribute name
+# on both branches: the module here, and the RPC client stub in db_manager.
+from backend.api.features.experts.credentials import (
+    expert_allowed_credential_ids as expert_allowed_credential_ids,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,
@@ -59,6 +65,7 @@ from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     ExpertWriteNotReadableError,
+    NotFoundError,
 )
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -71,7 +78,12 @@ def _raised_identity(name: str) -> str:
     return f"I'm {name}, raised by you. I learn how you work and grow with you."
 
 
-_WORKFLOW_ROW_INCLUDE = {"LibraryAgent": True, "StoreListingVersion": True}
+_WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
+    # AgentGraph carries the name/description of a user-created library agent;
+    # LibraryAgent.name is only populated from a marketplace snapshot.
+    "LibraryAgent": {"include": {"AgentGraph": True}},
+    "StoreListingVersion": True,
+}
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
 _MAX_EXPERT_RUNS = 20
 
@@ -87,7 +99,7 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
     if listing is not None:
         name, description = listing.name, listing.description
     elif library_agent is not None:
-        name, description = library_agent.name, library_agent.description
+        name, description = _library_agent_labels(library_agent)
     else:
         name, description = None, None
     return ExpertWorkflowRef(
@@ -99,6 +111,25 @@ def _to_workflow_ref(row: prisma.models.ExpertWorkflow) -> ExpertWorkflowRef:
         description=description,
         schedule_cron=row.scheduleCron,
         schedule_id=row.scheduleId,
+    )
+
+
+def _library_agent_labels(
+    row: prisma.models.LibraryAgent,
+) -> tuple[str | None, str | None]:
+    """Name/description of a library agent, mirroring ``LibraryAgent.from_db``.
+
+    The columns hold a marketplace snapshot and are NULL on a user's own agent,
+    whose real title lives on the graph.
+    """
+    graph = row.AgentGraph
+    return (
+        row.name if row.name is not None else (graph.name if graph else None),
+        (
+            row.description
+            if row.description is not None
+            else (graph.description if graph else None)
+        ),
     )
 
 
@@ -457,11 +488,20 @@ def _to_expert_run(
     needs_review: bool,
 ) -> ExpertRun:
     listing = workflow.StoreListingVersion if workflow else None
+    library_agent = workflow.LibraryAgent if workflow else None
     library_agent_id = workflow.libraryAgentId if workflow else None
+    # Library-only workflows carry no listing, so the name comes from the
+    # user's own library agent rather than falling through to the placeholder.
+    if listing is not None:
+        agent_name = listing.name
+    elif library_agent is not None:
+        agent_name = _library_agent_labels(library_agent)[0] or DEFAULT_AGENT_NAME
+    else:
+        agent_name = DEFAULT_AGENT_NAME
     return ExpertRun(
         execution_id=execution.id,
         graph_id=execution.agentGraphId,
-        agent_name=listing.name if listing else DEFAULT_AGENT_NAME,
+        agent_name=agent_name,
         library_agent_id=library_agent_id,
         status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
         output_type=output_type,
@@ -1037,8 +1077,24 @@ async def _install_preloads(
 
 
 async def install_workflow(
-    user_id: str, expert_id: str, store_listing_version_id: str
+    user_id: str,
+    expert_id: str,
+    *,
+    store_listing_version_id: str | None = None,
+    library_agent_id: str | None = None,
 ) -> ExpertWorkflowRef:
+    """Attach a workflow to a hired expert.
+
+    Exactly one source: a marketplace listing version, or one of the caller's
+    own library agents. The library path records no listing version, so an
+    agent that was never published is installable.
+    """
+    if bool(store_listing_version_id) == bool(library_agent_id):
+        raise ValueError(
+            "install_workflow takes exactly one of store_listing_version_id, "
+            "library_agent_id"
+        )
+
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -1051,6 +1107,42 @@ async def install_workflow(
     if expert is None:
         raise ExpertNotFoundError(expert_id)
 
+    if library_agent_id is not None:
+        return await _install_library_workflow(user_id, expert_id, library_agent_id)
+    assert store_listing_version_id is not None
+    return await _install_marketplace_workflow(
+        user_id, expert_id, store_listing_version_id
+    )
+
+
+async def _install_library_workflow(
+    user_id: str, expert_id: str, library_agent_id: str
+) -> ExpertWorkflowRef:
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"id": library_agent_id, "userId": user_id, "isDeleted": False}
+    )
+    if library_agent is None:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+    # No listing version means the (expertId, storeListingVersionId) unique
+    # index cannot dedupe these rows — Postgres treats each NULL as distinct.
+    existing = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={"expertId": expert_id, "libraryAgentId": library_agent_id},
+        include=_WORKFLOW_ROW_INCLUDE,
+    )
+    if existing is not None:
+        return _to_workflow_ref(existing)
+
+    row = await prisma.models.ExpertWorkflow.prisma().create(
+        data={"expertId": expert_id, "libraryAgentId": library_agent_id},
+        include=_WORKFLOW_ROW_INCLUDE,
+    )
+    return _to_workflow_ref(row)
+
+
+async def _install_marketplace_workflow(
+    user_id: str, expert_id: str, store_listing_version_id: str
+) -> ExpertWorkflowRef:
     existing = await prisma.models.ExpertWorkflow.prisma().find_first(
         where={
             "expertId": expert_id,

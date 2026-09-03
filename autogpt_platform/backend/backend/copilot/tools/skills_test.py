@@ -179,7 +179,7 @@ def test_description_length_cap_enforced_by_validate_path():
     """The cap is enforced inside ``StoreSkillTool._execute`` (not by
     the dataclass), so this test just locks in the constant — bumping
     it requires conscious thought about per-turn token cost."""
-    assert MAX_DESCRIPTION_CHARS == 250
+    assert MAX_DESCRIPTION_CHARS == 1024
 
 
 def test_trigger_caps_are_bounded():
@@ -345,7 +345,32 @@ async def test_store_skill_rejects_oversized_description():
         body="ok",
     )
     assert isinstance(result, ErrorResponse)
-    assert "description" in result.message
+    assert (
+        f"{MAX_DESCRIPTION_CHARS + 1}/{MAX_DESCRIPTION_CHARS} chars" in result.message
+    )
+    assert "trim 1" in result.message
+
+
+@pytest.mark.asyncio
+async def test_store_skill_accepts_description_at_limit():
+    tool = StoreSkillTool()
+    fake_manager = _FakeWorkspaceManager()
+    description = "x" * (MAX_DESCRIPTION_CHARS - 1) + "😀"
+
+    with _patch_skills_path(fake_manager):
+        result = await tool._execute(
+            user_id="user-1",
+            session=_make_session(),
+            name="foo",
+            description=description,
+            body="ok",
+        )
+
+    assert isinstance(result, StoreSkillResponse)
+    stored = fake_manager.files["/skills/foo/SKILL.md"].decode()
+    parsed = parse_skill_markdown(stored)
+    assert parsed is not None
+    assert parsed.description == description
 
 
 @pytest.mark.asyncio

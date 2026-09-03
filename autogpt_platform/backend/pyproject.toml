@@ -47,7 +47,6 @@ mem0ai = "^0.1.115"
 moviepy = "^2.1.2"
 ollama = "^0.6.1"
 openai = "^1.97.1"
-openai-codex = "0.144.4"
 orjson = "^3.10.0"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
@@ -177,6 +176,7 @@ ignore_patterns = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 # Disable syrupy plugin to avoid conflict with pytest-snapshot
 # Both provide --snapshot-update argument causing ArgumentError
 addopts = "-p no:syrupy"
