@@ -892,9 +892,12 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
     # A fresh, accepted read publishes 5.
     s.scheduler.get_jobs.return_value = [object()] * 5
     s._get_jobs_cached()
-    gauge = lambda: _counter(  # noqa: E731
-        "autogpt_scheduler_jobs", job_type="execution", status="scheduled"
-    )
+
+    def gauge() -> float:
+        return _counter(
+            "autogpt_scheduler_jobs", job_type="execution", status="scheduled"
+        )
+
     assert gauge() == 5
 
     # Now a read whose query is interrupted by an invalidation: it returns a
