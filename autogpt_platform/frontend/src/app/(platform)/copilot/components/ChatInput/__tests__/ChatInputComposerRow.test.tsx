@@ -95,11 +95,18 @@ vi.mock("../components/FileChips", () => ({
 // jsdom lays nothing out, so the composer's geometry is played here: the box
 // shares a row with the addons (the row minus ADDONS_WIDTH) until the host
 // stacks it on its own full-width row, and text wraps once it no longer fits
-// the width being measured at CHAR_WIDTH per character.
+// the content box at CHAR_WIDTH per character.
+//
+// The box is `box-sizing: border-box` with horizontal padding, so the two ways
+// of reading its width disagree and an inline width means the border box:
+// getBoundingClientRect and `style.width` speak border box, getComputedStyle
+// speaks content box. Modelling that gap is what makes replaying a content-box
+// width as an inline one observable here rather than only in a browser.
 const ADDONS_WIDTH = 240;
 const CHAR_WIDTH = 10;
 const LINE_HEIGHT = 24;
 const PADDING = 12;
+const PADDING_X = 12;
 // The hero composer floors the box at 4.5rem, so scrollHeight reports that
 // floor for content that would be shorter — until measureContentHeight lifts
 // it for the read.
@@ -141,17 +148,24 @@ function layoutWidth(textarea: HTMLTextAreaElement) {
   return isStacked(textarea) ? rowWidth : singleRowWidth();
 }
 
-function measuredWidth(textarea: HTMLTextAreaElement) {
+// An inline `style.width` sets the border box, so it wins over the layout.
+function borderBoxWidth(textarea: HTMLTextAreaElement) {
   const inlineWidth = parseFloat(textarea.style.width);
   return Number.isFinite(inlineWidth) ? inlineWidth : layoutWidth(textarea);
 }
 
+function contentBoxWidth(borderBox: number) {
+  return borderBox - PADDING_X * 2;
+}
+
+function contentWidth(textarea: HTMLTextAreaElement) {
+  return contentBoxWidth(borderBoxWidth(textarea));
+}
+
 function contentHeight(textarea: HTMLTextAreaElement) {
   const content = textarea.value || textarea.placeholder;
-  const lines = Math.max(
-    1,
-    Math.ceil(content.length / charsPerLine(measuredWidth(textarea))),
-  );
+  const limit = charsPerLine(contentWidth(textarea));
+  const lines = Math.max(1, Math.ceil(content.length / limit));
   const height = lines * LINE_HEIGHT + PADDING * 2;
   return parseFloat(textarea.style.minHeight) === 0
     ? height
@@ -163,17 +177,18 @@ function fakeTextareaStyle(textarea: HTMLTextAreaElement) {
     lineHeight: `${LINE_HEIGHT}px`,
     paddingTop: `${PADDING}px`,
     paddingBottom: `${PADDING}px`,
-    width: `${measuredWidth(textarea)}px`,
+    width: `${contentWidth(textarea)}px`,
   } as unknown as CSSStyleDeclaration;
 }
 
 // The browser reports the new width after the host re-lays out the row;
-// here the test delivers that notification.
+// here the test delivers that notification. `contentRect` is the content box,
+// which is all the component uses it for: noticing that the width changed.
 function reportResize(textarea: HTMLTextAreaElement) {
   act(() => {
     const entry = {
       target: textarea,
-      contentRect: { width: layoutWidth(textarea) },
+      contentRect: { width: contentBoxWidth(layoutWidth(textarea)) },
     } as unknown as ResizeObserverEntry;
     resizeCallbacks.forEach((callback) =>
       callback([entry], {} as ResizeObserver),
@@ -186,10 +201,15 @@ function renderComposer(placeholder: string) {
   return screen.getByLabelText("Chat message input") as HTMLTextAreaElement;
 }
 
+// How many characters fit one line of a row of the given border-box width.
+function fitsInRow(borderBox: number) {
+  return charsPerLine(contentBoxWidth(borderBox));
+}
+
 // Text that wraps in the single row but fits the full-width one: the band the
 // composer used to shake in.
 function wrapsInRowOnly() {
-  return "x".repeat(charsPerLine(singleRowWidth()) + 10);
+  return "x".repeat(fitsInRow(singleRowWidth()) + 10);
 }
 
 beforeEach(() => {
@@ -201,6 +221,16 @@ beforeEach(() => {
       return contentHeight(this);
     },
   });
+  Object.defineProperty(
+    HTMLTextAreaElement.prototype,
+    "getBoundingClientRect",
+    {
+      configurable: true,
+      value: function (this: HTMLTextAreaElement) {
+        return { width: borderBoxWidth(this) } as unknown as DOMRect;
+      },
+    },
+  );
   const realGetComputedStyle = window.getComputedStyle.bind(window);
   vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) =>
     element instanceof HTMLTextAreaElement
@@ -212,6 +242,10 @@ beforeEach(() => {
 afterEach(() => {
   resizeCallbacks.length = 0;
   Reflect.deleteProperty(HTMLTextAreaElement.prototype, "scrollHeight");
+  Reflect.deleteProperty(
+    HTMLTextAreaElement.prototype,
+    "getBoundingClientRect",
+  );
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -237,7 +271,7 @@ describe("ChatInput composer row layout", () => {
     expect(isStacked(textarea)).toBe(true);
 
     fireEvent.change(textarea, {
-      target: { value: "x".repeat(charsPerLine(singleRowWidth()) - 10) },
+      target: { value: "x".repeat(fitsInRow(singleRowWidth()) - 10) },
     });
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(false);
@@ -245,7 +279,7 @@ describe("ChatInput composer row layout", () => {
 
   it("keeps the empty hero composer stacked when only its placeholder wraps in the row", () => {
     const textarea = renderComposer(
-      "p".repeat(charsPerLine(singleRowWidth()) + 10),
+      "p".repeat(fitsInRow(singleRowWidth()) + 10),
     );
     expect(isStacked(textarea)).toBe(true);
 
@@ -267,6 +301,22 @@ describe("ChatInput composer row layout", () => {
     rowWidth = DEFAULT_ROW_WIDTH * 2;
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(false);
-    expect(charsPerLine(singleRowWidth())).toBeGreaterThan(value.length);
+    expect(fitsInRow(singleRowWidth())).toBeGreaterThan(value.length);
+  });
+
+  it("measures the single row at its border-box width", () => {
+    const textarea = renderComposer("Ask");
+    fireEvent.change(textarea, { target: { value: wrapsInRowOnly() } });
+    reportResize(textarea);
+    expect(isStacked(textarea)).toBe(true);
+
+    // Text that fits the real single row but not one mistaken for its content
+    // box: a content-box width handed back as an inline width loses the box's
+    // horizontal padding, so the row is judged PADDING_X * 2 too narrow.
+    const fits = fitsInRow(singleRowWidth());
+    expect(fits).toBeGreaterThan(fitsInRow(contentBoxWidth(singleRowWidth())));
+
+    fireEvent.change(textarea, { target: { value: "x".repeat(fits) } });
+    expect(isStacked(textarea)).toBe(false);
   });
 });

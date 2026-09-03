@@ -161,18 +161,20 @@ export function EmptySession({
               <div
                 className={cn(
                   isBrainDumpEnabled
-                    ? "overflow-hidden rounded-xlarge border text-left transition-colors duration-300 ease-out"
+                    ? "text-left transition-colors duration-300 ease-out"
                     : "w-full px-2",
                   // The greeting's prompt card bleeds 1.25rem past the text
                   // (-mx-5); the composer stretches the same amount so their
-                  // borders line up. The regular hero keeps it centered.
+                  // borders line up. The regular hero keeps it centered, and
+                  // drops the card chrome so the composer pill is the only
+                  // outline on screen.
                   isBrainDumpEnabled &&
                     (intro.isVisible
-                      ? "-mx-5 max-w-[50.5rem]"
+                      ? "-mx-5 max-w-[50.5rem] overflow-hidden rounded-xlarge border"
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
                 style={
-                  isBrainDumpEnabled
+                  isBrainDumpEnabled && intro.isVisible
                     ? {
                         borderColor: "#e4e4e7",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
@@ -182,6 +184,7 @@ export function EmptySession({
               >
                 <ChatInput
                   inputId="chat-input-empty"
+                  stacked
                   onSend={onSend}
                   disabled={isComposerDisabled}
                   hideSubmitWhenEmpty={Boolean(isBrainDumpEnabled)}

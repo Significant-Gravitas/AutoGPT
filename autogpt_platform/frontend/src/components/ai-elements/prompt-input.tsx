@@ -162,7 +162,13 @@ export function PromptInputTextarea({
     const contentHeight = measureContentHeight(el);
     el.style.height = `${contentHeight}px`;
 
-    const width = parseFloat(getComputedStyle(el).width);
+    // Border-box width, because that is what handing the number back as an
+    // inline width means under `box-sizing: border-box`. `getComputedStyle`
+    // reports the content box, so replaying it would silently drop the box's
+    // horizontal padding and judge wrapping in a row narrower than the real
+    // one. A zero width (an unmounted or collapsed row) is no measurement at
+    // all: caching it would pin every later check to a row that always wraps.
+    const width = el.getBoundingClientRect().width;
     const rememberedWidth = singleRowWidthRef.current;
     let wrapped: boolean;
     if (isMultilineRef.current && rememberedWidth !== null) {
@@ -172,7 +178,7 @@ export function PromptInputTextarea({
       // back the single-row width it would have now. Judging against the width
       // it had when it last sat in the row would leave it stacked over text
       // that now fits, or unstack it into a row it no longer fits.
-      if (Number.isFinite(width)) {
+      if (width > 0) {
         if (addonsWidthRef.current === null) {
           const addonsWidth = width - rememberedWidth;
           if (addonsWidth > 0) addonsWidthRef.current = addonsWidth;
@@ -187,7 +193,7 @@ export function PromptInputTextarea({
       el.style.width = ownWidth;
       el.style.height = `${contentHeight}px`;
     } else {
-      singleRowWidthRef.current = Number.isFinite(width) ? width : null;
+      singleRowWidthRef.current = width > 0 ? width : null;
       // Measured from the row itself, so the offset is re-learned on the next
       // stack rather than carried over from an addon row that has since
       // changed (the connection picker hides while a turn is streaming).
