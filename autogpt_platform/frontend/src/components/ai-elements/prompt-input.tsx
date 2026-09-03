@@ -154,20 +154,39 @@ export function PromptInputTextarea({
   // the two layouts on every frame.
   const isMultilineRef = useRef(false);
   const singleRowWidthRef = useRef<number | null>(null);
+  // How much of the row the host's addons take beside the box, learned the
+  // first time the box is measured while stacked.
+  const addonsWidthRef = useRef<number | null>(null);
 
   function autoResize(el: HTMLTextAreaElement) {
     const contentHeight = measureContentHeight(el);
     el.style.height = `${contentHeight}px`;
 
+    const width = parseFloat(getComputedStyle(el).width);
+    const rememberedWidth = singleRowWidthRef.current;
     let wrapped: boolean;
-    if (isMultilineRef.current && singleRowWidthRef.current !== null) {
+    if (isMultilineRef.current && rememberedWidth !== null) {
+      // The row itself changes while the box is stacked — a panel opening, the
+      // window resizing — so the remembered width is only a starting point:
+      // once the addon offset is known, the box's current full-row width gives
+      // back the single-row width it would have now. Judging against the width
+      // it had when it last sat in the row would leave it stacked over text
+      // that now fits, or unstack it into a row it no longer fits.
+      if (Number.isFinite(width)) {
+        if (addonsWidthRef.current === null) {
+          const addonsWidth = width - rememberedWidth;
+          if (addonsWidth > 0) addonsWidthRef.current = addonsWidth;
+        } else {
+          const singleRowWidth = width - addonsWidthRef.current;
+          if (singleRowWidth > 0) singleRowWidthRef.current = singleRowWidth;
+        }
+      }
       const ownWidth = el.style.width;
       el.style.width = `${singleRowWidthRef.current}px`;
       wrapped = isWrapped(el, measureContentHeight(el));
       el.style.width = ownWidth;
       el.style.height = `${contentHeight}px`;
     } else {
-      const width = parseFloat(getComputedStyle(el).width);
       singleRowWidthRef.current = Number.isFinite(width) ? width : null;
       wrapped = isWrapped(el, contentHeight);
     }

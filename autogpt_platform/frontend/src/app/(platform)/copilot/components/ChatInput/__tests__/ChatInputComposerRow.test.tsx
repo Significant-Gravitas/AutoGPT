@@ -9,21 +9,38 @@ import { ChatInput } from "../ChatInput";
 
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   postV2CancelSessionTask: vi.fn(),
-  useGetV2ListChatTransports: () => ({
+  // A lone platform connection whose tiers resolve to one model: the picker
+  // presents nothing, which keeps these tests about the composer itself.
+  useGetV2ListChatConnections: () => ({
     data: {
       status: 200,
       data: {
-        transports: [
+        offers: [
           {
-            auth_provider: "platform",
+            offer_id: "platform:deployment",
+            provider_family: "autogpt",
+            display_name: "AutoGPT Platform",
+            auth_method: "deployment",
             credential_id: null,
-            label: "AutoGPT Platform",
-            available: true,
-            default: true,
+            backed_by_label: "Your AutoGPT plan",
+            description: "New chats are backed by your AutoGPT plan.",
+            state: "ready",
+            selectable: true,
+            is_default: true,
+            tiers: [
+              {
+                tier: "standard",
+                label: "Balanced",
+                selectable: true,
+                display_model: "one-model",
+              },
+            ],
+            limitations: [],
           },
         ],
       },
     },
+    isLoading: false,
     isPending: false,
     isError: false,
   }),
@@ -75,16 +92,21 @@ vi.mock("../components/FileChips", () => ({
   FileChips: () => null,
 }));
 
-// jsdom lays nothing out, so the composer's two textarea widths are played
-// here: the box shares a row with the addons (narrow) until the host stacks
-// it on its own full-width row (wide). Content wraps in the narrow row past
-// NARROW_LIMIT characters and in the wide one past WIDE_LIMIT.
-const NARROW_WIDTH = 400;
-const WIDE_WIDTH = 640;
-const NARROW_LIMIT = 40;
-const WIDE_LIMIT = 70;
+// jsdom lays nothing out, so the composer's geometry is played here: the box
+// shares a row with the addons (the row minus ADDONS_WIDTH) until the host
+// stacks it on its own full-width row, and text wraps once it no longer fits
+// the width being measured at CHAR_WIDTH per character.
+const ADDONS_WIDTH = 240;
+const CHAR_WIDTH = 10;
 const LINE_HEIGHT = 24;
 const PADDING = 12;
+// The hero composer floors the box at 4.5rem, so scrollHeight reports that
+// floor for content that would be shorter — until measureContentHeight lifts
+// it for the read.
+const HERO_MIN_HEIGHT = 72;
+
+const DEFAULT_ROW_WIDTH = 640;
+let rowWidth = DEFAULT_ROW_WIDTH;
 
 const resizeCallbacks: ResizeObserverCallback[] = [];
 
@@ -103,12 +125,20 @@ class ResizeObserverStub {
   }
 }
 
+function singleRowWidth() {
+  return rowWidth - ADDONS_WIDTH;
+}
+
+function charsPerLine(width: number) {
+  return Math.max(1, Math.floor(width / CHAR_WIDTH));
+}
+
 function isStacked(textarea: HTMLTextAreaElement) {
   return textarea.parentElement?.classList.contains("w-full") ?? false;
 }
 
 function layoutWidth(textarea: HTMLTextAreaElement) {
-  return isStacked(textarea) ? WIDE_WIDTH : NARROW_WIDTH;
+  return isStacked(textarea) ? rowWidth : singleRowWidth();
 }
 
 function measuredWidth(textarea: HTMLTextAreaElement) {
@@ -117,11 +147,15 @@ function measuredWidth(textarea: HTMLTextAreaElement) {
 }
 
 function contentHeight(textarea: HTMLTextAreaElement) {
-  const limit =
-    measuredWidth(textarea) >= WIDE_WIDTH ? WIDE_LIMIT : NARROW_LIMIT;
   const content = textarea.value || textarea.placeholder;
-  const lines = content.length > limit ? 2 : 1;
-  return lines * LINE_HEIGHT + PADDING * 2;
+  const lines = Math.max(
+    1,
+    Math.ceil(content.length / charsPerLine(measuredWidth(textarea))),
+  );
+  const height = lines * LINE_HEIGHT + PADDING * 2;
+  return parseFloat(textarea.style.minHeight) === 0
+    ? height
+    : Math.max(height, HERO_MIN_HEIGHT);
 }
 
 function fakeTextareaStyle(textarea: HTMLTextAreaElement) {
@@ -152,7 +186,14 @@ function renderComposer(placeholder: string) {
   return screen.getByLabelText("Chat message input") as HTMLTextAreaElement;
 }
 
+// Text that wraps in the single row but fits the full-width one: the band the
+// composer used to shake in.
+function wrapsInRowOnly() {
+  return "x".repeat(charsPerLine(singleRowWidth()) + 10);
+}
+
 beforeEach(() => {
+  rowWidth = DEFAULT_ROW_WIDTH;
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
   Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
     configurable: true,
@@ -180,9 +221,7 @@ describe("ChatInput composer row layout", () => {
     const textarea = renderComposer("Ask");
     expect(isStacked(textarea)).toBe(false);
 
-    fireEvent.change(textarea, {
-      target: { value: "x".repeat(NARROW_LIMIT + 10) },
-    });
+    fireEvent.change(textarea, { target: { value: wrapsInRowOnly() } });
     expect(isStacked(textarea)).toBe(true);
 
     reportResize(textarea);
@@ -193,26 +232,41 @@ describe("ChatInput composer row layout", () => {
 
   it("returns to the single row once the text fits it again", () => {
     const textarea = renderComposer("Ask");
-    fireEvent.change(textarea, {
-      target: { value: "x".repeat(NARROW_LIMIT + 10) },
-    });
+    fireEvent.change(textarea, { target: { value: wrapsInRowOnly() } });
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(true);
 
     fireEvent.change(textarea, {
-      target: { value: "x".repeat(NARROW_LIMIT - 10) },
+      target: { value: "x".repeat(charsPerLine(singleRowWidth()) - 10) },
     });
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(false);
   });
 
   it("keeps the empty hero composer stacked when only its placeholder wraps in the row", () => {
-    const textarea = renderComposer("p".repeat(NARROW_LIMIT + 10));
+    const textarea = renderComposer(
+      "p".repeat(charsPerLine(singleRowWidth()) + 10),
+    );
     expect(isStacked(textarea)).toBe(true);
 
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(true);
     reportResize(textarea);
     expect(isStacked(textarea)).toBe(true);
+  });
+
+  it("re-measures the single row when the host row grows while stacked", () => {
+    const textarea = renderComposer("Ask");
+    const value = wrapsInRowOnly();
+    fireEvent.change(textarea, { target: { value } });
+    reportResize(textarea);
+    expect(isStacked(textarea)).toBe(true);
+
+    // A side panel closes: the same text now fits the wider single row, so the
+    // box must judge itself against that row rather than the remembered one.
+    rowWidth = DEFAULT_ROW_WIDTH * 2;
+    reportResize(textarea);
+    expect(isStacked(textarea)).toBe(false);
+    expect(charsPerLine(singleRowWidth())).toBeGreaterThan(value.length);
   });
 });
