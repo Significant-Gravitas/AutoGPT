@@ -1,12 +1,14 @@
 """Tests for the periodic Stripe → DB tier reconciliation sweep."""
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_mock
 import stripe
 from prisma.enums import SubscriptionTier
 
+from backend.data import stripe_client
 from backend.data.stripe_reconciliation import (
     ReconciliationSummary,
     _collect_status_page,
@@ -476,3 +478,20 @@ def test_summary_defaults_to_zero() -> None:
         "pagination_capped": False,
         "discrepancies": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_collect_status_page_timeout_marks_run_incomplete():
+    """A stripe_call timeout is a StripeError like any other outage: the sweep
+    stops this status and reports capped=True instead of raising."""
+
+    async def stalled(**_kwargs):
+        await asyncio.sleep(1)
+
+    with (
+        patch.object(stripe_client, "DEFAULT_TIMEOUT_SECONDS", 0.05),
+        patch.object(stripe.Subscription, "list_async", side_effect=stalled),
+    ):
+        capped = await _collect_status_page("active", {}, {})
+
+    assert capped is True

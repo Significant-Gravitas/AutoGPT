@@ -77,6 +77,8 @@ async def test_other_stripe_errors_keep_their_type():
 @pytest.mark.asyncio
 async def test_timeout_is_bounded_and_counted():
     before = _n("Subscription", "retrieve", "timeout")
-    with pytest.raises(TimeoutError):
+    with pytest.raises(stripe.APIConnectionError) as info:
         await stripe_call_timeout(0.05, _Fake.retrieve_async, "sub_1")
+    assert isinstance(info.value, stripe.StripeError)
+    assert "exceeded 0.05s" in str(info.value)
     assert _n("Subscription", "retrieve", "timeout") == before + 1

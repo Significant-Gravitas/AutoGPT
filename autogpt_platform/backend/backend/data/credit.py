@@ -361,7 +361,8 @@ class UserCreditBase(ABC):
 
     @staticmethod
     async def create_billing_portal_session(user_id: str) -> str:
-        session = stripe.billing_portal.Session.create(
+        session = await stripe_call(
+            stripe.billing_portal.Session.create_async,
             customer=await get_stripe_customer_id(user_id),
             return_url=base_url + "/settings/billing",
         )
@@ -2528,7 +2529,7 @@ async def _expire_open_subscription_sessions(customer_id: str) -> None:
             for s in sessions.data:
                 if s.mode == "subscription":
                     try:
-                        await stripe.checkout.Session.expire_async(s.id)
+                        await stripe_call(stripe.checkout.Session.expire_async, s.id)
                     except stripe.StripeError:
                         logger.warning(
                             "create_subscription_checkout: could not expire session %s",

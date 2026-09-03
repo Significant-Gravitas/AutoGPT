@@ -10,7 +10,10 @@ Retries are deliberately left to the SDK (``stripe.max_network_retries``),
 which only retries with idempotency keys. Wrapping this in our own retry
 decorator would re-issue non-idempotent writes such as PaymentIntent.create.
 
-On timeout the coroutine is cancelled on our side. For a write that Stripe may
+On timeout the coroutine is cancelled on our side and a
+``stripe.APIConnectionError`` is raised, the same type the SDK uses for its own
+network timeouts, so existing ``except stripe.StripeError`` handling keeps
+working. For a write that Stripe may
 already have applied (a charge, a refund) that leaves the caller unsure, which
 is inherent to any client-side timeout on a non-idempotent call; the outcome is
 recorded as ``timeout`` and logged at error level so it is never silent.
@@ -76,8 +79,9 @@ async def _call(
         logger.error(
             f"Stripe {resource}.{method} exceeded {timeout_seconds}s and was cancelled"
         )
-        raise TimeoutError(
-            f"Stripe {resource}.{method} exceeded {timeout_seconds}s and was cancelled."
+        raise stripe.APIConnectionError(
+            f"Stripe {resource}.{method} exceeded {timeout_seconds}s and was cancelled.",
+            should_retry=False,
         ) from exc
     except Exception as exc:
         record_stripe_request(
@@ -103,6 +107,4 @@ def _outcome(exc: BaseException) -> str:
         return "rate_limited"
     if isinstance(exc, stripe.APIConnectionError):
         return "connection_error"
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
-        return "timeout"
     return "api_error"
