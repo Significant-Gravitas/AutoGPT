@@ -16,7 +16,6 @@ import pytest_mock
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from prisma.enums import APIKeyPermission
-from starlette.requests import Request
 
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
@@ -224,7 +223,7 @@ async def test_org_key_resolves_to_its_own_org(
 ) -> None:
     _mock_membership(mocker, org_id=ORG_A)
 
-    tenant = await resolve_tenant(_request(), _credential(organization_id=ORG_A))
+    tenant = await resolve_tenant(_credential(organization_id=ORG_A))
 
     assert (tenant.organization_id, tenant.team_id) == (ORG_A, None)
 
@@ -236,7 +235,7 @@ async def test_team_pinned_key_resolves_to_its_team(
     _mock_membership(mocker, org_id=ORG_A)
 
     tenant = await resolve_tenant(
-        _request(), _credential(organization_id=ORG_A, team_id_restriction=TEAM_A)
+        _credential(organization_id=ORG_A, team_id_restriction=TEAM_A)
     )
 
     assert (tenant.organization_id, tenant.team_id) == (ORG_A, TEAM_A)
@@ -254,7 +253,7 @@ async def test_key_without_org_falls_back_to_the_personal_org_at_org_home(
         return_value=(PERSONAL_ORG, "personal-team"),
     )
 
-    tenant = await resolve_tenant(_request(), _credential())
+    tenant = await resolve_tenant(_credential())
 
     assert (tenant.organization_id, tenant.team_id) == (PERSONAL_ORG, None)
 
@@ -267,7 +266,7 @@ async def test_key_is_rejected_once_membership_ends(
     _mock_membership(mocker, org_id=ORG_A, status="INACTIVE")
 
     with pytest.raises(NotAuthorizedError):
-        await resolve_tenant(_request(), _credential(organization_id=ORG_A))
+        await resolve_tenant(_credential(organization_id=ORG_A))
 
 
 @pytest.mark.asyncio
@@ -277,7 +276,7 @@ async def test_key_is_rejected_when_the_org_is_deleted(
     _mock_membership(mocker, org_id=ORG_A, deleted_at=datetime.now(tz=timezone.utc))
 
     with pytest.raises(NotAuthorizedError):
-        await resolve_tenant(_request(), _credential(organization_id=ORG_A))
+        await resolve_tenant(_credential(organization_id=ORG_A))
 
 
 @pytest.mark.asyncio
@@ -290,7 +289,7 @@ async def test_team_header_selects_a_team_the_caller_belongs_to(
     )
 
     tenant = await resolve_tenant(
-        _request(team_header=TEAM_A), _credential(organization_id=ORG_A)
+        _credential(organization_id=ORG_A), requested_team=TEAM_A
     )
 
     assert tenant.team_id == TEAM_A
@@ -304,8 +303,8 @@ async def test_team_header_cannot_override_a_pinned_key(
 
     with pytest.raises(NotAuthorizedError):
         await resolve_tenant(
-            _request(team_header="other-team"),
             _credential(organization_id=ORG_A, team_id_restriction=TEAM_A),
+            requested_team="other-team",
         )
 
 
@@ -320,7 +319,7 @@ async def test_team_header_cannot_reach_another_orgs_team(
 
     with pytest.raises(NotAuthorizedError):
         await resolve_tenant(
-            _request(team_header="team-b"), _credential(organization_id=ORG_A)
+            _credential(organization_id=ORG_A), requested_team="team-b"
         )
 
 
@@ -335,7 +334,7 @@ async def test_account_without_a_personal_org_is_rejected(
     )
 
     with pytest.raises(NotAuthorizedError):
-        await resolve_tenant(_request(), _credential())
+        await resolve_tenant(_credential())
 
 
 # ============================================================================
@@ -371,11 +370,6 @@ def _credential(
         organization_id=organization_id,
         team_id_restriction=team_id_restriction,
     )
-
-
-def _request(team_header: str | None = None) -> Request:
-    headers = [(b"x-team-id", team_header.encode())] if team_header else []
-    return Request({"type": "http", "headers": headers})
 
 
 def _mock_membership(

@@ -21,7 +21,7 @@ import logging
 from typing import Literal, Optional
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
-from fastapi import HTTPException, Request, Security
+from fastapi import Header, HTTPException, Security
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 from starlette import status
@@ -50,15 +50,22 @@ class TenantContext(BaseModel):
 
 
 async def require_auth(
-    request: Request,
     auth: APIAuthorizationInfo = Security(middleware.require_auth),
+    requested_team: Optional[str] = Header(
+        default=None,
+        alias=TEAM_HEADER_NAME,
+        description=(
+            "Team to act in, within the organization the credentials belong to. "
+            "Rejected for credentials already pinned to a team."
+        ),
+    ),
 ) -> TenantContext:
     """Require valid credentials, then resolve the tenant they act in.
 
     Every v2 route reaches this one dependency, so tests override it once and
     `tenancy_test` can assert no handler bypasses it.
     """
-    return await resolve_tenant(request, auth)
+    return await resolve_tenant(auth, requested_team)
 
 
 def require_permission(*permissions: APIKeyPermission):
@@ -80,11 +87,13 @@ def require_permission(*permissions: APIKeyPermission):
     return check_permissions
 
 
-async def resolve_tenant(request: Request, auth: APIAuthorizationInfo) -> TenantContext:
+async def resolve_tenant(
+    auth: APIAuthorizationInfo, requested_team: Optional[str] = None
+) -> TenantContext:
     """Resolve the org and team this request acts in, verifying membership."""
     organization_id, team_id = await resolve_credential_tenancy(auth)
 
-    if requested_team := request.headers.get(TEAM_HEADER_NAME, "").strip():
+    if requested_team := (requested_team or "").strip():
         if auth.team_id_restriction and requested_team != auth.team_id_restriction:
             raise NotAuthorizedError(
                 f"These credentials are restricted to team {auth.team_id_restriction}"
