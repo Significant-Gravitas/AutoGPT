@@ -12,6 +12,8 @@ import { formatBriefingWindowStart } from "../../helpers";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
 import { HomeTile } from "../HomeTile/HomeTile";
+import { RecentWorkflowRuns } from "../RecentWorkflowRuns/RecentWorkflowRuns";
+import { useRecentWorkflowRuns } from "../RecentWorkflowRuns/useRecentWorkflowRuns";
 import { OutcomeRow } from "./components/OutcomeRow";
 import { type BriefingFilter, useMorningBriefing } from "./useMorningBriefing";
 
@@ -29,6 +31,7 @@ export function MorningBriefing({ dashboard, className }: Props) {
     selectFilter,
     visibleOutcomes,
   } = useMorningBriefing({ outcomes: briefing.outcomes });
+  const recentRuns = useRecentWorkflowRuns();
 
   return (
     <HomeTile
@@ -106,6 +109,8 @@ export function MorningBriefing({ dashboard, className }: Props) {
           {briefing.routine_count === 1 ? "" : "s"} completed quietly.
         </div>
       ) : null}
+
+      <RecentWorkflowRuns runs={recentRuns} />
     </HomeTile>
   );
 }
