@@ -34,6 +34,7 @@ from backend.api.external.v2.pagination import (
     PageRequest,
     encode_page_cursor,
     encode_token_cursor,
+    single_page_request,
 )
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -418,6 +419,32 @@ def test_a_cursor_from_another_endpoint_is_rejected():
     with pytest.raises(HTTPException) as exc_info:
         page_cursor.uncounted(["a"])
     assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc_info:
+        page_cursor.keyset(["a"], next_token=None)
+    assert exc_info.value.status_code == 400
+
+
+def test_a_single_page_endpoint_rejects_a_cursor_before_it_does_any_work():
+    """The guard runs in dependency resolution, not the route body.
+
+    `/credits/invoices` calls Stripe; a cursor must not buy an outbound request
+    the endpoint then throws away.
+    """
+    request = PageRequest(limit=10, cursor=encode_page_cursor(2))
+
+    with pytest.raises(HTTPException) as exc_info:
+        single_page_request(request)
+    assert exc_info.value.status_code == 400
+    assert single_page_request(PageRequest(limit=10, cursor=None)).limit == 10
+
+
+def test_the_documented_cursor_is_one_the_encoder_emits():
+    """A reader copying the API guide's example must not get a 400."""
+    documented = "eyJ2IjoxLCJrIjoicCIsInAiOjJ9"
+
+    assert encode_page_cursor(2) == documented
+    assert PageRequest(limit=10, cursor=documented).page == 2
 
 
 def test_an_absurd_page_is_rejected_rather_than_passed_to_the_database():

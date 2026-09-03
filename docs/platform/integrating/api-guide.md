@@ -127,7 +127,7 @@ envelope:
 ```json
 {
   "items": [],
-  "next_cursor": "eyJwIjoyfQ",
+  "next_cursor": "eyJ2IjoxLCJrIjoicCIsInAiOjJ9",
   "total_count": 137
 }
 ```
