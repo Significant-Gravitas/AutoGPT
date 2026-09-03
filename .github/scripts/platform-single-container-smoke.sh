@@ -193,11 +193,16 @@ cleanup() {
 
 assert_clean_stop() {
   local reason="$1"
-  local started elapsed exit_code
-  # Integer SECONDS truncates at both ends, so a real 8.9s stop reads as 8.
+  local started finished_at finished_epoch elapsed exit_code
   started="${EPOCHREALTIME}"
   docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${CONTAINER_NAME}" >/dev/null
-  elapsed="$(awk -v a="${started}" -v b="${EPOCHREALTIME}" 'BEGIN { printf "%.2f", b - a }')"
+  finished_at="$(docker inspect --format '{{.State.FinishedAt}}' "${CONTAINER_NAME}")"
+  finished_epoch="$(date --date="${finished_at}" +%s.%N)"
+  awk -v a="${started}" -v b="${finished_epoch}" 'BEGIN { exit !(b >= a) }' || {
+    echo "container finish timestamp precedes the stop request ${reason}" >&2
+    return 1
+  }
+  elapsed="$(awk -v a="${started}" -v b="${finished_epoch}" 'BEGIN { printf "%.2f", b - a }')"
   exit_code="$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
   [[ "${exit_code}" == 0 ]] || {
     echo "container did not exit cleanly ${reason}: exit ${exit_code} after" \
