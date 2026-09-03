@@ -42,6 +42,8 @@ async def get_identity(
     return Identity(
         user_id=user.id,
         email=user.email,
+        name=user.name,
+        timezone=user.timezone,
         organization=TenantOrganization(
             id=org.id, name=org.name, is_personal=org.is_personal
         ),

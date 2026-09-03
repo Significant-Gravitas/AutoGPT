@@ -85,6 +85,8 @@ class Identity(BaseModel):
 
     user_id: str
     email: str
+    name: Optional[str] = None
+    timezone: str
     organization: TenantOrganization
     team: Optional[TenantTeam] = Field(
         default=None,

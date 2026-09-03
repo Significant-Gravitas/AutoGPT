@@ -33,6 +33,37 @@ API keys are ideal for:
 - Personal scripts and automation
 - Backend services
 
+### Organizations and teams
+
+Every v2 request acts inside exactly one organization. An API key is created in
+an organization and carries it for its whole life, so the key itself decides
+which organization's agents, runs and credits you reach — there is no
+per-request organization parameter. A key created before organizations existed
+acts in your personal organization, which is what a personal account already
+is.
+
+`GET /external-api/v2/me` reports the organization and team a key acts in:
+
+```bash
+curl -H "X-API-Key: YOUR_API_KEY" https://backend.agpt.co/external-api/v2/me
+```
+
+To act inside one team of that organization, either pin the key to a team when
+you create it, or send `X-Team-Id` on the request:
+
+```bash
+curl -H "X-API-Key: YOUR_API_KEY" -H "X-Team-Id: TEAM_ID" \
+  https://backend.agpt.co/external-api/v2/library/agents
+```
+
+A key already pinned to a team rejects an `X-Team-Id` naming a different one.
+Without either, the request acts organization-wide, and what it creates is
+visible to every member of the organization.
+
+Resources you create carry the organization and team you acted in, and runs are
+billed to that organization's balance. To work across several organizations,
+create one key per organization.
+
 ### 2. OAuth 2.0 (Single Sign-On)
 
 For applications that need to act on behalf of users, use OAuth 2.0. This allows users to authorize your application to access their AutoGPT resources.
@@ -156,6 +187,7 @@ When creating API keys or using OAuth, request only the scopes your application 
 | `READ_INTEGRATIONS` | List integration credentials |
 | `MANAGE_INTEGRATIONS` | Create integration credentials |
 | `DELETE_INTEGRATIONS` | Delete integration credentials |
+| `IDENTITY` | Read who the credentials act as, and in which organization (`GET /me`) |
 | `READ_FILES` | List and download workspace files |
 | `WRITE_FILES` | Upload and delete workspace files |
 
@@ -174,7 +206,6 @@ routes) and `GET /search` require valid credentials but no particular scope.
 
 | Scope | Description |
 |-------|-------------|
-| `IDENTITY` | Read user ID, e-mail, and timezone (v1 `GET /me`; v2 has no equivalent yet) |
 | `EXECUTE_GRAPH` | Execute graphs directly (use `RUN_AGENT` in v2) |
 | `EXECUTE_BLOCK` | Execute individual blocks |
 | `USE_TOOLS` | Use chat tools via external API |
