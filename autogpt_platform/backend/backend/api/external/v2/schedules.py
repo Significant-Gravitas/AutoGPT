@@ -14,6 +14,7 @@ from starlette import status
 from backend.data import graph as graph_db
 from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
+from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -49,8 +50,11 @@ async def list_all_schedules(
         organization_id=auth.organization_id,
         team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
     )
-    # The scheduler client has no pagination of its own; slice what it returns.
-    return page.slice([AgentRunSchedule.from_internal(s) for s in schedules])
+    # The scheduler keeps a schedule the caller owns even when it belongs to
+    # another org, so the org filter is applied here rather than trusted there.
+    return page.slice(
+        [AgentRunSchedule.from_internal(s) for s in schedules if _in_tenant(s, auth)]
+    )
 
 
 @schedules_router.delete(
@@ -146,5 +150,13 @@ async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> N
         organization_id=auth.organization_id,
         team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
     )
-    if not any(schedule.id == schedule_id for schedule in visible):
+    if not any(
+        schedule.id == schedule_id and _in_tenant(schedule, auth)
+        for schedule in visible
+    ):
         raise NotFoundError(f"Schedule #{schedule_id} not found")
+
+
+def _in_tenant(schedule: GraphExecutionJobInfo, auth: TenantContext) -> bool:
+    """Schedules store an untagged org as "", so normalise before comparing."""
+    return (schedule.organization_id or None) in (None, auth.organization_id)

@@ -482,6 +482,43 @@ async def test_org_a_key_cannot_delete_an_org_b_run(
 
 
 @pytest.mark.asyncio
+async def test_org_a_key_cannot_see_or_delete_an_org_b_schedule(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The scheduler keeps a schedule its owner made in any org, so v2 filters
+    on the schedule's own org rather than trusting that listing."""
+    from .schedules import delete_schedule, list_all_schedules
+
+    scheduler = Mock(
+        get_graph_execution_schedules=AsyncMock(
+            return_value=[_schedule("s-a", ORG_A), _schedule("s-b", ORG_B)]
+        ),
+        delete_schedule=AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.external.v2.schedules.get_scheduler_client",
+        return_value=scheduler,
+    )
+    mocker.patch(
+        "backend.api.external.v2.schedules.get_user_team_ids",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    mocker.patch(
+        "backend.api.external.v2.models.AgentRunSchedule.from_internal",
+        side_effect=lambda s: s,
+    )
+
+    listed = await list_all_schedules(graph_id=None, page=_page(), auth=_key_for(ORG_A))
+
+    assert [s.id for s in listed.items] == ["s-a"]
+
+    with pytest.raises(NotFoundError):
+        await delete_schedule(schedule_id="s-b", auth=_key_for(ORG_A))
+    scheduler.delete_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_untagged_rows_stay_reachable(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -622,6 +659,10 @@ def _mock_membership(
 
 def _page() -> PageRequest:
     return PageRequest(limit=20)
+
+
+def _schedule(schedule_id: str, organization_id: str) -> Mock:
+    return Mock(id=schedule_id, organization_id=organization_id)
 
 
 def _library_agent(organization_id: str | None) -> Mock:
