@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { SECTION_INSET_CLASS } from "../../helpers";
 import { ExpertWorkflowGroup } from "./components/ExpertWorkflowGroup";
+import { RemoveWorkflowDialog } from "./components/RemoveWorkflowDialog/RemoveWorkflowDialog";
 import { WhatRunsFilters } from "./components/WhatRunsFilters";
 import { YourAgentsList } from "./components/YourAgentsList";
 import { WhatRunsFilter } from "./helpers";
@@ -39,6 +40,9 @@ export function WhatRunsZone({ experts, schedules }: Props) {
     adopt,
     pendingLibraryAgentIDs,
     adoptedTargetKeys,
+    workflowPendingRemoval,
+    askToRemoveWorkflow,
+    cancelWorkflowRemoval,
   } = useWhatRunsZone({
     experts,
     schedules,
@@ -69,7 +73,13 @@ export function WhatRunsZone({ experts, schedules }: Props) {
         {groups.length > 0 ? (
           <div className="flex flex-col gap-4">
             {groups.map((group) => (
-              <ExpertWorkflowGroup key={group.expert.id} group={group} />
+              <ExpertWorkflowGroup
+                key={group.expert.id}
+                group={group}
+                onRemoveWorkflow={(workflow) =>
+                  askToRemoveWorkflow(group.expert, workflow)
+                }
+              />
             ))}
           </div>
         ) : groupEmptyMessage ? (
@@ -106,6 +116,15 @@ export function WhatRunsZone({ experts, schedules }: Props) {
           )
         ) : null}
       </div>
+
+      {workflowPendingRemoval ? (
+        <RemoveWorkflowDialog
+          key={workflowPendingRemoval.workflow.id}
+          expert={workflowPendingRemoval.expert}
+          workflow={workflowPendingRemoval.workflow}
+          onClose={cancelWorkflowRemoval}
+        />
+      ) : null}
     </section>
   );
 }

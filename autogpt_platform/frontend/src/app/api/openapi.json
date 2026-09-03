@@ -6736,6 +6736,44 @@
         }
       }
     },
+    "/api/experts/{expert_id}/workflows/{workflow_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Uninstall Expert Workflow",
+        "description": "Detach a workflow from an expert and cancel its schedule. The agent\nitself stays in the user's library.",
+        "operationId": "uninstall_expert_workflow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Workflow Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or workflow not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/files/upload": {
       "post": {
         "tags": ["v1", "files"],

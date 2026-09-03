@@ -26,6 +26,7 @@ from backend.api.features.experts.errors import (
     ExpertPodNameTakenError,
     ExpertPodNotFoundError,
     ExpertTemplateNotFoundError,
+    ExpertWorkflowNotFoundError,
     RaisedExpertLifetimeLimitExceededError,
 )
 from backend.api.features.experts.models import (
@@ -1092,6 +1093,41 @@ async def install_workflow(
             raise
         return _to_workflow_ref(raced)
     return _to_workflow_ref(row)
+
+
+async def uninstall_workflow(user_id: str, expert_id: str, workflow_id: str) -> None:
+    """Detach a workflow from an expert: cancel its schedule, drop the row.
+
+    The LibraryAgent is left alone. It is the user's copy of the agent and
+    another expert may have installed the same listing, so deleting it here
+    would reach outside what the user asked to remove.
+    """
+    row = await prisma.models.ExpertWorkflow.prisma().find_first(
+        where={
+            "id": workflow_id,
+            "expertId": expert_id,
+            "Expert": {
+                "is": {
+                    "ownerUserId": user_id,
+                    "isTemplate": False,
+                    "isArchived": False,
+                    "visibility": ResourceVisibility.PRIVATE,
+                }
+            },
+        }
+    )
+    if row is None:
+        raise ExpertWorkflowNotFoundError(workflow_id)
+
+    # Schedule first: a schedule outliving its row is the one outcome that
+    # keeps firing unattended. Deletion is best-effort and logs by id, so a
+    # scheduler outage never blocks the detach the user asked for.
+    if row.scheduleId:
+        await scheduling.delete_schedule_best_effort(row.scheduleId, user_id, expert_id)
+
+    await prisma.models.ExpertWorkflow.prisma().delete_many(
+        where={"id": workflow_id, "expertId": expert_id}
+    )
 
 
 async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:

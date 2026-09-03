@@ -90,19 +90,19 @@ async def create_workflow_schedule(
             f"Failed to record schedule #{schedule.id} on workflow "
             f"#{workflow_row_id}; deleting it: {type(e).__name__}: {e}"
         )
-        await _delete_schedule_best_effort(schedule.id, user_id, expert_id)
+        await delete_schedule_best_effort(schedule.id, user_id, expert_id)
         return False
     if updated == 0:
         logger.info(
             f"Workflow #{workflow_row_id} already has a schedule; deleting "
             f"duplicate registration #{schedule.id}"
         )
-        await _delete_schedule_best_effort(schedule.id, user_id, expert_id)
+        await delete_schedule_best_effort(schedule.id, user_id, expert_id)
         return False
     return True
 
 
-async def _delete_schedule_best_effort(
+async def delete_schedule_best_effort(
     schedule_id: str, user_id: str, expert_id: str
 ) -> None:
     """Never leave a schedule firing with no row pointing at it. One

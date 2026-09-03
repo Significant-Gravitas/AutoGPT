@@ -27,6 +27,7 @@ __all__ = [
     "ExpertPodNameTakenError",
     "ExpertPodNotFoundError",
     "ExpertTemplateNotFoundError",
+    "ExpertWorkflowNotFoundError",
     "RaisedExpertLifetimeLimitExceededError",
 ]
 
@@ -40,6 +41,12 @@ class ExpertPodNotFoundError(Exception):
     def __init__(self, pod_id: str):
         super().__init__(f"Pod {pod_id} not found")
         self.pod_id = pod_id
+
+
+class ExpertWorkflowNotFoundError(Exception):
+    def __init__(self, workflow_id: str):
+        super().__init__(f"Workflow {workflow_id} not found")
+        self.workflow_id = workflow_id
 
 
 class ExpertPodNameTakenError(Exception):

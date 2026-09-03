@@ -1874,6 +1874,78 @@ async def test_install_workflow_duplicate_returns_existing(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_uninstall_workflow_detaches_row_but_keeps_library_agent(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    assert installed.library_agent_id is not None
+
+    await experts_db.uninstall_workflow(test_user.id, hired.expert.id, installed.id)
+
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert expert.workflows == []
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": installed.library_agent_id}
+    )
+    assert library_agent is not None
+    assert library_agent.isDeleted is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uninstall_workflow_cancels_its_schedule(
+    server: SpinTestServer, test_user, mocker
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    await prisma.models.ExpertWorkflow.prisma().update(
+        where={"id": installed.id}, data={"scheduleId": "schedule-1"}
+    )
+    delete_schedule = mocker.patch.object(
+        scheduling, "delete_schedule_best_effort", new=AsyncMock()
+    )
+
+    await experts_db.uninstall_workflow(test_user.id, hired.expert.id, installed.id)
+
+    delete_schedule.assert_awaited_once_with(
+        "schedule-1", test_user.id, hired.expert.id
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uninstall_workflow_rejects_other_users_workflow(
+    server: SpinTestServer, test_user, other_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+
+    with pytest.raises(experts_db.ExpertWorkflowNotFoundError):
+        await experts_db.uninstall_workflow(
+            other_user.id, hired.expert.id, installed.id
+        )
+
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == [installed.id]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uninstall_workflow_unknown_id_raises(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(experts_db.ExpertWorkflowNotFoundError):
+        await experts_db.uninstall_workflow(test_user.id, hired.expert.id, "nope")
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_install_workflow_returns_concurrent_winner(
     server: SpinTestServer, test_user
 ):

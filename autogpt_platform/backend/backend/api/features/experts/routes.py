@@ -381,6 +381,26 @@ async def install_expert_workflow(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
+@router.delete(
+    "/{expert_id}/workflows/{workflow_id}",
+    operation_id="uninstall_expert_workflow",
+    status_code=204,
+    responses={404: {"description": "Expert or workflow not found"}},
+)
+async def uninstall_expert_workflow(
+    expert_id: str,
+    workflow_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> fastapi.Response:
+    """Detach a workflow from an expert and cancel its schedule. The agent
+    itself stays in the user's library."""
+    try:
+        await experts_db.uninstall_workflow(user_id, expert_id, workflow_id)
+    except experts_db.ExpertWorkflowNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    return fastapi.Response(status_code=204)
+
+
 @router.get(
     "/{expert_id}/detach-preview",
     operation_id="get_expert_detach_preview",
