@@ -116,17 +116,30 @@ validation) and is `null` otherwise.
 
 ## Pagination
 
-Every list endpoint takes `limit` (1-100, default 20) and `cursor`, and returns:
+Every list endpoint takes the same two query parameters and returns the same
+envelope:
+
+| Parameter | |
+|-----------|--|
+| `limit` | Items per page. 1-100, default 20. |
+| `cursor` | The previous response's `next_cursor`. Omit for the first page. |
 
 ```json
 {
   "items": [],
-  "next_cursor": "eyJwIjoyfQ"
+  "next_cursor": "eyJwIjoyfQ",
+  "total_count": 137
 }
 ```
 
-Pass `next_cursor` back as `cursor` for the next page. `next_cursor` is `null`
-on the last page. Cursors are opaque — do not parse or construct them.
+Pass `next_cursor` back as `cursor` for the next page; it is `null` on the last
+page. Cursors are opaque — do not parse or construct them.
+
+`total_count` is the number of items matching the request across all pages. It
+is present on every list endpoint, and `null` on the two where the source cannot
+report one: `/credits/invoices` (Stripe does not return a total) and
+`/credits/transactions` (the history groups raw rows, so a row count would not
+match what paging yields).
 
 
 ## Available Scopes

@@ -28,8 +28,13 @@ class Page(BaseModel, Generic[T]):
 
     items: list[T]
     next_cursor: Optional[str] = Field(
-        default=None,
-        description="Pass as `cursor` to fetch the next page. `null` on the last page.",
+        description="Pass as `cursor` to fetch the next page. `null` on the last page."
+    )
+    total_count: Optional[int] = Field(
+        description=(
+            "Items matching the request across all pages, or `null` where the "
+            "underlying source cannot report one. Always present."
+        )
     )
 
 
@@ -56,6 +61,7 @@ class PageRequest(BaseModel):
         return token
 
     def paged(self, items: Sequence[T], total_count: int) -> Page[T]:
+        """For an offset-paginated source that reports a total."""
         return Page[T](
             items=list(items),
             next_cursor=(
@@ -63,22 +69,30 @@ class PageRequest(BaseModel):
                 if self.page * self.limit < total_count
                 else None
             ),
+            total_count=total_count,
         )
 
-    def keyset(self, items: Sequence[T], next_token: Optional[str]) -> Page[T]:
+    def slice(self, items: Sequence[T]) -> Page[T]:
+        """For a source that returns everything it has; paginate in memory."""
+        start = (self.page - 1) * self.limit
+        return self.paged(items[start : start + self.limit], len(items))
+
+    def keyset(
+        self,
+        items: Sequence[T],
+        next_token: Optional[str],
+        total_count: Optional[int] = None,
+    ) -> Page[T]:
+        """For a keyset-paginated source, which may not be able to report a total."""
         return Page[T](
             items=list(items),
             next_cursor=encode_token_cursor(next_token) if next_token else None,
+            total_count=total_count,
         )
 
-    def unpaginated(self, items: Sequence[T]) -> Page[T]:
-        """For sources that return everything they have in one call."""
-        return Page[T](items=list(items), next_cursor=None)
-
-    def slice(self, items: Sequence[T]) -> Page[T]:
-        """For sources that return everything they have; paginate in memory."""
-        start = (self.page - 1) * self.limit
-        return self.paged(items[start : start + self.limit], len(items))
+    def uncounted(self, items: Sequence[T]) -> Page[T]:
+        """For a source that answers in one shot and reports neither more nor how many."""
+        return Page[T](items=list(items), next_cursor=None, total_count=None)
 
 
 def page_request(
