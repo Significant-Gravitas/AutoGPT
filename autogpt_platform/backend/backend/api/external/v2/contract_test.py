@@ -17,10 +17,11 @@ import pytest
 import pytest_mock
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from prisma.enums import APIKeyPermission
+from prisma.enums import APIKeyPermission, ReviewStatus
 from starlette.routing import Match
 
 from backend.api.external.middleware import require_auth, resolve_auth_info
+from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.auth.base import APIAuthorizationInfo
 
@@ -101,6 +102,89 @@ async def test_reviews_are_reachable_over_http():
     assert response.json()["reviews"] == []
 
 
+async def test_submitting_reviews_resumes_the_run(mocker: pytest_mock.MockFixture):
+    """One approval and one rejection, after which nothing is left pending.
+
+    The resume is the point of the endpoint: the graph sits parked until the
+    last review lands, so a failure here strands the run rather than erroring.
+    """
+    approved = _review("node-a", ReviewStatus.APPROVED)
+    rejected = _review("node-b", ReviewStatus.REJECTED)
+    _mock_review_db(
+        mocker,
+        pending=[approved, rejected],
+        processed={"node-a": approved, "node-b": rejected},
+        still_pending=False,
+    )
+    add_graph_execution = _mock_resume_path(mocker)
+
+    result = await _submit(
+        {"node_exec_id": "node-a", "approved": True},
+        {"node_exec_id": "node-b", "approved": False, "message": "no"},
+    )
+
+    assert (result.run_id, result.approved_count, result.rejected_count) == (
+        "run-1",
+        1,
+        1,
+    )
+    add_graph_execution.assert_awaited_once()
+    assert add_graph_execution.await_args.kwargs["graph_exec_id"] == "run-1"
+
+
+async def test_reviews_still_pending_leave_the_run_parked(
+    mocker: pytest_mock.MockFixture,
+):
+    approved = _review("node-a", ReviewStatus.APPROVED)
+    _mock_review_db(
+        mocker,
+        pending=[approved],
+        processed={"node-a": approved},
+        still_pending=True,
+    )
+    add_graph_execution = _mock_resume_path(mocker)
+
+    result = await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert result.approved_count == 1
+    add_graph_execution.assert_not_awaited()
+
+
+async def test_a_review_id_from_another_run_is_rejected(
+    mocker: pytest_mock.MockFixture,
+):
+    _mock_review_db(
+        mocker,
+        pending=[_review("node-a", ReviewStatus.WAITING)],
+        processed={},
+        still_pending=True,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _submit({"node_exec_id": "node-from-another-run", "approved": True})
+
+    assert exc_info.value.status_code == 400
+    assert "node-from-another-run" in str(exc_info.value.detail)
+
+
+async def test_a_failed_resume_does_not_fail_the_submission(
+    mocker: pytest_mock.MockFixture,
+):
+    """The decisions are already persisted; a resume failure must not undo them."""
+    approved = _review("node-a", ReviewStatus.APPROVED)
+    _mock_review_db(
+        mocker,
+        pending=[approved],
+        processed={"node-a": approved},
+        still_pending=False,
+    )
+    _mock_resume_path(mocker).side_effect = RuntimeError("executor unreachable")
+
+    result = await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert result.approved_count == 1
+
+
 async def test_a_string_without_the_key_prefix_is_not_an_api_key():
     """The prefix check short-circuits before any database lookup."""
     from backend.data.auth.api_key import validate_api_key
@@ -170,6 +254,83 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
 
     authenticated.assert_awaited_once_with(TEST_USER_ID)
     anonymous.assert_not_awaited()
+
+
+async def _submit(*decisions: dict):
+    """Call the endpoint directly: a TestClient portal would put the resume
+    path's async clients on a different event loop than the test."""
+    from .models import AgentRunReviewsSubmitRequest
+    from .runs import submit_reviews
+
+    return await submit_reviews(
+        request=AgentRunReviewsSubmitRequest.model_validate({"reviews": decisions}),
+        run_id="run-1",
+        auth=_api_key_auth,
+    )
+
+
+def _review(node_exec_id: str, status: ReviewStatus) -> PendingHumanReviewModel:
+    return PendingHumanReviewModel(
+        node_exec_id=node_exec_id,
+        user_id=TEST_USER_ID,
+        graph_exec_id="run-1",
+        graph_id="graph-1",
+        graph_version=1,
+        payload={},
+        editable=True,
+        status=status,
+        created_at=datetime.now(tz=timezone.utc),
+    )
+
+
+def _mock_review_db(
+    mocker: pytest_mock.MockFixture,
+    pending: list[PendingHumanReviewModel],
+    processed: dict[str, PendingHumanReviewModel],
+    still_pending: bool,
+) -> None:
+    from backend.data import human_review
+
+    mocker.patch.object(
+        human_review,
+        "get_pending_reviews_for_execution",
+        new=mock.AsyncMock(return_value=pending),
+    )
+    mocker.patch.object(
+        human_review,
+        "process_all_reviews_for_execution",
+        new=mock.AsyncMock(return_value=processed),
+    )
+    mocker.patch.object(
+        human_review,
+        "has_pending_reviews_for_graph_exec",
+        new=mock.AsyncMock(return_value=still_pending),
+    )
+
+
+def _mock_resume_path(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
+    """Stub everything the resume needs; returns the enqueue mock to assert on."""
+    from backend.data.graph import GraphSettings
+    from backend.executor import utils as execution_utils
+
+    from . import runs
+
+    mocker.patch.object(
+        runs,
+        "get_user_by_id",
+        new=mock.AsyncMock(return_value=mock.Mock(timezone="Europe/Amsterdam")),
+    )
+    mocker.patch.object(
+        runs, "get_graph_settings", new=mock.AsyncMock(return_value=GraphSettings())
+    )
+    mocker.patch.object(
+        runs,
+        "get_or_create_workspace",
+        new=mock.AsyncMock(return_value=mock.Mock(id="workspace-1")),
+    )
+    enqueue = mock.AsyncMock()
+    mocker.patch.object(execution_utils, "add_graph_execution", new=enqueue)
+    return enqueue
 
 
 def _first_matching_endpoint(router: Any, method: str, path: str) -> str | None:
