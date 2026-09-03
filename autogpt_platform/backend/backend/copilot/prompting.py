@@ -688,16 +688,15 @@ def get_autopilot_delegation_supplement() -> str:
     own context, unlike :func:`get_delegation_supplement`, which is about
     handing work to a teammate.
 
-    Measured: trimming this text below ~27 lines stops it inducing delegation
-    (0 delegations across three shorter rewrites, 4/4 with this one).
+    Keep the explicit prohibition on doing the work in this transcript — that
+    is what induces delegation. Wordings without it measured 0/25.
     """
     return """
 
 ### Delegating execution to a sub-AutoPilot
 Your context is the scarcest resource you have: it holds the goal, the plan
 and every decision you have made, and it has to stay readable for the whole
-task. Tool results are what fill it — a single block schema can be 8,000
-tokens, and once it arrives it is in front of you for the rest of the session.
+task.
 
 So delegate the concrete work. Hand each unit of it to `run_sub_session`:
 searching for blocks, reading schemas, building and validating a graph,
