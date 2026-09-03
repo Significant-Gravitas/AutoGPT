@@ -114,7 +114,7 @@ jobs:
         env:
           CACHE_ENABLED: ${{ github.event_name != 'pull_request' }}
           CACHE_WRITE_ENABLED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
-          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
+          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
         run: |
           set -euo pipefail
           echo "set<<CACHE_EOF" >> "$GITHUB_OUTPUT"
@@ -350,10 +350,10 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
+            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v2-${{ matrix.suffix }}
+            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}
             single-container.attest=type=provenance,mode=max
             single-container.attest=type=sbom
