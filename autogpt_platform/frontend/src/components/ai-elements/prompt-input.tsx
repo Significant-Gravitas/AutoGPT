@@ -188,6 +188,10 @@ export function PromptInputTextarea({
       el.style.height = `${contentHeight}px`;
     } else {
       singleRowWidthRef.current = Number.isFinite(width) ? width : null;
+      // Measured from the row itself, so the offset is re-learned on the next
+      // stack rather than carried over from an addon row that has since
+      // changed (the connection picker hides while a turn is streaming).
+      addonsWidthRef.current = null;
       wrapped = isWrapped(el, contentHeight);
     }
     if (wrapped === isMultilineRef.current) return;
