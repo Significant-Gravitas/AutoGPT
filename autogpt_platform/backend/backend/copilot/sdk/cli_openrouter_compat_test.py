@@ -457,14 +457,13 @@ def _assert_no_forbidden_patterns(
 
 @pytest.mark.asyncio
 @pytest.mark.xfail(
-    reason="CLI 2.1.97 (SDK 0.1.58) sends context-management beta without "
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1; CLI 2.1.248 additionally "
-    "gates experimental betas on the provider, so a non-Anthropic base URL "
-    "may suppress them on its own. Non-strict because either outcome is "
-    "informational — the env var guard in "
+    reason="CLI 2.1.248 (SDK 0.2.146) still sends the "
+    "context-management-2025-06-27 beta header against a non-Anthropic base "
+    "URL without CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (observed, same as "
+    "CLI 2.1.97 / SDK 0.1.58). This is expected — the env var guard in "
     "test_disable_experimental_betas_env_var_strips_headers is the real "
     "regression test.",
-    strict=False,
+    strict=True,
 )
 async def test_bare_cli_does_not_send_openrouter_incompatible_features():
     """Bare CLI reproduction (no env var workaround).
