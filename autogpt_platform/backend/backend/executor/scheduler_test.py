@@ -847,3 +847,29 @@ class TestLaunchDarklyLifecycle:
         ):
             sched._shutdown_launchdarkly_for_scheduler()
         shutdown.assert_not_called()
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+def test_get_jobs_cached_sets_the_scheduler_jobs_gauge():
+    """autogpt_scheduler_jobs has an alert on it and was never set."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.scheduler import Scheduler
+
+    s = Scheduler.__new__(Scheduler)
+    s._jobs_cache = None
+    s._jobs_cache_expires_at = 0.0
+    s._jobs_cache_version = 0
+    s.scheduler = MagicMock()
+    s.scheduler.get_jobs.return_value = [object(), object(), object()]
+
+    assert len(s._get_jobs_cached()) == 3
+    assert (
+        _counter("autogpt_scheduler_jobs", job_type="execution", status="scheduled")
+        == 3
+    )

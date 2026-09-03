@@ -50,6 +50,7 @@ from backend.monitoring import (
     report_late_executions,
     send_due_briefings,
 )
+from backend.monitoring.instrumentation import SCHEDULER_JOBS
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -2240,6 +2241,8 @@ class Scheduler(AppService):
         # only take the lock briefly inside ``_invalidate_jobs_cache``)
         # don't queue behind a slow scheduler query.
         jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
+        # The one scheduler metric with an alert on it was never set.
+        SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(len(jobs))
         with self._jobs_cache_lock:
             # If an invalidation happened while we were querying, the
             # list we just fetched might already be stale.  Skip the
