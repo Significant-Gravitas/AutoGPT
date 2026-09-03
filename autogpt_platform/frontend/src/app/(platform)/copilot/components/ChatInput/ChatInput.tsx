@@ -81,6 +81,8 @@ interface Props {
   /** Card composer: the text always keeps its own row above the controls,
    *  instead of sharing a single pill row until it wraps. Empty state only. */
   stacked?: boolean;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
 }
 
 export function ChatInput({
@@ -100,6 +102,7 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
   stacked = false,
+  voiceToggle,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -379,6 +382,7 @@ export function ChatInput({
             {devtoolSessionId && (
               <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
+            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}

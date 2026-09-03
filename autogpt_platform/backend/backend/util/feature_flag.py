@@ -65,6 +65,10 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
+    # Gates AutoPilot voice mode end-to-end. The speech endpoint 404s when
+    # off so a stale frontend cannot spend TTS budget. Fail-closed.
+    COPILOT_VOICE_MODE = "copilot-voice-mode"
+
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
     # finalize / status / download endpoints 404 when off so a stale
     # frontend can't start writing recordings, and the wizard keeps

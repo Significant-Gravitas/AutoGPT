@@ -26,6 +26,10 @@ import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
+import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
+import { useVoiceMode } from "../../voice/useVoiceMode";
+import { useVoiceSilenceTimeout } from "../../voice/useVoiceSilenceTimeout";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
@@ -176,6 +180,17 @@ export const ChatContainer = ({
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
 
+  const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const silenceTimeoutMs = useVoiceSilenceTimeout();
+  const voice = useVoiceMode({
+    enabled: isVoiceModeEnabled,
+    messages,
+    isStreaming,
+    sessionId,
+    silenceTimeoutMs,
+    onSend: guardedOnSend,
+  });
+
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
   // translucent card. Height varies with the card's own content (tier badge,
@@ -325,6 +340,11 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
+                    <VoiceModeBar
+                      state={voice.state}
+                      statusLabel={voice.statusLabel}
+                      onStop={voice.interrupt}
+                    />
                     <Tooltip open={isLimitReached ? undefined : false}>
                       <TooltipTrigger asChild>
                         <div>
@@ -341,6 +361,15 @@ export const ChatContainer = ({
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
                             sessionId={sessionId}
+                            voiceToggle={
+                              isVoiceModeEnabled ? (
+                                <VoiceModeButton
+                                  isActive={voice.isActive}
+                                  disabled={isInputDisabled || isSendLocked}
+                                  onClick={voice.toggle}
+                                />
+                              ) : undefined
+                            }
                           />
                         </div>
                       </TooltipTrigger>

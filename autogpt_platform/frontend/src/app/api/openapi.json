@@ -4627,6 +4627,40 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["v2", "chat", "chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postV2Synthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -25974,6 +26008,24 @@
         "required": ["field", "before", "after"],
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
+      },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
       },
       "Stats": {
         "properties": {

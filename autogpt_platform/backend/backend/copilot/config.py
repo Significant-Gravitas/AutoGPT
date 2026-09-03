@@ -1346,6 +1346,22 @@ class ChatConfig(BaseSettings):
             f"CHAT_TITLE_MODEL to an ``anthropic/`` or ``claude-`` slug."
         )
 
+    # --- Voice mode TTS (see ``copilot/speech.py``) ---
+    voice_tts_model: str = Field(
+        default="gpt-4o-mini-tts",
+        description="OpenAI speech model used for voice-mode replies.",
+    )
+    voice_tts_voice: str = Field(
+        default="alloy",
+        description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
+    )
+    voice_tts_usd_per_1k_chars: float = Field(
+        default=0.02,
+        description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "
+        "per audio token, which the request does not report; ~$0.015/min of "
+        "speech at ~750 chars/min is the estimate behind this default.",
+    )
+
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
         "default": "prompts/chat_system.md",
