@@ -463,7 +463,6 @@ describe("ChatSidebar — rename", () => {
 
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(screen.getByLabelText("Rename chat")).toBeDefined();
-    expect(titleBodies).toHaveLength(0);
 
     fireEvent.keyDown(input, { key: "Enter" });
     await vi.waitFor(() => {

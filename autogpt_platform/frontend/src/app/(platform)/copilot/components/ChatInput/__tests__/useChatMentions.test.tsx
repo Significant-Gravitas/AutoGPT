@@ -35,7 +35,7 @@ function fakeTextarea(value: string, caret = value.length) {
 function keyEvent(key: string, isComposing = false) {
   return {
     key,
-    isComposing,
+    nativeEvent: { key, isComposing },
     preventDefault: vi.fn(),
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
