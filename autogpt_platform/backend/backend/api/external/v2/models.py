@@ -439,7 +439,7 @@ class TriggerSetupInfo(BaseModel):
     )
 
 
-class LibraryAgent(BaseModel):
+class LibraryAgent(TenantedResource):
     """An agent in the user's library."""
 
     id: str
@@ -495,6 +495,8 @@ class LibraryAgent(BaseModel):
             trigger_setup_info=trigger_info,
             recommended_schedule_cron=agent.recommended_schedule_cron,
             folder_id=agent.folder_id,
+            organization_id=agent.organization_id,
+            team_id=agent.team_id,
             folder_name=agent.folder_name,
             created_at=agent.created_at,
             updated_at=agent.updated_at,
@@ -527,7 +529,7 @@ class AgentRunRequest(BaseModel):
 # ============================================================================
 
 
-class LibraryFolder(BaseModel):
+class LibraryFolder(TenantedResource):
     """A folder for organizing library agents."""
 
     id: str
@@ -550,6 +552,8 @@ class LibraryFolder(BaseModel):
             parent_id=f.parent_id,
             agent_count=f.agent_count,
             subfolder_count=f.subfolder_count,
+            organization_id=f.organization_id,
+            team_id=f.team_id,
             created_at=f.created_at,
             updated_at=f.updated_at,
         )
