@@ -76,8 +76,14 @@ export function useConnectionPicker() {
     // either it is linked, or it is locked behind a plan and connecting is not
     // the next step. Its absence is the one case where linking is what the
     // user is missing, and the picker is where they are asking about it.
+    //
+    // No offers at all is not that case. The picker has no popover to put the
+    // row in then -- it collapses to a link to Settings, which is both where
+    // the user has to go to fix a deployment with no routes at all and a way
+    // in for every provider rather than this one.
     canConnectChatGPT:
       query.data?.status === 200 &&
+      offers.length > 0 &&
       offers.every((offer) => offer.provider_family !== "openai"),
     isLoading: query.isLoading,
     // React Query can retain the last successful offers while a background

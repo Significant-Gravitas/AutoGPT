@@ -603,6 +603,45 @@ describe("ConnectionPicker", () => {
     ).toBeDefined();
   });
 
+  it("lets a keyboard user read a connection's limitations", async () => {
+    // The mark is a real button rather than the icon itself: bound to an SVG
+    // the tooltip opened on hover only, so the notes it holds were reachable
+    // with a mouse and by no other means.
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(await openPicker());
+
+    const rows = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    within(rows).getByRole("button", { name: "More information" }).focus();
+
+    expect(
+      (
+        await screen.findAllByText(
+          /builder's chat panel always runs on AutoGPT/,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("sends a user with no connections at all to Settings", async () => {
+    // A successful response with nothing in it leaves no popover to hang a
+    // connect row on, and no routes at all is a bigger problem than an
+    // unlinked ChatGPT, so the way out is the whole control.
+    mockOffers([]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByLabelText("Set up an AI connection"),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /Connect a ChatGPT subscription/ }),
+    ).toBeNull();
+  });
+
   it("does not offer to link a ChatGPT the plan does not include", async () => {
     // The locked row already says what the next step is, and it is buying a
     // plan rather than signing in — an invitation to connect would send the
