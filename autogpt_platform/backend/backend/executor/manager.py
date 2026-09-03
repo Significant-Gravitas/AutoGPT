@@ -2122,7 +2122,7 @@ _TERMINAL_RUN_STATUSES = frozenset(
 
 def _record_terminal_status(status: "ExecutionStatus | None") -> None:
     """Feed the run-outcome counter exactly once, at the terminal transition."""
-    if status in _TERMINAL_RUN_STATUSES:
+    if status is not None and status in _TERMINAL_RUN_STATUSES:
         record_graph_run_completion(status.value)
 
 
