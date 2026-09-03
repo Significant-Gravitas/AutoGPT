@@ -74,6 +74,7 @@ export function SetupRequirementsCard({
     Record<string, CredentialsMetaInput | undefined>
   >({});
   const [hasSent, setHasSent] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
@@ -149,11 +150,13 @@ export function SetupRequirementsCard({
   const canAutoDismiss =
     needsCredentials && alreadyConnected && !hasUserActionableInputs;
   // Inside a chain this card renders no Proceed of its own — the chain only
-  // renders one for inputs/questions — so a satisfied credential is the sole
-  // "go" signal; without this the chain stalls after the user connects.
+  // renders one for inputs/questions — so a completed sign-in is the sole "go"
+  // signal; without this the chain stalls after the user connects. It must be
+  // the sign-in and not merely a satisfied credential: every card in the chat
+  // history re-mounts on load with its credential already in place.
   const canAutoProceed =
     Boolean(chainActions) &&
-    needsCredentials &&
+    justConnected &&
     isAllCredsComplete &&
     !hasUserActionableInputs;
 
@@ -206,6 +209,7 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
+            onConnected: () => setJustConnected(true),
           }
         : undefined,
       inputs:

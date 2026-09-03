@@ -12,12 +12,14 @@ interface Args {
   provider: string;
   onConnected: () => void;
   scopes?: string[];
+  credentialID?: string;
 }
 
 export function useConnectCredentialDialog({
   provider,
   onConnected,
   scopes,
+  credentialID,
 }: Args) {
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
 
@@ -25,6 +27,7 @@ export function useConnectCredentialDialog({
     provider,
     onSuccess: handleConnected,
     scopes,
+    credentialID,
   });
   const apiKey = useApiKeyConnectForm({ provider, onSuccess: handleConnected });
 

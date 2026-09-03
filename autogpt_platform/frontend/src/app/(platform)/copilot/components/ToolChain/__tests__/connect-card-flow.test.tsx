@@ -55,11 +55,14 @@ const SESSION_ID = "session-1";
 // The scopes the browser actually asked the consent screen for. `null` means
 // the login endpoint was never called; `""` means it was called without them.
 let requestedScopes: string | null = null;
+// The account the sign-in asked to upgrade, if any.
+let upgradedCredentialID: string | null = null;
 let savedCredentials: Record<string, unknown>[] = [];
 
 describe("copilot Connect card", () => {
   beforeEach(() => {
     requestedScopes = null;
+    upgradedCredentialID = null;
     // The user already has GitHub connected, but without the scope this block
     // needs — the exact state in which the card is surfaced.
     savedCredentials = [
@@ -87,7 +90,9 @@ describe("copilot Connect card", () => {
         HttpResponse.json(savedCredentials),
       ),
       http.get("*/api/integrations/github/login", ({ request }) => {
-        requestedScopes = new URL(request.url).searchParams.get("scopes") ?? "";
+        const query = new URL(request.url).searchParams;
+        requestedScopes = query.get("scopes") ?? "";
+        upgradedCredentialID = query.get("credential_id");
         return HttpResponse.json({
           login_url: "https://github.com/login/oauth/authorize",
           state_token: "state-token",
@@ -144,6 +149,16 @@ describe("copilot Connect card", () => {
     expect(await screen.findByText("Connected. Continuing…")).toBeDefined();
   });
 
+  it("offers the existing account for upgrade instead of a fresh grant", async () => {
+    renderChain();
+
+    await completeConnectFlow();
+
+    // Without this the backend cannot union scopes, and a narrower grant is
+    // stored as a second row that no ConnectorRow can ever resolve.
+    await waitFor(() => expect(upgradedCredentialID).toBe("cred-old"));
+  });
+
   it("leaves the row unconnected when the grant comes back short", async () => {
     // A provider that silently downgrades the grant must not read as connected
     // — that was the shape of the original "Connected, then 401" report.
@@ -164,6 +179,135 @@ describe("copilot Connect card", () => {
     expect(
       await screen.findByRole("button", { name: "Connect" }),
     ).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilot Connect card, API-key provider", () => {
+  beforeEach(() => {
+    savedCredentials = [];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "openai", description: "Models" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.post("*/api/integrations/openai/credentials", async () => {
+        const stored = {
+          id: "cred-key",
+          provider: "openai",
+          type: "api_key",
+          title: "My key",
+        };
+        savedCredentials = [...savedCredentials, stored];
+        return HttpResponse.json(stored);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
+    useConnectedProvidersStore.getState().clearSession(SESSION_ID);
+  });
+
+  it("continues the chat after an API key is saved", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[apiKeyRequirementsPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    await user.click(await screen.findByText("API Key"));
+    await user.type(await screen.findByLabelText("Name"), "My key");
+    await user.type(
+      await screen.findByPlaceholderText("sk-..."),
+      "sk-test-value",
+    );
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+
+    // The OAuth branch was fixed first; this is the same stall on the other
+    // button of the same dialog.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("copilot Connect card, already satisfied", () => {
+  beforeEach(() => {
+    // The state a chat is in after the user connected and later reopened it:
+    // every card in the history re-mounts with its credential already there.
+    savedCredentials = [
+      {
+        id: "cred-ok",
+        provider: "github",
+        type: "oauth2",
+        title: "GitHub",
+        scopes: [REQUIRED_SCOPE],
+      },
+      {
+        id: "cred-slack",
+        provider: "slack",
+        type: "oauth2",
+        title: "Slack",
+        scopes: ["chat:write"],
+      },
+    ];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          { name: "github", description: "Issues, pull requests" },
+          { name: "slack", description: "Messages" },
+        ]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
+    useConnectedProvidersStore.getState().clearSession(SESSION_ID);
+  });
+
+  it("stays silent when a finished card re-mounts from chat history", async () => {
+    const { onSend } = renderChain();
+
+    await settle();
+
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("stays silent for two finished cards asking for different services", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), slackRequirementsPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await settle();
+
+    // The auto-send claim is keyed by provider set, so two cards are two
+    // claims — each would fire its own message on mount.
     expect(onSend).not.toHaveBeenCalled();
   });
 });
@@ -211,6 +355,60 @@ function setupRequirementsPart(): MessagePart {
               types: ["oauth2"],
               scopes: [REQUIRED_SCOPE],
             },
+          },
+        },
+      },
+    },
+  } as unknown as MessagePart;
+}
+
+/** Long enough for the credential list, the row's auto-select and the
+ *  auto-send effect to have all run had they been going to. */
+async function settle() {
+  await waitFor(() => expect(screen.queryByText("Connect")).toBeDefined());
+  await new Promise((resolve) => setTimeout(resolve, 800));
+}
+
+function slackRequirementsPart(): MessagePart {
+  const github = setupRequirementsPart() as unknown as Record<string, unknown>;
+  return {
+    ...github,
+    toolCallId: "call-run_block-slack",
+    output: {
+      ...(github.output as Record<string, unknown>),
+      setup_info: {
+        agent_id: "block-2",
+        agent_name: "Slack Post Message",
+        requirements: {},
+        user_readiness: {
+          has_all_credentials: false,
+          missing_credentials: {
+            credentials: {
+              provider: "slack",
+              types: ["oauth2"],
+              scopes: ["chat:write"],
+            },
+          },
+        },
+      },
+    },
+  } as unknown as MessagePart;
+}
+function apiKeyRequirementsPart(): MessagePart {
+  const github = setupRequirementsPart() as unknown as Record<string, unknown>;
+  return {
+    ...github,
+    toolCallId: "call-run_block-openai",
+    output: {
+      ...(github.output as Record<string, unknown>),
+      setup_info: {
+        agent_id: "block-3",
+        agent_name: "OpenAI Completion",
+        requirements: {},
+        user_readiness: {
+          has_all_credentials: false,
+          missing_credentials: {
+            credentials: { provider: "openai", types: ["api_key"] },
           },
         },
       },

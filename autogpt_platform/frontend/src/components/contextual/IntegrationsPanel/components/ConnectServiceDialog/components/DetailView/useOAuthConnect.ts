@@ -25,9 +25,17 @@ interface Args {
   /** Scopes the requesting block needs. Omit for a provider-level connect,
    *  where the provider's default scopes are the whole ask. */
   scopes?: string[];
+  /** Existing account to upgrade. The backend unions its scopes with the
+   *  requested ones, so a re-auth cannot narrow what the user already had. */
+  credentialID?: string;
 }
 
-export function useOAuthConnect({ provider, onSuccess, scopes }: Args) {
+export function useOAuthConnect({
+  provider,
+  onSuccess,
+  scopes,
+  credentialID,
+}: Args) {
   const queryClient = useQueryClient();
   const credentialsActions = useContext(CredentialsActionsContext);
   const [isPending, setIsPending] = useState(false);
@@ -74,7 +82,7 @@ export function useOAuthConnect({ provider, onSuccess, scopes }: Args) {
       // a credential missing a required scope never satisfies the caller.
       const initiateResponse = await getV1InitiateOauthFlow(
         provider,
-        scopes?.length ? { scopes: scopes.join(",") } : undefined,
+        buildLoginParams(scopes, credentialID),
       );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
@@ -157,4 +165,11 @@ export function useOAuthConnect({ provider, onSuccess, scopes }: Args) {
   }
 
   return { connect, isPending };
+}
+
+function buildLoginParams(scopes?: string[], credentialID?: string) {
+  const params: { scopes?: string; credential_id?: string } = {};
+  if (scopes?.length) params.scopes = scopes.join(",");
+  if (credentialID) params.credential_id = credentialID;
+  return Object.keys(params).length > 0 ? params : undefined;
 }

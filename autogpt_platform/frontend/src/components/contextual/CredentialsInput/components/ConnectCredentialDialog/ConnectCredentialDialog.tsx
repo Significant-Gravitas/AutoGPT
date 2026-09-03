@@ -20,8 +20,12 @@ interface Props {
   schema: BlockIOCredentialsSubSchema;
   provider: string;
   displayName: string;
+  /** Existing account to upgrade in place rather than signing in afresh. */
+  credentialID?: string;
   open: boolean;
   onClose: () => void;
+  /** Fires only on a completed sign-in, unlike onClose. */
+  onConnected?: () => void;
 }
 
 /** The onboarding connect flow (logo pair, "Connect AutoGPT to X",
@@ -32,8 +36,10 @@ export function ConnectCredentialDialog({
   schema,
   provider,
   displayName,
+  credentialID,
   open,
   onClose,
+  onConnected,
 }: Props) {
   const {
     selectedMethod,
@@ -47,8 +53,12 @@ export function ConnectCredentialDialog({
     reset,
   } = useConnectCredentialDialog({
     provider,
-    onConnected: onClose,
+    onConnected: () => {
+      onConnected?.();
+      onClose();
+    },
     scopes: schema.credentials_scopes,
+    credentialID,
   });
 
   function handleClose() {
