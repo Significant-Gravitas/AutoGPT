@@ -36,24 +36,6 @@ T = TypeVar("T")
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
-def _labels(fn: Callable[..., object]) -> tuple[str, str]:
-    """``stripe.Subscription.list_async`` -> ("Subscription", "list")."""
-    qual = getattr(fn, "__qualname__", "") or ""
-    resource, _, method = qual.rpartition(".")
-    resource = resource.rsplit(".", 1)[-1] or "unknown"
-    return resource, method.removesuffix("_async") or "unknown"
-
-
-def _outcome(exc: BaseException) -> str:
-    if isinstance(exc, stripe.RateLimitError):
-        return "rate_limited"
-    if isinstance(exc, stripe.APIConnectionError):
-        return "connection_error"
-    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
-        return "timeout"
-    return "api_error"
-
-
 async def stripe_call(
     fn: Callable[P, Awaitable[T]], /, *args: P.args, **kwargs: P.kwargs
 ) -> T:
@@ -92,10 +74,7 @@ async def _call(
             resource, method, "timeout", time.perf_counter() - started
         )
         logger.error(
-            "Stripe %s.%s exceeded %ss and was cancelled",
-            resource,
-            method,
-            timeout_seconds,
+            f"Stripe {resource}.{method} exceeded {timeout_seconds}s and was cancelled"
         )
         raise TimeoutError(
             f"Stripe {resource}.{method} exceeded {timeout_seconds}s and was cancelled."
@@ -107,3 +86,23 @@ async def _call(
         raise
     record_stripe_request(resource, method, "ok", time.perf_counter() - started)
     return result
+
+
+def _labels(fn: Callable[..., object]) -> tuple[str, str]:
+    """``stripe.Subscription.list_async`` -> ("Subscription", "list")."""
+    # Test doubles (AsyncMock) refuse to synthesise dunder attributes, so a
+    # default is needed here; this is a label lookup, not type dispatch.
+    qual = getattr(fn, "__qualname__", "") or ""
+    resource, _, method = qual.rpartition(".")
+    resource = resource.rsplit(".", 1)[-1] or "unknown"
+    return resource, method.removesuffix("_async") or "unknown"
+
+
+def _outcome(exc: BaseException) -> str:
+    if isinstance(exc, stripe.RateLimitError):
+        return "rate_limited"
+    if isinstance(exc, stripe.APIConnectionError):
+        return "connection_error"
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return "timeout"
+    return "api_error"

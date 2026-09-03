@@ -4,13 +4,12 @@ import asyncio
 
 import pytest
 import stripe
+from prometheus_client import REGISTRY
 
 from backend.data.stripe_client import stripe_call, stripe_call_timeout
 
 
 def _n(resource: str, method: str, outcome: str) -> float:
-    from prometheus_client import REGISTRY
-
     return (
         REGISTRY.get_sample_value(
             "autogpt_stripe_requests_total",
