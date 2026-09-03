@@ -10,7 +10,10 @@ const MAX_RUNS = 5;
  *  Now & next already lists them under Coming up. */
 export function useWorkflowRuns() {
   const { agents } = useLibraryAgents();
-  return useSitrepItems(agents, MAX_RUNS * 2)
+  // The feed yields at most one item per agent, so asking for that many
+  // makes its own cap a no-op: scheduled rows are dropped before the real
+  // limit applies, and a run of scheduled agents cannot crowd out the rest.
+  return useSitrepItems(agents, Math.max(agents.length, 1))
     .filter((run) => run.status !== "scheduled")
     .slice(0, MAX_RUNS);
 }
