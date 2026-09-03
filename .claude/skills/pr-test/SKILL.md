@@ -987,12 +987,13 @@ Post the report with `gh pr comment --attach`. Each attached file is uploaded to
 **Requires `gh` >= 2.99.0** — `--attach` landed there. Distro packages lag (Fedora's rpm tops out at 2.97.0), so check the version you are actually running before building the body:
 
 ```bash
+# Too-old gh is not fatal here: the report still gets posted, just without
+# images, through the same fallback path a failed upload takes (below).
 GH_VERSION=$(gh version | head -1 | awk '{print $3}')
+ATTACH_OK=1
 if [ "$(printf '%s\n2.99.0\n' "$GH_VERSION" | sort -V | head -1)" != "2.99.0" ]; then
-  echo "ERROR: gh $GH_VERSION is too old for --attach; need >= 2.99.0."
-  echo "Post the report body without images, list the screenshot filenames, and mark the run INCOMPLETE"
-  echo "until someone attaches them by drag-and-drop."
-  exit 1
+  echo "WARN: gh $GH_VERSION is too old for --attach (need >= 2.99.0); posting the report without images."
+  ATTACH_OK=0
 fi
 ```
 
@@ -1050,42 +1051,57 @@ ${EXPLANATION}
   ATTACH_ARGS+=(--attach "./${BASENAME}#${TITLE}")
 done
 
-# Write comment body to file to avoid shell interpretation issues with special characters
-COMMENT_FILE=$(mktemp)
-cat > "$COMMENT_FILE" <<INNEREOF
+# Keep the report and the image section separate: the no-image fallback below
+# must not carry "![](./file.png)" references it has no attachments for.
+RUN_MARKER="<!-- pr-test-report:${PR_NUMBER}:$(date -u +%Y%m%dT%H%M%SZ) -->"
+REPORT_BODY="${RUN_MARKER}
 ## E2E Test Report
 
 | # | Scenario | Result | API Evidence | Screenshot Evidence |
 |---|----------|--------|-------------|-------------------|
 ${TEST_RESULTS_TABLE}
+"
 
-${IMAGE_MARKDOWN}
-INNEREOF
+COMMENT_FILE=$(mktemp)
+printf '%s\n%s\n' "$REPORT_BODY" "$IMAGE_MARKDOWN" > "$COMMENT_FILE"
 
-# Retry the whole command — an attachment upload failure fails the post as a unit.
+# gh pr comment creates a fresh comment per call, so a request GitHub accepted
+# but gh reported as failed would be duplicated by a blind retry. The marker
+# makes "did it land?" checkable before every attempt and before the fallback.
+# (Real jq, not gh's --jq: the latter takes no --arg.)
 POSTED=""
-for attempt in 1 2 3; do
-  POSTED=$(gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$COMMENT_FILE" "${ATTACH_ARGS[@]}" 2>&1) && break
-  echo "Attempt $attempt failed: $POSTED"
-  POSTED=""
-  sleep 2
-done
+if [ "$ATTACH_OK" = 1 ]; then
+  for attempt in 1 2 3; do
+    POSTED=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+      | jq -r --arg m "$RUN_MARKER" '.[] | select(.body | contains($m)) | .html_url' | head -1)
+    [ -n "$POSTED" ] && break
+    POSTED=$(gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$COMMENT_FILE" "${ATTACH_ARGS[@]}" 2>&1) && break
+    echo "Attempt $attempt failed: $POSTED"
+    POSTED=""
+    sleep 2
+  done
+fi
 ```
 
-If all three attempts fail, post the report **without** images and say so, so the run is visibly incomplete rather than silently missing its evidence:
+If `gh` is too old or all three attempts failed, post the report **without** images and say so, so the run is visibly incomplete rather than silently missing its evidence:
 
 ```bash
 if [ -z "$POSTED" ]; then
-  cat >> "$COMMENT_FILE" <<'INNEREOF'
-
-## ⚠️ Failed Screenshot Uploads
-The screenshots could not be attached after 3 attempts.
-**To add them:** drag-and-drop or paste the files listed in the table above into a reply.
-
-**Run status:** INCOMPLETE until the files are attached and visible inline in the PR.
-INNEREOF
-  gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$COMMENT_FILE"
-  rm -f "$COMMENT_FILE"
+  # One last marker check — a final attempt may have landed despite reporting failure.
+  POSTED=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+    | jq -r --arg m "$RUN_MARKER" '.[] | select(.body | contains($m)) | .html_url' | head -1)
+fi
+if [ -z "$POSTED" ]; then
+  FALLBACK_FILE=$(mktemp)
+  {
+    printf '%s\n' "$REPORT_BODY"
+    printf '## ⚠️ Screenshots not attached\n\n'
+    printf 'The screenshots could not be uploaded (gh %s; attach needs >= 2.99.0, or the upload failed 3 times). Filenames, for manual drag-and-drop into a reply:\n\n' "$GH_VERSION"
+    printf -- '- `%s`\n' "${SCREENSHOT_FILES[@]}"
+    printf '\n**Run status:** INCOMPLETE until the files are attached and visible inline in the PR.\n'
+  } > "$FALLBACK_FILE"
+  gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$FALLBACK_FILE"
+  rm -f "$COMMENT_FILE" "$FALLBACK_FILE"
   exit 1
 fi
 rm -f "$COMMENT_FILE"
