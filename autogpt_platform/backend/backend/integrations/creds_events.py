@@ -7,18 +7,14 @@ cannot cross that boundary, so every write is also published here and picked
 up by subscribers wherever they run.
 """
 
-import logging
 from collections.abc import AsyncGenerator
 
 from pydantic import BaseModel
 
 from backend.data.event_bus import AsyncRedisEventBus
 
-logger = logging.getLogger(__name__)
-
-# Sharded pub/sub has no pattern-subscribe and a subscriber cannot enumerate
-# the users whose tokens it may be holding, so every change goes on one
-# broadcast channel and subscribers filter locally.
+# Sharded pub/sub has no pattern-subscribe, and a subscriber cannot know which
+# users it holds tokens for — so everything goes on one channel.
 CREDS_CHANGED_CHANNEL = "all"
 
 

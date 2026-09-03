@@ -211,13 +211,11 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
 
 
 def _ensure_cache_invalidation_listener() -> None:
-    """Start this process's subscription to credential changes, once.
+    """Subscribe this process to credential changes, once.
 
-    Started from the cache read path rather than from a service's startup: a
-    subscription wired up somewhere else is the defect this fixes — the
-    in-process hook was registered by a module the writing process never
-    imported, so it silently invalidated nothing.  Anything that reads the
-    cache now also subscribes to it.
+    Started from the cache read path so the subscription cannot be wired up
+    separately from the cache, and then silently forgotten — which is exactly
+    how the in-process hook came to invalidate nothing.
     """
     global _listener_thread
     with _listener_start_lock:
