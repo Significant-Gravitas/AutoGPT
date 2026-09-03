@@ -8,6 +8,7 @@ handling the distinction between:
 
 from functools import cache
 
+from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 # Workflow rules appended to the system prompt on every copilot turn
@@ -666,14 +667,21 @@ def get_delegation_supplement() -> str:
 """
 
 
-async def build_autopilot_delegation_supplement(user_id: str | None) -> str:
-    """The delegation rules, or ``""`` when the cohort flag is off.
+async def build_autopilot_delegation_supplement(
+    user_id: str | None, session: ChatSession
+) -> str:
+    """The delegation rules, or ``""`` when this turn must not delegate.
 
     One gate for both engines so flag-off behaviour is provably a no-op:
     every caller gets the empty string and the system prompt is unchanged.
-    Anonymous turns fail closed — they have no user to evaluate the flag for.
+
+    Only a turn a human drove gets the rules, which is what bounds delegation
+    to one level: every sub is opened with ``origin="automation"``, so a sub
+    is never told to spawn its own. Unknown origin counts as automation, the
+    same call :func:`child_session_origin` makes — a turn that cannot prove a
+    human drove it must not claim one did. Anonymous turns fail closed too.
     """
-    if not user_id:
+    if not user_id or session.metadata.origin != "interactive":
         return ""
     if not await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False):
         return ""

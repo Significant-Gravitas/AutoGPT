@@ -2,7 +2,7 @@
 
 import importlib
 import inspect
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -107,24 +107,59 @@ class TestAutopilotDelegationSupplement:
     @pytest.mark.asyncio
     async def test_flag_off_leaves_the_prompt_byte_identical(self, monkeypatch):
         _set_flag(monkeypatch, False)
-        assert await prompting.build_autopilot_delegation_supplement("u1") == ""
+        assert (
+            await prompting.build_autopilot_delegation_supplement(
+                "u1", _interactive_session()
+            )
+            == ""
+        )
 
     @pytest.mark.asyncio
     async def test_anonymous_turn_fails_closed_without_consulting_the_flag(
         self, monkeypatch
     ):
         flag = _set_flag(monkeypatch, True)
-        assert await prompting.build_autopilot_delegation_supplement(None) == ""
+        assert (
+            await prompting.build_autopilot_delegation_supplement(
+                None, _interactive_session()
+            )
+            == ""
+        )
         flag.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_flag_on_returns_the_rules(self, monkeypatch):
         flag = _set_flag(monkeypatch, True)
-        result = await prompting.build_autopilot_delegation_supplement("u1")
+        result = await prompting.build_autopilot_delegation_supplement(
+            "u1", _interactive_session()
+        )
         assert result == prompting.get_autopilot_delegation_supplement()
         assert result != ""
         assert flag.await_args.args[0] is Flag.AUTOPILOT_DELEGATION
         assert flag.await_args.kwargs["default"] is False
+
+    @pytest.mark.asyncio
+    async def test_a_sub_session_is_never_told_to_delegate(self, monkeypatch):
+        """Every sub is opened origin="automation". Handing it these rules
+        would tell it to spawn its own subs, with nothing bounding the chain."""
+        flag = _set_flag(monkeypatch, True)
+        result = await prompting.build_autopilot_delegation_supplement(
+            "u1", _session_with_origin("automation")
+        )
+        assert result == ""
+        flag.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_origin_counts_as_automation(self, monkeypatch):
+        """Matches child_session_origin: a turn that cannot prove a human
+        drove it must not claim one did."""
+        _set_flag(monkeypatch, True)
+        assert (
+            await prompting.build_autopilot_delegation_supplement(
+                "u1", _session_with_origin(None)
+            )
+            == ""
+        )
 
     def test_the_rules_name_the_tool_and_forbid_continuing_a_sub(self):
         rules = prompting.get_autopilot_delegation_supplement()
@@ -144,3 +179,13 @@ def _set_flag(monkeypatch, enabled: bool) -> AsyncMock:
     flag = AsyncMock(return_value=enabled)
     monkeypatch.setattr("backend.copilot.prompting.is_feature_enabled", flag)
     return flag
+
+
+def _interactive_session() -> MagicMock:
+    return _session_with_origin("interactive")
+
+
+def _session_with_origin(origin: str | None) -> MagicMock:
+    session = MagicMock()
+    session.metadata.origin = origin
+    return session

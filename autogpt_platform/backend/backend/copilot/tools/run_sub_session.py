@@ -99,7 +99,13 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    "description": ("Continue/queue-into a prior sub; empty = new."),
+                    # Stays in the schema under both flag states: the tool list
+                    # is part of the cached prompt prefix, so varying it per
+                    # user would cost every cohort its cache.
+                    "description": (
+                        "Continue/queue-into a prior sub; empty = new. Refused "
+                        "when single-use subs are enabled — leave empty then."
+                    ),
                     "default": "",
                 },
                 "wait_for_result": {
