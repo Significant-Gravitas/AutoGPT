@@ -1671,10 +1671,13 @@ class TestLLMRequestTimeout:
     @pytest.mark.asyncio
     async def test_real_cutoff_alerts_once_with_searchable_ids(self, monkeypatch):
         """End-to-end through the seam: a provider that never answers, cut off by
-        a real (small, non-zero) budget. The ids are what an on-call needs to find
+        a real (small, non-zero) budget — 2s, not 0.2s: block setup and prompt
+        compression take ~0.3s locally and longer on CI, and a budget that races
+        them means the provider mock is never entered and the test proves
+        nothing. The ids are what an on-call needs to find
         the run that burned money — they live in json_fields, not the message, so
         Sentry aggregates a provider incident into one issue."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 2.0)
         provider_calls = {"n": 0}
 
         async def never_answers(**kwargs):
@@ -1702,14 +1705,14 @@ class TestLLMRequestTimeout:
         assert fields["node_id"] == "n-1"
         assert fields["node_exec_id"] == "ne-1"
         assert fields["provider"] == "openai"
-        assert fields["configured_timeout_seconds"] == 0.2
+        assert fields["configured_timeout_seconds"] == 2.0
 
     @pytest.mark.asyncio
     async def test_ids_survive_the_run_once_delegation(self, monkeypatch):
         """AITextGeneratorBlock reaches the structured block through run_once,
         which forwards only what it is handed. An alert with every id None is
         useless to the on-call it wakes."""
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 0.2)
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 2.0)
 
         async def never_answers(**kwargs):
             await asyncio.sleep(30)

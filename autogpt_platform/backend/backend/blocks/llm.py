@@ -1136,7 +1136,7 @@ class AITextSummarizerBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={
-                "llm_call": lambda input_data, credentials: (
+                "llm_call": lambda input_data, credentials, *_, **__: (
                     {"final_summary": "Final summary of a long text"}
                     if "final_summary" in input_data.expected_format
                     else {"summary": "Summary of a chunk of text"}
@@ -1520,7 +1520,7 @@ class AIListGeneratorBlock(AIBlockBase):
                 ("list_item", "Draknos"),
             ],
             test_mock={
-                "llm_call": lambda input_data, credentials: {
+                "llm_call": lambda input_data, credentials, *_, **__: {
                     "list": [
                         "Zylora Prime",
                         "Kharon-9",
