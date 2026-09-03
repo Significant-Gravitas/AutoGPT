@@ -749,7 +749,8 @@ describe("ConnectionPicker", () => {
     render(<ConnectionPicker />);
     const trigger = await screen.findByRole("button", { name: /Model tier/ });
 
-    // The tier glyph and the dropdown chevron.
-    expect(trigger.querySelectorAll("svg")).toHaveLength(2);
+    // Naming only the tier, the chip folds down to the glyph alone: no label
+    // and no chevron, so the one SVG is the tier.
+    expect(trigger.querySelectorAll("svg")).toHaveLength(1);
   });
 });

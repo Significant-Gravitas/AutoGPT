@@ -13,6 +13,8 @@ interface Props {
   onDeclineBlur: () => void;
 }
 
+const ICON_BUTTON_CLASS = "size-7 rounded-md p-0";
+
 export function AttentionRowActions({
   item,
   isProcessing,
@@ -27,6 +29,7 @@ export function AttentionRowActions({
       href={item.primary_action.href}
       variant="secondary"
       size="small"
+      className="h-7 min-w-0 rounded-md px-2.5 text-xs"
     >
       {item.primary_action.label}
     </Button>
@@ -42,27 +45,31 @@ export function AttentionRowActions({
       <Button
         variant="icon"
         size="icon"
-        className="size-10 border-zinc-800 bg-zinc-800 p-0 text-white hover:border-zinc-900 hover:bg-zinc-900"
+        className={cn(
+          ICON_BUTTON_CLASS,
+          "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800",
+        )}
         disabled={isProcessing}
         aria-label={`Approve: ${item.title}`}
         onClick={onApprove}
       >
-        <Icon icon={Tick02Icon} size={18} aria-hidden="true" />
+        <Icon icon={Tick02Icon} size={15} aria-hidden="true" />
       </Button>
       <Button
         variant="icon"
         size="icon"
         className={cn(
-          "size-10 p-0",
+          ICON_BUTTON_CLASS,
+          "border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50",
           confirmDecline &&
-            "border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600",
+            "border-red-500 bg-red-500 text-white hover:border-red-600 hover:bg-red-600 hover:text-white",
         )}
         disabled={isProcessing}
         aria-label={`${confirmDecline ? "Confirm decline" : "Decline"}: ${item.title}`}
         onClick={onDecline}
         onBlur={onDeclineBlur}
       >
-        <Icon icon={Cancel01Icon} size={18} aria-hidden="true" />
+        <Icon icon={Cancel01Icon} size={15} aria-hidden="true" />
       </Button>
     </>
   );
