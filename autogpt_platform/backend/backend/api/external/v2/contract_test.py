@@ -12,6 +12,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, get_origin, get_type_hints
+from unittest import mock
 
 import fastapi
 import fastapi.testclient
@@ -25,7 +26,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission
 from starlette.routing import Match
 
-from backend.api.external.middleware import resolve_auth_info
+from backend.api.external.middleware import require_auth, resolve_auth_info
+from backend.api.external.v2.errors import add_v2_exception_handlers
 from backend.api.external.v2.pagination import (
     MAX_PAGE,
     Page,
@@ -77,6 +79,48 @@ def test_static_routes_are_not_shadowed_by_path_params():
         assert (
             endpoint == expected_endpoint
         ), f"{method} {path} resolves to {endpoint}, not {expected_endpoint}"
+
+
+async def test_reviews_are_reachable_over_http():
+    """`GET /runs/reviews` end-to-end, not just through route matching.
+
+    Before the ordering fix this answered `404 Run #reviews not found` from
+    `get_run`.
+    """
+    from backend.util.models import Pagination
+
+    from .runs import runs_router
+
+    app = fastapi.FastAPI()
+    app.include_router(runs_router, prefix="/runs")
+    app.dependency_overrides[require_auth] = lambda: _api_key_auth
+    add_v2_exception_handlers(app)
+
+    async def no_reviews(**kwargs) -> tuple[list, Pagination]:
+        return [], Pagination(
+            total_items=0, total_pages=0, current_page=1, page_size=20
+        )
+
+    async def no_such_run(**kwargs) -> None:
+        return None
+
+    # `get_run` is stubbed too: when the ordering regresses the request lands
+    # there, and this keeps the failure a legible 404 instead of a DB error.
+    with (
+        mock.patch("backend.data.human_review.get_reviews", new=no_reviews),
+        mock.patch("backend.data.execution.get_graph_execution", new=no_such_run),
+    ):
+        response = fastapi.testclient.TestClient(app).get("/runs/reviews")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == []
+
+
+async def test_a_string_without_the_key_prefix_is_not_an_api_key():
+    """The prefix check short-circuits before any database lookup."""
+    from backend.data.auth.api_key import validate_api_key
+
+    assert await validate_api_key("not-an-agpt-key") is None
 
 
 async def test_api_key_sent_as_bearer_resolves_to_its_user(
