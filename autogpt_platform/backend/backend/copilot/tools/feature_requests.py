@@ -233,6 +233,10 @@ class CreateFeatureRequestTool(BaseTool):
         return "create_feature_request"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Create a feature request or add need to existing one. "

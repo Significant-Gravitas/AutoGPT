@@ -119,7 +119,7 @@ async def create_graph_schedule(
     request: AgentRunScheduleCreateRequest,
     graph_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_SCHEDULE)
+        require_permission(APIKeyPermission.WRITE_SCHEDULE, APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentRunSchedule:
     """Create a new execution schedule for a graph."""

@@ -43,6 +43,54 @@ logger = logging.getLogger(__name__)
 
 META_KEY_REQUIRED_SCOPES = "required_scopes"
 
+# Registry tools deliberately NOT exposed over MCP, with the reason. Every tool
+# must either opt in via `BaseTool.allow_external_use` or be listed here;
+# mcp_server_test.py fails on anything unclassified so new tools can't slip
+# out of the external surface unnoticed.
+EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
+    # Copilot-UI or chat-session-only behaviour
+    "TodoWrite": "drives the copilot task checklist UI",
+    "add_understanding": "copilot's own memory of the user",
+    "ask_question": "needs an interactive chat turn to answer",
+    "decompose_goal": "renders a plan card in the copilot UI",
+    "enter_agent_building_mode": "switches the chat session's mode",
+    "schedule_followup": "schedules a copilot chat follow-up, not an agent",
+    "run_sub_session": "copilot sub-agents live inside a chat session",
+    "get_sub_session_result": "copilot sub-agents live inside a chat session",
+    "browser_navigate": "browser state is bound to the chat session",
+    "browser_act": "browser state is bound to the chat session",
+    "browser_screenshot": "browser state is bound to the chat session",
+    # Expert team flows: preview in one turn, confirm in the next; MCP calls
+    # get a fresh session each time, and no expert API-key permission exists
+    "hire_expert": "two-step confirm needs chat-session state",
+    "raise_expert": "two-step confirm needs chat-session state",
+    "update_expert": "two-step confirm needs chat-session state",
+    "confirm_expert_change": "two-step confirm needs chat-session state",
+    "update_expert_soul": "two-step confirm needs chat-session state",
+    "confirm_expert_soul_update": "two-step confirm needs chat-session state",
+    "handoff_to_expert": "hands off between experts within a chat session",
+    "delegate_to_expert": "no API-key permission for expert teams yet",
+    "list_team": "no API-key permission for expert teams yet",
+    # Copilot-internal knowledge stores (feature-flagged / prompt-facing)
+    "memory_store": "copilot Graphiti memory",
+    "memory_search": "copilot Graphiti memory",
+    "memory_forget_search": "copilot Graphiti memory",
+    "memory_forget_confirm": "copilot Graphiti memory",
+    "store_skill": "copilot skill registry feeds copilot prompts",
+    "read_skill": "copilot skill registry feeds copilot prompts",
+    "list_skills": "copilot skill registry feeds copilot prompts",
+    "delete_skill": "copilot skill registry feeds copilot prompts",
+    # Capabilities the v2 REST API also leaves out, by decision
+    "run_block": "direct block execution is not part of v2",
+    "continue_run_block": "direct block execution is not part of v2",
+    "connect_integration": "OAuth flows are web-UI only in v2",
+    "run_mcp_tool": "proxies the user's third-party MCP servers; no permission model",
+    "post_to_chat_platform": "posts as the platform bot; no permission model yet",
+    "list_chat_platform_channels": "posts as the platform bot; no permission model yet",
+    # Security
+    "bash_exec": "sandboxed shell on platform infrastructure",
+}
+
 
 # ---------------------------------------------------------------------------
 # Server factory
@@ -73,7 +121,8 @@ def create_mcp_server() -> FastMCP:
     for tool in TOOL_REGISTRY.values():
         allowed, required_perms = tool.allow_external_use
         if not allowed or required_perms is None:
-            logger.debug(f"Skipping MCP tool {tool.name} (not allowed externally)")
+            reason = EXTERNAL_USE_EXCLUSIONS.get(tool.name, "unclassified")
+            logger.debug(f"Skipping MCP tool {tool.name}: {reason}")
             continue
         _register_tool(server, tool, required_perms)
         registered.append(tool.name)

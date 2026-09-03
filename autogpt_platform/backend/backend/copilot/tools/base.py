@@ -173,8 +173,12 @@ class BaseTool:
         self,
     ) -> tuple[Literal[False], None] | tuple[Literal[True], Sequence[APIKeyPermission]]:
         """
-        Whether this tool maybe used through our external MCP server.
-        Returns `True` and a list of required permissions if so.
+        Whether this tool may be used through our external MCP server.
+        Returns `True` and the API-key permissions it requires if so.
+
+        Every tool must either override this or be listed with a reason in
+        ``EXTERNAL_USE_EXCLUSIONS`` (api/external/v2/mcp_server.py);
+        mcp_server_test.py fails otherwise.
         """
         return False, None
 

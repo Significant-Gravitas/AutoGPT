@@ -137,7 +137,7 @@ async def create_preset(
 async def setup_trigger(
     request: AgentTriggerSetupRequest,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_LIBRARY)
+        require_permission(APIKeyPermission.WRITE_LIBRARY, APIKeyPermission.RUN_AGENT)
     ),
 ) -> AgentPreset:
     """
