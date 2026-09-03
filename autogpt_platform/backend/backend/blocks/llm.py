@@ -715,7 +715,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     logger.warning(f"Error calling LLM: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
                     break
-                if isinstance(e, TimeoutError):
+                # The SDKs' own timeout types do NOT subclass builtin
+                # TimeoutError, so they must be named explicitly or a
+                # connect/read timeout burns the full retry budget.
+                if isinstance(
+                    e,
+                    (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError),
+                ):
                     # A request that hung once will most likely hang again on
                     # retry — the underlying issue (server-side starvation,
                     # network partition, etc.) doesn't clear on a fresh socket.

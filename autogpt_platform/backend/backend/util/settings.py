@@ -196,7 +196,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "cap fires first and replaces the provider/model error with a generic one. "
             "Raising it also lengthens how long a stalled provider holds one of "
             "`num_graph_workers` slots, so a higher value trades drain rate under an "
-            "incident for tolerance of slow generations."
+            "incident for tolerance of slow generations. AgentExecutor and AutoPilot "
+            "opt out of the per-node cap (execution_timeout_seconds = None), so for "
+            "those this is their only per-call wall-clock bound."
         ),
     )
     enable_auth: bool = Field(

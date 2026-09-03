@@ -1544,6 +1544,54 @@ class TestLLMRequestTimeout:
         assert sdk_timeout.read == llm.LLM_REQUEST_TIMEOUT_SECONDS
         assert sdk_timeout.connect == CONNECT_TIMEOUT_SECONDS
 
+    @pytest.mark.parametrize(
+        "exc_factory",
+        [
+            pytest.param(lambda: TimeoutError("builtin"), id="builtin"),
+            pytest.param(
+                lambda: openai.APITimeoutError(
+                    request=httpx.Request("POST", "http://x")
+                ),
+                id="openai-sdk",
+            ),
+            pytest.param(
+                lambda: anthropic.APITimeoutError(
+                    request=httpx.Request("POST", "http://x")
+                ),
+                id="anthropic-sdk",
+            ),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_sdk_timeouts_also_break_the_retry_loop(self, exc_factory):
+        """The SDK timeout types do NOT subclass builtin TimeoutError, so a
+        connect/read timeout would otherwise burn the whole retry budget with a
+        retry-prompt appended — the opposite of the no-retry-on-timeout rule."""
+        calls = {"n": 0}
+
+        async def always_timeout(*args, **kwargs):
+            calls["n"] += 1
+            raise exc_factory()
+
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=always_timeout)
+
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                retry=5,
+            )
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert calls["n"] == 1, f"timeout was retried {calls['n']}x instead of breaking"
+
     @pytest.mark.asyncio
     async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):
         """A timed-out llm_call must not be retried — retrying a hung request

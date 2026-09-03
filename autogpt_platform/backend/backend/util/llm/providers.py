@@ -78,16 +78,23 @@ logger = logging.getLogger(__name__)
 # budget has to span the entire generation, not time-to-first-byte.
 DEFAULT_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
 
-# Matches the OpenAI/Anthropic SDK defaults. read/write/pool carry the
-# generation budget; only connect is pinned, because no generation happens
-# while a SYN goes unanswered and a scalar would park a worker there for the
-# whole deadline. Pool waits are not a concern on the block path — every
-# provider branch builds its own client, so the pool is never contended.
+# Connect and pool are pinned because no generation happens while a SYN goes
+# unanswered or while queueing for a free connection; only read/write carry the
+# generation budget. 5.0 matches the OpenAI/Anthropic SDK connect default.
 CONNECT_TIMEOUT_SECONDS = 5.0
 
 
 def request_timeout(timeout_seconds: float) -> httpx.Timeout:
-    return httpx.Timeout(timeout_seconds, connect=CONNECT_TIMEOUT_SECONDS)
+    """Bound one request: generation budget on read/write, fast-fail elsewhere.
+
+    A scalar would set every phase, so a blackholed SYN — or a saturated pool
+    on the shared aux client — would park a worker for the whole deadline.
+    """
+    return httpx.Timeout(
+        timeout_seconds,
+        connect=CONNECT_TIMEOUT_SECONDS,
+        pool=CONNECT_TIMEOUT_SECONDS,
+    )
 
 
 # Provider names accepted by ``call_provider``. Kept as a string Literal
@@ -215,7 +222,7 @@ async def call_provider(
     parallel_tool_calls: bool | openai.Omit = openai.omit,
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
 
@@ -227,8 +234,11 @@ async def call_provider(
 
     Raises ``TimeoutError`` if the call exceeds ``timeout_seconds``
     (sync mode only; batch submissions are bounded by the provider's
-    own SLA and the poller's own timeout policy).
+    own SLA and the poller's own timeout policy). ``timeout_seconds=None``
+    resolves to the configured default at call time, not import time.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     if execution_mode == "batch":
         if not custom_id:
             raise ValueError(
@@ -287,11 +297,7 @@ async def call_provider(
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"LLM request to {provider}/{model} exceeded {timeout_seconds}s and "
-            "was cancelled. If the model was still generating, shorten the prompt "
-            "or pick a faster model, or lower the advanced Max Tokens setting."
-        ) from exc
+        raise timeout_error(f"{provider}/{model}", timeout_seconds) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -1033,7 +1039,7 @@ async def call_provider_openai_compat_sync(
     api_key: str | None = None,
     extra_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
     client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
 ) -> Any:
     """Non-streaming OpenAI-compat chat call, returns the raw SDK
@@ -1049,6 +1055,8 @@ async def call_provider_openai_compat_sync(
     + (optionally) ``client_factory``. See ``call_provider_stream``
     for rationale.
     """
+    if timeout_seconds is None:
+        timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
     sanitize_messages_for_utf8(messages)
     if client is None:
         if base_url is None or api_key is None:
@@ -1075,11 +1083,17 @@ async def call_provider_openai_compat_sync(
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"LLM request to {model} exceeded {timeout_seconds}s and was "
-            "cancelled. If the model was still generating, shorten the prompt "
-            "or pick a faster model."
-        ) from exc
+        raise timeout_error(model, timeout_seconds) from exc
+
+
+def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:
+    """Provider-agnostic timeout text. The block layer adds its own UI-specific
+    remedy, which does not belong in a module dream/briefing/copilot also use."""
+    return TimeoutError(
+        f"LLM request to {target} exceeded {timeout_seconds}s and was cancelled. "
+        "If the model was still generating, shorten the prompt or pick a faster "
+        "model."
+    )
 
 
 # ---------------------------------------------------------------------------

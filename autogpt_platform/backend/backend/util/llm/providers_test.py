@@ -19,6 +19,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     CONNECT_TIMEOUT_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
@@ -1563,12 +1564,34 @@ class TestDefaults:
     def test_block_and_provider_layers_share_one_deadline(self):
         # A call bounded at one layer and not the other is the drift that
         # routing both through one setting exists to prevent.
-        # Local import: util deliberately avoids importing blocks at module
-        # scope (see settings.py), and this assertion is the one place that
-        # has to observe both sides.
+        # Function-scoped so this util-side module never imports blocks at
+        # import time (see settings.py on the dependency direction).
         from backend.blocks.llm import LLM_REQUEST_TIMEOUT_SECONDS
 
         assert LLM_REQUEST_TIMEOUT_SECONDS == DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_omitted_timeout_resolves_the_setting_at_call_time(self, monkeypatch):
+        """The headline feature: the deadline follows the config field. Bound as
+        a def-time default it would freeze, and this would still pass at the
+        shipped value — so patch to a distinctive one."""
+        monkeypatch.setattr(providers_mod, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 123.0)
+        captured: dict = {}
+
+        async def capture(**kwargs):
+            captured.update(kwargs)
+            return _fake_openai_chat_response("ok", prompt=1, completion=1)
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
+        )
+        await call_provider_openai_compat_sync(
+            model="gpt-4.1",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            client=fake_client,
+        )
+        assert captured["timeout"] == request_timeout(123.0)
 
     def test_request_timeout_pins_connect_and_budgets_the_rest(self):
         # No generation happens while a SYN goes unanswered, so connect is
@@ -1577,7 +1600,8 @@ class TestDefaults:
         assert t.connect == CONNECT_TIMEOUT_SECONDS
         assert t.read == DEFAULT_REQUEST_TIMEOUT_SECONDS
         assert t.write == DEFAULT_REQUEST_TIMEOUT_SECONDS
-        assert t.pool == DEFAULT_REQUEST_TIMEOUT_SECONDS
+        # Queueing for a connection is not generation either.
+        assert t.pool == CONNECT_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------

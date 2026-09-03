@@ -22,12 +22,14 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
 
 from backend.copilot.service import (
+    _TITLE_TIMEOUT_SECONDS,
     _fallback_title_from_message,
     _generate_session_title,
     _record_title_generation_cost,
     _title_usage_from_response,
     _update_title_async,
 )
+from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 
 def _build_completion(
@@ -547,9 +549,8 @@ class TestGenerateSessionTitle:
         assert response is resp
         # A 20-token title must not inherit the block-sized LLM default: it
         # runs in a background task holding a slot in the shared aux pool.
-        from backend.copilot.service import _TITLE_TIMEOUT_SECONDS
-
         assert helper.await_args.kwargs["timeout_seconds"] == _TITLE_TIMEOUT_SECONDS
+        assert _TITLE_TIMEOUT_SECONDS < DEFAULT_REQUEST_TIMEOUT_SECONDS
 
     @pytest.mark.asyncio
     async def test_long_title_truncated_with_ellipsis(self):
