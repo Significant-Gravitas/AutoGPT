@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import {
@@ -71,6 +72,14 @@ export function DialogWrap({
     [isForceOpen],
   );
 
+  function handleEscapeKeyDown(event: KeyboardEvent) {
+    if (isComposingEvent(event)) {
+      event.preventDefault();
+      return;
+    }
+    if (!isForceOpen) handleClose();
+  }
+
   useEffect(() => {
     function update() {
       const el = scrollRef.current;
@@ -95,7 +104,7 @@ export function DialogWrap({
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
-        onEscapeKeyDown={isForceOpen ? undefined : handleClose}
+        onEscapeKeyDown={handleEscapeKeyDown}
         aria-describedby={undefined}
         className={modalStyles.content}
         style={{

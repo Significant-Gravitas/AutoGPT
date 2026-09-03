@@ -73,6 +73,24 @@ describe("Dialog", () => {
     expect(set).toHaveBeenCalledWith(false);
   });
 
+  test("does not close when Escape belongs to an IME composition", () => {
+    const set = vi.fn();
+    renderDialog({ title: "Test", controlled: { isOpen: true, set } });
+
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("closes on a plain Escape keydown", () => {
+    const set = vi.fn();
+    renderDialog({ title: "Test", controlled: { isOpen: true, set } });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(set).toHaveBeenCalledWith(false);
+  });
+
   test("does not render dialog when controlled isOpen is false", () => {
     renderDialog({
       title: "Test",

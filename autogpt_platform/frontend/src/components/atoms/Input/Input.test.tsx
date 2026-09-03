@@ -37,4 +37,18 @@ describe("Input keyboard handling", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onKeyDown).toHaveBeenCalledTimes(1);
   });
+
+  it("guards and forwards keydowns for the amount variant", () => {
+    const onKeyDown = vi.fn();
+    render(
+      <Input id="amount" label="Amount" type="amount" onKeyDown={onKeyDown} />,
+    );
+    const amount = screen.getByLabelText("Amount");
+
+    fireEvent.keyDown(amount, { key: "Enter", isComposing: true });
+    expect(onKeyDown).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(amount, { key: "Enter" });
+    expect(onKeyDown).toHaveBeenCalledTimes(1);
+  });
 });

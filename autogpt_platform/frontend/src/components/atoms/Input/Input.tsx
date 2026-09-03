@@ -175,6 +175,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
+          onKeyDown={handleKeyDown}
           prefix={amountPrefix}
           suffix={amountSuffix}
         />
