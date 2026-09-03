@@ -5,6 +5,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import {
   AlertCircleIcon,
@@ -83,7 +88,7 @@ export function ConnectionPicker({
       <span
         aria-label="AI connections unavailable"
         className={cn(
-          "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/20 bg-destructive/10 px-2.5 text-xs font-medium text-destructive",
           className,
         )}
       >
@@ -99,7 +104,7 @@ export function ConnectionPicker({
         href="/settings/integrations"
         aria-label="Set up an AI connection"
         className={cn(
-          "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/80",
           className,
         )}
       >
@@ -153,43 +158,64 @@ export function ConnectionPicker({
     (!connectionLocked || onlyOfferIsLocked) &&
     (offers.length > 1 || onlyOfferIsLocked);
 
+  // Naming only the tier, the chip folds down to its glyph among the other
+  // quiet icons on the composer's right; the tier and its model wait in the
+  // tooltip. A connection name is a decision the user has to read, so that
+  // form keeps its label.
+  const trigger = (
+    <PopoverTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        size={showsTier ? "icon" : "small"}
+        unmask={false}
+        aria-label={
+          showsTier
+            ? `Model tier ${label} — change`
+            : `Runs on ${triggerLabel} — change`
+        }
+        className={cn(
+          showsTier
+            ? "size-8 p-0 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            : "h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
+          className,
+        )}
+      >
+        {/* The tier the next turn runs at, whichever half of the setting
+            the label happens to be naming. It swaps on the same beat as the
+            label beside it, so the two read as one change. */}
+        <Swap swapKey={tier} className="flex-none">
+          <Icon
+            icon={tier === "advanced" ? AiBrain01Icon : FlashIcon}
+            size={16}
+          />
+        </Swap>
+        {!showsTier && (
+          <>
+            <span className="hidden sm:inline">
+              <Swap>{triggerLabel}</Swap>
+            </span>
+            <Icon
+              icon={ArrowDown01Icon}
+              size={14}
+              className="text-muted-foreground"
+            />
+          </>
+        )}
+      </Button>
+    </PopoverTrigger>
+  );
+
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="small"
-          unmask={false}
-          aria-label={
-            showsTier
-              ? `Model tier ${label} — change`
-              : `Runs on ${triggerLabel} — change`
-          }
-          className={cn(
-            "ml-2 h-9 min-w-0 gap-1.5 px-2.5 py-1 text-sm",
-            className,
-          )}
-        >
-          {/* The tier the next turn runs at, whichever half of the setting
-              the label happens to be naming. It swaps on the same beat as the
-              label beside it, so the two read as one change. */}
-          <Swap swapKey={tier} className="flex-none">
-            <Icon
-              icon={tier === "advanced" ? AiBrain01Icon : FlashIcon}
-              size={16}
-            />
-          </Swap>
-          <span className="hidden sm:inline">
-            <Swap>{triggerLabel}</Swap>
-          </span>
-          <Icon
-            icon={ArrowDown01Icon}
-            size={14}
-            className="text-muted-foreground"
-          />
-        </Button>
-      </PopoverTrigger>
+      {showsTier ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
 
       <PopoverContent
         align="end"

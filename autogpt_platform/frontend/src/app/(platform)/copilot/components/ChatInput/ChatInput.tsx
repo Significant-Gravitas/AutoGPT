@@ -326,12 +326,6 @@ export function ChatInput({
               }
             />
             {recipientPicker}
-            {/* Connection and tier are per-message settings, so they remain
-                changeable between turns in an existing session. The card
-                composer leaves this to the page's top-right control. */}
-            {!stacked && (!hasSession || !isStreaming) && (
-              <ConnectionPicker connectionLocked={hasSession} />
-            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
@@ -370,6 +364,12 @@ export function ChatInput({
               stacked && "gap-1.5 p-0",
             )}
           >
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. The card
+                composer leaves this to the page's top-right control. */}
+            {!stacked && (!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
