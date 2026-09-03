@@ -38,8 +38,10 @@ describe("keyboard no-restricted-syntax selectors", () => {
   it.each([
     'const event = { key: "" }; event.key === "Enter";',
     'const event = { key: "" }; const ENTER_KEY = "Enter"; event.key === ENTER_KEY;',
+    'const event = { key: "" }; const ENTER_KEY = "Enter"; ENTER_KEY === event.key;',
     'const event = { key: "" }; "Enter" === event.key;',
     'const event = { key: "" }; switch (event.key) { case "Enter": break; }',
+    'const event = { key: "" }; const ENTER_KEY = "Enter"; switch (event.key) { case ENTER_KEY: break; }',
   ])("rejects direct .key handling: %s", (source) => {
     expectKeyboardRuleToFail(source);
   });
