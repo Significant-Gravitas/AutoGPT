@@ -7,10 +7,17 @@ it("exposes a locked tier as a disabled member of the radio group", () => {
   render(
     <TierToggle
       segments={[
-        { tier: "standard", label: "Balanced · Sonnet" },
+        {
+          tier: "standard",
+          label: "Balanced · Sonnet",
+          name: "Balanced",
+          model: "Sonnet",
+        },
         {
           tier: "advanced",
           label: "Advanced · Opus",
+          name: "Advanced",
+          model: "Opus",
           lock: { reason: "Upgrade required", href: "/profile" },
         },
       ]}

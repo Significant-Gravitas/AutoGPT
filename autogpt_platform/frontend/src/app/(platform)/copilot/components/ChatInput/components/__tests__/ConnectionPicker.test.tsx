@@ -325,14 +325,25 @@ describe("ConnectionPicker", () => {
   });
 
   it("surfaces a limitation the user can actually hit", async () => {
+    // It waits behind the row's info mark rather than spelling itself out
+    // beside the choice, but it is still reachable without leaving the popover.
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
 
+    const rows = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    await userEvent.hover(within(rows).getByLabelText("More information"));
+
     expect(
-      await screen.findByText(/builder's chat panel always runs on AutoGPT/),
-    ).toBeDefined();
+      (
+        await screen.findAllByText(
+          /builder's chat panel always runs on AutoGPT/,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("stays out of the way when there is nothing to choose", async () => {
@@ -513,16 +524,20 @@ describe("ConnectionPicker", () => {
     expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
   });
 
-  it("names both models on a connection before you switch to it", async () => {
-    // Otherwise you have to select a connection to discover what it runs,
-    // which is the wrong order.
+  it("leaves the models to the tier toggle on a selectable connection", async () => {
+    // The toggle names them a few pixels below, so repeating them per row only
+    // crowds the choice the rows exist to present.
     mockOffers([offer(), chatgpt()]);
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());
 
+    await screen.findByRole("radio", { name: /AutoGPT Platform/ });
     expect(
-      await screen.findByText("Balanced: sonnet-5 · Advanced: opus-5"),
+      screen.queryByText("Balanced: sonnet-5 · Advanced: opus-5"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("radio", { name: "Balanced \u00b7 sonnet-5" }),
     ).toBeDefined();
   });
 
@@ -571,6 +586,87 @@ describe("ConnectionPicker", () => {
     expect(lockedTier.getAttribute("aria-disabled")).toBe("true");
     expect(lockedTier.getAttribute("aria-checked")).toBe("false");
     expect(within(tierGroup).getAllByRole("radio")).toHaveLength(2);
+  });
+
+  it("offers to link ChatGPT when the user has no ChatGPT at all", async () => {
+    // Otherwise the one control about connections cannot make one, and the
+    // user has to find Settings to act on what they are already looking at.
+    mockOffers([offer()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(await openPicker());
+
+    expect(
+      await screen.findByRole("button", {
+        name: /Connect a ChatGPT subscription/,
+      }),
+    ).toBeDefined();
+  });
+
+  it("lets a keyboard user read a connection's limitations", async () => {
+    // The mark is a real button rather than the icon itself: bound to an SVG
+    // the tooltip opened on hover only, so the notes it holds were reachable
+    // with a mouse and by no other means.
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(await openPicker());
+
+    const rows = await screen.findByRole("radiogroup", {
+      name: "Connection this chat runs on",
+    });
+    within(rows).getByRole("button", { name: "More information" }).focus();
+
+    expect(
+      (
+        await screen.findAllByText(
+          /builder's chat panel always runs on AutoGPT/,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("sends a user with no connections at all to Settings", async () => {
+    // A successful response with nothing in it leaves no popover to hang a
+    // connect row on, and no routes at all is a bigger problem than an
+    // unlinked ChatGPT, so the way out is the whole control.
+    mockOffers([]);
+
+    render(<ConnectionPicker />);
+
+    expect(
+      await screen.findByLabelText("Set up an AI connection"),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /Connect a ChatGPT subscription/ }),
+    ).toBeNull();
+  });
+
+  it("does not offer to link a ChatGPT the plan does not include", async () => {
+    // The locked row already says what the next step is, and it is buying a
+    // plan rather than signing in — an invitation to connect would send the
+    // user into a flow the server can only refuse.
+    mockOffers([offer(), locked()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(await openPicker());
+    await screen.findByText("A Max plan or higher is required to use ChatGPT.");
+
+    expect(
+      screen.queryByRole("button", { name: /Connect a ChatGPT subscription/ }),
+    ).toBeNull();
+  });
+
+  it("does not offer to link a ChatGPT that is already linked", async () => {
+    mockOffers([offer(), chatgpt()]);
+
+    render(<ConnectionPicker />);
+    await userEvent.click(await openPicker());
+    await screen.findByRole("radio", { name: /ChatGPT/ });
+
+    expect(
+      screen.queryByRole("button", { name: /Connect a ChatGPT subscription/ }),
+    ).toBeNull();
   });
 
   it("reports a failure rather than inventing a connection", async () => {
@@ -643,15 +739,17 @@ describe("ConnectionPicker", () => {
     expect(screen.getByText("ChatGPT")).toBeDefined();
   });
 
-  it("drops the key icon when the chip names a tier", async () => {
-    // A key stands for a credential; against "Balanced" it would be labelling
-    // reasoning depth as an account.
+  it("marks the chip with the tier it will run, whatever it is labelled", async () => {
+    // The chip names either the connection or the tier depending on what is
+    // still open, but the tier applies to the next turn either way, so its
+    // glyph is on the chip in both. A key was once here instead, which against
+    // "Balanced" labelled reasoning depth as an account.
     mockOffers([chatgpt({ is_default: true })]);
 
     render(<ConnectionPicker />);
     const trigger = await screen.findByRole("button", { name: /Model tier/ });
 
-    // One icon left: the dropdown chevron.
-    expect(trigger.querySelectorAll("svg")).toHaveLength(1);
+    // The tier glyph and the dropdown chevron.
+    expect(trigger.querySelectorAll("svg")).toHaveLength(2);
   });
 });

@@ -33,7 +33,7 @@ interface Props {
 }
 
 const CHIP_CLASSNAME =
-  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-zinc-700 shadow-sm";
+  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-neutral-200 bg-white pl-1.5 pr-2 text-sm font-medium text-zinc-700 shadow-sm";
 
 export function RecipientChip({
   recipient,
@@ -48,7 +48,7 @@ export function RecipientChip({
         aria-label="Loading recipient"
         className={CHIP_CLASSNAME}
       >
-        <Skeleton className="h-5 w-5 rounded-full" />
+        <Skeleton className="h-6 w-6 rounded-full" />
         <Skeleton className="h-3 w-16" />
       </div>
     );
@@ -62,12 +62,15 @@ export function RecipientChip({
           aria-label={`Sending to ${recipient.name} — change recipient`}
           className={cn(
             CHIP_CLASSNAME,
-            "transition-colors hover:bg-neutral-50",
+            "group transition-colors hover:bg-neutral-50",
           )}
         >
           <RecipientAvatar option={recipient} />
           {recipient.name}
-          <Icon icon={ArrowDown01Icon} className="size-3 text-zinc-400" />
+          <Icon
+            icon={ArrowDown01Icon}
+            className="size-3.5 text-zinc-600 transition-transform duration-150 group-data-[state=open]:rotate-180"
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
@@ -88,11 +91,11 @@ export function RecipientChip({
 
 function RecipientAvatar({ option }: { option: RecipientOption }) {
   return (
-    <Avatar className="h-5 w-5">
+    <Avatar className="h-6 w-6">
       {option.avatarUrl ? (
         <AvatarImage src={option.avatarUrl} alt={option.name} />
       ) : null}
-      <AvatarFallback className="text-[9px]">
+      <AvatarFallback className="text-[10px]">
         {option.name.slice(0, 2)}
       </AvatarFallback>
     </Avatar>
