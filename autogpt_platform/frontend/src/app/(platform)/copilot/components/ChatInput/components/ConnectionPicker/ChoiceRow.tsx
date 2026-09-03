@@ -54,49 +54,55 @@ export function ChoiceRow({
   }
 
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={isSelected}
-      aria-label={label}
-      data-offer={offerId}
-      tabIndex={tabIndex}
-      onClick={onSelect}
+    /* The row is a container rather than the radio itself, so the info mark can
+       sit on it without sitting *inside* it: a radio's descendants are
+       presentational to assistive technology, and an SVG takes no focus either
+       way, so a tooltip nested in the radio was unreachable by keyboard. The
+       container carries the hover and focus wash so the row still lights up as
+       one thing. */
+    <div
       className={cn(
-        "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-        "focus-visible:bg-neutral-50 focus-visible:outline-none",
-        "hover:bg-neutral-50",
+        "flex w-full items-center gap-3 px-3 py-2.5 transition-colors",
+        "has-[button:focus-visible]:bg-neutral-50 hover:bg-neutral-50",
       )}
     >
-      {leading && (
-        <span aria-hidden className="flex-none">
-          {leading}
-        </span>
-      )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-center gap-1.5">
-          <span className="text-sm font-medium text-zinc-900">{title}</span>
-          {badge && (
-            <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
-              {badge}
-            </span>
-          )}
-          {/* What applies to a route matters once, when you are weighing it.
-              Spelled out on the row it competes with the choice itself, so it
-              waits behind the info mark. */}
-          {notes && notes.length > 0 && (
-            <InformationTooltip
-              description={notes.join("\n\n")}
-              iconSize={22}
-            />
-          )}
-        </span>
-        {subtitle && (
-          <span className="break-words text-sm leading-snug text-zinc-500">
-            {subtitle}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={isSelected}
+        aria-label={label}
+        data-offer={offerId}
+        tabIndex={tabIndex}
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none"
+      >
+        {leading && (
+          <span aria-hidden className="flex-none">
+            {leading}
           </span>
         )}
-      </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex items-center gap-1.5">
+            <span className="text-sm font-medium text-zinc-900">{title}</span>
+            {badge && (
+              <span className="rounded-full bg-green-500/10 px-1.5 py-px text-[10px] font-medium text-green-700">
+                {badge}
+              </span>
+            )}
+          </span>
+          {subtitle && (
+            <span className="break-words text-sm leading-snug text-zinc-500">
+              {subtitle}
+            </span>
+          )}
+        </span>
+      </button>
+      {/* What applies to a route matters once, when you are weighing it.
+          Spelled out on the row it competes with the choice itself, so it
+          waits behind the info mark. */}
+      {notes && notes.length > 0 && (
+        <InformationTooltip description={notes.join("\n\n")} iconSize={22} />
+      )}
       {/* The tick alone says which one is live: a row that is not chosen needs
           no marker of its own, and an empty circle beside every option is one
           more thing to read past. */}
@@ -109,7 +115,7 @@ export function ChoiceRow({
           isSelected ? "opacity-100" : "opacity-0",
         )}
       />
-    </button>
+    </div>
   );
 }
 
