@@ -35,7 +35,7 @@ _init_attempted = False
 
 class Flag(str, Enum):
     """
-    Centralized enum for all LaunchDarkly feature flags.
+    Centralized enum for all feature flags.
 
     Add new flags here to ensure consistency across the codebase.
     """
@@ -382,12 +382,12 @@ async def get_feature_flag_value(
     which could be a boolean, string, number, or JSON object.
 
     Args:
-        flag_key: The LaunchDarkly feature flag key
+        flag_key: The feature flag key
         user_id: The user ID to evaluate the flag for
-        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+        default: Default value if the vendor is unavailable or evaluation fails
 
     Returns:
-        The flag value from LaunchDarkly
+        The flag value from the configured backend
     """
     value, _ = await _evaluate_flag_value(flag_key, user_id, default)
     return value
@@ -530,9 +530,9 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     """Return a local override for ``flag_key`` from the environment.
 
     Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
-    ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for a single
-    flag in local dev or tests.  Returns ``None`` when no override
-    is configured so the caller falls through to LaunchDarkly.
+    ``-`` → ``_``, upper-cased) to bypass the flag vendor for a single
+    flag in local dev or tests.  Returns ``None`` when no override is
+    configured so the caller falls through to the configured backend.
 
     The ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` prefix is also accepted so a
     single shared env var can toggle a flag across backend and
@@ -540,7 +540,7 @@ def _env_flag_override(flag_key: Flag) -> bool | None:
     expose the value to the browser bundle).
 
     Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
-    ``Flag.CHAT_MODE_OPTION`` on regardless of LaunchDarkly.
+    ``Flag.CHAT_MODE_OPTION`` on regardless of the vendor's answer.
     """
     suffix = flag_key.value.upper().replace("-", "_")
     for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
@@ -561,7 +561,7 @@ async def is_feature_enabled(
     Args:
         flag_key: The Flag enum value
         user_id: The user ID to evaluate the flag for
-        default: Default value if LaunchDarkly is unavailable or flag evaluation fails
+        default: Default value if the vendor is unavailable or evaluation fails
 
     Returns:
         True if feature is enabled, False otherwise
@@ -613,7 +613,7 @@ def feature_flag(
     Decorator for async feature flag protected endpoints.
 
     Args:
-        flag_key: The LaunchDarkly feature flag key
+        flag_key: The feature flag key
         default: Default value if flag evaluation fails
 
     Returns:
@@ -672,8 +672,8 @@ def create_feature_flag_dependency(
     Create a FastAPI dependency that checks a feature flag.
 
     This dependency automatically extracts the user_id from the JWT token
-    (if present) for proper LaunchDarkly user targeting, while still
-    supporting anonymous access.
+    (if present) for proper user targeting, while still supporting
+    anonymous access.
 
     Args:
         flag_key: The Flag enum value to check
