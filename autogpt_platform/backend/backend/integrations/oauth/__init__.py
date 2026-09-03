@@ -3,12 +3,15 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import BaseModel
 
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
+from backend.integrations.providers import provider_key
 
+from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
+from .stripe_link import StripeLinkDeviceAuthHandler
 from .twitter import TwitterOAuthHandler
 
 if TYPE_CHECKING:
@@ -28,11 +31,9 @@ _ORIGINAL_HANDLERS = [
 
 # Start with original handlers
 _handlers_dict = {
-    (
-        handler.PROVIDER_NAME.value
-        if hasattr(handler.PROVIDER_NAME, "value")
-        else str(handler.PROVIDER_NAME)
-    ): handler
+    # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
+    # registry key matches either form.
+    provider_key(handler.PROVIDER_NAME): handler
     for handler in _ORIGINAL_HANDLERS
 }
 
@@ -227,4 +228,27 @@ HANDLERS_BY_NAME: dict[str, type["BaseOAuthHandler"]] = SDKAwareHandlersDict()
 CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDict()
 # --8<-- [end:HANDLERS_BY_NAMEExample]
 
-__all__ = ["HANDLERS_BY_NAME"]
+# ------------------------------------------------------------------ #
+# Device Code Grant handlers (RFC 8628)
+# ------------------------------------------------------------------ #
+_ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
+    StripeLinkDeviceAuthHandler,
+]
+
+_device_handlers_dict: dict[str, type[BaseDeviceAuthHandler]] = {
+    # PROVIDER_NAME is typed `ProviderName | str`; prefer the enum value so the
+    # registry key matches either form.
+    provider_key(handler.PROVIDER_NAME): handler
+    for handler in _ORIGINAL_DEVICE_HANDLERS
+}
+
+
+# A plain dict: the registry is static, unlike the SDK-aware OAuth one, and a
+# wrapper overriding only __getitem__/get/__contains__ left len(), iteration,
+# truthiness and ** unpacking reporting it as empty.
+DEVICE_HANDLERS_BY_NAME: dict[str, type[BaseDeviceAuthHandler]] = _device_handlers_dict
+
+__all__ = [
+    "HANDLERS_BY_NAME",
+    "DEVICE_HANDLERS_BY_NAME",
+]

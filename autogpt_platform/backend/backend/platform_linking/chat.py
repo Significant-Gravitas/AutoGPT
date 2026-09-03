@@ -184,6 +184,15 @@ async def upload_workspace_file(
         request.platform_server_id,
         request.platform_user_id,
     )
+    if request.session_id:
+        # Same guard as ensure_chat_session / start_chat_turn: the session
+        # must exist and belong to the owner, and a shared-server upload must
+        # never land inside an expert-scoped session's folder.
+        session = await get_chat_session(request.session_id, owner_user_id)
+        if session is None or (
+            request.platform_server_id is not None and session.expert_id is not None
+        ):
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     # Reduce the filename to its basename so a (possibly hostile) client can't
     # traverse the workspace path or leak ".."/separators into the storage
     # backend. Workspace paths are POSIX, so split on "/" (after normalising
@@ -229,7 +238,11 @@ async def upload_workspace_file(
 
 
 async def _resolve_or_create_session(
-    owner_user_id: str, session_id: str | None, source_platform: str
+    owner_user_id: str,
+    session_id: str | None,
+    source_platform: str,
+    *,
+    allow_expert_session: bool = True,
 ) -> ChatSession:
     """Reuse the bot's cached session, or start a fresh one.
 
@@ -240,6 +253,12 @@ async def _resolve_or_create_session(
     session = None
     if session_id:
         session = await get_chat_session(session_id, owner_user_id)
+        if (
+            session is not None
+            and not allow_expert_session
+            and session.expert_id is not None
+        ):
+            session = None
     if session is None:
         org_id, team_id = await orgs_db().get_user_default_team(owner_user_id)
         session = await create_chat_session(
@@ -282,7 +301,10 @@ async def ensure_chat_session(
         )
         return EnsureSessionResult(denial=denial)
     session = await _resolve_or_create_session(
-        owner_user_id, session_id, platform.value.lower()
+        owner_user_id,
+        session_id,
+        platform.value.lower(),
+        allow_expert_session=platform_server_id is None,
     )
     return EnsureSessionResult(session_id=session.session_id)
 
@@ -315,9 +337,14 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         session = await get_chat_session(request.session_id, owner_user_id)
         if session is None:
             raise NotFoundError("The session for the uploaded files no longer exists.")
+        if request.platform_server_id is not None and session.expert_id is not None:
+            raise NotFoundError("The session for the uploaded files no longer exists.")
     else:
         session = await _resolve_or_create_session(
-            owner_user_id, request.session_id, request.platform.value.lower()
+            owner_user_id,
+            request.session_id,
+            request.platform.value.lower(),
+            allow_expert_session=request.platform_server_id is None,
         )
     session_id = session.session_id
 
@@ -360,6 +387,8 @@ async def start_chat_turn(request: BotChatRequest) -> ChatTurnHandle:
         organization_id=org_id,
         team_id=team_id,
         file_ids=request.file_ids or None,
+        llm_auth_provider=session.metadata.llm_auth_provider,
+        llm_credential_id=session.metadata.llm_credential_id,
     )
 
     logger.info(

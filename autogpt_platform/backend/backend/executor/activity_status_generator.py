@@ -21,6 +21,7 @@ from backend.data.model import GraphExecutionStats
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.cost_tracking import schedule_platform_cost_log
 from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.exceptions import ExecutionFailureReason
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
 
@@ -44,6 +45,18 @@ _MAX_OUTPUT_TOKENS = 150
 # supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
 # uses for ``title_model`` / ``simulation_model``.
 _DEFAULT_MODEL_NAME = "gpt-4o-mini"
+INSUFFICIENT_BALANCE_GUIDANCE = "Please make more credits available and try again."
+INSUFFICIENT_BALANCE_SUMMARY = (
+    "This run couldn't complete because there weren't enough credits available. "
+    f"{INSUFFICIENT_BALANCE_GUIDANCE}"
+)
+ENTITLEMENT_REQUIRED_GUIDANCE = (
+    "Upgrade the plan, or switch the step to an option your plan includes."
+)
+ENTITLEMENT_REQUIRED_SUMMARY = (
+    "This run couldn't complete because it used a feature the current plan "
+    f"doesn't include. {ENTITLEMENT_REQUIRED_GUIDANCE}"
+)
 
 
 # Default system prompt template for activity status generation
@@ -197,6 +210,34 @@ def _truncate_uuid(uuid_str: str) -> str:
     return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
 
 
+def _get_deterministic_failure_response(
+    execution_stats: GraphExecutionStats,
+    execution_status: ExecutionStatus | None,
+) -> ActivityStatusResponse | None:
+    """
+    Check if the execution failed for an obvious, deterministic reason
+    that doesn't require LLM analysis.
+
+    Returns a static ActivityStatusResponse if matched, None otherwise.
+    """
+    if execution_status != ExecutionStatus.FAILED:
+        return None
+
+    if execution_stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE:
+        return {
+            "activity_status": INSUFFICIENT_BALANCE_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    if execution_stats.failure_reason == ExecutionFailureReason.ENTITLEMENT_REQUIRED:
+        return {
+            "activity_status": ENTITLEMENT_REQUIRED_SUMMARY,
+            "correctness_score": 0.0,
+        }
+
+    return None
+
+
 async def generate_activity_status_for_execution(
     graph_exec_id: str,
     graph_id: str,
@@ -212,10 +253,10 @@ async def generate_activity_status_for_execution(
     skip_existing: bool = True,
 ) -> ActivityStatusResponse | None:
     """
-    Generate an AI-based activity status summary and correctness assessment for a graph execution.
+    Generate an activity status summary and correctness assessment for a graph execution.
 
-    This function handles all the data collection and AI generation logic,
-    keeping the manager integration simple.
+    Deterministic terminal failures return a static result. Other executions use
+    the configured LLM after the required execution data is collected.
 
     Args:
         graph_exec_id: The graph execution ID
@@ -232,8 +273,8 @@ async def generate_activity_status_for_execution(
         skip_existing: Whether to skip if activity_status and correctness_score already exist
 
     Returns:
-        AI-generated activity status response with activity_status and correctness_status,
-        or None if feature is disabled or skipped
+        Activity status response with activity_status and correctness_score, or
+        None if generation is disabled or skipped
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
     if not skip_feature_flag and not await is_feature_enabled(
@@ -242,7 +283,7 @@ async def generate_activity_status_for_execution(
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
-    # Check if we should skip existing data (for admin regeneration option)
+    # Check if we should skip existing data (for admin regeneration option).
     if (
         skip_existing
         and execution_stats.activity_status
@@ -255,6 +296,16 @@ async def generate_activity_status_for_execution(
             "activity_status": execution_stats.activity_status,
             "correctness_score": execution_stats.correctness_score,
         }
+
+    # Check for deterministic failures that don't need LLM analysis.
+    deterministic_result = _get_deterministic_failure_response(
+        execution_stats, execution_status
+    )
+    if deterministic_result is not None:
+        logger.info(
+            f"Skipping LLM analysis for {graph_exec_id}: deterministic failure detected"
+        )
+        return deterministic_result
 
     # Acquire an OpenRouter-backed (or local-transport) OpenAI client.
     # Activity-status generation under OpenRouter is only meaningful when we

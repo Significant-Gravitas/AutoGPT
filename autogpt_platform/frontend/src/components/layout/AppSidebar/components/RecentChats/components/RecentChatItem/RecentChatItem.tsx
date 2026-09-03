@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRef } from "react";
 import {
   Delete02Icon,
@@ -22,6 +22,8 @@ import {
   Loading03Icon,
   MoreHorizontalIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -31,6 +33,7 @@ interface Session {
   title?: string | null;
   source_platform?: string | null;
   is_processing?: boolean | null;
+  is_pinned?: boolean | null;
   updated_at: string;
 }
 
@@ -45,10 +48,27 @@ interface Props {
   isExporting: boolean;
   isDeleting: boolean;
   chatSharingEnabled: boolean;
+  chatPinningEnabled: boolean;
+  onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
   onDelete: (id: string, title: string | null | undefined) => void;
+}
+
+// Rendered inside the <Link>, so useLinkStatus reports that link's pending
+// navigation — mirrors the loader on the main sidebar nav links.
+function ChatLinkLoader() {
+  const { pending } = useLinkStatus();
+
+  if (!pending) return null;
+
+  return (
+    <LoadingSpinner
+      size="small"
+      className="ml-auto !size-4 shrink-0 text-zinc-500"
+    />
+  );
 }
 
 export function RecentChatItem({
@@ -62,6 +82,8 @@ export function RecentChatItem({
   isExporting,
   isDeleting,
   chatSharingEnabled,
+  chatPinningEnabled,
+  onPin,
   onRename,
   onExport,
   onShare,
@@ -127,6 +149,7 @@ export function RecentChatItem({
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
           <span className="truncate">{title}</span>
+          <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>
 
@@ -144,6 +167,18 @@ export function RecentChatItem({
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {chatPinningEnabled && (
+            <DropdownMenuItem
+              onClick={() => onPin(session.id, !!session.is_pinned)}
+            >
+              {session.is_pinned ? (
+                <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
+              ) : (
+                <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
+              )}
+              {session.is_pinned ? "Unpin chat" : "Pin chat"}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
             <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
             Rename

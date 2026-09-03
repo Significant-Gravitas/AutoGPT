@@ -27,6 +27,7 @@ const RECOMMENDED_URL =
 
 const POLL_INTERVAL_MS = 2_500;
 const RECOMMENDED_HEADING = "Recommended from our conversation";
+const FALLBACK_HEADING = "Popular places to start";
 const SEARCH_PROMPT = "Search to find a service to connect.";
 
 type RecommendedResponse = {
@@ -66,6 +67,24 @@ function scriptRecommendations(...responses: RecommendedResponse[]) {
     }),
   );
   return hits;
+}
+
+// A registry holding only one of the preferred fallback ids, so the rest
+// of the section has to be padded out of what is left.
+function stubRegistryWithoutMostPreferredIds() {
+  const names = ["slack", "airtable", "linear", "stripe", "hubspot", "asana"];
+  server.use(
+    http.get(PROVIDERS_URL, () =>
+      HttpResponse.json(
+        names.map((name) => ({
+          name,
+          description: `${name} description`,
+          supported_auth_types: ["oauth2"],
+        })),
+      ),
+    ),
+    http.get(CREDENTIALS_URL, () => HttpResponse.json([])),
+  );
 }
 
 function renderPanel() {
@@ -133,19 +152,70 @@ describe("ConnectToolsPanel — recommendations", () => {
     expect(screen.getAllByText(RECOMMENDED_HEADING)).toHaveLength(1);
   });
 
-  it("shows the search prompt and stops polling when the model recommends nothing", async () => {
+  it("renders one card per provider when the model names the same one twice", async () => {
+    stubRegistry();
+    scriptRecommendations({
+      ready: true,
+      providers: [
+        { provider: "notion", reason: "You mentioned meeting notes" },
+        { provider: "notion", reason: "And your roadmap lives there" },
+      ],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText(RECOMMENDED_HEADING)).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /Notion/ })).toHaveLength(1);
+    // The first reason wins, so the duplicate does not quietly rewrite it.
+    expect(screen.getByText("You mentioned meeting notes")).toBeDefined();
+    expect(screen.queryByText("And your roadmap lives there")).toBeNull();
+  });
+
+  it("falls back to popular providers and stops polling when the model recommends nothing", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     stubRegistry();
-    // An empty array is a real answer, not "still working".
+    // An empty array is a real answer, not "still working" — but an empty
+    // panel reads as broken, so the generic picks take over.
     const hits = scriptRecommendations({ ready: true, providers: [] });
 
     renderPanel();
 
-    await waitFor(() => expect(screen.getByText(SEARCH_PROMPT)).toBeDefined());
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Slack/ })).toBeDefined();
+    // The copy must not claim these came out of the conversation.
     expect(screen.queryByText(RECOMMENDED_HEADING)).toBeNull();
+    expect(screen.queryByText(SEARCH_PROMPT)).toBeNull();
 
     await pollTimes(4);
     expect(hits).toHaveLength(1);
+  });
+
+  it("pads the popular fallback out of the registry when the preferred providers are missing", async () => {
+    // A deployment without most of the preferred ids must still fill the
+    // section rather than showing the one it happens to have.
+    stubRegistryWithoutMostPreferredIds();
+    scriptRecommendations({ ready: true, providers: [] });
+
+    renderPanel();
+
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getAllByRole("listitem")).toHaveLength(6);
+    // The one preferred id present still leads the list.
+    expect(screen.getAllByRole("listitem")[0].textContent).toContain("Slack");
+  });
+
+  it("falls back to popular providers when the recommendation request fails", async () => {
+    stubRegistry();
+    // A rejected request never reaches `data`, so it is the query's error
+    // state — not a status — that has to settle the section.
+    server.use(http.get(RECOMMENDED_URL, () => HttpResponse.error()));
+
+    renderPanel();
+
+    expect(await screen.findByText(FALLBACK_HEADING)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(screen.queryByText(RECOMMENDED_HEADING)).toBeNull();
   });
 
   it("keeps polling while the job is unfinished and renders the answer when it lands", async () => {
@@ -164,7 +234,10 @@ describe("ConnectToolsPanel — recommendations", () => {
 
     renderPanel();
 
+    // Nothing generic while the job may still answer — swapping the picks
+    // out from under the user is worse than a beat of empty space.
     await waitFor(() => expect(screen.getByText(SEARCH_PROMPT)).toBeDefined());
+    expect(screen.queryByText(FALLBACK_HEADING)).toBeNull();
     expect(hits).toHaveLength(1);
 
     await pollTimes(2);
@@ -172,6 +245,7 @@ describe("ConnectToolsPanel — recommendations", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Notion/ })).toBeDefined(),
     );
+    expect(screen.getByText(RECOMMENDED_HEADING)).toBeDefined();
     expect(screen.queryByText(SEARCH_PROMPT)).toBeNull();
     expect(hits).toHaveLength(3);
 

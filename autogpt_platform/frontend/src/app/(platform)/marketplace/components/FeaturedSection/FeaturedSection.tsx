@@ -12,6 +12,7 @@ import Link from "next/link";
 import { FeaturedAgentCard } from "../FeaturedAgentCard/FeaturedAgentCard";
 import { SparklesIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { FEATURED_SECTION_ID } from "../MarketplaceTabIntro/helpers";
 
 const FEATURED_COLORS = [
   "bg-violet-50 border-violet-100/70",
@@ -23,9 +24,12 @@ interface FeaturedSectionProps {
   featuredAgents: StoreAgent[];
 }
 
-export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
+export function FeaturedSection({ featuredAgents }: FeaturedSectionProps) {
   return (
-    <section className="mb-8 w-full border-b border-zinc-200/70 pb-6">
+    <section
+      id={FEATURED_SECTION_ID}
+      className="mb-8 w-full border-b border-zinc-200/70 pb-6"
+    >
       <Carousel
         opts={{
           align: "start",
@@ -69,4 +73,4 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
       </Carousel>
     </section>
   );
-};
+}

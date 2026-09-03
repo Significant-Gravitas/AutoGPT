@@ -27,7 +27,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -36,6 +36,11 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.executions.activity_gate import (
+    hide_activity_summaries_if_disabled,
+    hide_activity_summary_if_disabled,
+)
+from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
@@ -101,7 +106,12 @@ from backend.data.execution_cost_summary import (
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    NotificationPreference,
+    NotificationPreferenceDTO,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
@@ -129,6 +139,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
+    verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
@@ -142,6 +153,8 @@ from backend.monitoring.instrumentation import (
     record_graph_execution,
     record_graph_operation,
 )
+from backend.notifications import lifecycle
+from backend.notifications.queue import queue_pass_work
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -299,6 +312,59 @@ async def update_preferences(
     return output
 
 
+@v1_router.post(
+    "/auth/user/preferences/from-email",
+    summary="Apply a volume-knob choice from a Briefing footer link",
+    tags=["auth"],
+)
+async def apply_email_preference_choice(
+    choice: Annotated[str, Query()],
+    token: Annotated[str, Query()],
+) -> NotificationPreference:
+    """Apply one footer choice, authorised by the token in the link.
+
+    Deliberately not `Security(requires_user)`. The session is the wrong
+    authority here: the settings page applies this on arrival, so a
+    session-authenticated write would let any third party change a logged-in
+    reader's preferences just by getting them to follow a link. The HMAC binds
+    the choice to the recipient we sent it to, exactly as the unsubscribe link
+    does, and works whether or not they happen to be signed in.
+    """
+    user_id = verify_preference_token(token, choice)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+
+    current = await get_user_notification_preference(user_id)
+    updated = _preference_with_choice(current, choice)
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Unknown preference choice")
+    return await update_user_notification_preference(user_id, updated)
+
+
+def _preference_with_choice(
+    current: NotificationPreference, choice: str
+) -> NotificationPreferenceDTO | None:
+    """The volume knob, server-side. "alerts" and "off" both stop the digest;
+    they differ in whether alerts survive."""
+    mapping: dict[str, tuple[BriefingFrequency, bool]] = {
+        "daily": (BriefingFrequency.DAILY, current.alerts_enabled),
+        "weekly": (BriefingFrequency.WEEKLY, current.alerts_enabled),
+        "monthly": (BriefingFrequency.MONTHLY, current.alerts_enabled),
+        "alerts": (BriefingFrequency.OFF, True),
+        "off": (BriefingFrequency.OFF, False),
+    }
+    if choice not in mapping:
+        return None
+    frequency, alerts = mapping[choice]
+    return NotificationPreferenceDTO(
+        email=current.email,
+        briefing_frequency=frequency,
+        alerts_enabled=alerts,
+        store_verdicts_enabled=current.store_verdicts_enabled,
+        daily_limit=current.daily_limit,
+    )
+
+
 ########################################################
 ##################### Onboarding #######################
 ########################################################
@@ -380,7 +446,8 @@ async def is_onboarding_completed(
 ) -> OnboardingStatusResponse:
     user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
+        is_completed=OnboardingStep.ONBOARDING_COMPLETE
+        in user_onboarding.completedSteps,
     )
 
 
@@ -1390,6 +1457,46 @@ async def _claim_stripe_event(event_id: str) -> bool:
         return True
 
 
+async def _notify_checkout_completed(session: dict) -> None:
+    """Hand the completed checkout to the lifecycle emails.
+
+    Failures here must not fail the webhook: the customer has paid, and Stripe
+    retrying the whole event would re-run `fulfill_checkout`, which grants
+    credits. But swallowing the failure lost the welcome permanently — Stripe
+    does not retry a 200, and `customer.subscription.created` deliberately does
+    not send it either.
+
+    So the work is queued rather than done here. The consumer re-reads the
+    session and subscription from Stripe and sends the welcome, with the same
+    retry-with-backoff and dead-letter queue every other notification gets.
+    Publishing is one small call that either succeeds or is logged; the Stripe
+    API round-trip and the email now sit behind a retry instead of a warning.
+    """
+    if session.get("mode") != "subscription":
+        return
+    if not session.get("subscription"):
+        return
+    session_id = session.get("id")
+    if not session_id:
+        return
+    result = await queue_pass_work(
+        PassWorkKind.WELCOME.value,
+        str(session_id),
+        PassWorkEvent(
+            kind=PassWorkKind.WELCOME,
+            user_id="",
+            scheduled_for=datetime.now(tz=timezone.utc),
+            context={"session_id": str(session_id)},
+        ).model_dump_json(),
+    )
+    if not result.success:
+        logger.warning(
+            "stripe_webhook: could not queue the welcome email for session %s: %s",
+            session_id,
+            result.message,
+        )
+
+
 async def _release_stripe_event(event_id: str) -> None:
     """Release a previously-claimed dedup key so Stripe's retry can rerun."""
     if not event_id:
@@ -1478,6 +1585,11 @@ async def stripe_webhook(request: Request):
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
             await sync_tier_from_checkout_session(data_object)
+            # Only `checkout.session.completed` drives the welcome email.
+            # `customer.subscription.created` fires at signup too; listening to
+            # both would double-send.
+            if event_type == "checkout.session.completed":
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -1485,6 +1597,12 @@ async def stripe_webhook(request: Request):
             "customer.subscription.deleted",
         ):
             await sync_subscription_from_stripe(data_object)
+            if event_type == "customer.subscription.updated":
+                await lifecycle.on_subscription_updated(
+                    data_object, event_data.get("previous_attributes") or {}
+                )
+            elif event_type == "customer.subscription.deleted":
+                await lifecycle.on_subscription_deleted(data_object)
 
         # `subscription_schedule.updated` is deliberately omitted: our own
         # `SubscriptionSchedule.create` + `.modify` calls in
@@ -1503,6 +1621,7 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
+            await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1520,6 +1639,7 @@ async def stripe_webhook(request: Request):
                     await handle_subscription_payment_success(invoice_payload)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
+                    await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1997,9 +2117,7 @@ async def execute_graph(
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
-            await complete_onboarding_step(
-                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
-            )
+            await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
         elif source == "builder":
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
@@ -2170,23 +2288,6 @@ async def list_graph_executions(
     )
 
 
-async def hide_activity_summaries_if_disabled(
-    executions: list[execution_db.GraphExecutionMeta], user_id: str
-) -> list[execution_db.GraphExecutionMeta]:
-    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return executions  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    filtered_executions = []
-    for execution in executions:
-        if execution.stats:
-            filtered_stats = execution.stats.without_activity_features()
-            execution = execution.model_copy(update={"stats": filtered_stats})
-        filtered_executions.append(execution)
-    return filtered_executions
-
-
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     summary="Get execution details",
@@ -2230,21 +2331,6 @@ async def get_graph_execution(
         await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
-
-
-async def hide_activity_summary_if_disabled(
-    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
-    user_id: str,
-) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return execution  # Return as-is if feature is enabled
-
-    # Filter out activity features if disabled
-    if execution.stats:
-        filtered_stats = execution.stats.without_activity_features()
-        return execution.model_copy(update={"stats": filtered_stats})
-    return execution
 
 
 @v1_router.delete(
@@ -2436,6 +2522,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
         default=None,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
+    expert_id: Optional[str] = pydantic.Field(
+        default=None,
+        description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
 
 
 @v1_router.post(
@@ -2468,6 +2558,21 @@ async def create_graph_execution_schedule(
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+    # Expert attribution: explicit expert_id must be an active expert owned
+    # by the caller; when omitted, a unique (user, graph) → expert match
+    # keeps attribution for schedules created through the generic UI.
+    expert_id = schedule_params.expert_id
+    if expert_id is not None:
+        expert = await experts_db.get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+        if expert is None or expert.is_archived:
+            raise HTTPException(
+                status_code=404, detail=f"Expert #{expert_id} not found."
+            )
+    else:
+        expert_id = await experts_db.resolve_expert_for_graph(user_id, graph_id)
+
     result = await get_scheduler_client().add_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
@@ -2479,6 +2584,7 @@ async def create_graph_execution_schedule(
         user_timezone=user_timezone,
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
+        expert_id=expert_id,
     )
 
     # Convert the next_run_time back to user timezone for display

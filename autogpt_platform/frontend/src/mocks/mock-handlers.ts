@@ -8,6 +8,7 @@ import {
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
+import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import { getChatMock } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
@@ -26,6 +27,7 @@ import { getOttoMock } from "@/app/api/__generated__/endpoints/otto/otto.msw";
 import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
+import { getSkillsMock } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 
@@ -51,6 +53,7 @@ export const mockHandlers = [
     ready: true,
     providers: [],
   }),
+  ...getBriefingsMock(),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),
@@ -69,6 +72,7 @@ export const mockHandlers = [
   ...getPresetsMock(),
   ...getSchedulesMock(),
   ...getSearchMock(),
+  ...getSkillsMock(),
   ...getStoreMock(),
   ...getWorkspaceMock(),
 ];

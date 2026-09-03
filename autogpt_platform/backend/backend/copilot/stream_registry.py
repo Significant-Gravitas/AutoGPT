@@ -43,6 +43,7 @@ from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_k
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
+    StreamCompactionProgress,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -1171,6 +1172,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
         ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
         ResponseType.MODE_CHANGED.value: StreamModeChanged,
+        ResponseType.COMPACTION.value: StreamCompactionProgress,
     }
 
     chunk_type = chunk_data.get("type")

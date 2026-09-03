@@ -132,6 +132,19 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class LibraryAgentRef(pydantic.BaseModel):
+    """Just enough of a library agent to label and deep-link a run.
+
+    Deliberately cheap: no relation includes, no schedule info, unlike
+    :class:`LibraryAgent`. Used where a caller only needs to turn a set of
+    graph ids into display names and links.
+    """
+
+    id: str
+    graph_id: str
+    name: str
+
+
 class RecentExecution(pydantic.BaseModel):
     """Summary of a recent execution for quality assessment.
 
@@ -227,6 +240,14 @@ class LibraryAgent(pydantic.BaseModel):
     )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
+    store_listing_version_id: Optional[str] = pydantic.Field(
+        default=None,
+        description=(
+            "ID of the approved marketplace listing version whose graph snapshot "
+            "exactly matches this agent's graph_id and graph_version. Install "
+            "flows can use it directly to install this exact version."
+        ),
+    )
 
     @staticmethod
     def from_db(
@@ -236,6 +257,7 @@ class LibraryAgent(pydantic.BaseModel):
         profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
+        store_listing_version_id: Optional[str] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -387,6 +409,7 @@ class LibraryAgent(pydantic.BaseModel):
             ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
+            store_listing_version_id=store_listing_version_id,
         )
 
 
@@ -522,6 +545,10 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     webhook_id: Optional[str] = None
     webhook: "Webhook | None"
 
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
+
     @pydantic.field_serializer("webhook")
     def _redact_webhook_signing_material(
         self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
@@ -572,6 +599,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            expert_id=preset.expertId,
         )
 
 

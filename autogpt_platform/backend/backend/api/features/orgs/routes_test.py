@@ -2941,3 +2941,32 @@ class TestCanonicalPersonalOrgOrdering:
 
         order = prisma.orgmember.find_first.call_args.kwargs["order"]
         assert order == {"createdAt": "asc"}
+
+
+class TestResolveDefaultTenancy:
+    """resolve_default_tenancy is the single best-effort wrapper the
+    born-tenanted create paths (executions, library, notifications) share."""
+
+    @pytest.mark.asyncio
+    async def test_passes_through_resolved_org_team(self, mocker):
+        from backend.api.features.orgs import db as orgs_db
+
+        mocker.patch.object(
+            orgs_db,
+            "get_user_default_team",
+            new=AsyncMock(return_value=("org-x", "team-x")),
+        )
+
+        assert await orgs_db.resolve_default_tenancy("u1") == ("org-x", "team-x")
+
+    @pytest.mark.asyncio
+    async def test_lookup_exception_yields_none_none(self, mocker):
+        from backend.api.features.orgs import db as orgs_db
+
+        mocker.patch.object(
+            orgs_db,
+            "get_user_default_team",
+            new=AsyncMock(side_effect=RuntimeError("bootstrap unavailable")),
+        )
+
+        assert await orgs_db.resolve_default_tenancy("u1") == (None, None)

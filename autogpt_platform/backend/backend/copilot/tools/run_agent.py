@@ -17,7 +17,13 @@ from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_database_manager_async_client, get_scheduler_client
-from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    DatabaseError,
+    ExpertNotFoundError,
+    GraphValidationError,
+    MissingConfigError,
+    NotFoundError,
+)
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -314,11 +320,12 @@ class RunAgentTool(BaseTool):
                         message=f"Library agent '{params.library_agent_id}' not found",
                         session_id=session_id,
                     )
-                # Get the graph from the library agent
+                # Sub-graphs are needed to aggregate the full set of required credentials.
                 graph = await graph_db().get_graph(
                     library_agent.graph_id,
                     library_agent.graph_version,
                     user_id=user_id,
+                    include_subgraphs=True,
                 )
             else:
                 # Fetch from marketplace slug
@@ -416,15 +423,36 @@ class RunAgentTool(BaseTool):
                     graph=graph,
                     graph_credentials=graph_credentials,
                     params=params,
+                    expert_id=session.expert_id,
                 )
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
             return result
 
+        except ExpertNotFoundError:
+            return ErrorResponse(
+                message="This expert is no longer available. Please start a new chat.",
+                error="expert_not_found",
+                session_id=session_id,
+            )
         except NotFoundError as e:
             return ErrorResponse(
                 message=f"Agent '{params.username_agent_slug}' not found",
                 error=str(e) if str(e) else "not_found",
+                session_id=session_id,
+            )
+        except MissingConfigError:
+            return ErrorResponse(
+                message=(
+                    "Your expert workspace is still being set up. Try again shortly."
+                    if session.expert_id is not None
+                    else "Required configuration is temporarily unavailable. Try again shortly."
+                ),
+                error=(
+                    "expert_workspace_unavailable"
+                    if session.expert_id is not None
+                    else "configuration_unavailable"
+                ),
                 session_id=session_id,
             )
         except DatabaseError as e:
@@ -733,8 +761,17 @@ class RunAgentTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
+        if preset.expert_id != session.expert_id:
+            return ErrorResponse(
+                message=f"Preset '{params.preset_id}' not found.",
+                error="preset_not_found",
+                session_id=session_id,
+            )
         graph = await graph_db().get_graph(
-            preset.graph_id, preset.graph_version, user_id=user_id
+            preset.graph_id,
+            preset.graph_version,
+            user_id=user_id,
+            include_subgraphs=True,  # needed for full credentials aggregation
         )
         if not graph:
             return ErrorResponse(
@@ -793,6 +830,7 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         params: RunAgentInput,
+        expert_id: str | None,
     ) -> str | None:
         """Persist the validated run config as a reusable preset when requested.
 
@@ -811,6 +849,7 @@ class RunAgentTool(BaseTool):
                 credentials=graph_credentials,
                 is_active=True,
             ),
+            expert_id=expert_id,
         )
         return created.id
 
@@ -868,6 +907,7 @@ class RunAgentTool(BaseTool):
                 organization_id=org_id,
                 team_id=team_id,
                 preset_id=preset_id,
+                expert_id=session.expert_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(
@@ -1132,6 +1172,10 @@ class RunAgentTool(BaseTool):
         # sees the credential setup card instead of a generic error.
         # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
         # executions of this schedule attribute to the chat session's org.
+        # Likewise for expert attribution: a schedule created in an
+        # expert-scoped chat belongs to that expert, so it surfaces on her
+        # Team card / expert page, counts toward her weekly credit budget,
+        # and is cleaned up when she is archived.
         org_id, team_id = session.organization_id, session.team_id
         if org_id is None:
             from backend.api.features.orgs.db import get_user_default_team
@@ -1150,6 +1194,7 @@ class RunAgentTool(BaseTool):
                 user_timezone=user_timezone,
                 organization_id=org_id,
                 team_id=team_id,
+                expert_id=session.expert_id,
             )
         except GraphValidationError as e:
             return self._handle_graph_validation_race(

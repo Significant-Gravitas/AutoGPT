@@ -102,14 +102,23 @@ export function setGreetingDone(userId: string | null | undefined) {
 
 function setFlag(key: string) {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(key, "1");
+  try {
+    window.sessionStorage.setItem(key, "1");
+  } catch {
+    // Storage can be unavailable (private mode, quota); attribution is
+    // optional and must never block the action it decorates.
+  }
 }
 
 function takeFlag(key: string) {
   if (typeof window === "undefined") return false;
-  const value = window.sessionStorage.getItem(key) === "1";
-  if (value) window.sessionStorage.removeItem(key);
-  return value;
+  try {
+    const value = window.sessionStorage.getItem(key) === "1";
+    if (value) window.sessionStorage.removeItem(key);
+    return value;
+  } catch {
+    return false;
+  }
 }
 
 export function setIntroPath(path: IntroPath) {

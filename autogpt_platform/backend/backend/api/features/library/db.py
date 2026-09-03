@@ -1,8 +1,7 @@
 import asyncio
 import itertools
 import logging
-from datetime import datetime, timezone
-from typing import Literal, Optional, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -17,8 +16,12 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.data.db import transaction
+from backend.api.features.store.store_listing_versions import (
+    installable_store_version_where,
+)
+from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
+from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
@@ -32,12 +35,19 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
 
 from . import model as library_model
+from ._add_to_library import (
+    add_graph_to_library,
+    resolve_graph_model_for_library,
+    resolve_store_version_for_library,
+    restore_existing_library_agent,
+)
+from ._schedule_info import _fetch_schedule_info
 from .embeddings import schedule_library_agent_embedding
 
 logger = logging.getLogger(__name__)
@@ -64,44 +74,68 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
-async def _fetch_schedule_info(
-    user_id: str, graph_id: Optional[str] = None
-) -> dict[str, str]:
-    """Fetch a map of graph_id → earliest next_run_time ISO string.
+async def _fetch_matching_store_version_ids(
+    agents: list[prisma.models.LibraryAgent],
+) -> dict[tuple[str, int], str]:
+    """Map (graph_id, graph_version) → approved StoreListingVersion id.
 
-    When `graph_id` is provided, the scheduler query is narrowed to that graph,
-    which is cheaper for single-agent lookups (detail page, post-update, etc.).
+    Only approved, non-deleted versions are returned so the ids are always
+    valid install targets. Matching on the exact graph version keeps installs
+    version-stable: the id refers to the snapshot the library agent holds,
+    not the listing's current active version.
     """
-    try:
-        scheduler_client = get_scheduler_client()
-        schedules = await scheduler_client.get_graph_execution_schedules(
-            graph_id=graph_id,
-            user_id=user_id,
-        )
-        earliest: dict[str, tuple[datetime, str]] = {}
-        for s in schedules:
-            parsed = _parse_iso_datetime(s.next_run_time)
-            if parsed is None:
-                continue
-            current = earliest.get(s.graph_id)
-            if current is None or parsed < current[0]:
-                earliest[s.graph_id] = (parsed, s.next_run_time)
-        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
-    except Exception:
-        logger.warning("Failed to fetch schedules for library agents", exc_info=True)
+    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
+    if not pairs:
         return {}
-
-
-def _parse_iso_datetime(value: str) -> Optional[datetime]:
-    """Parse an ISO 8601 datetime, tolerating `Z` and naive forms (assumed UTC)."""
+    pair_filters = [
+        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
+        for graph_id, graph_version in sorted(pairs)
+    ]
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        logger.warning("Failed to parse schedule next_run_time: %s", value)
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
+        versions = await prisma.models.StoreListingVersion.prisma().find_many(
+            where={
+                "OR": pair_filters,
+                **installable_store_version_where(),
+            },
+            distinct=["agentGraphId", "agentGraphVersion"],
+            order=[
+                {"agentGraphId": "asc"},
+                {"agentGraphVersion": "asc"},
+                {"createdAt": "desc"},
+                {"id": "desc"},
+            ],
+        )
+    except Exception:
+        logger.warning(
+            "Failed to fetch store listing versions for library agents",
+            exc_info=True,
+        )
+        return {}
+    matches: dict[tuple[str, int], str] = {}
+    for version in versions:
+        pair = (version.agentGraphId, version.agentGraphVersion)
+        if pair in pairs and pair not in matches:
+            matches[pair] = version.id
+    return matches
+
+
+async def _fetch_marketplace_details(
+    graph_id: str,
+) -> tuple[prisma.models.StoreListing | None, prisma.models.Profile | None]:
+    store_listing = await prisma.models.StoreListing.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "hasApprovedVersion": True,
+        },
+        include={"ActiveVersion": True},
+    )
+    profile = None
+    if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
+        profile = await prisma.models.Profile.prisma().find_first(
+            where={"userId": store_listing.owningUserId}
+        )
+    return store_listing, profile
 
 
 async def list_library_agents(
@@ -247,9 +281,10 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
+    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
+        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -261,6 +296,9 @@ async def list_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
+                store_listing_version_id=store_version_ids.get(
+                    (agent.agentGraphId, agent.agentGraphVersion)
+                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -334,9 +372,10 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info = await asyncio.gather(
+    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
+        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -348,6 +387,9 @@ async def list_favorite_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
+                store_listing_version_id=store_version_ids.get(
+                    (agent.agentGraphId, agent.agentGraphVersion)
+                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -379,7 +421,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         The requested LibraryAgent.
 
     Raises:
-        NotFoundError: If the specified agent does not exist.
+        NotFoundError: If the specified agent or its graph relation does not exist.
         DatabaseError: If there's an error during retrieval.
     """
     library_agent = await prisma.models.LibraryAgent.prisma().find_first(
@@ -394,42 +436,31 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     if not library_agent:
         raise NotFoundError(f"Library agent #{id} not found")
 
-    # Fetch marketplace listing if the agent has been published
-    store_listing = None
-    profile = None
-    if library_agent.AgentGraph:
-        store_listing = await prisma.models.StoreListing.prisma().find_first(
-            where={
-                "agentGraphId": library_agent.AgentGraph.id,
-                "isDeleted": False,
-                "hasApprovedVersion": True,
-            },
-            include={
-                "ActiveVersion": True,
-            },
-        )
-        if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
-            # Fetch Profile separately since User doesn't have a direct Profile relation
-            profile = await prisma.models.Profile.prisma().find_first(
-                where={"userId": store_listing.owningUserId}
-            )
+    if not library_agent.AgentGraph:
+        raise NotFoundError(f"Agent graph for library agent #{id} not found")
 
-    schedule_info = (
-        await _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id)
-        if library_agent.AgentGraph
-        else {}
+    (
+        marketplace_details,
+        schedule_info,
+        store_version_ids,
+        sub_graphs,
+    ) = await asyncio.gather(
+        _fetch_marketplace_details(library_agent.AgentGraph.id),
+        _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
+        _fetch_matching_store_version_ids([library_agent]),
+        graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
+    store_listing, profile = marketplace_details
 
     return library_model.LibraryAgent.from_db(
         library_agent,
-        sub_graphs=(
-            await graph_db.get_sub_graphs(library_agent.AgentGraph)
-            if library_agent.AgentGraph
-            else None
-        ),
+        sub_graphs=sub_graphs,
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,
+        store_listing_version_id=store_version_ids.get(
+            (library_agent.agentGraphId, library_agent.agentGraphVersion)
+        ),
     )
 
 
@@ -469,6 +500,47 @@ async def get_library_agent_by_store_version_id(
         return None
     schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
     return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+
+
+async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
+    """Id-only lookup for building deep links (e.g. the expert run post) —
+    no relation includes, no schedule info, unlike the full getter below."""
+    agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"agentGraphId": graph_id, "userId": user_id, "isDeleted": False},
+    )
+    return agent.id if agent else None
+
+
+async def get_library_agent_refs_by_graph_ids(
+    user_id: str, graph_ids: list[str]
+) -> list[library_model.LibraryAgentRef]:
+    """Resolve display name + id for the given graphs in one query.
+
+    Batched counterpart to :func:`get_library_agent_id_by_graph_id`, for
+    callers (e.g. the morning briefing) that need to label a known handful
+    of runs and would otherwise page through the whole library.
+
+    ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
+    rows per graph, so exactly one ref per graph is returned — the newest
+    version — instead of whichever row the DB happened to return last.
+    """
+    if not graph_ids:
+        return []
+    agents = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        order=[{"agentGraphVersion": "asc"}],
+    )
+    newest_by_graph = {
+        agent.agentGraphId: library_model.LibraryAgentRef(
+            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+        )
+        for agent in agents
+    }
+    return list(newest_by_graph.values())
 
 
 async def get_library_agent_by_graph_id(
@@ -1147,24 +1219,93 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     )
 
 
+async def is_store_listing_version_available_for_install(
+    store_listing_version_id: str,
+    *,
+    tx: prisma.Prisma | None = None,
+    lock_rows: bool = False,
+) -> bool:
+    """Validate one exact marketplace version for a library install.
+
+    Both the preflight and transactional revalidation use this query. The
+    shared row lock blocks withdrawal while permitting concurrent installs of
+    the same popular listing.
+    """
+    if lock_rows and tx is None:
+        raise ValueError("lock_rows requires a transaction client")
+
+    schema = get_database_schema()
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
+    lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
+    query = cast(
+        LiteralString,
+        """
+        SELECT slv.id
+        FROM {schema_prefix}"StoreListingVersion" AS slv
+        JOIN {schema_prefix}"StoreListing" AS sl
+          ON sl.id = slv."storeListingId"
+        WHERE slv.id = $1
+          AND slv."isDeleted" = false
+          AND slv."isAvailable" = true
+          AND slv."submissionStatus" = 'APPROVED'
+          AND sl."isDeleted" = false
+        {lock_clause}
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
+    )
+    client = tx if tx is not None else prisma.get_client()
+    rows = await client.query_raw(query, store_listing_version_id)
+    return bool(rows)
+
+
 async def add_store_agent_to_library(
-    store_listing_version_id: str, user_id: str
+    store_listing_version_id: str,
+    user_id: str,
 ) -> library_model.LibraryAgent:
     """Adds a marketplace agent to the user’s library.
 
     See also: `add_store_agent_to_library_as_admin()` which uses
     `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=None)
 
+
+async def add_store_agent_to_library_in_transaction(
+    store_listing_version_id: str,
+    user_id: str,
+    tx: prisma.Prisma,
+) -> library_model.LibraryAgent:
+    """Add a marketplace agent using the caller's transaction."""
+    return await _add_store_agent_to_library(store_listing_version_id, user_id, tx=tx)
+
+
+async def _add_store_agent_to_library(
+    store_listing_version_id: str,
+    user_id: str,
+    *,
+    tx: prisma.Prisma | None,
+) -> library_model.LibraryAgent:
     logger.debug(
-        f"Adding agent from store listing version #{store_listing_version_id} "
-        f"to library for user #{user_id}"
+        "Adding agent from store listing version #%s to library for user #%s",
+        store_listing_version_id,
+        user_id,
     )
-    graph_model, store_listing_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=False
+    store_listing_version = await resolve_store_version_for_library(
+        store_listing_version_id, admin=False, tx=tx
     )
-    return await add_graph_to_library(graph_model, user_id, store_listing_version)
+    if tx is None:
+        # The transactional path upserts instead, so an existing entry is
+        # restored atomically with the caller's other writes.
+        existing = await restore_existing_library_agent(store_listing_version, user_id)
+        if existing is not None:
+            return existing
+    graph_model = await resolve_graph_model_for_library(
+        store_listing_version, user_id, admin=False
+    )
+    return await add_graph_to_library(
+        graph_model, user_id, store_listing_version, tx=tx
+    )
 
 
 async def add_store_agent_to_library_as_admin(
@@ -1172,14 +1313,18 @@ async def add_store_agent_to_library_as_admin(
 ) -> library_model.LibraryAgent:
     """Admin variant that uses `get_graph_as_admin` to bypass marketplace
     APPROVED-only checks, allowing admins to add pending agents for review."""
-    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
-
     logger.warning(
         f"ADMIN adding agent from store listing version "
         f"#{store_listing_version_id} to library for user #{user_id}"
     )
-    graph_model, store_listing_version = await resolve_graph_for_library(
-        store_listing_version_id, user_id, admin=True
+    store_listing_version = await resolve_store_version_for_library(
+        store_listing_version_id, admin=True
+    )
+    existing = await restore_existing_library_agent(store_listing_version, user_id)
+    if existing is not None:
+        return existing
+    graph_model = await resolve_graph_model_for_library(
+        store_listing_version, user_id, admin=True
     )
     return await add_graph_to_library(graph_model, user_id, store_listing_version)
 
@@ -1842,7 +1987,12 @@ async def get_folder_agents_map(
 
 
 async def list_presets(
-    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
+    user_id: str,
+    page: int,
+    page_size: int,
+    graph_id: Optional[str] = None,
+    expert_id: str | None = None,
+    filter_by_expert: bool = False,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -1852,6 +2002,9 @@ async def list_presets(
         page: The current page index (1-based).
         page_size: Number of items to retrieve per page.
         graph_id: Agent Graph ID to filter by.
+        expert_id: Expert ID to match when expert filtering is enabled.
+        filter_by_expert: Whether to filter by the exact expert scope. This allows
+            ``None`` to select AutoPilot presets instead of disabling the filter.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -1875,6 +2028,8 @@ async def list_presets(
     }
     if graph_id:
         query_filter["agentGraphId"] = graph_id
+    if filter_by_expert:
+        query_filter["expertId"] = expert_id
 
     presets_records = await prisma.models.AgentPreset.prisma().find_many(
         where=query_filter,
@@ -1926,11 +2081,30 @@ async def get_preset(
     return library_model.LibraryAgentPreset.from_db(preset)
 
 
+async def _resolve_private_expert_tenancy_or_not_found(
+    user_id: str,
+    expert_id: str,
+    not_found_message: str,
+) -> tuple[str, str | None]:
+    """Map only an inaccessible private expert to the caller's 404 contract."""
+    from backend.api.features.experts import experts_db
+
+    try:
+        return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise NotFoundError(not_found_message) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        ) from e
+
+
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
     *,
     webhook_id: str | None = None,
+    expert_id: str | None = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Creates a new AgentPreset for a user.
@@ -1941,6 +2115,10 @@ async def create_preset(
         webhook_id: Internal-only; not part of the public request model. Only
             trusted callers (the setup-trigger flow, legacy migration) pass a
             webhook they provisioned for the caller.
+        expert_id: Expert attribution resolved by a trusted caller. The active
+            owned expert is revalidated here — atomically with preset
+            persistence — and forces personal tenancy; runs fired by the preset
+            inherit it.
 
     Returns:
         The newly created LibraryAgentPreset.
@@ -1964,11 +2142,26 @@ async def create_preset(
             "not found or not accessible"
         )
 
+    webhook = None
     # Refuse to attach a webhook the caller doesn't own
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+
+    if expert_id:
+        organization_id, team_id = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            expert_id,
+            f"Expert #{expert_id} not found",
+        )
+        if webhook is not None and (
+            webhook.organization_id,
+            webhook.team_id,
+        ) != (organization_id, team_id):
+            raise NotFoundError(f"Webhook #{webhook_id} not found")
+    else:
+        organization_id, team_id = graph.organization_id, graph.team_id
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
@@ -1990,14 +2183,34 @@ async def create_preset(
             ]
         },
     )
-    if graph.organization_id:
-        create_input["organizationId"] = graph.organization_id
-    if graph.team_id:
-        create_input["teamId"] = graph.team_id
-    new_preset = await prisma.models.AgentPreset.prisma().create(
-        data=create_input,
-        include=AGENT_PRESET_INCLUDE,
-    )
+    if organization_id:
+        create_input["organizationId"] = organization_id
+    if team_id:
+        create_input["teamId"] = team_id
+    if expert_id:
+        # Re-resolve under a row lock so an archive or ownership change landing
+        # between the tenancy check above and this write can't be persisted.
+        # Experts are private and owner-only here, so a failed re-check is a
+        # not-found rather than a silently dropped attribution.
+        async with transaction() as tx:
+            attributed_expert_id = await resolve_attributable_expert(
+                tx,
+                user_id,
+                expert_id,
+                lock_for_update=True,
+            )
+            if attributed_expert_id is None:
+                raise NotFoundError(f"Expert #{expert_id} not found")
+            create_input["expertId"] = attributed_expert_id
+            new_preset = await prisma.models.AgentPreset.prisma(tx).create(
+                data=create_input,
+                include=AGENT_PRESET_INCLUDE,
+            )
+    else:
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=create_input,
+            include=AGENT_PRESET_INCLUDE,
+        )
     return library_model.LibraryAgentPreset.from_db(new_preset)
 
 
@@ -2056,6 +2269,8 @@ async def create_preset_from_graph_execution(
             description=create_request.description,
             is_active=create_request.is_active,
         ),
+        # A preset built from an expert-attributed run keeps the attribution.
+        expert_id=graph_execution.expert_id,
     )
 
 
@@ -2093,8 +2308,21 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+
+    expert_tenancy: tuple[str, str | None] | None = None
+    if current.expert_id:
+        expert_tenancy = await _resolve_private_expert_tenancy_or_not_found(
+            user_id,
+            current.expert_id,
+            f"Preset #{preset_id} not found",
+        )
+
     async with transaction() as tx:
         update_data: prisma.types.AgentPresetUpdateInput = {}
+        if expert_tenancy is not None:
+            organization_id, team_id = expert_tenancy
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
         if name:
             update_data["name"] = name
         if description:
@@ -2146,18 +2374,34 @@ async def set_preset_webhook(
         raise NotFoundError(f"Preset #{preset_id} not found")
 
     # Refuse to attach a webhook the caller doesn't own
+    update_data: prisma.types.AgentPresetUpdateInput = (
+        {"Webhook": {"connect": {"id": webhook_id}}}
+        if webhook_id
+        else {"Webhook": {"disconnect": True}}
+    )
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
             raise NotFoundError(f"Webhook #{webhook_id} not found")
+        if current.expertId:
+            organization_id, team_id = (
+                await _resolve_private_expert_tenancy_or_not_found(
+                    user_id,
+                    current.expertId,
+                    f"Preset #{preset_id} not found",
+                )
+            )
+            if (webhook.organization_id, webhook.team_id) != (
+                organization_id,
+                team_id,
+            ):
+                raise NotFoundError(f"Webhook #{webhook_id} not found")
+            update_data["organizationId"] = organization_id
+            update_data["teamId"] = team_id
 
     updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
-        data=(
-            {"Webhook": {"connect": {"id": webhook_id}}}
-            if webhook_id
-            else {"Webhook": {"disconnect": True}}
-        ),
+        data=update_data,
         include=AGENT_PRESET_INCLUDE,
     )
     if not updated:

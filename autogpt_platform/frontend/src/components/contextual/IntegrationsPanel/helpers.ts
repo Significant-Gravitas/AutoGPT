@@ -25,6 +25,7 @@ const TYPE_LABELS: Record<CredentialType, string> = {
   oauth2: "OAuth",
   user_password: "User/Password",
   host_scoped: "Host-scoped",
+  device_code: "Device auth",
 };
 
 export function typeBadgeLabel(type: CredentialType): string {
@@ -100,9 +101,11 @@ export function groupCredentialsByProvider(
 ): ProviderGroupView[] {
   const byProvider = new Map<string, CredentialView[]>();
   for (const cred of credentials) {
-    const list = byProvider.get(cred.provider) ?? [];
+    const displayProvider =
+      cred.provider === "codex" ? "openai" : cred.provider;
+    const list = byProvider.get(displayProvider) ?? [];
     list.push(toCredentialView(cred));
-    byProvider.set(cred.provider, list);
+    byProvider.set(displayProvider, list);
   }
 
   const groups: ProviderGroupView[] = [];

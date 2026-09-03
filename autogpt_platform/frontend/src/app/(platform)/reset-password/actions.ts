@@ -10,7 +10,9 @@ export async function sendResetEmail(email: string) {
     {},
     async () => {
       const origin =
-        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
+        process.env.BETTER_AUTH_URL ||
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+        "http://localhost:3000";
 
       try {
         // Better Auth emails a link that redirects to
@@ -18,7 +20,7 @@ export async function sendResetEmail(email: string) {
         await auth.api.requestPasswordReset({
           body: {
             email,
-            redirectTo: `${origin}/reset-password`,
+            redirectTo: new URL("/reset-password", origin).toString(),
           },
         });
       } catch (error) {

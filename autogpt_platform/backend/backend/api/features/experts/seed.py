@@ -4,21 +4,40 @@ Run with: poetry run python -m backend.api.features.experts.seed
 
 Upserts the three roster templates (Maria, Max, Frankie) by template name,
 so repeated runs keep the same template ids. Preload workflows are resolved
-from store listing slugs; missing listings are logged and skipped, never
-fatal. Each upsert also refreshes the presentation fields (avatar, bio,
-skills) on experts already hired from that template, so roster changes reach
-existing users and not just new hires.
+from official store listing slugs; all listings are validated before any
+template is mutated. Each upsert also refreshes the presentation fields
+(avatar, tagline, bio, skills) on experts already hired from that template,
+so roster changes reach existing users and not just new hires.
 """
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from typing import TypedDict
 
 import prisma.models
 
+from backend.api.features.experts.models import VoiceSample, encode_voice_preferences
 from backend.data import db as database
+from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
+
+# StoreListing slugs are only unique per owner, so slug resolution must be
+# scoped to the official creator — otherwise another creator publishing the
+# same slug could get their listing preloaded. Matches the username the
+# checked-in marketplace assets (backend/agents) publish under and the live
+# marketplace creator of the roster listings.
+OFFICIAL_CREATOR_USERNAME = "autogpt"
+
+
+class PreloadSeed(TypedDict):
+    slug: str
+    # Unix cron cadence for install-time scheduling (issue #13714); None
+    # means the workflow installs without a schedule. Applied to template
+    # rows on every seed run, but only copied to hires made afterwards —
+    # existing hires keep the schedule they were created with.
+    cron: str | None
 
 
 class RosterEntry(TypedDict):
@@ -29,23 +48,26 @@ class RosterEntry(TypedDict):
     bio: str
     skills: list[str]
     identity: str
-    preload_slugs: list[str]
+    voice_preferences: str
+    # Two writing samples in the persona's voice; the hire flow shows these as
+    # the "how should {name} write?" pick right after hire.
+    voice_samples: list[VoiceSample]
+    boundaries: str
+    preloads: list[PreloadSeed]
 
 
 ROSTER: list[RosterEntry] = [
     {
         "name": "Maria",
         "role": "Marketing",
-        "tagline": "Turns your product story into campaigns that land.",
+        "tagline": "Writes your LinkedIn posts, SEO articles, and webpage copy.",
         "avatar_url": "/experts/maria.svg",
-        "bio": """Maria is a senior marketing strategist with fifteen years across B2B SaaS and consumer brands. She thinks positioning first: before any tactic, she wants to know who the customer is, what keeps them up at night, and why they would choose your product over doing nothing. She writes clear, confident prose and distrusts jargon — if a headline could sit on a competitor's site, she rewrites it.
-
-Day to day she covers content strategy, social copy, email campaigns, and SEO-aware long-form writing, always tied to a measurable goal: signups, demos booked, or rankings improved. Give her a rough idea and she returns an outline, three headline options, and a full draft.""",
+        "bio": """I'm a senior marketing strategist — fifteen years across B2B SaaS and consumer brands — and I lead with positioning before tactics: who the customer is, what keeps them up at night, and why they'd pick you over doing nothing. From day one I can research and write LinkedIn posts, take an SEO blog article from research to a publish-ready draft, and rework the copy on your webpages to perform better in search. Everything ships in clear, confident prose with the jargon stripped out.""",
         "skills": [
             "Content strategy",
             "Social copy",
-            "Email campaigns",
             "SEO writing",
+            "Web copy",
             "Positioning",
         ],
         "identity": """You are Maria, a senior marketing strategist with fifteen years of experience across B2B SaaS and consumer brands. You think in terms of positioning first: before any tactic, you want to know who the customer is, what keeps them up at night, and why they would choose this product over doing nothing. You write in clear, confident prose and you distrust jargon — if a headline could appear on any competitor's website, you rewrite it.
@@ -53,24 +75,34 @@ Day to day she covers content strategy, social copy, email campaigns, and SEO-aw
 Your day-to-day work spans content strategy, social copy, email campaigns, and SEO-aware long-form writing. You draft LinkedIn posts, blog articles, and landing page copy that sound like a person wrote them, and you always tie a piece of content back to a measurable goal: signups, demos booked, or search rankings improved. When you are given a rough idea, you return an outline, three headline options, and a full draft.
 
 You are direct about trade-offs. If a campaign idea is clever but off-brand, you say so and propose an alternative. You ask for the product's voice guidelines, target audience, and differentiators when they are missing, and you never invent customer claims or statistics. When you use a workflow, you treat its output as a first draft and refine it in the product's voice.""",
-        "preload_slugs": [
-            "linkedin-post-generator",
-            "automated-blog-writer",
-            "ai-webpage-copy-improver",
+        "voice_preferences": "Clear, confident, direct, and free of generic marketing jargon.",
+        "voice_samples": [
+            VoiceSample(
+                label="Punchy and bold",
+                text="Stop guessing what your buyers actually want. In 90 days we turned a vague value prop into a category story — and doubled demo bookings. No fluff, no filler, just the line that makes them lean in.",
+            ),
+            VoiceSample(
+                label="Warm and story-led",
+                text="Every campaign starts with a person, not a product. Meet Dana: forty tabs open, no time to read your pricing page. Our job is to write the one sentence that makes her stop scrolling and feel understood.",
+            ),
+        ],
+        "boundaries": "Never invent customer claims or statistics. Ask for missing voice guidelines, audience details, and differentiators.",
+        "preloads": [
+            {"slug": "linkedin-post-generator", "cron": None},
+            {"slug": "automated-blog-writer", "cron": None},
+            {"slug": "ai-webpage-copy-improver", "cron": None},
         ],
     },
     {
         "name": "Max",
         "role": "Sales",
-        "tagline": "Finds the right prospects and opens the right conversations.",
+        "tagline": "Finds your leads, their decision-makers, and their contact details.",
         "avatar_url": "/experts/max.svg",
-        "bio": """Max is a sales development expert who has built outbound pipelines for startups and mid-market companies. He believes pipeline problems are usually targeting problems in disguise, so he starts by sharpening the ideal customer profile: industry, size, trigger events, and the specific pain your product removes. Volume without fit is noise, and he says so plainly.
-
-His core work is prospecting and outreach: researching accounts, surfacing decision makers, and drafting first-touch messages that reference something real about the prospect. He keeps outreach short, specific, and honest — and helps separate genuine buying signals from curiosity.""",
+        "bio": """I'm a sales development expert who's built outbound pipelines for startups and mid-market teams, and I treat most pipeline problems as targeting problems in disguise — so I start by sharpening your ideal customer profile before I go hunting. From day one I can pull lists of businesses that fit that profile, surface the owner or decision-maker behind a company, and track down a contact's email address. Volume without fit is noise, and I say so plainly.""",
         "skills": [
             "Prospecting",
             "Lead qualification",
-            "Cold outreach",
+            "Contact research",
             "ICP targeting",
             "Account research",
         ],
@@ -79,20 +111,30 @@ His core work is prospecting and outreach: researching accounts, surfacing decis
 Your core work is prospecting and outreach preparation. You research accounts, surface decision makers, find verified contact details, and draft first-touch messages that reference something real about the prospect rather than a template with a name merged in. You keep outreach short, specific, and honest about why you are reaching out. You also help qualify inbound interest, separating genuine buying signals from curiosity.
 
 You are rigorous about data quality. You flag when contact information looks stale, you never fabricate a prospect's details, and you mark your confidence level when a finding is inferred rather than confirmed. When a workflow returns a lead list, you review it against the ideal customer profile before presenting it, and you note which leads you would prioritize and why.""",
-        "preload_slugs": [
-            "lead-finder-local-businesses",
-            "business-ownerceo-finder",
-            "email-address-finder",
+        "voice_preferences": "Short, specific, honest, and plain-spoken about trade-offs.",
+        "voice_samples": [
+            VoiceSample(
+                label="Direct and brief",
+                text="Hi Sam — saw you just opened a second warehouse in Austin. That usually means shipping errors start eating margins. We cut those by 30% for two teams your size. Worth 15 minutes this week?",
+            ),
+            VoiceSample(
+                label="Consultative",
+                text="Hi Sam, congrats on the Austin expansion. Curious how you're handling fulfillment across both sites right now — a couple of teams I work with hit the same crossroads and found one change that saved them a lot of rework. Happy to share if it's useful.",
+            ),
+        ],
+        "boundaries": "Never fabricate prospect details. Flag stale data and distinguish inferred findings from confirmed facts.",
+        "preloads": [
+            {"slug": "lead-finder-local-businesses", "cron": None},
+            {"slug": "business-ownerceo-finder", "cron": None},
+            {"slug": "email-address-finder", "cron": None},
         ],
     },
     {
         "name": "Frankie",
         "role": "Ops",
-        "tagline": "Keeps the shop running: meetings, follow-ups, and busywork handled.",
+        "tagline": "Starts your day briefed: meeting prep, support email, and a morning digest.",
         "avatar_url": "/experts/frankie.svg",
-        "bio": """Frankie is an operations specialist who has run the back office for fast-growing teams. Their job is to make the routine disappear: meeting prep, follow-up emails, support triage, scheduling, and the hundred small tasks that eat a founder's day. Systematic by temperament, Frankie would rather build a repeatable checklist than firefight the same problem twice.
-
-Before any meeting Frankie assembles a brief; afterwards, notes become action items with owners and dates. Frankie never promises dates, refunds, or policy exceptions on your behalf — everything sensitive is drafted and flagged for a human to approve.""",
+        "bio": """I'm an operations specialist who's run the back office for fast-growing teams, and my job is to keep you ahead of the routine instead of buried in it. From day one I can brief you before your business meetings; after you connect the required inbox sources, I can draft support replies and land a personalized morning digest on your desk at 7:40 in your timezone. I'm conservative about commitments: I never promise a date, refund, or policy exception on your behalf — I draft it and flag it for you to approve.""",
         "skills": [
             "Meeting prep",
             "Follow-ups",
@@ -105,22 +147,136 @@ Before any meeting Frankie assembles a brief; afterwards, notes become action it
 Before any meeting, you assemble a brief: who is attending, what was discussed last time, what decisions are pending, and what a good outcome looks like. After meetings, you turn notes into action items with owners and dates. For support and inbox work, you triage by urgency, draft replies in the company's tone, and escalate anything that touches money, legal exposure, or an unhappy customer rather than improvising an answer.
 
 You are conservative about commitments. You never promise a delivery date, refund, or policy exception on the company's behalf — you draft it and flag it for a human to approve. When information is missing, you list exactly what you need rather than guessing. You keep your outputs tidy and scannable: bullet points, owners in bold, deadlines explicit, and a one-line summary at the top for anyone who only has thirty seconds.""",
-        "preload_slugs": [
-            "smart-meeting-brief",
-            "automated-support-ai",
-            "personalized-morning-coffee-newsletter",
+        "voice_preferences": "Tidy and scannable, with a one-line summary, clear bullets, owners, and explicit deadlines.",
+        "voice_samples": [
+            VoiceSample(
+                label="Bulleted and scannable",
+                text="Summary: Q3 kickoff is on track; one blocker to clear.\n- Priya — finalize vendor contract (due Fri)\n- You — approve budget line (due Wed)\n- Risk: design review is slipping; propose moving it to Thu.",
+            ),
+            VoiceSample(
+                label="Brief and prose",
+                text="Quick update: the Q3 kickoff is on track. Priya is finalizing the vendor contract by Friday and just needs your budget approval by Wednesday. The one risk is the design review slipping, so I'd move it to Thursday to stay ahead of it.",
+            ),
+        ],
+        "boundaries": "Never promise dates, refunds, or policy exceptions. Draft sensitive commitments and flag them for human approval.",
+        "preloads": [
+            {"slug": "smart-meeting-brief", "cron": None},
+            {"slug": "automated-support-ai", "cron": None},
+            # Daily 7:40am ops digest — the roster's single scheduled cadence,
+            # so expert schedule attribution has exactly one real case.
+            {"slug": "personalized-morning-coffee-newsletter", "cron": "40 7 * * *"},
         ],
     },
 ]
 
 
+# Cadences dropped when the roster consolidated on a single scheduled
+# workflow (Frankie's daily digest). _sync_preloads only reaches template
+# rows, so hires made before the change would keep firing these forever —
+# every seed run retries this cleanup until no hired copy still carries the
+# old template-managed cadence. Rows whose cron a user changed no longer
+# match and are deliberately left alone.
+REMOVED_TEMPLATE_CADENCES: list[tuple[str, str]] = [
+    ("automated-blog-writer", "0 9 * * 1"),
+    ("lead-finder-local-businesses", "0 8 * * 1"),
+    ("smart-meeting-brief", "0 7 * * 1-5"),
+]
+
+
 async def _resolve_active_version_id(slug: str) -> str | None:
+    # (owningUserId, slug) is the listing's uniqueness, and the username is
+    # unique, so this match is deterministic: at most one listing.
     listing = await prisma.models.StoreListing.prisma().find_first(
-        where={"slug": slug, "isDeleted": False}
+        where={
+            "slug": slug,
+            "isDeleted": False,
+            "CreatorProfile": {"is": {"username": OFFICIAL_CREATOR_USERNAME}},
+        }
     )
     if listing is None:
         return None
     return listing.activeVersionId
+
+
+async def _clear_removed_cadences() -> int:
+    """Migrate hired copies off cadences the roster no longer ships.
+
+    Deletes each hired copy's scheduler job by owner + scheduleId and clears
+    the row only once the job is confirmed gone (deleted now, or already
+    absent) — a scheduler failure preserves scheduleId/scheduleCron so the
+    next seed run retries, mirroring ``detach_expert_triggers``.
+    """
+    cleared = 0
+    live_by_owner: dict[str, set[str]] = {}
+    for slug, old_cron in REMOVED_TEMPLATE_CADENCES:
+        rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={
+                "StoreListingVersion": {
+                    "is": {
+                        "StoreListing": {
+                            "is": {
+                                "slug": slug,
+                                # No isDeleted filter: soft-deleting the listing
+                                # does not stop the hired copy's schedule, so
+                                # the migration must still reach those rows.
+                                "CreatorProfile": {
+                                    "is": {
+                                        "username": OFFICIAL_CREATOR_USERNAME,
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+                "scheduleCron": old_cron,
+                "Expert": {"is": {"isTemplate": False}},
+            },
+            include={"Expert": True},
+        )
+        for row in rows:
+            owner = row.Expert.ownerUserId if row.Expert else None
+            if owner is None:
+                continue
+            if row.scheduleId is not None and not await _delete_live_schedule(
+                owner, row.scheduleId, live_by_owner
+            ):
+                continue
+            await prisma.models.ExpertWorkflow.prisma().update(
+                where={"id": row.id},
+                data={"scheduleId": None, "scheduleCron": None},
+            )
+            cleared += 1
+    if cleared:
+        logger.info(f"Cleared removed roster cadences on {cleared} hired workflows")
+    return cleared
+
+
+async def _delete_live_schedule(
+    owner_id: str, schedule_id: str, live_by_owner: dict[str, set[str]]
+) -> bool:
+    """Delete *schedule_id* if the scheduler still has it for *owner_id*.
+
+    Returns True when the job is confirmed gone; False on any scheduler
+    failure so the caller keeps the row for a later retry.
+    """
+    try:
+        scheduler = get_scheduler_client()
+        if owner_id not in live_by_owner:
+            schedules = await scheduler.get_execution_schedules(
+                user_id=owner_id, kind="graph"
+            )
+            live_by_owner[owner_id] = {s.id for s in schedules}
+        if schedule_id not in live_by_owner[owner_id]:
+            return True
+        await scheduler.delete_schedule(schedule_id, user_id=owner_id)
+        live_by_owner[owner_id].discard(schedule_id)
+        return True
+    except Exception as e:
+        logger.warning(
+            f"Could not delete schedule #{schedule_id} for user #{owner_id}; "
+            f"keeping cadence for retry: {type(e).__name__}: {e}"
+        )
+        return False
 
 
 async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
@@ -129,6 +285,10 @@ async def _upsert_template(entry: RosterEntry) -> prisma.models.Expert:
         "tagline": entry["tagline"],
         "avatarUrl": entry["avatar_url"],
         "identity": entry["identity"],
+        "voicePreferences": encode_voice_preferences(
+            entry["voice_preferences"], entry.get("voice_samples") or []
+        ),
+        "boundaries": entry["boundaries"],
         "bio": entry["bio"],
         "skills": entry["skills"],
         "isArchived": False,
@@ -154,53 +314,92 @@ async def _backfill_hired_copies(template: prisma.models.Expert) -> int:
 
     A hire copies the template row, so roster updates would otherwise only
     ever reach new hires and everyone who hired earlier would keep a blank
-    avatar/bio/skills forever. ``name`` is deliberately excluded — users may
-    have renamed their hire — as are ``role``/``identity``, which drive live
-    persona behaviour.
+    avatar/tagline/bio/skills forever. ``name`` is deliberately excluded —
+    users may have renamed their hire — as are ``role``/``identity``, which
+    drive live persona behaviour.
     """
     return await prisma.models.Expert.prisma().update_many(
         where={"sourceTemplateId": template.id, "isTemplate": False},
         data={
             "avatarUrl": template.avatarUrl,
+            "tagline": template.tagline,
             "bio": template.bio,
             "skills": template.skills,
         },
     )
 
 
-async def _sync_preloads(template_id: str, entry: RosterEntry) -> None:
+async def _sync_preloads(
+    template_id: str,
+    entry: RosterEntry,
+    resolved_versions: Mapping[str, str] | None = None,
+) -> None:
     existing = await prisma.models.ExpertWorkflow.prisma().find_many(
         where={"expertId": template_id}
     )
-    existing_version_ids = {w.storeListingVersionId for w in existing}
-    for slug in entry["preload_slugs"]:
-        version_id = await _resolve_active_version_id(slug)
+    existing_by_version = {w.storeListingVersionId: w for w in existing}
+    for preload in entry["preloads"]:
+        version_id = (
+            resolved_versions.get(preload["slug"])
+            if resolved_versions is not None
+            else await _resolve_active_version_id(preload["slug"])
+        )
         if version_id is None:
             logger.warning(
-                f"Store listing slug '{slug}' not found; "
+                f"Store listing slug '{preload['slug']}' not found; "
                 f"skipping preload for expert '{entry['name']}'"
             )
             continue
-        if version_id in existing_version_ids:
-            continue
-        await prisma.models.ExpertWorkflow.prisma().create(
-            data={"expertId": template_id, "storeListingVersionId": version_id}
+        current = existing_by_version.get(version_id)
+        if current is None:
+            created = await prisma.models.ExpertWorkflow.prisma().create(
+                data={
+                    "expertId": template_id,
+                    "storeListingVersionId": version_id,
+                    "scheduleCron": preload["cron"],
+                }
+            )
+            existing_by_version[version_id] = created
+        elif current.scheduleCron != preload["cron"]:
+            # Cadence changes must reach existing template rows — the sync
+            # used to be create-only, which froze the roster's first cron.
+            await prisma.models.ExpertWorkflow.prisma().update(
+                where={"id": current.id},
+                data={"scheduleCron": preload["cron"]},
+            )
+
+
+async def _resolve_roster_preloads() -> dict[str, str]:
+    slugs = {preload["slug"] for entry in ROSTER for preload in entry["preloads"]}
+    resolved = {
+        slug: version_id
+        for slug in sorted(slugs)
+        if (version_id := await _resolve_active_version_id(slug)) is not None
+    }
+    missing = sorted(slugs - resolved.keys())
+    if missing:
+        raise RuntimeError(
+            f"Official creator '{OFFICIAL_CREATOR_USERNAME}' is missing roster "
+            f"listings for: {', '.join(missing)}. Load marketplace store assets "
+            "before seeding the expert roster."
         )
-        existing_version_ids.add(version_id)
+    return resolved
 
 
 async def seed_roster() -> list[str]:
     """Upsert the roster templates and their preloads. Returns template ids."""
+    resolved_versions = await _resolve_roster_preloads()
     template_ids = []
     for entry in ROSTER:
         template = await _upsert_template(entry)
-        await _sync_preloads(template.id, entry)
+        await _sync_preloads(template.id, entry, resolved_versions)
         refreshed = await _backfill_hired_copies(template)
         template_ids.append(template.id)
         logger.info(
             f"Seeded expert template '{entry['name']}' (#{template.id}); "
             f"refreshed {refreshed} hired copies"
         )
+    await _clear_removed_cadences()
     return template_ids
 
 

@@ -28,16 +28,16 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { RecentChats } from "./components/RecentChats/RecentChats";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
-import { SidebarSearch } from "./components/SidebarSearch/SidebarSearch";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import {
   ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
+  Home01Icon,
   NoteEditIcon,
   Store01Icon,
-  UserGroupIcon,
+  UserGroup02Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -53,6 +53,10 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
+
+// /home 404s without the experts flag, so the entry only exists for the
+// cohort that has a home to go to.
+const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -136,6 +140,35 @@ function NewTaskItem() {
   );
 }
 
+interface NavItemProps {
+  link: NavLink;
+}
+
+function NavItem({ link }: NavItemProps) {
+  const pathname = usePathname();
+  const navItemClassName = useNavItemClassName();
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        tooltip={link.name}
+        isActive={isLinkActive(pathname, link.href)}
+        className={navItemClassName}
+      >
+        <Link href={link.href}>
+          <Icon
+            icon={link.icon}
+            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+          />
+          <span className="truncate">{link.name}</span>
+          <NavLinkLoader />
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 function NavMenu({
   links,
   leading,
@@ -143,30 +176,11 @@ function NavMenu({
   links: NavLink[];
   leading?: ReactNode;
 }) {
-  const pathname = usePathname();
-  const navItemClassName = useNavItemClassName();
-
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:gap-1">
       {leading}
       {links.map((link) => (
-        <SidebarMenuItem key={link.href}>
-          <SidebarMenuButton
-            asChild
-            tooltip={link.name}
-            isActive={isLinkActive(pathname, link.href)}
-            className={navItemClassName}
-          >
-            <Link href={link.href}>
-              <Icon
-                icon={link.icon}
-                className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
-              />
-              <span className="truncate">{link.name}</span>
-              <NavLinkLoader />
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <NavItem key={link.href} link={link} />
       ))}
     </SidebarMenu>
   );
@@ -237,7 +251,10 @@ export function AppSidebar(props: Props) {
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
   const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: UserGroupIcon }, ...WORKSPACE_LINKS]
+    ? [
+        { name: "Team", href: "/team", icon: UserGroup02Icon },
+        ...WORKSPACE_LINKS,
+      ]
     : WORKSPACE_LINKS;
 
   // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
@@ -282,8 +299,8 @@ export function AppSidebar(props: Props) {
                   links={mainLinks}
                   leading={
                     <>
+                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
                       <NewTaskItem />
-                      <SidebarSearch />
                     </>
                   }
                 />

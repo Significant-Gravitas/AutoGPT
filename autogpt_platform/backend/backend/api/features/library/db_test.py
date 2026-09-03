@@ -9,12 +9,44 @@ import prisma.fields
 import prisma.models
 import pytest
 
+from backend.api.features.experts import experts_db
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import MissingConfigError, NotFoundError
 
 from . import db
 from . import model as library_model
+
+
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+@pytest.mark.asyncio
+async def test_list_presets_filters_exact_expert_scope(mocker, expert_id):
+    client = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    mocker.patch("prisma.models.AgentPreset.prisma", return_value=client)
+
+    await db.list_presets(
+        user_id="user-1",
+        page=2,
+        page_size=25,
+        expert_id=expert_id,
+        filter_by_expert=True,
+    )
+
+    expected_where = {
+        "userId": "user-1",
+        "isDeleted": False,
+        "expertId": expert_id,
+    }
+    client.find_many.assert_awaited_once_with(
+        where=expected_where,
+        skip=25,
+        take=25,
+        include=db.AGENT_PRESET_INCLUDE,
+    )
+    client.count.assert_awaited_once_with(where=expected_where)
 
 
 @pytest.mark.asyncio
@@ -73,6 +105,12 @@ async def test_get_library_agents(mocker):
         return_value=mock_library_agents
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    # Function-scoped-loop tests must never run real prisma queries: a pooled
+    # connection created here would outlive this test's event loop and break
+    # later session-loop tests with "Event loop is closed".
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
@@ -173,6 +211,142 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     } in where["OR"]
 
 
+@pytest.mark.asyncio
+async def test_list_library_agents_exposes_matching_store_version_id(mocker):
+    """The list response carries the approved StoreListingVersion id matching
+    the agent's exact graph_id + graph_version, so install flows stay
+    version-stable instead of resolving the listing's current active version."""
+    mock_library_agents = [
+        prisma.models.LibraryAgent(
+            id="ua1",
+            userId="test-user",
+            agentGraphId="agent2",
+            settings=cast(prisma.fields.Json, "{}"),
+            agentGraphVersion=3,
+            isCreatedByUser=False,
+            isDeleted=False,
+            isArchived=False,
+            isHidden=False,
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
+            isFavorite=False,
+            useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
+            AgentGraph=prisma.models.AgentGraph(
+                id="agent2",
+                version=3,
+                name="Test Agent 2",
+                description="Test Description 2",
+                userId="other-user",
+                isActive=True,
+                createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
+            ),
+        )
+    ]
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    matching_version = MagicMock(
+        id="slv-exact", agentGraphId="agent2", agentGraphVersion=3
+    )
+    older_matching_version = MagicMock(
+        id="slv-older", agentGraphId="agent2", agentGraphVersion=3
+    )
+    wrong_version = MagicMock(
+        id="slv-other-version", agentGraphId="agent2", agentGraphVersion=4
+    )
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv_find_many = mocker.AsyncMock(
+        return_value=[wrong_version, matching_version, older_matching_version]
+    )
+    mock_slv.return_value.find_many = mock_slv_find_many
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    result = await db.list_library_agents("test-user")
+
+    assert result.agents[0].store_listing_version_id == "slv-exact"
+    where = mock_slv_find_many.call_args.kwargs["where"]
+    assert where["OR"] == [{"agentGraphId": "agent2", "agentGraphVersion": 3}]
+    assert where["submissionStatus"] == prisma.enums.SubmissionStatus.APPROVED
+    assert where["isDeleted"] is False
+    assert where["isAvailable"] is True
+    assert where["StoreListing"] == {"is": {"isDeleted": False}}
+    assert mock_slv_find_many.call_args.kwargs["distinct"] == [
+        "agentGraphId",
+        "agentGraphVersion",
+    ]
+    assert mock_slv_find_many.call_args.kwargs["order"] == [
+        {"agentGraphId": "asc"},
+        {"agentGraphVersion": "asc"},
+        {"createdAt": "desc"},
+        {"id": "desc"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_store_version_lookup_fails_soft(mocker):
+    """A failing StoreListingVersion lookup must not break the library list;
+    agents just come back without a store_listing_version_id."""
+    mock_library_agents = [
+        prisma.models.LibraryAgent(
+            id="ua1",
+            userId="test-user",
+            agentGraphId="agent2",
+            settings=cast(prisma.fields.Json, "{}"),
+            agentGraphVersion=1,
+            isCreatedByUser=False,
+            isDeleted=False,
+            isArchived=False,
+            isHidden=False,
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
+            isFavorite=False,
+            useGraphIsActiveVersion=True,
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
+            AgentGraph=prisma.models.AgentGraph(
+                id="agent2",
+                version=1,
+                name="Test Agent 2",
+                description="Test Description 2",
+                userId="other-user",
+                isActive=True,
+                createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
+            ),
+        )
+    ]
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    result = await db.list_library_agents("test-user")
+
+    assert len(result.agents) == 1
+    assert result.agents[0].store_listing_version_id is None
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     mocker.patch(
@@ -233,11 +407,12 @@ async def test_add_agent_to_library(mocker):
     mock_store_listing_version = mocker.patch(
         "prisma.models.StoreListingVersion.prisma"
     )
-    mock_store_listing_version.return_value.find_unique = mocker.AsyncMock(
+    mock_store_listing_version.return_value.find_first = mocker.AsyncMock(
         return_value=mock_store_listing_data
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
@@ -265,9 +440,15 @@ async def test_add_agent_to_library(mocker):
     await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mocks called correctly
-    mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
-    )
+    resolve_call = mock_store_listing_version.return_value.find_first.call_args
+    assert resolve_call.kwargs["where"] == {
+        "id": "version123",
+        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        "isDeleted": False,
+        "isAvailable": True,
+        "StoreListing": {"is": {"isDeleted": False}},
+    }
+    assert resolve_call.kwargs["include"] == {"AgentGraph": True}
     # Check that create was called with the expected data including settings
     create_call_args = mock_library_agent.return_value.create.call_args
     assert create_call_args is not None
@@ -291,6 +472,95 @@ async def test_add_agent_to_library(mocker):
     assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
+    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "version123"
+
+
+@pytest.mark.asyncio
+async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker):
+    agent_graph = MagicMock(id="agent1", version=1)
+    store_version = MagicMock(
+        id="version123",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        AgentGraph=agent_graph,
+        description="Marketplace description",
+        imageUrls=["https://example.com/agent.png"],
+    )
+    store_version.name = "Marketplace agent"
+    existing = MagicMock(id="library-agent")
+    restored = MagicMock(id="library-agent")
+    converted = MagicMock(id="library-agent")
+
+    store_client = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    store_client.return_value.find_first = mocker.AsyncMock(return_value=store_version)
+    library_client = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_client.return_value.find_unique = mocker.AsyncMock(return_value=existing)
+    library_client.return_value.update = mocker.AsyncMock(return_value=restored)
+    library_client.return_value.create = mocker.AsyncMock()
+    get_graph = mocker.patch(
+        "backend.api.features.library._add_to_library.graph_db.get_graph",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    from_db = mocker.patch(
+        "backend.api.features.library.model.LibraryAgent.from_db",
+        return_value=converted,
+    )
+
+    result = await db.add_store_agent_to_library("version123", "test-user")
+
+    assert result is converted
+    get_graph.assert_not_awaited()
+    library_client.return_value.create.assert_not_awaited()
+    update_call = library_client.return_value.update.call_args
+    assert update_call.kwargs["where"] == {
+        "userId_agentGraphId_agentGraphVersion": {
+            "userId": "test-user",
+            "agentGraphId": "agent1",
+            "agentGraphVersion": 1,
+        }
+    }
+    assert update_call.kwargs["data"] == {
+        "isDeleted": False,
+        "isArchived": False,
+        "name": "Marketplace agent",
+        "description": "Marketplace description",
+        "imageUrl": "https://example.com/agent.png",
+    }
+    from_db.assert_called_once_with(
+        restored,
+        schedule_info={},
+        store_listing_version_id="version123",
+    )
+
+
+@pytest.mark.asyncio
+async def test_restore_existing_library_agent_handles_deleted_update(mocker):
+    from backend.api.features.library._add_to_library import (
+        restore_existing_library_agent,
+    )
+
+    agent_graph = MagicMock(id="agent1", version=1)
+    store_version = MagicMock(id="version123", AgentGraph=agent_graph)
+    library_client = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_client.return_value.find_unique = mocker.AsyncMock(
+        return_value=MagicMock(id="library-agent")
+    )
+    library_client.return_value.update = mocker.AsyncMock(return_value=None)
+    fetch_schedule_info = mocker.patch(
+        "backend.api.features.library._add_to_library._fetch_schedule_info",
+        new=mocker.AsyncMock(),
+    )
+    from_db = mocker.patch("backend.api.features.library.model.LibraryAgent.from_db")
+
+    result = await restore_existing_library_agent(store_version, "test-user")
+
+    assert result is None
+    fetch_schedule_info.assert_not_awaited()
+    from_db.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -304,7 +574,7 @@ async def test_add_agent_to_library_not_found(mocker):
     mock_store_listing_version = mocker.patch(
         "prisma.models.StoreListingVersion.prisma"
     )
-    mock_store_listing_version.return_value.find_unique = mocker.AsyncMock(
+    mock_store_listing_version.return_value.find_first = mocker.AsyncMock(
         return_value=None
     )
 
@@ -313,9 +583,7 @@ async def test_add_agent_to_library_not_found(mocker):
         await db.add_store_agent_to_library("version123", "test-user")
 
     # Verify mock called correctly
-    mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"AgentGraph": True}
-    )
+    mock_store_listing_version.return_value.find_first.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -543,6 +811,12 @@ async def test_list_favorite_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
+    matching_version = MagicMock(
+        id="slv-favorite", agentGraphId="agent-fav", agentGraphVersion=1
+    )
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[matching_version])
+
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
         new=mocker.AsyncMock(return_value={"agent-fav": 7}),
@@ -554,10 +828,67 @@ async def test_list_favorite_library_agents(mocker):
     assert result.agents[0].id == "fav1"
     assert result.agents[0].name == "Favorite Agent"
     assert result.agents[0].graph_id == "agent-fav"
+    assert result.agents[0].store_listing_version_id == "slv-favorite"
     assert result.pagination.total_items == 1
     assert result.pagination.total_pages == 1
     assert result.pagination.current_page == 1
     assert result.pagination.page_size == 50
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_exposes_matching_store_version_id(mocker):
+    agent_graph = MagicMock(id="graph-id", version=7)
+    library_agent = MagicMock(
+        id="library-id",
+        agentGraphId="graph-id",
+        agentGraphVersion=7,
+        AgentGraph=agent_graph,
+    )
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(
+        return_value=library_agent
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_marketplace_details",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_matching_store_version_ids",
+        new=mocker.AsyncMock(return_value={("graph-id", 7): "slv-exact"}),
+    )
+    mocker.patch.object(
+        db.graph_db, "get_sub_graphs", new=mocker.AsyncMock(return_value=[])
+    )
+    converted = MagicMock()
+    mock_from_db = mocker.patch.object(
+        library_model.LibraryAgent, "from_db", return_value=converted
+    )
+
+    result = await db.get_library_agent("library-id", "test-user")
+
+    assert result is converted
+    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "slv-exact"
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_rejects_missing_graph(mocker):
+    library_agent = MagicMock(id="library-id", AgentGraph=None)
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(
+        return_value=library_agent
+    )
+    mock_from_db = mocker.patch.object(library_model.LibraryAgent, "from_db")
+
+    with pytest.raises(
+        NotFoundError, match="Agent graph for library agent #library-id not found"
+    ):
+        await db.get_library_agent("library-id", "test-user")
+
+    mock_from_db.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -597,6 +928,9 @@ async def test_list_library_agents_skips_failed_agent(mocker):
         return_value=mock_library_agents
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[])
 
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
@@ -895,6 +1229,7 @@ async def test_create_preset_inherits_graph_org(mocker):
     """A preset lives in the same org/team as the graph it runs
     (resource-follows-parent), regardless of the caller's active org."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-1",
         userId="test-user",
         name="My Preset",
@@ -948,6 +1283,7 @@ async def test_create_preset_tenantless_graph_creates_untagged(mocker):
     """Graphs predating org tagging have no org — the preset create must
     not write organizationId/teamId keys at all (backfill sweep owns them)."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-2",
         userId="test-user",
         name="My Preset",
@@ -1057,6 +1393,7 @@ async def test_create_preset_rejects_foreign_webhook(mocker):
 async def test_create_preset_accepts_own_webhook(mocker):
     """Binding the caller's OWN webhook is allowed and persisted."""
     created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-own-wh",
         userId="owner",
         name="My Preset",
@@ -1104,6 +1441,339 @@ async def test_create_preset_accepts_own_webhook(mocker):
     assert create_data["webhookId"] == "own-webhook"
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_expert_preset_forces_personal_tenancy(mocker):
+    # create_preset opens a real transaction for the expert-attribution row
+    # lock, so this test must run on the session loop the Prisma client is
+    # bound to (function-loop runs die with "Event bound to a different event
+    # loop"). The lock query itself is mocked: the test DB has no Expert row.
+    await connect()
+    created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-expert",
+        userId="owner",
+        name="Expert Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+        organizationId="personal-org",
+        teamId="personal-team",
+        expertId="expert-1",
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(organization_id="shared-org", team_id="shared-team")
+        ),
+    )
+    tenancy = mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+    mocker.patch.object(
+        db,
+        "resolve_attributable_expert",
+        new=AsyncMock(return_value="expert-1"),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="owner",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=1,
+            name="Expert Preset",
+            description="",
+            is_active=True,
+        ),
+        expert_id="expert-1",
+    )
+
+    tenancy.assert_awaited_once_with("owner", "expert-1")
+    create_data = mock_preset_client.create.await_args.kwargs["data"]
+    assert create_data["organizationId"] == "personal-org"
+    assert create_data["teamId"] == "personal-team"
+    assert create_data["expertId"] == "expert-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_expert_preset_accepts_matching_private_webhook(mocker):
+    # Session loop + real connection for the same reason as
+    # test_create_expert_preset_forces_personal_tenancy above.
+    await connect()
+    created_row = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-expert",
+        userId="owner",
+        name="Expert Preset",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+        organizationId="personal-org",
+        teamId="personal-team",
+        expertId="expert-1",
+    )
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(organization_id="shared-org", team_id="shared-team")
+        ),
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(
+            return_value=MagicMock(
+                user_id="owner",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+        ),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+    mocker.patch.object(
+        db,
+        "resolve_attributable_expert",
+        new=AsyncMock(return_value="expert-1"),
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.create.return_value = created_row
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    await db.create_preset(
+        user_id="owner",
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs={},
+            credentials={},
+            graph_id="graph-1",
+            graph_version=1,
+            name="Expert Preset",
+            description="",
+            is_active=True,
+        ),
+        webhook_id="private-webhook",
+        expert_id="expert-1",
+    )
+
+    create_data = mock_preset_client.create.await_args.kwargs["data"]
+    assert create_data["webhookId"] == "private-webhook"
+    assert create_data["organizationId"] == "personal-org"
+    assert create_data["teamId"] == "personal-team"
+    assert create_data["expertId"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_create_expert_preset_rejects_shared_webhook(mocker):
+    mocker.patch.object(
+        db.graph_db,
+        "get_graph",
+        new=AsyncMock(
+            return_value=MagicMock(organization_id="shared-org", team_id="shared-team")
+        ),
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(
+            return_value=MagicMock(
+                user_id="owner",
+                organization_id="shared-org",
+                team_id="shared-team",
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError, match="Webhook"):
+        await db.create_preset(
+            user_id="owner",
+            preset=library_model.LibraryAgentPresetCreatable(
+                inputs={},
+                credentials={},
+                graph_id="graph-1",
+                graph_version=1,
+                name="Expert Preset",
+                description="",
+                is_active=True,
+            ),
+            webhook_id="shared-webhook",
+            expert_id="expert-1",
+        )
+
+    mock_preset_client.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
+    current = MagicMock(
+        id="preset-1",
+        name="Old name",
+        expert_id="expert-1",
+        organization_id="old-personal-org",
+        team_id="old-personal-team",
+    )
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=current),
+    )
+    tenancy = mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("current-personal-org", "current-personal-team")),
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    mock_preset_client = AsyncMock()
+    mock_preset_client.update.return_value = MagicMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset,
+        "from_db",
+        return_value=MagicMock(),
+    )
+
+    await db.update_preset(
+        user_id="owner",
+        preset_id="preset-1",
+        name="New name",
+        is_active=True,
+    )
+
+    tenancy.assert_awaited_once_with("owner", "expert-1")
+    update_data = mock_preset_client.update.await_args.kwargs["data"]
+    assert update_data == {
+        "organizationId": "current-personal-org",
+        "teamId": "current-personal-team",
+        "name": "New name",
+        "isActive": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_fails_before_mutation_when_expert_is_unavailable(
+    mocker,
+):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(
+            return_value=MagicMock(name="Preset", expert_id="unavailable-expert")
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(side_effect=experts_db.ExpertNotFoundError("unavailable-expert")),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(NotFoundError, match="Preset #preset-1 not found"):
+        await db.update_preset(
+            user_id="attacker",
+            preset_id="preset-1",
+            is_active=True,
+        )
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_propagates_transient_tenancy_failure(mocker):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(name="Preset", expert_id="expert-1")),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await db.update_preset(
+            user_id="owner",
+            preset_id="preset-1",
+            is_active=True,
+        )
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_expert_preset_maps_missing_workspace_before_mutation(mocker):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(name="Preset", expert_id="expert-1")),
+    )
+    mocker.patch.object(
+        experts_db,
+        "resolve_private_expert_tenancy",
+        new=AsyncMock(
+            side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+        ),
+    )
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+
+    with pytest.raises(MissingConfigError, match="still being set up"):
+        await db.update_preset(
+            user_id="owner",
+            preset_id="preset-1",
+            is_active=True,
+        )
+
+    mock_preset_client.update.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_creatable_preset_model_has_no_webhook_id_field():
     """The public create request model must not expose `webhook_id`; a
@@ -1132,6 +1802,7 @@ async def test_set_preset_webhook_rejects_foreign_webhook(mocker):
     """set_preset_webhook must reject a webhook owned by another user
     (GHSA-4m2w-qfr5-9f3v)."""
     existing = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
         id="preset-1",
         userId="owner",
         name="p",
@@ -1158,6 +1829,105 @@ async def test_set_preset_webhook_rejects_foreign_webhook(mocker):
 
     with pytest.raises(NotFoundError):
         await db.set_preset_webhook("owner", "preset-1", "foreign-webhook")
+
+    mock_preset_client.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_expert_preset_webhook_rehomes_legacy_preset(mocker):
+    existing = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-1",
+        userId="owner",
+        name="p",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+        organizationId="shared-org",
+        teamId="shared-team",
+        expertId="expert-1",
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.find_unique.return_value = existing
+    mock_preset_client.update.return_value = existing.model_copy(
+        update={"organizationId": "personal-org", "teamId": "personal-team"}
+    )
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(
+            return_value=MagicMock(
+                user_id="owner",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("personal-org", "personal-team")),
+    )
+
+    await db.set_preset_webhook("owner", "preset-1", "personal-webhook")
+
+    update_data = mock_preset_client.update.await_args.kwargs["data"]
+    assert update_data["Webhook"] == {"connect": {"id": "personal-webhook"}}
+    assert update_data["organizationId"] == "personal-org"
+    assert update_data["teamId"] == "personal-team"
+
+
+@pytest.mark.asyncio
+async def test_set_expert_preset_webhook_rejects_stale_webhook_without_rehome(mocker):
+    existing = prisma.models.AgentPreset(
+        deactivatedByExpertArchive=False,
+        id="preset-1",
+        userId="owner",
+        name="p",
+        description="",
+        agentGraphId="graph-1",
+        agentGraphVersion=1,
+        isActive=True,
+        isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        InputPresets=[],
+        organizationId="old-personal-org",
+        teamId="old-personal-team",
+        expertId="expert-1",
+    )
+    mock_preset_client = AsyncMock()
+    mock_preset_client.find_unique.return_value = existing
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        db.integrations_db,
+        "get_webhook",
+        new=AsyncMock(
+            return_value=MagicMock(
+                user_id="owner",
+                organization_id="old-personal-org",
+                team_id="old-personal-team",
+            )
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.experts.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("current-personal-org", "current-personal-team")),
+    )
+
+    with pytest.raises(NotFoundError, match="Webhook"):
+        await db.set_preset_webhook("owner", "preset-1", "stale-webhook")
 
     mock_preset_client.update.assert_not_called()
 

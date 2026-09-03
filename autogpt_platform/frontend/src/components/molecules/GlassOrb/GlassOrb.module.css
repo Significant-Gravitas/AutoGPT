@@ -135,3 +135,10 @@
     transform: rotate(-14deg) translate(6%, -8%) scale(1.18);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .blob {
+    animation: none;
+  }
+}
