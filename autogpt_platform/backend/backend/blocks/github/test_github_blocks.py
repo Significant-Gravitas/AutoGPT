@@ -544,26 +544,24 @@ class TestListReviewers:
         assert len(_list_reviewers([_review(None, "APPROVED")])) == 1
 
 
-# ── read_pr_full_object tests ──
+# ── read_pr tests ──
 
 
 PR_ENDPOINT_URL = "https://github.com/owner/repo/pulls/1"
 
 
-class TestReadPrFullObject:
+class TestReadPr:
     def test_hits_the_pulls_endpoint_not_the_issues_endpoint(self):
         api = _FakeApi({PR_ENDPOINT_URL: {}})
         with mock.patch.object(pull_requests, "get_api", lambda *a, **kw: api):
-            asyncio.run(
-                GithubReadPullRequestBlock.read_pr_full_object(TEST_CREDENTIALS, PR_URL)
-            )
+            asyncio.run(GithubReadPullRequestBlock.read_pr(TEST_CREDENTIALS, PR_URL))
         assert api.calls[0][1] == PR_ENDPOINT_URL
 
     def test_returns_the_raw_response_body(self):
         api = _FakeApi({PR_ENDPOINT_URL: TEST_PR_PAYLOAD})
         with mock.patch.object(pull_requests, "get_api", lambda *a, **kw: api):
             result = asyncio.run(
-                GithubReadPullRequestBlock.read_pr_full_object(TEST_CREDENTIALS, PR_URL)
+                GithubReadPullRequestBlock.read_pr(TEST_CREDENTIALS, PR_URL)
             )
         assert result == TEST_PR_PAYLOAD
 

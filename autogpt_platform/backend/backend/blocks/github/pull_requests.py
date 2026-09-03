@@ -327,17 +327,38 @@ class GithubReadPullRequestBlock(Block):
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
-                "read_pr_full_object": lambda *args, **kwargs: TEST_PR_PAYLOAD,
+                "read_pr": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
         )
 
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        pull_request = await self.read_pr(
+            credentials,
+            input_data.pr_url,
+        )
+        title, body, author = self._pr_summary(pull_request)
+        yield "title", title
+        yield "body", body
+        yield "author", author
+        yield "pull_request", pull_request
+
+        if input_data.include_pr_changes:
+            changes = await self.read_pr_changes(
+                credentials,
+                input_data.pr_url,
+            )
+            yield "changes", changes
+
     @staticmethod
-    async def read_pr_full_object(credentials: GithubCredentials, pr_url: str) -> dict:
+    async def read_pr(credentials: GithubCredentials, pr_url: str) -> dict:
         api = get_api(credentials)
-        # The full object (incl. title/body/author) only lives on the pulls
-        # endpoint; the issues endpoint returns the same title/body/author
-        # but omits head/base/mergeability.
         pr_api_url = prepare_pr_api_url(pr_url=pr_url, path="").rstrip("/")
         response = await api.get(pr_api_url)
         return response.json()
@@ -377,30 +398,6 @@ class GithubReadPullRequestBlock(Block):
                 patch_header += f"+++ {is_filename}\n"
             changes.append(patch_header + diff)
         return "\n\n".join(changes)
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: GithubCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        pull_request = await self.read_pr_full_object(
-            credentials,
-            input_data.pr_url,
-        )
-        title, body, author = self._pr_summary(pull_request)
-        yield "title", title
-        yield "body", body
-        yield "author", author
-        yield "pull_request", pull_request
-
-        if input_data.include_pr_changes:
-            changes = await self.read_pr_changes(
-                credentials,
-                input_data.pr_url,
-            )
-            yield "changes", changes
 
 
 class GithubAssignPRReviewerBlock(Block):
