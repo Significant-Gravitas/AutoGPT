@@ -43,7 +43,7 @@ export function HomeEmptyIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : index * 0.08,
           }}
-          style={{ transformOrigin: "120px 52px", transformBox: "fill-box" }}
+          className="origin-[120px_52px] [transform-box:fill-box]"
         >
           <Card x={card.x} y={card.y} width={card.width} />
         </motion.g>
@@ -74,15 +74,14 @@ function Card({ x, y, width }: CardProps) {
         height={height}
         rx={radius}
         ry={radius}
-        fill="white"
-        stroke="#E4E4E7"
         strokeWidth={1}
+        className="fill-white stroke-zinc-200"
       />
       <circle
         cx={x + padding + dotRadius}
         cy={midY}
         r={dotRadius}
-        fill="#E4E4E7"
+        className="fill-zinc-200"
       />
       <rect
         x={x + padding + dotRadius * 2 + 8}
@@ -91,7 +90,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        fill="#E4E4E7"
+        className="fill-zinc-200"
       />
       <rect
         x={x + width - padding - 52}
@@ -100,7 +99,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        fill="#E4E4E7"
+        className="fill-zinc-200"
       />
       <rect
         x={x + width - padding - 38}
@@ -109,7 +108,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={2}
         ry={2}
-        fill="#E4E4E7"
+        className="fill-zinc-200"
       />
       <rect
         x={x + width - padding - 24}
@@ -118,7 +117,7 @@ function Card({ x, y, width }: CardProps) {
         height={8}
         rx={4}
         ry={4}
-        fill="#E4E4E7"
+        className="fill-zinc-200"
       />
     </g>
   );

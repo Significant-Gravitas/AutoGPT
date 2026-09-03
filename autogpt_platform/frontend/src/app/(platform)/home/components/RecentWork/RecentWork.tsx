@@ -39,9 +39,15 @@ export function RecentWork({ dashboard, className }: Props) {
   } = useOutcomeFilter({ outcomes: briefing.outcomes });
   const runs = useWorkflowRuns();
   const hasOutcomes = briefing.outcomes.length > 0;
+  const hasRoutine = briefing.routine_count > 0;
   const hasGroups = groups.length > 0;
   const hasRuns = runs.length > 0;
-  const isEmpty = !hasOutcomes && !hasGroups && !hasRuns && !briefing.narrative;
+  const isEmpty =
+    !hasOutcomes &&
+    !hasRoutine &&
+    !hasGroups &&
+    !hasRuns &&
+    !briefing.narrative;
 
   return (
     <HomeTile
@@ -95,7 +101,9 @@ export function RecentWork({ dashboard, className }: Props) {
             </Text>
           ) : null}
 
-          {hasOutcomes ? (
+          {/* A day of only routine work still has a count to report, so the
+              section stands even when no outcome earned a row. */}
+          {hasOutcomes || hasRoutine ? (
             <section aria-label="Outcomes" className="pb-1">
               <HomeSectionLabel>Outcomes</HomeSectionLabel>
               <div className="divide-y divide-zinc-100">
@@ -103,7 +111,7 @@ export function RecentWork({ dashboard, className }: Props) {
                   <OutcomeRow key={outcome.id} outcome={outcome} />
                 ))}
               </div>
-              {briefing.routine_count > 0 ? (
+              {hasRoutine ? (
                 <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-zinc-500">
                   <Icon
                     icon={CheckmarkCircle02Icon}
