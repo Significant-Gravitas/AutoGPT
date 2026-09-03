@@ -12,6 +12,13 @@ on:
         required: true
         default: 'master'
         type: string
+      resolve_rolled_back:
+        description: >-
+          Migration name to mark rolled-back before deploying (recovers a
+          failed _prisma_migrations row, e.g. 20260415000000_org_tenancy_cutover)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: 'read'
@@ -38,6 +45,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install prisma
+
+      - name: Resolve failed migration (manual dispatch only)
+        if: ${{ github.event.inputs.resolve_rolled_back != '' }}
+        working-directory: ./autogpt_platform/backend
+        run: |
+          python -m prisma migrate resolve --rolled-back "$MIGRATION_NAME"
+        env:
+          MIGRATION_NAME: ${{ github.event.inputs.resolve_rolled_back }}
+          DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
       - name: Run Backend Migrations
         working-directory: ./autogpt_platform/backend

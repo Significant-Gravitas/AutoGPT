@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { WarningDiamondIcon } from "@phosphor-icons/react";
+import { AlertDiamondIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   message?: string;
@@ -26,9 +27,9 @@ export function ToolErrorCard({
   return (
     <div className="space-y-3 rounded-lg bg-red-50 p-4">
       <div className="flex items-start gap-2">
-        <WarningDiamondIcon
+        <Icon
+          icon={AlertDiamondIcon}
           size={20}
-          weight="regular"
           className="mt-0.5 shrink-0 text-red-500"
         />
         <div className="flex-1 space-y-2">

@@ -1,13 +1,13 @@
 "use client";
 
 import { forwardRef } from "react";
-import {
-  CircleNotchIcon,
-  MagnifyingGlassIcon,
-  XIcon,
-} from "@phosphor-icons/react";
-
 import { cn } from "@/lib/utils";
+import {
+  Cancel01Icon,
+  Loading03Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   value: string;
@@ -49,7 +49,8 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
     const hasValue = value.length > 0;
     return (
       <div className={cn("relative w-full", className)}>
-        <MagnifyingGlassIcon
+        <Icon
+          icon={Search01Icon}
           size={size === "small" ? 16 : 20}
           className={cn(
             "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
@@ -80,9 +81,9 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
               iconOffset[size].right,
             )}
           >
-            <CircleNotchIcon
+            <Icon
+              icon={Loading03Icon}
               size={size === "small" ? 14 : 16}
-              weight="bold"
               className="animate-spin"
             />
           </span>
@@ -96,7 +97,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
               iconOffset[size].right,
             )}
           >
-            <XIcon size={size === "small" ? 12 : 14} weight="bold" />
+            <Icon icon={Cancel01Icon} size={size === "small" ? 12 : 14} />
           </button>
         ) : null}
       </div>

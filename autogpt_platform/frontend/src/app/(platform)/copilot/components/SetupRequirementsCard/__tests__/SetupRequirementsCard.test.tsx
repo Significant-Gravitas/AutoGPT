@@ -19,8 +19,26 @@ vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
 vi.mock(
   "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView",
   () => ({
-    CredentialsGroupedView: () => (
-      <div data-testid="credentials-grouped-view">Credentials</div>
+    CredentialsGroupedView: ({
+      requiredCredentials,
+      onCredentialChange,
+    }: {
+      requiredCredentials: Set<string>;
+      onCredentialChange: (key: string, value?: { id: string }) => void;
+    }) => (
+      <div data-testid="credentials-grouped-view">
+        Credentials
+        <button
+          data-testid="select-credential"
+          onClick={() =>
+            [...requiredCredentials].forEach((key) =>
+              onCredentialChange(key, { id: `cred-${key}` }),
+            )
+          }
+        >
+          Select
+        </button>
+      </div>
     ),
   }),
 );
@@ -601,5 +619,37 @@ describe("SetupRequirementsCard (session-scoped dismissal)", () => {
     // risk that the microtask used to guard against).
     expect(screen.getByText(/Connected. Continuing/)).toBeDefined();
     await waitFor(() => expect(mockOnSend).toHaveBeenCalledOnce());
+  });
+});
+
+describe("SetupRequirementsCard (trigger mode)", () => {
+  it("carries the picked credential IDs back on Proceed", () => {
+    render(
+      <SetupRequirementsCard
+        inputsMode="trigger"
+        credentialsLabel="Account"
+        output={makeOutput({
+          missingCredentials: {
+            github_credentials: { provider: "github", types: ["api_key"] },
+          },
+        })}
+      />,
+    );
+
+    // Trigger mode labels the credentials section "Account".
+    expect(screen.getByText("Account")).toBeDefined();
+
+    // Proceed stays disabled until a credential is selected.
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId("select-credential"));
+    expect(screen.getByText("Proceed").closest("button")?.disabled).toBe(false);
+
+    fireEvent.click(screen.getByText("Proceed"));
+    const sent = mockOnSend.mock.calls[0][0] as string;
+    expect(sent).toContain("setup_agent_webhook_trigger");
+    expect(sent).toContain(
+      'credentials={"github_credentials":"cred-github_credentials"}',
+    );
   });
 });

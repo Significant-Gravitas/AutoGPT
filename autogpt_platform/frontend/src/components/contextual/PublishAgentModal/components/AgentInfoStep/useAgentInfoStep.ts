@@ -85,9 +85,15 @@ export function useAgentInfoStep({
     }
   }, [selectedAgentId, agentId]);
 
-  const handleImagesChange = useCallback((newImages: string[]) => {
-    setImages(newImages);
-  }, []);
+  const handleImagesChange = useCallback(
+    (newImages: string[]) => {
+      setImages(newImages);
+      if (newImages.length > 0) {
+        form.clearErrors("root");
+      }
+    },
+    [form],
+  );
 
   async function handleFormSubmit(data: PublishAgentFormData) {
     // Validate that at least one image is present

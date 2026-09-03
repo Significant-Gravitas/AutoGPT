@@ -148,6 +148,7 @@ class WorkspaceFileItem(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
+    folder_id: str | None = None
     metadata: dict = Field(default_factory=dict)
     origin: Literal["uploaded", "generated"]
     created_at: str
@@ -400,6 +401,15 @@ async def list_workspace_files(
             "Ignored when ``session_id`` is set."
         ),
     ),
+    folder_id: str | None = Query(
+        default=None,
+        min_length=1,
+        description="Only return files in this folder.",
+    ),
+    root_only: bool = Query(
+        default=False,
+        description="Only return root-level files (not in any folder).",
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -410,14 +420,34 @@ async def list_workspace_files(
 
     The Artifacts page uses ``q`` for name search and ``origin`` to filter
     between Uploaded (user-uploaded) and Generated (agent/block output) files.
-    """
-    workspace = await get_or_create_workspace(user_id)
 
+    ``session_id`` (a per-session view) and the folder filters (``folder_id`` /
+    ``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and
+    ``root_only`` likewise conflict; passing conflicting filters returns a 400
+    rather than silently yielding an empty list.
+    """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
     # scoping to one.
     session_id = session_id or None
 
+    # Reject conflicting filters instead of silently combining them into an
+    # (almost always) empty result. Validate before touching the DB so an
+    # invalid GET can't create a workspace row for a first-time user.
+    # session_id scopes to one chat session; folder_id/root_only organize
+    # files across the whole workspace.
+    if session_id is not None and (folder_id is not None or root_only):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="session_id cannot be combined with folder_id or root_only",
+        )
+    if folder_id is not None and root_only:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="folder_id and root_only are mutually exclusive",
+        )
+
+    workspace = await get_or_create_workspace(user_id)
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
 
@@ -444,6 +474,8 @@ async def list_workspace_files(
         name_contains=name_contains,
         metadata_equals=metadata_equals,
         metadata_not_equals=metadata_not_equals,
+        folder_id=folder_id,
+        root_only=root_only,
     )
     has_more = len(files) > limit
     page = files[:limit]
@@ -456,6 +488,7 @@ async def list_workspace_files(
                 path=f.path,
                 mime_type=f.mime_type,
                 size_bytes=f.size_bytes,
+                folder_id=f.folder_id,
                 metadata=f.metadata or {},
                 origin=_derive_origin(f.metadata),
                 created_at=f.created_at.isoformat(),

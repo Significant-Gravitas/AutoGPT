@@ -8,12 +8,26 @@ import pytest
 from backend.util.retry import (
     ALERT_RATE_LIMIT_SECONDS,
     _alert_rate_limiter,
+    _interruptible_async_sleep,
+    _interruptible_sleep,
     _rate_limiter_lock,
     _send_critical_retry_alert,
+    _shutdown_event,
     conn_retry,
+    continuous_retry,
     create_retry_decorator,
+    is_shutting_down,
     should_send_alert,
+    stop_retry_loops,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_shutdown_event():
+    """Keep the process-wide shutdown flag from leaking between tests."""
+    _shutdown_event.clear()
+    yield
+    _shutdown_event.clear()
 
 
 def test_conn_retry_sync_function():
@@ -58,6 +72,109 @@ async def test_conn_retry_async_function():
     with pytest.raises(ValueError) as e:
         await test_function()
         assert str(e.value) == "Test error"
+
+
+def test_conn_retry_sync_aborts_on_shutdown():
+    """A shutdown request must stop the retry loop instead of exhausting it."""
+    attempts = 0
+
+    @conn_retry("Test", "Test function", max_retry=100, max_wait=30)
+    def test_function():
+        nonlocal attempts
+        attempts += 1
+        stop_retry_loops()  # signal shutdown mid-flight
+        raise ConnectionError("Redis down")
+
+    start = time.monotonic()
+    with pytest.raises(ConnectionError):
+        test_function()
+    # Bails out near-immediately rather than running ~101 attempts / waiting 30s.
+    assert attempts < 5
+    assert time.monotonic() - start < 5
+
+
+@pytest.mark.asyncio
+async def test_conn_retry_async_aborts_on_shutdown():
+    attempts = 0
+
+    @conn_retry("Test", "Test function", max_retry=100, max_wait=30)
+    async def test_function():
+        nonlocal attempts
+        attempts += 1
+        stop_retry_loops()
+        raise ConnectionError("Redis down")
+
+    start = time.monotonic()
+    with pytest.raises(ConnectionError):
+        await test_function()
+    assert attempts < 5
+    assert time.monotonic() - start < 5
+
+
+def test_create_retry_decorator_aborts_on_shutdown():
+    attempts = 0
+
+    @create_retry_decorator(max_attempts=100, max_wait=30)
+    def always_failing_function():
+        nonlocal attempts
+        attempts += 1
+        stop_retry_loops()
+        raise ValueError("persistent failure")
+
+    with pytest.raises(ValueError):
+        always_failing_function()
+    assert attempts < 5
+
+
+def test_interruptible_sleep_returns_early_on_shutdown():
+    stop_retry_loops()
+    assert is_shutting_down()
+    start = time.monotonic()
+    _interruptible_sleep(30)
+    assert time.monotonic() - start < 1
+
+
+@pytest.mark.asyncio
+async def test_interruptible_async_sleep_returns_early_on_shutdown():
+    stop_retry_loops()
+    start = time.monotonic()
+    await _interruptible_async_sleep(30)
+    assert time.monotonic() - start < 1
+
+
+def test_continuous_retry_sync_stops_on_shutdown():
+    """The infinite continuous_retry loop must exit when shutdown is requested."""
+    attempts = 0
+
+    @continuous_retry(retry_delay=30)
+    def always_failing_function():
+        nonlocal attempts
+        attempts += 1
+        stop_retry_loops()
+        raise RuntimeError("never recovers")
+
+    start = time.monotonic()
+    # Returns instead of looping forever; no exception propagates.
+    assert always_failing_function() is None
+    assert attempts < 5
+    assert time.monotonic() - start < 5
+
+
+@pytest.mark.asyncio
+async def test_continuous_retry_async_stops_on_shutdown():
+    attempts = 0
+
+    @continuous_retry(retry_delay=30)
+    async def always_failing_function():
+        nonlocal attempts
+        attempts += 1
+        stop_retry_loops()
+        raise RuntimeError("never recovers")
+
+    start = time.monotonic()
+    assert await always_failing_function() is None
+    assert attempts < 5
+    assert time.monotonic() - start < 5
 
 
 class TestRetryRateLimiting:

@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { ArrowClockwise, Trash, Copy } from "@phosphor-icons/react";
 import React, { useState } from "react";
 import {
   Table,
@@ -38,6 +37,12 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
+import {
+  Copy01Icon,
+  Delete02Icon,
+  Refresh01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface ScheduleDetail {
   schedule_id: string;
@@ -208,7 +213,7 @@ export function SchedulesTable({
                     onClick={confirmDelete}
                     disabled={isDeleting}
                   >
-                    <Trash className="mr-2 h-4 w-4" />
+                    <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
                     Delete All Orphaned ({total})
                   </Button>
                 )}
@@ -219,7 +224,7 @@ export function SchedulesTable({
                     onClick={confirmDelete}
                     disabled={isDeleting}
                   >
-                    <Trash className="mr-2 h-4 w-4" />
+                    <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
                     Delete Selected ({selectedIds.size})
                   </Button>
                 )}
@@ -232,7 +237,8 @@ export function SchedulesTable({
                   }}
                   disabled={isLoading}
                 >
-                  <ArrowClockwise
+                  <Icon
+                    icon={Refresh01Icon}
                     className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
                   />
                 </Button>
@@ -255,7 +261,10 @@ export function SchedulesTable({
             <CardContent>
               {isLoading && schedules.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
-                  <ArrowClockwise className="h-6 w-6 animate-spin text-gray-400" />
+                  <Icon
+                    icon={Refresh01Icon}
+                    className="h-6 w-6 animate-spin text-gray-400"
+                  />
                 </div>
               ) : schedules.length === 0 ? (
                 <div className="py-8 text-center text-gray-500">
@@ -331,7 +340,10 @@ export function SchedulesTable({
                                 title="Click to copy user ID"
                               >
                                 {schedule.user_id.substring(0, 8)}...
-                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                                <Icon
+                                  icon={Copy01Icon}
+                                  className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100"
+                                />
                               </div>
                             </TableCell>
                             <TableCell>

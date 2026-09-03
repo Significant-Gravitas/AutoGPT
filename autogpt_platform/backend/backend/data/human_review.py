@@ -9,7 +9,13 @@ from datetime import datetime, timezone
 from typing import Awaitable, Optional
 
 from prisma.enums import ReviewStatus
-from prisma.models import AgentNodeExecution, PendingHumanReview
+from prisma.models import (
+    AgentGraphExecution,
+    AgentNodeExecution,
+    ChatSession,
+    LibraryAgent,
+    PendingHumanReview,
+)
 from prisma.types import PendingHumanReviewUpdateInput, PendingHumanReviewWhereInput
 from pydantic import BaseModel
 
@@ -18,10 +24,12 @@ from backend.api.features.executions.review.model import (
     SafeJsonData,
 )
 from backend.copilot.constants import (
+    COPILOT_SESSION_PREFIX,
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,
 )
 from backend.data.execution import get_graph_execution_meta
+from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
@@ -36,6 +44,24 @@ class ReviewResult(BaseModel):
     message: str = ""
     processed: bool
     node_exec_id: str
+
+
+async def _sync_awaiting_review_safely(user_id: str, graph_id: str) -> None:
+    """Keep the awaiting-review alert from deciding whether a review succeeds.
+
+    The alert is a notification side effect. Raising here would report failure
+    for a review that was actually recorded — the node is already paused, or
+    the rows are already marked REJECTED by the time this runs — and would roll
+    the caller back over a notification problem.
+    """
+    try:
+        await sync_awaiting_review(user_id, graph_id)
+    except Exception:
+        logger.warning(
+            "Could not sync the awaiting-review alert for graph %s",
+            graph_id,
+            exc_info=True,
+        )
 
 
 def get_auto_approve_key(graph_exec_id: str, node_id: str) -> str:
@@ -168,6 +194,8 @@ async def get_or_create_human_review(
     input_data: SafeJsonData,
     message: str,
     editable: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> Optional[ReviewResult]:
     """
     Get existing review or create a new pending review entry.
@@ -204,6 +232,8 @@ async def get_or_create_human_review(
                     "instructions": message,
                     "editable": editable,
                     "status": ReviewStatus.WAITING,
+                    **({"organizationId": organization_id} if organization_id else {}),
+                    **({"teamId": team_id} if team_id else {}),
                 },
                 "update": {},  # Do nothing on update - keep existing review as is
             },
@@ -224,6 +254,9 @@ async def get_or_create_human_review(
 
     # If pending, return None to continue waiting, otherwise return the review result
     if review.status == ReviewStatus.WAITING:
+        # Nothing sends until a human acts, which is exactly the shape of an
+        # Alert. The engine debounces and coalesces from here.
+        await _sync_awaiting_review_safely(user_id, graph_id)
         return None
     else:
         return ReviewResult(
@@ -360,8 +393,6 @@ async def get_reviews(
     Returns:
         List of reviews and pagination info
     """
-    from backend.data.execution import get_node_execution
-
     where: PendingHumanReviewWhereInput = {"userId": user_id}
     if graph_exec_id:
         where["graphExecId"] = graph_exec_id
@@ -379,10 +410,11 @@ async def get_reviews(
         take=page_size,
     )
 
-    reviews = []
-    for _review in _reviews:
-        node_id = await _resolve_node_id(_review.nodeExecId, get_node_execution)
-        reviews.append(PendingHumanReviewModel.from_db(_review, node_id=node_id))
+    # node_id is filled in by the batched enrichment step.
+    reviews = await _enrich_pending_reviews(
+        user_id,
+        [PendingHumanReviewModel.from_db(r, node_id="") for r in _reviews],
+    )
 
     total_pages = max(1, (total_count + page_size - 1) // page_size)
 
@@ -392,19 +424,6 @@ async def get_reviews(
         current_page=page,
         page_size=page_size,
     )
-
-
-async def _resolve_node_id(node_exec_id: str, get_node_execution) -> str:
-    """Resolve node_id from a node_exec_id.
-
-    For CoPilot synthetic IDs (e.g. copilot-node-block-id:abc12345),
-    extract the node_id portion (copilot-node-block-id).
-    For real graph executions, look up the NodeExecution record.
-    """
-    if is_copilot_synthetic_id(node_exec_id):
-        return parse_node_id_from_exec_id(node_exec_id)
-    node_exec = await get_node_execution(node_exec_id)
-    return node_exec.node_id if node_exec else node_exec_id
 
 
 async def get_pending_reviews_for_user(
@@ -425,6 +444,136 @@ async def get_pending_reviews_for_execution(
         user_id=user_id, graph_exec_id=graph_exec_id, status=ReviewStatus.WAITING
     )
     return reviews
+
+
+async def _enrich_pending_reviews(
+    user_id: str, reviews: list[PendingHumanReviewModel]
+) -> list[PendingHumanReviewModel]:
+    """Batch-resolve node_id and attach expert/agent attribution.
+
+    Resolves, in a fixed number of batched, ``userId``-scoped queries
+    rather than one round-trip per row:
+      - ``node_id``, from the node executions
+      - expert attribution (from the graph execution, or from the chat
+        session for CoPilot run_block reviews)
+      - the requesting agent's display name and library agent id
+      - the chat session id, for CoPilot run_block reviews
+
+    Mutates and returns the given models in place.
+    """
+    real_exec_ids = [
+        r.graph_exec_id for r in reviews if not is_copilot_synthetic_id(r.graph_exec_id)
+    ]
+    session_ids = [
+        r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+        for r in reviews
+        if r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX)
+    ]
+    real_node_exec_ids = [
+        r.node_exec_id for r in reviews if not is_copilot_synthetic_id(r.node_exec_id)
+    ]
+
+    # These three reads don't depend on each other; the library lookup below
+    # does (it needs the graph ids the executions resolve to). Running them
+    # concurrently costs this endpoint two round-trips instead of four —
+    # it backs the home needs-attention list, refetched on every focus.
+    node_execs, executions, sessions = await asyncio.gather(
+        _node_executions_for(user_id, real_node_exec_ids),
+        _graph_executions_for(user_id, real_exec_ids),
+        _chat_sessions_for(user_id, session_ids),
+    )
+    node_id_by_exec = {ne.id: ne.agentNodeId for ne in node_execs}
+    exec_by_id = {e.id: e for e in executions}
+    session_by_id = {s.id: s for s in sessions}
+
+    graph_ids = list({e.agentGraphId for e in executions})
+    lib_agents = (
+        await LibraryAgent.prisma().find_many(
+            # Soft-deleted rows are excluded like every other library
+            # lookup: linking to one produces a 404 instead of falling
+            # through to the /library fallback the deep link has for
+            # exactly this case.
+            where={
+                "userId": user_id,
+                "agentGraphId": {"in": graph_ids},
+                "isDeleted": False,
+            },
+            # @@unique([userId, agentGraphId, agentGraphVersion]) allows
+            # several rows per graph; ordering makes "newest version wins"
+            # deterministic rather than whichever row came back last.
+            order=[{"agentGraphVersion": "asc"}],
+        )
+        if graph_ids
+        else []
+    )
+    lib_by_graph = {a.agentGraphId: a for a in lib_agents}
+
+    for r in reviews:
+        if is_copilot_synthetic_id(r.node_exec_id):
+            r.node_id = parse_node_id_from_exec_id(r.node_exec_id)
+        else:
+            r.node_id = node_id_by_exec.get(r.node_exec_id, r.node_exec_id)
+
+        execution = exec_by_id.get(r.graph_exec_id)
+        if execution:
+            r.expert_id = execution.expertId
+            if execution.Expert:
+                r.expert_name = execution.Expert.name
+                r.expert_avatar_url = execution.Expert.avatarUrl
+
+            lib_agent = lib_by_graph.get(execution.agentGraphId)
+            if lib_agent:
+                r.library_agent_id = lib_agent.id
+            r.agent_name = (lib_agent.name if lib_agent else None) or (
+                execution.AgentGraph.name if execution.AgentGraph else None
+            )
+        elif r.graph_exec_id.startswith(COPILOT_SESSION_PREFIX):
+            session_id = r.graph_exec_id.removeprefix(COPILOT_SESSION_PREFIX)
+            r.session_id = session_id
+            session = session_by_id.get(session_id)
+            if session:
+                r.expert_id = session.expertId
+                if session.Expert:
+                    r.expert_name = session.Expert.name
+                    r.expert_avatar_url = session.Expert.avatarUrl
+
+    return reviews
+
+
+async def _node_executions_for(
+    user_id: str, node_exec_ids: list[str]
+) -> list[AgentNodeExecution]:
+    if not node_exec_ids:
+        return []
+    return await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": node_exec_ids},
+            # Callers pass ids from user-filtered PendingHumanReview rows,
+            # but scope here too so this helper can never leak another
+            # user's node executions if a future caller slips.
+            "GraphExecution": {"is": {"userId": user_id}},
+        }
+    )
+
+
+async def _graph_executions_for(
+    user_id: str, graph_exec_ids: list[str]
+) -> list[AgentGraphExecution]:
+    if not graph_exec_ids:
+        return []
+    return await AgentGraphExecution.prisma().find_many(
+        where={"id": {"in": graph_exec_ids}, "userId": user_id},
+        include={"Expert": True, "AgentGraph": True},
+    )
+
+
+async def _chat_sessions_for(user_id: str, session_ids: list[str]) -> list[ChatSession]:
+    if not session_ids:
+        return []
+    return await ChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id},
+        include={"Expert": True},
+    )
 
 
 async def process_all_reviews_for_execution(
@@ -521,6 +670,11 @@ async def process_all_reviews_for_execution(
     # Execute all updates in parallel and get updated reviews
     updated_reviews = await asyncio.gather(*update_tasks) if update_tasks else []
 
+    # Re-derive the "waiting on your review" alert from the live queue, so
+    # clearing the last item resolves it rather than leaving a stale alert.
+    for review in {(r.userId, r.graphId) for r in reviews_to_process}:
+        await _sync_awaiting_review_safely(review[0], review[1])
+
     # Note: Execution resumption is now handled at the API layer after ALL reviews
     # for an execution are processed (both approved and rejected)
 
@@ -594,6 +748,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "reviewedAt": datetime.now(timezone.utc),
         },
     )
+    await sync_awaiting_review(user_id, graph_exec.graph_id)
     return result
 
 

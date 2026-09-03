@@ -20,6 +20,7 @@ Constants can be configured to pass additional static values alongside the dynam
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | constants | The constants to be set when the block is put on the graph | Dict[str, Any] | No |
+| secret_token | Optional. If set, the platform will only accept incoming webhook requests that include this exact value in the 'X-Webhook-Secret' header. Leave empty for unauthenticated webhooks (the URL itself is the only credential). | str | No |
 
 ### Outputs
 

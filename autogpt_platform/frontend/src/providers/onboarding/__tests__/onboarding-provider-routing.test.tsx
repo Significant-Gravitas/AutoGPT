@@ -17,8 +17,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({
     isLoggedIn: mockIsLoggedIn,
     isUserLoading: false,
     user: mockIsLoggedIn ? { id: "test-user", email: "u@example.com" } : null,
@@ -138,6 +138,24 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await waitFor(() =>
       expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
     );
+  });
+
+  test("incomplete user on /reset-password stays put (recovery session must set password first)", async () => {
+    // A Supabase recovery link signs the user in and lands them on
+    // /reset-password. Bouncing them to /onboarding would skip the password
+    // change entirely, turning the reset link into a one-time sign-in link.
+    mockPathname = "/reset-password";
+    mockIsCompleted = false;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(completedCallCount.value).toBe(0);
   });
 
   test("incomplete user already on /onboarding stays put", async () => {

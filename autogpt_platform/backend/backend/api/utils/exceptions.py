@@ -23,7 +23,9 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import (
+    ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
@@ -55,7 +57,11 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
         pydantic.ValidationError: _handle_validation_error,
         PrismaRecordNotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
         FolderAlreadyExistsError: _handle_error(status.HTTP_409_CONFLICT),
+        ConflictError: _handle_error(status.HTTP_409_CONFLICT),
         FolderValidationError: _handle_error(status.HTTP_400_BAD_REQUEST),
+        # Bad/revoked node credentials during graph activation are the
+        # client's problem, not an opaque 500.
+        GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),

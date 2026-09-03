@@ -321,6 +321,7 @@ describe("MCPSetupCard", () => {
       promise: Promise.reject(new Error("OAuth flow timed out")),
       cleanup: { abort: vi.fn(), signal: new AbortController().signal },
       popupBlocked: false,
+      fallbackBlocked: false,
     });
 
     render(<MCPSetupCard output={makeSetupOutput()} />);

@@ -32,11 +32,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import {
-  ArrowUp as ArrowUpIcon,
-  Stop as StopIcon,
-} from "@phosphor-icons/react";
 import { Children, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
+import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -295,12 +293,12 @@ export function PromptInputSubmit({
   const canStop = isGenerating && Boolean(onStop);
   const isDisabled = Boolean(disabled) || (isGenerating && !canStop);
 
-  let Icon = <ArrowUpIcon className="size-4" weight="bold" />;
+  let Icon = <UIIcon icon={ArrowUp02Icon} className="size-4" />;
 
   if (status === "submitted") {
     Icon = <Spinner />;
   } else if (status === "streaming") {
-    Icon = <StopIcon className="size-4" weight="bold" />;
+    Icon = <UIIcon icon={StopIcon} className="size-4" />;
   }
 
   const handleClick = useCallback(

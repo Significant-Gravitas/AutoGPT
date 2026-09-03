@@ -1,15 +1,17 @@
 import logging
+import re
 from typing import Any
 
 from prisma.enums import APIKeyPermission, ContentType
 
-from backend.blocks import get_block
+from backend.blocks import get_block, get_blocks
 from backend.blocks._base import BlockType
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
 from .base import BaseTool, ToolResponseBase
+from .helpers import get_block_provider
 from .models import (
     BlockInfoSummary,
     BlockListResponse,
@@ -24,6 +26,8 @@ _TARGET_RESULTS = 10
 # Over-fetch to compensate for post-hoc filtering of graph-only blocks.
 # 40 is 2x current removed; speed of query 10 vs 40 is minimial
 _OVERFETCH_PAGE_SIZE = 40
+# Cap on registry hits for queries that name a block class directly.
+_MAX_EXACT_NAME_MATCHES = 3
 
 # Block types that only work within graphs and cannot run standalone in CoPilot.
 COPILOT_EXCLUDED_BLOCK_TYPES = {
@@ -77,11 +81,6 @@ class FindBlockTool(BaseTool):
                     "type": "string",
                     "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
-                "include_schemas": {
-                    "type": "boolean",
-                    "description": "Include full input/output schemas (for agent JSON generation).",
-                    "default": False,
-                },
                 "for_agent_generation": {
                     "type": "boolean",
                     "description": (
@@ -104,7 +103,6 @@ class FindBlockTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         query: str = "",
-        include_schemas: bool = False,
         for_agent_generation: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
@@ -114,7 +112,6 @@ class FindBlockTool(BaseTool):
             user_id: User ID (required)
             session: Chat session
             query: Search query
-            include_schemas: Whether to include block schemas in results
             for_agent_generation: When True, bypasses the CoPilot exclusion filter
                 so graph-only blocks (INPUT, OUTPUT, ORCHESTRATOR, etc.) are visible.
 
@@ -194,13 +191,8 @@ class FindBlockTool(BaseTool):
                             block.optimized_description or block.description or ""
                         ),
                         categories=[c.value for c in block.categories],
+                        provider=get_block_provider(block),
                     )
-                    if include_schemas:
-                        info = block.get_info()
-                        summary.input_schema = info.inputSchema
-                        summary.output_schema = info.outputSchema
-                        summary.static_output = info.staticOutput
-
                     return BlockListResponse(
                         message=(
                             f"Found block '{block.name}' by ID. "
@@ -221,6 +213,18 @@ class FindBlockTool(BaseTool):
                 page=1,
                 page_size=_OVERFETCH_PAGE_SIZE,
             )
+
+            # Prepend exact class-name matches from the live registry. The
+            # hybrid search can miss or bury exact block names: CamelCase
+            # queries get no lexical signal (the index stores the split
+            # form), and index rows can lag behind block renames. Queries
+            # like "OrchestratorBlock" must always resolve.
+            exact_ids = _find_block_ids_by_name(query)
+            if exact_ids:
+                seen = set(exact_ids)
+                results = [{"content_id": bid} for bid in exact_ids] + [
+                    r for r in results if r["content_id"] not in seen
+                ]
 
             if not results:
                 return NoResultsResponse(
@@ -262,13 +266,8 @@ class FindBlockTool(BaseTool):
                     name=block.name,
                     description=block.optimized_description or block.description or "",
                     categories=[c.value for c in block.categories],
+                    provider=get_block_provider(block),
                 )
-
-                if include_schemas:
-                    info = block.get_info()
-                    summary.input_schema = info.inputSchema
-                    summary.output_schema = info.outputSchema
-                    summary.static_output = info.staticOutput
 
                 blocks.append(summary)
 
@@ -312,3 +311,27 @@ class FindBlockTool(BaseTool):
                 error=str(e),
                 session_id=session_id,
             )
+
+
+def _find_block_ids_by_name(query: str) -> list[str]:
+    """Resolve a query that names a block class to its block ID(s).
+
+    Matches case-insensitively, ignoring spaces/punctuation, with an optional
+    "Block" suffix — so "OrchestratorBlock", "orchestrator block" and
+    "orchestrator" all resolve to OrchestratorBlock. Exclusion/permission
+    filtering is the caller's job (same path as regular search results).
+    """
+    normalized = _normalize_block_name(query)
+    if not normalized:
+        return []
+    matches = [
+        block_id
+        for block_id, block_cls in get_blocks().items()
+        if _normalize_block_name(block_cls.__name__)
+        in (normalized, f"{normalized}block")
+    ]
+    return matches[:_MAX_EXACT_NAME_MATCHES]
+
+
+def _normalize_block_name(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())

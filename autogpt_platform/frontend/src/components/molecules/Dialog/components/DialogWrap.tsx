@@ -1,7 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
 import {
   CSSProperties,
@@ -13,6 +12,8 @@ import {
 } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -111,10 +112,7 @@ export function DialogWrap({
               {title}
             </RXDialog.Title>
           ) : (
-            <span className="sr-only">
-              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
-              <RXDialog.Title>{title}</RXDialog.Title>
-            </span>
+            <RXDialog.Title className="sr-only">Dialog</RXDialog.Title>
           )}
 
           {isForceOpen ? null : (
@@ -126,7 +124,7 @@ export function DialogWrap({
               className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
               withTooltip={false}
             >
-              <X width="1rem" />
+              <Icon icon={Cancel01Icon} width="1rem" />
             </Button>
           )}
         </div>

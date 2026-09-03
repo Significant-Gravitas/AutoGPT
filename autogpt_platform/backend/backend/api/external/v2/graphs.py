@@ -19,7 +19,7 @@ from backend.api.features.store.model import StoreAgentDetails
 from backend.data import graph as graph_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
-    on_graph_activate,
+    before_graph_activate,
     on_graph_deactivate,
 )
 
@@ -133,7 +133,7 @@ async def create_graph(
 
     await graph_db.create_graph(graph, user_id=auth.user_id)
     await library_db.create_library_agent(graph, user_id=auth.user_id)
-    activated_graph = await on_graph_activate(graph, user_id=auth.user_id)
+    activated_graph = await before_graph_activate(graph, user_id=auth.user_id)
 
     return Graph.from_internal(activated_graph)
 
@@ -183,7 +183,7 @@ async def update_graph(
         await library_db.update_agent_version_in_library(
             auth.user_id, new_graph_version.id, new_graph_version.version
         )
-        new_graph_version = await on_graph_activate(
+        new_graph_version = await before_graph_activate(
             new_graph_version, user_id=auth.user_id
         )
         await graph_db.set_graph_active_version(
@@ -290,7 +290,7 @@ async def set_active_version(
         user_id=auth.user_id,
     )
 
-    await on_graph_activate(new_active_graph, user_id=auth.user_id)
+    await before_graph_activate(new_active_graph, user_id=auth.user_id)
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
         version=new_active_version,

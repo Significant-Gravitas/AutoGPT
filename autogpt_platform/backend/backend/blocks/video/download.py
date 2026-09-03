@@ -19,7 +19,13 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import (
+    MAX_FILE_SIZE_BYTES,
+    MediaFileType,
+    get_exec_file_path,
+    store_media_file,
+)
+from backend.util.request import validate_url_host
 
 
 class VideoDownloadBlock(Block):
@@ -64,6 +70,7 @@ class VideoDownloadBlock(Block):
                 ("source_url", str),
             ],
             test_mock={
+                "validate_url": lambda *args, **kwargs: None,
                 "_download_video": lambda *args: (
                     "video.mp4",
                     212.0,
@@ -72,6 +79,17 @@ class VideoDownloadBlock(Block):
                 "_store_output_video": lambda *args, **kwargs: "video.mp4",
             },
         )
+
+    async def validate_url(self, url: str) -> None:
+        """Validate URL for SSRF protection. Raises ValueError if blocked.
+
+        NOTE: this is best-effort. yt-dlp resolves DNS and follows redirects with
+        its own HTTP client, so a public URL that redirects to a blocked target
+        (or a rebound DNS record) is not caught here. Closing that gap requires
+        pinning connections to the resolved IPs the way `backend.util.request`
+        does, or sandboxing yt-dlp — which is why this block stays `disabled`.
+        """
+        await validate_url_host(url)
 
     async def _store_output_video(
         self, execution_context: ExecutionContext, file: MediaFileType
@@ -112,6 +130,11 @@ class VideoDownloadBlock(Block):
             "merge_output_format": output_format,
             "quiet": True,
             "no_warnings": True,
+            # Advisory: yt-dlp applies this per-stream and only when the format
+            # advertises a size, so DASH/HLS and merged (video+audio) downloads can
+            # still exceed it. The post-download check below is the real backstop.
+            "max_filesize": MAX_FILE_SIZE_BYTES,
+            "noplaylist": True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -121,6 +144,17 @@ class VideoDownloadBlock(Block):
             # Handle format conversion in filename
             if not video_path.endswith(f".{output_format}"):
                 video_path = video_path.rsplit(".", 1)[0] + f".{output_format}"
+
+            # Enforce the size limit on the file actually produced, before it is
+            # read into memory by store_media_file().
+            if os.path.exists(video_path):
+                actual_size = os.path.getsize(video_path)
+                if actual_size > MAX_FILE_SIZE_BYTES:
+                    os.remove(video_path)
+                    raise ValueError(
+                        f"Downloaded video is {actual_size} bytes, "
+                        f"which exceeds the {MAX_FILE_SIZE_BYTES} byte limit"
+                    )
 
             # Return just the filename, not the full path
             filename = os.path.basename(video_path)
@@ -141,6 +175,16 @@ class VideoDownloadBlock(Block):
     ) -> BlockOutput:
         try:
             assert execution_context.graph_exec_id is not None
+
+            # Validate URL before yt-dlp touches it (SSRF protection)
+            try:
+                await self.validate_url(input_data.url)
+            except ValueError as e:
+                raise BlockExecutionError(
+                    message=f"URL validation failed: {e}",
+                    block_name=self.name,
+                    block_id=str(self.id),
+                ) from e
 
             # Get the exec file directory
             output_dir = get_exec_file_path(execution_context.graph_exec_id, "")
@@ -164,6 +208,8 @@ class VideoDownloadBlock(Block):
             yield "title", title
             yield "source_url", input_data.url
 
+        except BlockExecutionError:
+            raise
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Failed to download video: {e}",

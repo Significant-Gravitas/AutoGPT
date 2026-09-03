@@ -39,7 +39,7 @@ from backend.data.redis_client import get_redis_async
 
 from .client import (
     close_graphiti_client,
-    derive_group_id,
+    derive_memory_group_id,
     get_graphiti_client,
     make_flex_graphiti_client,
 )
@@ -270,7 +270,10 @@ async def _release_rebuild_lock(redis, key: str, token: str) -> None:
 
 
 async def rebuild_communities_for_user(
-    user_id: str, *, force: bool = False
+    user_id: str,
+    *,
+    expert_id: str | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Destroy and rebuild ``:Community`` nodes for one user's graph.
 
@@ -303,7 +306,7 @@ async def rebuild_communities_for_user(
     }
 
     try:
-        group_id = derive_group_id(user_id)
+        group_id = derive_memory_group_id(user_id, expert_id)
     except ValueError as exc:
         result["error"] = f"invalid_user_id: {exc}"
         logger.warning("Skipping community rebuild — invalid user_id %s", user_id[:12])

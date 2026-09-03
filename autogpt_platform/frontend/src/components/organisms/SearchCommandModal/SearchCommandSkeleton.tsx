@@ -6,8 +6,6 @@ interface Props {
   rows?: number;
 }
 
-const STAGGER_MS = 35;
-
 export function SearchCommandSkeleton({ rows = 4 }: Props) {
   return (
     <div
@@ -23,8 +21,7 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
         {Array.from({ length: rows }, (_, idx) => (
           <div
             key={idx}
-            className="flex items-center gap-2.5 rounded-md px-3 py-2 motion-safe:animate-search-item-in"
-            style={{ animationDelay: `${idx * STAGGER_MS}ms` }}
+            className="flex items-center gap-2.5 rounded-md px-3 py-2"
           >
             <Skeleton className="h-4 w-4 rounded" />
             <div className="flex min-w-0 flex-1 flex-col gap-1">

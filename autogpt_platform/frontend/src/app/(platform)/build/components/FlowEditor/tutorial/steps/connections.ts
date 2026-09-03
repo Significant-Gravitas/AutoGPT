@@ -44,6 +44,42 @@ const hasAnyEdge = (): boolean => {
   return useEdgeStore.getState().edges.length > 0;
 };
 
+// Shepherd 14 positions the popover via @floating-ui/dom (absolute left/top),
+// so CSS margins don't move it. Use a floating-ui offset middleware to push the
+// popover away from the handle, leaving room to grab and drag the connection.
+export const CONNECTION_STEP_OFFSET = 72;
+
+export const connectionHandleOffset = ({
+  placement,
+  x,
+  y,
+}: {
+  placement: string;
+  x: number;
+  y: number;
+}): { x?: number; y?: number } => {
+  const side = placement.split("-")[0];
+  if (side === "left") return { x: x - CONNECTION_STEP_OFFSET };
+  if (side === "right") return { x: x + CONNECTION_STEP_OFFSET };
+  if (side === "top") return { y: y - CONNECTION_STEP_OFFSET };
+  if (side === "bottom") return { y: y + CONNECTION_STEP_OFFSET };
+  return {};
+};
+
+const connectionFloatingOptions: StepOptions["floatingUIOptions"] = {
+  middleware: [
+    {
+      name: "connectionHandleOffset",
+      fn: (state) =>
+        connectionHandleOffset({
+          placement: state.placement,
+          x: state.x,
+          y: state.y,
+        }),
+    },
+  ],
+};
+
 export const createConnectionSteps = (tour: any): StepOptions[] => {
   let isConnecting = false;
 
@@ -87,6 +123,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         element: TUTORIAL_SELECTORS.FIRST_CALCULATOR_RESULT_OUTPUT_HANDLER,
         on: "left",
       },
+      floatingUIOptions: connectionFloatingOptions,
 
       when: {
         show: () => {
@@ -174,6 +211,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         element: TUTORIAL_SELECTORS.SECOND_CALCULATOR_NUMBER_A_INPUT_HANDLER,
         on: "right",
       },
+      floatingUIOptions: connectionFloatingOptions,
       when: {
         show: () => {
           const inputSelector =

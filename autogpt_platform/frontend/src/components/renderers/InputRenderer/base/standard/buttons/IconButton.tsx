@@ -10,9 +10,10 @@ import type { VariantProps } from "class-variance-authority";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
-import { TrashIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
+import { Delete02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type AutogptIconButtonProps<
   T = any,
@@ -95,7 +96,7 @@ export function RemoveButton(props: AutogptIconButtonProps) {
       title={translateString(TranslatableString.RemoveButton)}
       {...props}
       className={"border-destructive"}
-      icon={<TrashIcon size={16} className="!text-zinc-800" />}
+      icon={<Icon icon={Delete02Icon} size={16} className="!text-zinc-800" />}
     />
   );
 }

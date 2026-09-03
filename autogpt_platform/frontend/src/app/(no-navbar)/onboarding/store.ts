@@ -34,6 +34,11 @@ interface OnboardingWizardState {
   selectedBilling: "monthly" | "yearly";
   hasUserSelectedBilling: boolean;
   selectedCountryCode: string;
+  /** True while the current step is mid-flight (e.g. the brain dump is
+   * being processed) — navigation away must be blocked. Transient, never
+   * persisted. */
+  isStepBusy: boolean;
+  setStepBusy(busy: boolean): void;
   setName(name: string): void;
   setRole(role: string): void;
   setOtherRole(otherRole: string): void;
@@ -62,6 +67,10 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       selectedBilling: "monthly",
       hasUserSelectedBilling: false,
       selectedCountryCode: "US",
+      isStepBusy: false,
+      setStepBusy(busy) {
+        set({ isStepBusy: busy });
+      },
       setName(name) {
         set({ name });
       },

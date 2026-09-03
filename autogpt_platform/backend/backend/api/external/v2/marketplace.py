@@ -261,13 +261,15 @@ async def update_profile(
         require_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceUserProfile:
-    """Update the authenticated user's marketplace profile."""
-    profile = ProfileUpdateRequest(
-        name=request.name,
-        username=request.username,
-        description=request.description,
-        links=request.links,
-        avatar_url=request.avatar_url,
+    """Update the authenticated user's marketplace profile.
+
+    Only the fields present in the request body are changed. Set `avatar_url`
+    to `null` to remove the avatar. A user without a profile yet can create one
+    here by sending at least `username`, `name` and `description`.
+    """
+    # exclude_unset keeps "omitted" distinct from "explicitly null" downstream
+    profile = ProfileUpdateRequest.model_validate(
+        request.model_dump(exclude_unset=True)
     )
 
     updated_profile = await store_db.update_profile(auth.user_id, profile)

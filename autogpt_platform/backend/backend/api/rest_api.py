@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import platform
@@ -21,16 +22,25 @@ import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.auth_email.routes as auth_email_routes
+import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
 import backend.api.features.executions.review.routes
+import backend.api.features.experts.routes as experts_routes
+import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
+import backend.api.features.memory.routes as memory_routes
 import backend.api.features.oauth
+import backend.api.features.onboarding_dump.routes as onboarding_dump_routes
+import backend.api.features.orgs.invitation_routes
+import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
@@ -38,11 +48,16 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.workspace.folder_routes as workspace_folder_routes
+import backend.api.features.workspace.routes as team_routes
+import backend.data.autopilot_migrate
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
+import backend.data.org_migration
 import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
@@ -50,6 +65,8 @@ import backend.util.service
 import backend.util.settings
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
+from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.webhook_routes import register_webhook_adapters
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -69,6 +86,11 @@ settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
 
 logging.getLogger("autogpt_libs").setLevel(logging.INFO)
+
+# Backing client for webhook chat adapters (Slack Events API, etc.) whose routes
+# mount on this API. Owned at module level so `lifespan_context` can close it on
+# shutdown; the routes themselves are mounted further down once `app` exists.
+_webhook_bot_backend = BotBackend()
 
 
 @contextlib.contextmanager
@@ -127,9 +149,33 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
+
+    # Guarded, unlike its neighbours above: this backfill only corrects what
+    # the builder displays for AutoPilot nodes saved before `transport`
+    # existed. The block honours the connection either way, so a failure here
+    # changes nothing about which account pays — and refusing to boot the
+    # platform over a cosmetic migration would be the worse outcome.
+    try:
+        await asyncio.wait_for(
+            backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
+            timeout=30,
+        )
+    except Exception:
+        logger.error("AutoPilot transport backfill failed", exc_info=True)
+
+    # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
+    backend.data.llm_registry.load_catalog()
 
     with launch_darkly_context():
         yield
+
+    try:
+        from backend.api.features.integrations.codex import codex_login_coordinator
+
+        await codex_login_coordinator.shutdown()
+    except Exception:
+        logger.warning("Codex login coordinator shutdown failed", exc_info=True)
 
     try:
         await shutdown_cloud_storage_handler()
@@ -144,6 +190,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Each cleanup is wrapped so one failure doesn't block the rest. The
     # Redis close in particular silences asyncio's "Unclosed ClusterNode"
     # GC warning at interpreter shutdown.
+    try:
+        await _webhook_bot_backend.close()
+    except Exception:
+        logger.warning("webhook BotBackend.close() failed", exc_info=True)
+
     try:
         await backend.data.redis_client.disconnect_async()
     except Exception:
@@ -226,6 +277,11 @@ add_exception_handlers(app)
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
+    auth_email_routes.auth_email_router,
+    prefix="/api/auth/email",
+    tags=["auth-email"],
+)
+app.include_router(
     integrations_router,
     prefix="/api/integrations",
     tags=["v1", "integrations"],
@@ -292,12 +348,24 @@ app.include_router(
     prefix="/api/review",
 )
 app.include_router(
+    backend.api.features.briefings.routes.router,
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
+app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(home_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
+app.include_router(
+    onboarding_dump_routes.router,
+    tags=["v1", "onboarding"],
+    prefix="/api",
+)
 app.include_router(
     backend.api.features.postmark.postmark.router,
     tags=["v1", "email"],
@@ -319,7 +387,12 @@ app.include_router(
     prefix="/api/public/shared/chats",
 )
 app.include_router(
-    workspace_routes.router,
+    team_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_folder_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -332,6 +405,31 @@ app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    org_routes.router,
+    tags=["v2", "orgs"],
+    prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.team_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.org_router,
+    tags=["v2", "orgs", "invitations"],
+    prefix="/api/orgs/{org_id}/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.router,
+    tags=["v2", "invitations"],
+    prefix="/api/invitations",
+)
+app.include_router(
+    transfer_routes.router,
+    tags=["v2", "transfers"],
+    prefix="/api/transfers",
 )
 app.include_router(
     push_routes.router,
@@ -348,6 +446,10 @@ app.include_router(
     tags=["platform-linking"],
     prefix="/api/platform-linking",
 )
+
+# Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
+# No-op when no webhook platform is configured; errors surface at startup.
+register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
 
@@ -402,8 +504,26 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -417,8 +537,25 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         for_export: bool = False,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.get_graph(
-            graph_id, user_id, graph_version, for_export
+            graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
@@ -426,7 +563,26 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.create_new_graph(
+            create_graph, user_id, ctx
+        )
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -442,10 +598,27 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         """Used for clean-up after a test run"""
+        from autogpt_libs.auth.models import RequestContext
+
         await backend.api.features.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id)
+        # team_id intentionally None: integration tests don't seed a Team
+        # row, and the schema enforces a FK from AgentGraph.teamId →
+        # Team.id (onDelete: SetNull). Setting a fake team_id here causes
+        # ForeignKeyViolationError on graph creates.
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
@@ -490,9 +663,23 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         inputs: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id=f"test-org-{user_id}",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.library.routes.presets.execute_preset(
             preset_id=preset_id,
             user_id=user_id,
+            ctx=ctx,
             inputs=inputs or {},
             credential_inputs={},
         )

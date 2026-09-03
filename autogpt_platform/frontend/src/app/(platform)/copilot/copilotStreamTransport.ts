@@ -1,8 +1,13 @@
 import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
-import type { FileUIPart } from "ai";
+import type { ChatTransport, FileUIPart, UIMessage } from "ai";
+import { v4 as uuidv4 } from "uuid";
 
+import { createSmoothingTransform } from "./copilotStreamSmoothing";
+import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
+import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
+import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
 export interface MutableValue<T> {
@@ -20,6 +25,23 @@ interface CreateTransportArgs {
   copilotModeRef: MutableValue<CopilotMode | undefined>;
   /** Ref to the current model tier. See `copilotModeRef` for rationale. */
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
+}
+
+/**
+ * `DefaultChatTransport` with typewriter smoothing on live sends.
+ *
+ * POST streams (new user turns) are piped through the word-pacing transform
+ * so bursty backend deltas render as steady text. GET-resume streams are
+ * deliberately left raw — they replay the whole turn from `0-0`, and slow-
+ * typing already-produced history would be worse than a single jump.
+ */
+class SmoothedCopilotChatTransport extends DefaultChatTransport<UIMessage> {
+  async sendMessages(
+    options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
+  ) {
+    const stream = await super.sendMessages(options);
+    return stream.pipeThrough(createSmoothingTransform());
+  }
 }
 
 /**
@@ -41,10 +63,16 @@ export function createCopilotTransport({
 }: CreateTransportArgs) {
   const baseUrl = `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`;
 
-  return new DefaultChatTransport({
+  return new SmoothedCopilotChatTransport({
     api: baseUrl,
+    // Dev-only: tee the raw SSE stream so `: usage {...}` comments (dropped
+    // by the AI SDK parser) feed the token devtool badge.
+    ...(isTokenDevtoolEnabled()
+      ? { fetch: createUsageCapturingFetch(sessionId) }
+      : {}),
     prepareSendMessagesRequest: async ({ messages }) => {
       const last = messages[messages.length - 1];
+      const kickoffExpertId = getKickoffExpertIdFromMetadata(last.metadata);
       // Extract file_ids from FileUIPart entries on the message
       const fileIds = last.parts
         ?.filter((p): p is FileUIPart => p.type === "file")
@@ -54,11 +82,10 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
-      // ``message_id`` becomes the persisted ``ChatMessage.id`` (PK) —
-      // Postgres' uniqueness constraint then makes the INSERT itself
-      // the atomic dedup primitive: a retransmit (SDK-internal retry,
-      // browser auto-retry, RMQ redelivery) lands on a duplicate PK
-      // and the backend short-circuits to subscribe-only.
+      // ``message_id`` is the client idempotency key. The backend scopes it
+      // to the authenticated user + session before using the result as the
+      // persisted PK, so retransmits collide atomically without letting one
+      // tenant preclaim another tenant's global ChatMessage id.
       //
       // Generated here (rather than in ``useSendMessage``) for two
       // reasons: (1) AI SDK's ``messageId`` arg on ``sendMessage`` is
@@ -78,7 +105,12 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
-          message_id: crypto.randomUUID(),
+          // Supplying options forces uuid's
+          // getRandomValues path. Unlike crypto.randomUUID,
+          // getRandomValues is available on plain-HTTP LAN origins used
+          // by the local single-container appliance.
+          message_id: uuidv4({}),
+          expert_kickoff: kickoffExpertId !== null,
         },
         headers: await getCopilotAuthHeaders(),
       };

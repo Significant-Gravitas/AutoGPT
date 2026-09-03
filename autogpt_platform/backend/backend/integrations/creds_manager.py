@@ -1,24 +1,32 @@
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
+from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
 )
-from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
+from backend.integrations.oauth import (
+    CREDENTIALS_BY_PROVIDER,
+    DEVICE_HANDLERS_BY_NAME,
+    HANDLERS_BY_NAME,
+)
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
-    from backend.integrations.oauth import BaseOAuthHandler
+    from backend.integrations.oauth.base import BaseOAuthHandler
+    from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -129,8 +137,15 @@ class IntegrationCredentialsManager:
         if not credentials:
             return None
 
-        # Refresh OAuth credentials if needed
-        if credentials.type == "oauth2" and credentials.access_token_expires_at:
+        if (
+            credentials.type == "oauth2"
+            and credentials.refresh_strategy == "provider_runtime"
+        ):
+            logger.debug(
+                "Skipping generic refresh for provider-managed credentials #%s",
+                credentials.id,
+            )
+        elif credentials.type == "oauth2" and credentials.access_token_expires_at:
             logger.debug(
                 f"Credentials #{credentials.id} expire at "
                 f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
@@ -154,12 +169,24 @@ class IntegrationCredentialsManager:
         # to allow priority access for refreshing/updating the tokens.
         async with self._locked(user_id, credentials_id, "!time_sensitive"):
             lock = await self._acquire_lock(user_id, credentials_id)
-        credentials = await self.get(user_id, credentials_id, lock=False)
-        if not credentials:
-            raise ValueError(
-                f"Credentials #{credentials_id} for user #{user_id} not found"
-            )
+        try:
+            credentials = await self.get(user_id, credentials_id, lock=False)
+            if not credentials:
+                raise ValueError(
+                    f"Credentials #{credentials_id} for user #{user_id} not found"
+                )
+        except BaseException:
+            await self._release_owned_lock(lock)
+            raise
         return credentials, lock
+
+    async def acquire_lease(self, user_id: str, credentials_id: str) -> CredentialLease:
+        credentials, lock = await self.acquire(user_id, credentials_id)
+        checkpoint = partial(self.update_acquired, user_id)
+        delete = partial(self.delete_acquired, user_id)
+        lease = CredentialLease(credentials, lock, checkpoint, delete)
+        lease.start_heartbeat()
+        return lease
 
     def cached_getter(
         self, user_id: str
@@ -175,7 +202,11 @@ class IntegrationCredentialsManager:
             credential = next((c for c in all_credentials if c.id == creds_id), None)
             if not credential:
                 return None
-            if credential.type != "oauth2" or not credential.access_token_expires_at:
+            if (
+                credential.type != "oauth2"
+                or credential.refresh_strategy == "provider_runtime"
+                or not credential.access_token_expires_at
+            ):
                 # Credential doesn't expire
                 return credential
 
@@ -187,28 +218,58 @@ class IntegrationCredentialsManager:
     async def refresh_if_needed(
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
+        if credentials.refresh_strategy == "provider_runtime":
+            return credentials
+
         # When lock=False, skip ALL Redis locking (both the outer "refresh" scope
         # lock and the inner credential lock).  This is used by the copilot's
         # integration_creds module which runs across multiple threads with separate
         # event loops; acquiring a Redis lock whose asyncio.Lock() was created on
         # a different loop raises "Future attached to a different loop".
-        if lock:
-            return await self._refresh_locked(user_id, credentials)
-        return await self._refresh_unlocked(user_id, credentials)
+        # Resolve once: `_refresh_locked` needs the handler anyway, and
+        # building it twice per refresh just to read a class flag is wasteful.
+        # A construction failure is left to the refresh path to raise, rather
+        # than being turned into "take the lock" — `lock=False` exists because
+        # the copilot runs across threads with separate event loops, where
+        # entering a Redis lock raises "Future attached to a different loop".
+        handler = await self._get_oauth_handler(credentials)
+        if lock or getattr(handler, "ROTATES_REFRESH_TOKEN", False):
+            # A provider that rotates its refresh token cannot take the
+            # unlocked path: "last writer wins" is safe when the refresh token
+            # is static, but two workers replaying the same rotated token can
+            # have the grant revoked by a provider that treats reuse as
+            # compromise, and the loser can persist a token already
+            # invalidated upstream.
+            return await self._refresh_locked(user_id, credentials, handler=handler)
+        return await self._refresh_unlocked(user_id, credentials, handler=handler)
 
     async def _get_oauth_handler(
         self, credentials: OAuth2Credentials
-    ) -> "BaseOAuthHandler":
+    ) -> "BaseOAuthHandler | BaseDeviceAuthHandler":
         """Resolve the appropriate OAuth handler for the given credentials."""
         if provider_matches(credentials.provider, ProviderName.MCP.value):
             return create_mcp_oauth_handler(credentials)
+
+        # Try device handlers first (they don't need client_id/secret lookup)
+        # `provider` is typed `str` but carries a ProviderName at runtime; prefer the
+        # enum value so the registry lookup matches either form.
+        provider_key = getattr(credentials.provider, "value", None) or str(
+            credentials.provider
+        )
+        if provider_key in DEVICE_HANDLERS_BY_NAME:
+            handler_class = DEVICE_HANDLERS_BY_NAME[provider_key]
+            return handler_class()
+
         return await _get_provider_oauth_handler(credentials.provider)
 
     async def _refresh_locked(
-        self, user_id: str, credentials: OAuth2Credentials
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            oauth_handler = await self._get_oauth_handler(credentials)
+            oauth_handler = handler or await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
                     "Refreshing '%s' credentials #%s",
@@ -234,16 +295,20 @@ class IntegrationCredentialsManager:
         return credentials
 
     async def _refresh_unlocked(
-        self, user_id: str, credentials: OAuth2Credentials
+        self,
+        user_id: str,
+        credentials: OAuth2Credentials,
+        handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         """Best-effort token refresh without any Redis locking.
 
         Safe for use from multi-threaded contexts (e.g. copilot workers) where
         each thread has its own event loop and sharing Redis-backed asyncio locks
         is not possible.  Concurrent refreshes are tolerated: the last writer
-        wins, and stale tokens are overwritten.
+        wins, and stale tokens are overwritten — which holds only for a static
+        refresh token, so a rotating provider never reaches this path.
         """
-        oauth_handler = await self._get_oauth_handler(credentials)
+        oauth_handler = handler or await self._get_oauth_handler(credentials)
         if oauth_handler.needs_refresh(credentials):
             logger.debug(
                 "Refreshing '%s' credentials #%s (lock-free)",
@@ -262,6 +327,97 @@ class IntegrationCredentialsManager:
         # Notify listeners so the updated credential is picked up immediately.
         _invoke_creds_changed_hook(user_id, updated.provider)
 
+    async def upsert_single_provider(
+        self,
+        user_id: str,
+        credentials: Credentials,
+    ) -> Credentials:
+        async with self.locked_provider_credentials(user_id, credentials.provider):
+            return await self.upsert_single_provider_locked(user_id, credentials)
+
+    @asynccontextmanager
+    async def locked_provider_credentials(
+        self,
+        user_id: str,
+        provider: str,
+    ) -> AsyncIterator[None]:
+        matching = await self.store.get_creds_by_provider(user_id, provider)
+        locks: list[AsyncRedisLock] = []
+        try:
+            for credential_id in sorted({credential.id for credential in matching}):
+                locks.append(await self._acquire_lock(user_id, credential_id))
+            yield
+        finally:
+            for lock in reversed(locks):
+                await self._release_owned_lock(lock)
+
+    async def upsert_single_provider_locked(
+        self,
+        user_id: str,
+        credentials: Credentials,
+    ) -> Credentials:
+        stored = await self.store.upsert_single_provider_creds(user_id, credentials)
+        _invoke_creds_changed_hook(user_id, stored.provider)
+        return stored
+
+    async def update_acquired(
+        self,
+        user_id: str,
+        updated: Credentials,
+        lock: AsyncRedisLock,
+    ) -> None:
+        expected_lock_name = str(self._credentials_lock_key(user_id, updated.id))
+        if (
+            lock.name != expected_lock_name
+            or not (await lock.locked())
+            or not (await lock.owned())
+        ):
+            raise RuntimeError(
+                f"Cannot update credentials #{updated.id} without its owned lock"
+            )
+        if updated.type != "oauth2" or updated.refresh_strategy != "provider_runtime":
+            raise RuntimeError("Acquired updates require provider-runtime credentials")
+
+        current = await self.store.get_creds_by_id(user_id, updated.id)
+        if (
+            current is None
+            or current.type != "oauth2"
+            or current.refresh_strategy != "provider_runtime"
+            or current.id != updated.id
+            or current.provider != updated.provider
+            or type(current) is not type(updated)
+        ):
+            raise RuntimeError("Provider-runtime credential identity changed")
+        await self.store.update_creds(user_id, updated)
+        _invoke_creds_changed_hook(user_id, updated.provider)
+
+    async def delete_acquired(
+        self,
+        user_id: str,
+        credentials: Credentials,
+        lock: AsyncRedisLock,
+    ) -> None:
+        expected_lock_name = str(self._credentials_lock_key(user_id, credentials.id))
+        if (
+            lock.name != expected_lock_name
+            or not (await lock.locked())
+            or not (await lock.owned())
+        ):
+            raise RuntimeError(
+                f"Cannot delete credentials #{credentials.id} without its owned lock"
+            )
+
+        current = await self.store.get_creds_by_id(user_id, credentials.id)
+        if (
+            current is None
+            or current.id != credentials.id
+            or current.provider != credentials.provider
+            or type(current) is not type(credentials)
+        ):
+            raise RuntimeError("Credential identity changed before deletion")
+        await self.store.delete_creds_by_id(user_id, credentials.id)
+        _invoke_creds_changed_hook(user_id, credentials.provider)
+
     async def delete(self, user_id: str, credentials_id: str) -> None:
         async with self._locked(user_id, credentials_id):
             # Read inside the lock to avoid TOCTOU — another coroutine could
@@ -276,13 +432,26 @@ class IntegrationCredentialsManager:
     async def _acquire_lock(
         self, user_id: str, credentials_id: str, *args: str
     ) -> AsyncRedisLock:
-        key = (
+        key = self._credentials_lock_key(user_id, credentials_id, *args)
+        locks = await self.locks()
+        return await locks.acquire(key)
+
+    @staticmethod
+    def _credentials_lock_key(
+        user_id: str, credentials_id: str, *args: str
+    ) -> tuple[str, ...]:
+        return (
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,
         )
-        locks = await self.locks()
-        return await locks.acquire(key)
+
+    async def _release_owned_lock(self, lock: AsyncRedisLock) -> None:
+        if (await lock.locked()) and (await lock.owned()):
+            try:
+                await lock.release()
+            except Exception:
+                logger.warning("Failed to release credentials lock", exc_info=True)
 
     @asynccontextmanager
     async def _locked(self, user_id: str, credentials_id: str, *args: str):

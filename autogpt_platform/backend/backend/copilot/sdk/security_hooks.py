@@ -327,7 +327,11 @@ def create_security_hooks(
                         len(str(tool_response)),
                         resp_preview,
                     )
-                    stash_pending_tool_output(tool_name, tool_response)
+                    # Key by the call's input so the response adapter pops the
+                    # output for the RIGHT tool_call_id when the model fired
+                    # several same-name calls in parallel (OPEN-3158).
+                    tool_input = input_data.get("tool_input")
+                    stash_pending_tool_output(tool_name, tool_response, tool_input)
                 else:
                     logger.warning(
                         "[SDK] PostToolUse for builtin %s but tool_response is None",

@@ -221,80 +221,85 @@ async def test_preview_queries_store_listing_version_not_store_agent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_graph_admin_bypasses_approval_check() -> None:
-    """resolve_graph_for_library(admin=True) must accept a non-APPROVED
-    listing version (bypassing the marketplace APPROVED-only check).
-    This is THE test that prevents the add-to-library bypass from being
-    accidentally reverted."""
-    import prisma.enums
-
+async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
+    """resolve_graph_for_library(admin=True) must call get_graph_as_admin,
+    not get_graph. This is THE test that prevents the add-to-library bypass
+    from being accidentally reverted."""
     from backend.api.features.library._add_to_library import resolve_graph_for_library
 
     mock_slv = MagicMock()
-    mock_slv.agentGraphId = GRAPH_ID
-    mock_slv.agentGraphVersion = GRAPH_VERSION
-    mock_slv.submissionStatus = prisma.enums.SubmissionStatus.PENDING
-    mock_slv.isDeleted = False
+    mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_graph_model = MagicMock(name="GraphModel")
 
-    with patch(
-        "backend.api.features.library._add_to_library.prisma.models"
-        ".StoreListingVersion.prisma",
-    ) as mock_prisma:
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models"
+            ".StoreListingVersion.prisma",
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db"
+            ".get_graph_as_admin",
+            new_callable=AsyncMock,
+            return_value=mock_graph_model,
+        ) as mock_admin,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db.get_graph",
+            new_callable=AsyncMock,
+        ) as mock_regular,
+    ):
         mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
 
-        result = await resolve_graph_for_library(SLV_ID, ADMIN_USER_ID, admin=True)
+        result, resolved_slv = await resolve_graph_for_library(
+            SLV_ID, ADMIN_USER_ID, admin=True
+        )
 
-    assert result == (GRAPH_ID, GRAPH_VERSION)
+    assert result is mock_graph_model
+    assert resolved_slv is mock_slv
+    mock_admin.assert_awaited_once_with(
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
+    )
+    mock_regular.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_resolve_graph_regular_rejects_non_approved() -> None:
-    """resolve_graph_for_library(admin=False) must reject a non-APPROVED
-    listing version. Ensures the non-admin path enforces marketplace
-    approval checks."""
-    import prisma.enums
-
+async def test_resolve_graph_regular_uses_get_graph() -> None:
+    """resolve_graph_for_library(admin=False) must call get_graph,
+    not get_graph_as_admin. Ensures the non-admin path is preserved."""
     from backend.api.features.library._add_to_library import resolve_graph_for_library
 
     mock_slv = MagicMock()
-    mock_slv.agentGraphId = GRAPH_ID
-    mock_slv.agentGraphVersion = GRAPH_VERSION
-    mock_slv.submissionStatus = prisma.enums.SubmissionStatus.PENDING
-    mock_slv.isDeleted = False
+    mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_graph_model = MagicMock(name="GraphModel")
 
-    with patch(
-        "backend.api.features.library._add_to_library.prisma.models"
-        ".StoreListingVersion.prisma",
-    ) as mock_prisma:
-        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models"
+            ".StoreListingVersion.prisma",
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db"
+            ".get_graph_as_admin",
+            new_callable=AsyncMock,
+        ) as mock_admin,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db.get_graph",
+            new_callable=AsyncMock,
+            return_value=mock_graph_model,
+        ) as mock_regular,
+    ):
+        mock_prisma.return_value.find_first = AsyncMock(return_value=mock_slv)
 
-        with pytest.raises(NotFoundError):
-            await resolve_graph_for_library(SLV_ID, "regular-user-id", admin=False)
+        result, resolved_slv = await resolve_graph_for_library(
+            SLV_ID, "regular-user-id", admin=False
+        )
 
-
-@pytest.mark.asyncio
-async def test_resolve_graph_regular_accepts_approved() -> None:
-    """resolve_graph_for_library(admin=False) must accept an APPROVED
-    listing version and return the graph ID and version."""
-    import prisma.enums
-
-    from backend.api.features.library._add_to_library import resolve_graph_for_library
-
-    mock_slv = MagicMock()
-    mock_slv.agentGraphId = GRAPH_ID
-    mock_slv.agentGraphVersion = GRAPH_VERSION
-    mock_slv.submissionStatus = prisma.enums.SubmissionStatus.APPROVED
-    mock_slv.isDeleted = False
-
-    with patch(
-        "backend.api.features.library._add_to_library.prisma.models"
-        ".StoreListingVersion.prisma",
-    ) as mock_prisma:
-        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
-
-        result = await resolve_graph_for_library(SLV_ID, "regular-user-id", admin=False)
-
-    assert result == (GRAPH_ID, GRAPH_VERSION)
+    assert result is mock_graph_model
+    assert resolved_slv is mock_slv
+    mock_regular.assert_awaited_once_with(
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
+    )
+    mock_admin.assert_not_awaited()
+    mock_prisma.return_value.find_first.assert_awaited_once()
 
 
 # ---- Library membership grants graph access (product decision) ---- #

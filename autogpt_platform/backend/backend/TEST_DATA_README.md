@@ -16,7 +16,7 @@ Creates a comprehensive set of test data including:
 - Credit transactions
 
 **Image/Video Domains Used:**
-- Images: `picsum.photos` (for all image URLs)
+- Images: none. Avatars and listing images are seeded empty so the frontend renders its built-in fallback (no external image dependency).
 - Videos: `youtube.com` (for store listing videos)
 
 ### test_data_updater.py
@@ -119,7 +119,7 @@ Configured in `test_data_creator.py`:
 
 ## Notes
 
-- All image URLs use `picsum.photos` for consistency with Next.js image configuration
+- Image fields are seeded empty; the frontend renders its built-in fallback (no external image dependency)
 - The scripts create realistic relationships between entities
 - Materialized views are refreshed at the end of each script
 - Data is designed to test both happy paths and edge cases

@@ -1,13 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import {
-  BookOpenIcon,
-  ChatCircleIcon,
-  FileIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react";
 import { useState } from "react";
 import { SearchCommandModal } from "./SearchCommandModal";
 import type { SearchCommandBucket } from "./helpers";
+import {
+  BookOpen01Icon,
+  BubbleChatIcon,
+  FileEmpty02Icon,
+  Store01Icon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
 const FIXTURE_BUCKETS: SearchCommandBucket[] = [
   {
@@ -17,12 +18,12 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
       {
         id: "chat-1",
         title: "Debugging the YouTube agent failures",
-        icon: ChatCircleIcon,
+        icon: createIconComponent(BubbleChatIcon),
       },
       {
         id: "chat-2",
         title: "Planning the launch announcement",
-        icon: ChatCircleIcon,
+        icon: createIconComponent(BubbleChatIcon),
       },
     ],
   },
@@ -34,19 +35,19 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
         id: "agent-1",
         title: "YouTube Video Summarizer",
         subtitle: "Summarize any YouTube video into bullet points",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
       {
         id: "agent-2",
         title: "Email Triage Bot",
         subtitle: "by hackergrrl",
-        icon: StorefrontIcon,
+        icon: createIconComponent(Store01Icon),
       },
       {
         id: "agent-3",
         title: "PDF Question Answerer",
         subtitle: "Ask questions about uploaded PDFs",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
     ],
   },
@@ -58,13 +59,13 @@ const FIXTURE_BUCKETS: SearchCommandBucket[] = [
         id: "file-1",
         title: "Q4-roadmap.pdf",
         subtitle: "/projects/planning",
-        icon: FileIcon,
+        icon: createIconComponent(FileEmpty02Icon),
       },
       {
         id: "file-2",
         title: "competitor-analysis.md",
         subtitle: "/research",
-        icon: FileIcon,
+        icon: createIconComponent(FileEmpty02Icon),
       },
     ],
   },

@@ -1,11 +1,12 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { RobotIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TriggerAgentActionsDropdown } from "./TriggerAgentActionsDropdown";
+import { Robot01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   triggerAgent: LibraryAgent;
@@ -26,7 +27,7 @@ export function TriggerAgentListItem({
     <SidebarItemCard
       icon={
         <IconWrapper className="border-blue-50 bg-blue-50">
-          <RobotIcon size={16} className="text-zinc-700" weight="bold" />
+          <Icon icon={Robot01Icon} size={16} className="text-zinc-700" />
         </IconWrapper>
       }
       title={triggerAgent.name}

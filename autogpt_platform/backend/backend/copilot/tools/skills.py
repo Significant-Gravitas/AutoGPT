@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 MAX_USER_SKILLS = 50
 MAX_NAME_CHARS = 64
-MAX_DESCRIPTION_CHARS = 200
+MAX_DESCRIPTION_CHARS = 250
 MAX_BODY_CHARS = 20_000
 # Triggers appear inline in the per-turn ``<available_skills>`` index,
 # so an unbounded list (or one huge trigger) would balloon the prefix
@@ -287,6 +287,10 @@ class BuiltInSkillError(Exception):
     """Raised by :func:`delete_user_skill` for default seeded skills."""
 
 
+class SkillLimitError(Exception):
+    """Raised by :func:`store_user_skill` when the per-user cap is reached."""
+
+
 async def delete_user_skill(user_id: str, name: str) -> str:
     """Delete a user-distilled skill folder by slug.
 
@@ -358,6 +362,155 @@ async def delete_user_skill(user_id: str, name: str) -> str:
             )
     await invalidate_skills_index_cache(user_id)
     return slug
+
+
+async def store_user_skill(
+    user_id: str,
+    *,
+    name: str,
+    description: str,
+    body: str,
+    triggers: list[str] | None = None,
+    version: str | None = None,
+) -> ParsedSkill:
+    """Validate + persist a user-distilled skill, returning the stored skill.
+
+    Shared by the ``store_skill`` copilot tool and the REST ``POST /skills``
+    upload endpoint so both honour the same validation, per-user cap, and
+    write-lock semantics.  Raises :class:`ValueError` for any validation
+    failure, :class:`SkillLimitError` when the per-user cap is reached, and
+    propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
+    workspace write error) to the caller.
+    """
+    name = name.strip().lower()
+    # Strip any server-injected XML tags (``<available_skills>``,
+    # ``<env_context>``, etc.) from the persisted fields *before* storage —
+    # when the skill is later loaded that text lands in conversation history
+    # and could otherwise appear alongside the real server-injected versions.
+    description = strip_server_injected_tags(description.strip())
+    body = strip_server_injected_tags(body.strip())
+    triggers = [
+        strip_server_injected_tags(t.strip())
+        for t in (triggers or [])
+        if str(t).strip()
+    ]
+    triggers = [t for t in triggers if t]
+
+    name_err = _validate_name(name)
+    if name_err:
+        raise ValueError(name_err)
+    if not description:
+        raise ValueError("description is required")
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValueError(
+            f"description is {len(description)}/{MAX_DESCRIPTION_CHARS} chars "
+            f"— trim {len(description) - MAX_DESCRIPTION_CHARS} "
+            "(it appears in every turn's skills index)"
+        )
+    if not body:
+        raise ValueError("body is required")
+    if len(body) > MAX_BODY_CHARS:
+        raise ValueError(f"body must be ≤{MAX_BODY_CHARS} chars")
+    if len(triggers) > MAX_TRIGGERS:
+        raise ValueError(
+            f"triggers must be ≤{MAX_TRIGGERS} entries "
+            "(they are inlined in <available_skills> every turn)"
+        )
+    oversized_trigger = next((t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None)
+    if oversized_trigger is not None:
+        raise ValueError(
+            f"trigger '{oversized_trigger[:32]}…' exceeds {MAX_TRIGGER_CHARS} chars"
+        )
+
+    # Serialise the count-then-write critical section per-user so two
+    # concurrent writers cannot both pass the MAX_USER_SKILLS check.
+    # ``AsyncClusterLock.try_acquire`` is non-blocking, so poll for up to
+    # ~1s before falling back to the strict-cap unlocked path below — without
+    # the wait, two near-simultaneous calls at MAX-1 both proceed unlocked,
+    # both see N<MAX, and both write (cap overruns by 1).  Lock failure
+    # (Redis unavailable) still falls back to the unlocked write but the
+    # cap-enforcement branch below refuses any at-cap write in that case.
+    lock: AsyncClusterLock | None = None
+    lock_held = False
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        for _ in range(10):
+            if (await lock.try_acquire()) == lock.owner_id:
+                lock_held = True
+                break
+            await asyncio.sleep(0.1)
+    except Exception:
+        logger.warning(
+            "[skills] failed to acquire write lock for user %s — "
+            "falling back to unlocked best-effort write",
+            user_id,
+            exc_info=True,
+        )
+    try:
+        manager = await _get_user_skill_manager(user_id)
+        # Enforce the per-user cap *before* we write.  When the lock IS held
+        # this is a true atomic check-then-write — an upsert at-cap is safe
+        # because no new slot is consumed.  When the lock FAILED to acquire,
+        # the check is no longer atomic, so refuse any write at-or-above the
+        # cap defensively (the caller can retry; a Redis blip is rare).
+        existing = await list_user_skills(user_id)
+        existing_slugs = {s.name for s in existing}
+        at_cap = len(existing_slugs) >= MAX_USER_SKILLS
+        is_new = name not in existing_slugs
+        if at_cap and (is_new or not lock_held):
+            if not lock_held:
+                logger.warning(
+                    "[skills] refusing at-cap unlocked write for user %s "
+                    "(is_new=%s) — concurrent write could otherwise overrun "
+                    "the cap",
+                    user_id,
+                    is_new,
+                )
+            raise SkillLimitError(
+                f"Skill limit reached ({MAX_USER_SKILLS}). "
+                "Delete an unused skill first."
+            )
+
+        parsed = ParsedSkill(
+            name=name,
+            description=description,
+            body=body,
+            triggers=tuple(triggers),
+            version=version,
+        )
+        rendered = render_skill_markdown(parsed)
+        metadata: dict[str, Any] = {
+            _META_KIND: _META_KIND_VALUE,
+            _META_DESCRIPTION: description,
+            _META_TRIGGERS: list(triggers),
+        }
+        if version:
+            metadata[_META_VERSION] = version
+        await manager.write_file(
+            content=rendered.encode("utf-8"),
+            filename="SKILL.md",
+            path=_skill_md_path(name),
+            mime_type="text/markdown",
+            overwrite=True,
+            metadata=metadata,
+        )
+        await invalidate_skills_index_cache(user_id)
+        return parsed
+    finally:
+        if lock is not None and lock_held:
+            try:
+                await lock.release()
+            except Exception:
+                logger.warning(
+                    "[skills] failed to release write lock for user %s",
+                    user_id,
+                    exc_info=True,
+                )
 
 
 async def _parse_skill_from_workspace(
@@ -773,7 +926,7 @@ class StoreSkillTool(BaseTool):
                 },
                 "description": {
                     "type": "string",
-                    "description": "One-line hook (≤200 chars).",
+                    "description": f"One-line hook (≤{MAX_DESCRIPTION_CHARS} chars).",
                 },
                 "body": {
                     "type": "string",
@@ -822,150 +975,14 @@ class StoreSkillTool(BaseTool):
                 session_id=session_id,
             )
 
-        name = name.strip().lower()
-        # Strip any server-injected XML tags (``<available_skills>``,
-        # ``<env_context>``, etc.) from the description/body/triggers
-        # *before* persistence — when the model later loads the skill via
-        # read_skill, that text lands in the conversation history and
-        # could otherwise appear alongside the real server-injected
-        # versions in the next turn's first user message.
-        description = strip_server_injected_tags(description.strip())
-        body = strip_server_injected_tags(body.strip())
-        triggers = [
-            strip_server_injected_tags(t.strip())
-            for t in (triggers or [])
-            if str(t).strip()
-        ]
-        triggers = [t for t in triggers if t]
-
-        name_err = _validate_name(name)
-        if name_err:
-            return ErrorResponse(message=name_err, session_id=session_id)
-        if not description:
-            return ErrorResponse(
-                message="description is required", session_id=session_id
-            )
-        if len(description) > MAX_DESCRIPTION_CHARS:
-            return ErrorResponse(
-                message=(
-                    f"description must be ≤{MAX_DESCRIPTION_CHARS} chars "
-                    "(it appears in every turn's skills index)"
-                ),
-                session_id=session_id,
-            )
-        if not body:
-            return ErrorResponse(message="body is required", session_id=session_id)
-        if len(body) > MAX_BODY_CHARS:
-            return ErrorResponse(
-                message=f"body must be ≤{MAX_BODY_CHARS} chars",
-                session_id=session_id,
-            )
-        if len(triggers) > MAX_TRIGGERS:
-            return ErrorResponse(
-                message=(
-                    f"triggers must be ≤{MAX_TRIGGERS} entries "
-                    "(they are inlined in <available_skills> every turn)"
-                ),
-                session_id=session_id,
-            )
-        oversized_trigger = next(
-            (t for t in triggers if len(t) > MAX_TRIGGER_CHARS), None
-        )
-        if oversized_trigger is not None:
-            return ErrorResponse(
-                message=(
-                    f"trigger '{oversized_trigger[:32]}…' exceeds "
-                    f"{MAX_TRIGGER_CHARS} chars"
-                ),
-                session_id=session_id,
-            )
-
-        # Serialise the count-then-write critical section per-user so two
-        # concurrent ``store_skill`` calls cannot both pass the MAX
-        # check.  ``AsyncClusterLock.try_acquire`` is non-blocking, so
-        # poll for up to ~1s before falling back to the strict-cap
-        # unlocked path below — without the wait, two near-simultaneous
-        # calls at MAX-1 both proceed unlocked, both see N<MAX, and
-        # both write (cap overruns by 1).  Lock failure (Redis
-        # unavailable) still falls back to the unlocked write but the
-        # cap-enforcement branch below refuses any at-cap write in
-        # that case.
-        lock: AsyncClusterLock | None = None
-        lock_held = False
         try:
-            lock = AsyncClusterLock(
-                redis=await get_redis_async(),
-                key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
-                owner_id=uuid.uuid4().hex,
-                timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-            )
-            for _ in range(10):
-                if (await lock.try_acquire()) == lock.owner_id:
-                    lock_held = True
-                    break
-                await asyncio.sleep(0.1)
-        except Exception:
-            logger.warning(
-                "[skills] failed to acquire write lock for user %s — "
-                "falling back to unlocked best-effort write",
+            parsed = await store_user_skill(
                 user_id,
-                exc_info=True,
-            )
-        try:
-            manager = await _get_user_skill_manager(user_id)
-            # Enforce the per-user cap *before* we write.
-            #
-            # When the lock IS held this is a true atomic check-then-write
-            # — an upsert at-cap is safe because no new slot is consumed.
-            #
-            # When the lock FAILED to acquire (Redis hiccup or genuine
-            # contention) the check is no longer atomic, so two unlocked
-            # writers could both see ``N == MAX_USER_SKILLS`` and both
-            # commit, landing at ``MAX_USER_SKILLS+1``.  Treat the cap
-            # strictly in that branch: refuse any write at-or-above the
-            # cap, including upserts (the model can retry; a transient
-            # Redis blip is rare and recovery is cheap).
-            existing = await list_user_skills(user_id)
-            existing_slugs = {s.name for s in existing}
-            at_cap = len(existing_slugs) >= MAX_USER_SKILLS
-            is_new = name not in existing_slugs
-            if at_cap and (is_new or not lock_held):
-                if not lock_held:
-                    logger.warning(
-                        "[skills] refusing at-cap unlocked write for user %s "
-                        "(is_new=%s) — concurrent store_skill could "
-                        "otherwise overrun the cap",
-                        user_id,
-                        is_new,
-                    )
-                return ErrorResponse(
-                    message=(
-                        f"Skill limit reached ({MAX_USER_SKILLS}). "
-                        "Delete an unused skill with delete_skill first."
-                    ),
-                    session_id=session_id,
-                )
-
-            parsed = ParsedSkill(
                 name=name,
                 description=description,
                 body=body,
-                triggers=tuple(triggers),
+                triggers=triggers,
             )
-            rendered = render_skill_markdown(parsed)
-            await manager.write_file(
-                content=rendered.encode("utf-8"),
-                filename="SKILL.md",
-                path=_skill_md_path(name),
-                mime_type="text/markdown",
-                overwrite=True,
-                metadata={
-                    _META_KIND: _META_KIND_VALUE,
-                    _META_DESCRIPTION: description,
-                    _META_TRIGGERS: list(triggers),
-                },
-            )
-            await invalidate_skills_index_cache(user_id)
         except (VirusDetectedError, VirusScanError) as exc:
             logger.warning("[skills] virus scan failed for %s: %s", name, exc)
             return ErrorResponse(
@@ -973,7 +990,7 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
-        except ValueError as exc:
+        except (ValueError, SkillLimitError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] failed to store skill %s", name)
@@ -982,23 +999,13 @@ class StoreSkillTool(BaseTool):
                 error=str(exc),
                 session_id=session_id,
             )
-        finally:
-            if lock is not None and lock_held:
-                try:
-                    await lock.release()
-                except Exception:
-                    logger.warning(
-                        "[skills] failed to release write lock for user %s",
-                        user_id,
-                        exc_info=True,
-                    )
 
         return StoreSkillResponse(
-            name=name,
-            description=description,
-            triggers=list(triggers),
+            name=parsed.name,
+            description=parsed.description,
+            triggers=list(parsed.triggers),
             message=(
-                f"Skill '{name}' stored. It will appear in "
+                f"Skill '{parsed.name}' stored. It will appear in "
                 "<available_skills> on the next turn."
             ),
             session_id=session_id,

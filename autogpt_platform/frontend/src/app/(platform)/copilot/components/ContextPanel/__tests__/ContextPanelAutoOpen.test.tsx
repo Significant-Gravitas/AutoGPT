@@ -39,12 +39,40 @@ describe("ContextPanelAutoOpen", () => {
     }));
   });
 
-  test("opens the panel to the Files tab when the session has files", async () => {
+  test("forgets the previous chat's artifact on mobile, where auto-opening stays off", async () => {
+    server.use(getListWorkspaceFilesMockHandler200(withFiles()));
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen: true,
+        lastArtifact: {
+          id: "previous-chat-file",
+          title: "old.md",
+          mimeType: "text/markdown",
+          sourceUrl: "/api/proxy/api/workspace/files/prev-file/download",
+          origin: "agent",
+        },
+      },
+    }));
+    render(<ContextPanelAutoOpen sessionId={SESSION} canAutoOpen={false} />);
+    await waitFor(() =>
+      expect(
+        useCopilotUIStore.getState().artifactPanel.lastArtifact,
+      ).toBeNull(),
+    );
+    const panel = useCopilotUIStore.getState().artifactPanel;
+    expect(panel.activeArtifact).toBeNull();
+    expect(panel.isOpen).toBe(false);
+  });
+
+  test("opens the last generated file in the artifact panel when the session has files", async () => {
     server.use(getListWorkspaceFilesMockHandler200(withFiles()));
     render(<ContextPanelAutoOpen sessionId={SESSION} />);
     await waitFor(() =>
-      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true),
+      expect(
+        useCopilotUIStore.getState().artifactPanel.activeArtifact?.id,
+      ).toBe("aaaaaaaa-0000-0000-0000-000000000001"),
     );
-    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
 });

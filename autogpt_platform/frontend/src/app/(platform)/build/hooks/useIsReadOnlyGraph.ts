@@ -1,13 +1,13 @@
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 
 // Read-only detection is a UX affordance only — the backend is the security
 // boundary and already rejects mutations (save, etc.) from non-owners. This
 // hook just hides controls that would otherwise fail silently.
 export function useIsReadOnlyGraph() {
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
 
   const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,

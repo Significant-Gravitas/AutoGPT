@@ -14,11 +14,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import httpx
 import pytest
 
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
+    _anthropic_accepts_temperature,
+    _is_temperature_deprecation_error,
     call_provider,
 )
 
@@ -354,6 +357,60 @@ class TestOpenAIResponses:
         assert kwargs["model"] == "gpt-4o"
         assert kwargs["max_output_tokens"] == 100
         assert kwargs["store"] is False
+
+    @pytest.mark.asyncio
+    async def test_requests_encrypted_reasoning_content_with_store_false(self):
+        """Reasoning models (gpt-5*, o3*) emit ``reasoning`` items that the
+        orchestrator re-inlines verbatim on the next turn. With ``store=False``
+        those items are not persisted on OpenAI's servers, so re-sending them
+        by id 404s ("Item with id 'rs_...' not found"). The fix keeps
+        ``store=False`` but asks OpenAI to return the reasoning items'
+        ``encrypted_content`` so they can be replayed inline on the next call.
+
+        See OPEN-3187.
+        """
+        fake_response = SimpleNamespace()  # extractors are also mocked
+
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
+
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_tool_calls",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_content",
+                return_value="hello world",
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_responses_usage",
+                return_value=(11, 22),
+            ),
+        ):
+            await call_provider(
+                provider="openai",
+                model="gpt-5-2025-08-07",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        # store must stay False — state is replayed client-side, never
+        # persisted on OpenAI's servers.
+        assert kwargs["store"] is False
+        # The encrypted blob is what lets a store=false reasoning item be
+        # replayed inline on the next turn instead of looked up by id.
+        assert "reasoning.encrypted_content" in kwargs["include"]
 
 
 # ---------------------------------------------------------------------------
@@ -2039,3 +2096,73 @@ class TestAnthropicTemperatureDeprecation:
             )
         params = async_create.call_args.kwargs["requests"][0]["params"]
         assert params["temperature"] == 0.2
+
+
+class TestClaude5TemperatureRejection:
+    """The Claude 5 family 400s on non-default sampling params — the strip
+    list is load-bearing for batch (dream) submissions, which have no
+    retry self-heal."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+        ],
+    )
+    def test_rejecting_family_members_stripped(self, model: str):
+        assert _anthropic_accepts_temperature(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic/claude-sonnet-5",
+            "anthropic.claude-sonnet-5",
+            "openrouter/anthropic/claude-sonnet-5",
+            "us.anthropic.claude-sonnet-5",
+        ],
+    )
+    def test_vendor_prefixed_forms_stripped(self, model: str):
+        assert _anthropic_accepts_temperature(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        ["claude-sonnet-4-6", "claude-opus-4-6", "anthropic/claude-sonnet-4-6"],
+    )
+    def test_accepting_models_keep_temperature(self, model: str):
+        assert _anthropic_accepts_temperature(model) is True
+
+    @staticmethod
+    def _err(msg: str) -> anthropic.BadRequestError:
+        resp = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={"error": {"message": msg}},
+        )
+        return anthropic.BadRequestError(msg, response=resp, body=None)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "`temperature` is deprecated for this model",
+            "temperature is not supported by this model",
+            "temperature is unsupported on this model",
+            "the temperature parameter was removed for this model",
+        ],
+    )
+    def test_self_heal_matches_all_rejection_phrasings(self, message: str):
+        assert _is_temperature_deprecation_error(self._err(message))
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "rate limited",
+            # Phrase words without 'temperature' must not match.
+            "this model is deprecated",
+        ],
+    )
+    def test_self_heal_ignores_unrelated_errors(self, message: str):
+        assert not _is_temperature_deprecation_error(self._err(message))

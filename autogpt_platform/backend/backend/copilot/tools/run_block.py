@@ -174,6 +174,8 @@ class RunBlockTool(BaseTool):
                 node_exec_id=synthetic_node_exec_id,
                 matched_credentials=prep.matched_credentials,
                 dry_run=True,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -238,7 +240,13 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             )
 
-        hitl_or_err = await check_hitl_review(prep, user_id, session_id)
+        hitl_or_err = await check_hitl_review(
+            prep,
+            user_id,
+            session_id,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
         if isinstance(hitl_or_err, ToolResponseBase):
             return hitl_or_err
         synthetic_node_exec_id, input_data = hitl_or_err
@@ -252,6 +260,8 @@ class RunBlockTool(BaseTool):
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
             dry_run=dry_run,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
 

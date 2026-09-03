@@ -56,6 +56,7 @@ class WorkspaceFile(pydantic.BaseModel):
     checksum: Optional[str] = None
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
+    folder_id: Optional[str] = None
     metadata: dict = pydantic.Field(default_factory=dict)
 
     @staticmethod
@@ -73,6 +74,7 @@ class WorkspaceFile(pydantic.BaseModel):
             checksum=file.checksum,
             is_deleted=file.isDeleted,
             deleted_at=file.deletedAt,
+            folder_id=file.folderId,
             metadata=file.metadata if isinstance(file.metadata, dict) else {},
         )
 
@@ -258,6 +260,8 @@ async def list_workspace_files(
     name_contains: Optional[str] = None,
     metadata_equals: Optional[dict] = None,
     metadata_not_equals: Optional[dict] = None,
+    folder_id: Optional[str] = None,
+    root_only: bool = False,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -281,6 +285,9 @@ async def list_workspace_files(
             equal this object. Used by the "Generated" filter. ``metadata``
             is never SQL NULL (column default ``{}``), so whole-object
             inequality is null-safe and covers untagged/legacy files.
+        folder_id: If set, only return files in this folder.
+        root_only: If True, only return root-level files (folderId IS NULL).
+            Ignored when ``folder_id`` is set.
 
     Returns:
         List of WorkspaceFile instances
@@ -289,6 +296,11 @@ async def list_workspace_files(
 
     if not include_deleted:
         where_clause["isDeleted"] = False
+
+    if folder_id:
+        where_clause["folderId"] = folder_id
+    elif root_only:
+        where_clause["folderId"] = None
 
     if path_prefix:
         # Normalize prefix
