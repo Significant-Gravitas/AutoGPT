@@ -22,12 +22,12 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
         >
           {greeting}, {name}
         </Text>
-        <Text variant="body" className="mt-0.5 text-pretty text-zinc-500">
+        <Text variant="body" className="mt-0.5 text-pretty text-zinc-950">
           {status.split(/(\d+)/).map((part, index) =>
             /^\d+$/.test(part) ? (
               <span
                 key={`${part}-${index}`}
-                className="font-medium tabular-nums text-zinc-800"
+                className="font-medium tabular-nums"
               >
                 {part}
               </span>
@@ -41,10 +41,10 @@ export function HomeHeader({ greeting, name, dashboard }: Props) {
         dateTime={new Date(dashboard.generated_at).toISOString()}
         className="shrink-0 text-right"
       >
-        <Text variant="body-medium" className="text-[13px] text-zinc-700">
+        <Text variant="large-medium" className="text-zinc-700">
           {date.weekday}
         </Text>
-        <Text variant="small" className="text-zinc-400">
+        <Text variant="body" className="text-zinc-400">
           {date.calendarDate}
         </Text>
       </time>

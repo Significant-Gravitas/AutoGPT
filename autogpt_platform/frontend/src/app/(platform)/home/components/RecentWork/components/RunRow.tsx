@@ -15,7 +15,7 @@ export function RunRow({ run }: Props) {
   const status = getRunStatus(run);
   return (
     <div className="group flex items-center gap-3 px-4 py-2 transition-colors hover:bg-zinc-50">
-      <span className="flex w-[5.25rem] shrink-0 items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+      <span className="flex w-24 shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
         <span
           className={cn(
             "size-1.5 rounded-full",
@@ -27,16 +27,10 @@ export function RunRow({ run }: Props) {
         {status.label}
       </span>
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <Text
-          variant="body-medium"
-          className="shrink-0 truncate text-[13px] leading-5 text-zinc-900"
-        >
+        <Text variant="body-medium" className="shrink-0 truncate text-zinc-900">
           {run.agentName}
         </Text>
-        <Text
-          variant="small"
-          className="min-w-0 truncate text-[12px] text-zinc-500"
-        >
+        <Text variant="body" className="min-w-0 truncate text-zinc-500">
           {run.message}
         </Text>
       </div>
