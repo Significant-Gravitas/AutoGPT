@@ -44,6 +44,156 @@ settings = Settings()
 runs_router = APIRouter(tags=["runs"])
 
 
+# Registered before the `/{run_id}` routes below: Starlette matches in
+# registration order, so `/{run_id}` would otherwise swallow `/reviews`.
+
+# ============================================================================
+# Endpoints - Reviews (Human-in-the-loop)
+# ============================================================================
+
+
+@runs_router.get(
+    path="/reviews",
+    summary="List agent run human-in-the-loop reviews",
+    operation_id="listAgentRunReviews",
+)
+async def list_reviews(
+    run_id: Optional[str] = Query(
+        default=None, description="Filter by graph execution ID"
+    ),
+    status: Optional[ReviewStatus] = Query(
+        default=None,
+        description="Filter by review status",
+    ),
+    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        default=DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description=f"Items per page (max {MAX_PAGE_SIZE})",
+    ),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_RUN_REVIEW)
+    ),
+) -> AgentRunReviewsResponse:
+    """
+    List human-in-the-loop reviews for agent runs.
+
+    Returns reviews of all statuses if no status filter is given.
+    """
+    reviews, pagination = await review_db.get_reviews(
+        user_id=auth.user_id,
+        graph_exec_id=run_id,
+        status=status,
+        page=page,
+        page_size=page_size,
+    )
+
+    return AgentRunReviewsResponse(
+        reviews=[AgentRunReview.from_internal(r) for r in reviews],
+        page=pagination.current_page,
+        page_size=pagination.page_size,
+        total_count=pagination.total_items,
+        total_pages=pagination.total_pages,
+    )
+
+
+@runs_router.post(
+    path="/{run_id}/reviews",
+    summary="Submit agent run human-in-the-loop reviews",
+    operation_id="submitAgentRunReviews",
+)
+async def submit_reviews(
+    request: AgentRunReviewsSubmitRequest,
+    run_id: str = Path(description="Graph Execution ID"),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
+    ),
+) -> AgentRunReviewsSubmitResponse:
+    """
+    Submit responses to all pending human-in-the-loop reviews for a run.
+
+    All pending reviews for the run must be included in the request.
+    Approving a review continues execution; rejecting terminates that branch.
+    """
+    # Validate run_id: ensure the submitted node_exec_ids belong to this run
+    pending_reviews = await review_db.get_pending_reviews_for_execution(
+        graph_exec_id=run_id,
+        user_id=auth.user_id,
+    )
+    valid_node_exec_ids = {r.node_exec_id for r in pending_reviews}
+    submitted_ids = {d.node_exec_id for d in request.reviews}
+    invalid_ids = submitted_ids - valid_node_exec_ids
+    if invalid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Review IDs not found for run {run_id}: " f"{', '.join(invalid_ids)}"
+            ),
+        )
+
+    # Build review decisions dict for process_all_reviews_for_execution
+    review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}
+
+    for decision in request.reviews:
+        decision_status = (
+            ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED
+        )
+        review_decisions[decision.node_exec_id] = (
+            decision_status,
+            decision.edited_payload,
+            decision.message,
+        )
+
+    results = await review_db.process_all_reviews_for_execution(
+        user_id=auth.user_id,
+        review_decisions=review_decisions,
+    )
+
+    approved_count = sum(
+        1 for r in results.values() if r.status == ReviewStatus.APPROVED
+    )
+    rejected_count = sum(
+        1 for r in results.values() if r.status == ReviewStatus.REJECTED
+    )
+
+    # Resume graph execution if no more pending reviews remain
+    if results:
+        still_has_pending = await review_db.has_pending_reviews_for_graph_exec(run_id)
+        if not still_has_pending:
+            first_review = next(iter(results.values()))
+            try:
+                user = await get_user_by_id(auth.user_id)
+                settings = await get_graph_settings(
+                    user_id=auth.user_id, graph_id=first_review.graph_id
+                )
+                user_timezone = (
+                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+                )
+                workspace = await get_or_create_workspace(auth.user_id)
+                execution_context = ExecutionContext(
+                    human_in_the_loop_safe_mode=(settings.human_in_the_loop_safe_mode),
+                    sensitive_action_safe_mode=(settings.sensitive_action_safe_mode),
+                    user_timezone=user_timezone,
+                    workspace_id=workspace.id,
+                )
+                await execution_utils.add_graph_execution(
+                    graph_id=first_review.graph_id,
+                    user_id=auth.user_id,
+                    graph_exec_id=run_id,
+                    execution_context=execution_context,
+                )
+                logger.info(f"Resumed execution {run_id}")
+            except Exception as e:
+                logger.error(f"Failed to resume execution {run_id}: {e}")
+
+    return AgentRunReviewsSubmitResponse(
+        run_id=run_id,
+        approved_count=approved_count,
+        rejected_count=rejected_count,
+    )
+
+
 # ============================================================================
 # Endpoints - Runs
 # ============================================================================
@@ -249,151 +399,4 @@ async def disable_sharing(
         is_shared=False,
         share_token=None,
         shared_at=None,
-    )
-
-
-# ============================================================================
-# Endpoints - Reviews (Human-in-the-loop)
-# ============================================================================
-
-
-@runs_router.get(
-    path="/reviews",
-    summary="List agent run human-in-the-loop reviews",
-    operation_id="listAgentRunReviews",
-)
-async def list_reviews(
-    run_id: Optional[str] = Query(
-        default=None, description="Filter by graph execution ID"
-    ),
-    status: Optional[ReviewStatus] = Query(
-        default=None,
-        description="Filter by review status",
-    ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN_REVIEW)
-    ),
-) -> AgentRunReviewsResponse:
-    """
-    List human-in-the-loop reviews for agent runs.
-
-    Returns reviews with status WAITING if no status filter is given.
-    """
-    reviews, pagination = await review_db.get_reviews(
-        user_id=auth.user_id,
-        graph_exec_id=run_id,
-        status=status,
-        page=page,
-        page_size=page_size,
-    )
-
-    return AgentRunReviewsResponse(
-        reviews=[AgentRunReview.from_internal(r) for r in reviews],
-        page=pagination.current_page,
-        page_size=pagination.page_size,
-        total_count=pagination.total_items,
-        total_pages=pagination.total_pages,
-    )
-
-
-@runs_router.post(
-    path="/{run_id}/reviews",
-    summary="Submit agent run human-in-the-loop reviews",
-    operation_id="submitAgentRunReviews",
-)
-async def submit_reviews(
-    request: AgentRunReviewsSubmitRequest,
-    run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
-    ),
-) -> AgentRunReviewsSubmitResponse:
-    """
-    Submit responses to all pending human-in-the-loop reviews for a run.
-
-    All pending reviews for the run must be included in the request.
-    Approving a review continues execution; rejecting terminates that branch.
-    """
-    # Validate run_id: ensure the submitted node_exec_ids belong to this run
-    pending_reviews = await review_db.get_pending_reviews_for_execution(
-        graph_exec_id=run_id,
-        user_id=auth.user_id,
-    )
-    valid_node_exec_ids = {r.node_exec_id for r in pending_reviews}
-    submitted_ids = {d.node_exec_id for d in request.reviews}
-    invalid_ids = submitted_ids - valid_node_exec_ids
-    if invalid_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Review IDs not found for run {run_id}: " f"{', '.join(invalid_ids)}"
-            ),
-        )
-
-    # Build review decisions dict for process_all_reviews_for_execution
-    review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}
-
-    for decision in request.reviews:
-        decision_status = (
-            ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED
-        )
-        review_decisions[decision.node_exec_id] = (
-            decision_status,
-            decision.edited_payload,
-            decision.message,
-        )
-
-    results = await review_db.process_all_reviews_for_execution(
-        user_id=auth.user_id,
-        review_decisions=review_decisions,
-    )
-
-    approved_count = sum(
-        1 for r in results.values() if r.status == ReviewStatus.APPROVED
-    )
-    rejected_count = sum(
-        1 for r in results.values() if r.status == ReviewStatus.REJECTED
-    )
-
-    # Resume graph execution if no more pending reviews remain
-    if results:
-        still_has_pending = await review_db.has_pending_reviews_for_graph_exec(run_id)
-        if not still_has_pending:
-            first_review = next(iter(results.values()))
-            try:
-                user = await get_user_by_id(auth.user_id)
-                settings = await get_graph_settings(
-                    user_id=auth.user_id, graph_id=first_review.graph_id
-                )
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
-                workspace = await get_or_create_workspace(auth.user_id)
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=(settings.human_in_the_loop_safe_mode),
-                    sensitive_action_safe_mode=(settings.sensitive_action_safe_mode),
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-                await execution_utils.add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=auth.user_id,
-                    graph_exec_id=run_id,
-                    execution_context=execution_context,
-                )
-                logger.info(f"Resumed execution {run_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {run_id}: {e}")
-
-    return AgentRunReviewsSubmitResponse(
-        run_id=run_id,
-        approved_count=approved_count,
-        rejected_count=rejected_count,
     )
