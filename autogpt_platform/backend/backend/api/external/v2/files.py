@@ -9,7 +9,7 @@ import logging
 import re
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, HTTPException, Query, Security, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Security, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from prisma.enums import APIKeyPermission
 from starlette import status
@@ -28,12 +28,8 @@ from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import get_workspace_storage
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from .models import (
-    UploadWorkspaceFileResponse,
-    WorkspaceFileInfo,
-    WorkspaceFileListResponse,
-)
+from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
+from .pagination import Page, PageRequest, page_request
 from .rate_limit import file_upload_limiter
 
 logger = logging.getLogger(__name__)
@@ -53,36 +49,25 @@ file_workspace_router = APIRouter(tags=["files"])
     operation_id="listWorkspaceFiles",
 )
 async def list_files(
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_FILES)
     ),
-) -> WorkspaceFileListResponse:
+) -> Page[WorkspaceFileInfo]:
     """List files in the user's workspace."""
     workspace = await get_workspace(auth.user_id)
     if workspace is None:
-        return WorkspaceFileListResponse(
-            files=[], page=page, page_size=page_size, total_count=0, total_pages=0
-        )
+        return page.paged([], total_count=0)
 
     total_count = await count_workspace_files(workspace.id)
-    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
-    offset = (page - 1) * page_size
-
     files = await list_workspace_files(
         workspace_id=workspace.id,
-        limit=page_size,
-        offset=offset,
+        limit=page.limit,
+        offset=(page.page - 1) * page.limit,
     )
 
-    return WorkspaceFileListResponse(
-        files=[
+    return page.paged(
+        [
             WorkspaceFileInfo(
                 id=f.id,
                 name=f.name,
@@ -94,10 +79,7 @@ async def list_files(
             )
             for f in files
         ],
-        page=page,
-        page_size=page_size,
         total_count=total_count,
-        total_pages=total_pages,
     )
 
 
@@ -181,6 +163,7 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
     path="/upload",
     summary="Upload file to workspace",
     operation_id="uploadWorkspaceFile",
+    status_code=status.HTTP_201_CREATED,
 )
 async def upload_file(
     file: UploadFile = File(...),
@@ -206,7 +189,7 @@ async def upload_file(
     max_size_bytes = max_size_mb * 1024 * 1024
 
     # Try to get file size from headers first
-    if hasattr(file, "size") and file.size is not None and file.size > max_size_bytes:
+    if file.size is not None and file.size > max_size_bytes:
         raise _create_file_size_error(file.size, max_size_mb)
 
     # Read file content

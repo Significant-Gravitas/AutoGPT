@@ -7,7 +7,7 @@ Provides endpoints for managing execution schedules.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -18,12 +18,8 @@ from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from .models import (
-    AgentRunSchedule,
-    AgentRunScheduleCreateRequest,
-    AgentRunScheduleListResponse,
-)
+from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
+from .pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 
@@ -42,44 +38,25 @@ schedules_router = APIRouter(tags=["graphs", "schedules"])
 )
 async def list_all_schedules(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_SCHEDULE)
     ),
-) -> AgentRunScheduleListResponse:
+) -> Page[AgentRunSchedule]:
     """List schedules for the authenticated user."""
     schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=auth.user_id,
         graph_id=graph_id,
     )
-    converted = [AgentRunSchedule.from_internal(s) for s in schedules]
-
-    # Manual pagination (scheduler doesn't support pagination natively)
-    total_count = len(converted)
-    total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
-    start = (page - 1) * page_size
-    end = start + page_size
-    paginated = converted[start:end]
-
-    return AgentRunScheduleListResponse(
-        schedules=paginated,
-        page=page,
-        page_size=page_size,
-        total_count=total_count,
-        total_pages=total_pages,
-    )
+    # The scheduler client has no pagination of its own; slice what it returns.
+    return page.slice([AgentRunSchedule.from_internal(s) for s in schedules])
 
 
 @schedules_router.delete(
     path="/{schedule_id}",
     summary="Delete run schedule",
     operation_id="deleteGraphRunSchedule",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_schedule(
     schedule_id: str,
@@ -114,6 +91,7 @@ graph_schedules_router = APIRouter(tags=["graphs"])
     path="/{graph_id}/schedules",
     summary="Create run schedule",
     operation_id="createGraphRunSchedule",
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_graph_schedule(
     request: AgentRunScheduleCreateRequest,

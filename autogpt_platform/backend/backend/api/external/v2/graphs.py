@@ -9,7 +9,7 @@ from typing import Optional
 from uuid import uuid4
 
 import prisma.models
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -23,20 +23,19 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_deactivate,
 )
 
-from .common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .integrations.helpers import get_credential_requirements
 from .models import (
     BlockInfo,
-    CredentialRequirementsResponse,
+    CredentialRequirement,
     Graph,
     GraphCreateRequest,
-    GraphListResponse,
     GraphMeta,
     GraphSetActiveVersionRequest,
     GraphSettings,
     LibraryAgent,
     MarketplaceAgentDetails,
 )
+from .pagination import Page, PageRequest, page_request
 
 logger = logging.getLogger(__name__)
 
@@ -49,30 +48,21 @@ graphs_router = APIRouter(tags=["graphs"])
     operation_id="listGraphs",
 )
 async def list_graphs(
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
-) -> GraphListResponse:
+) -> Page[GraphMeta]:
     """List all graphs owned by the authenticated user."""
     graphs, pagination_info = await graph_db.list_graphs_paginated(
         user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
         filter_by="active",
     )
-    return GraphListResponse(
-        graphs=[GraphMeta.from_internal(g) for g in graphs],
-        page=pagination_info.current_page,
-        page_size=pagination_info.page_size,
+    return page.paged(
+        [GraphMeta.from_internal(g) for g in graphs],
         total_count=pagination_info.total_items,
-        total_pages=pagination_info.total_pages,
     )
 
 
@@ -115,6 +105,7 @@ async def get_graph(
     path="",
     summary="Create graph",
     operation_id="createGraph",
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_graph(
     create_graph: GraphCreateRequest,
@@ -240,10 +231,11 @@ async def update_graph(
 )
 async def list_graph_versions(
     graph_id: str,
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
-) -> list[Graph]:
+) -> Page[Graph]:
     """Get all versions of a specific graph."""
     graphs = await graph_db.get_graph_all_versions(graph_id, user_id=auth.user_id)
     if not graphs:
@@ -251,13 +243,14 @@ async def list_graph_versions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} not found.",
         )
-    return [Graph.from_internal(g) for g in graphs]
+    return page.slice([Graph.from_internal(g) for g in graphs])
 
 
 @graphs_router.put(
     path="/{graph_id}/versions/active",
     summary="Set active graph version",
     operation_id="updateGraphSetActiveVersion",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def set_active_version(
     graph_id: str,
@@ -370,10 +363,11 @@ async def get_library_agent_by_graph(
 )
 async def list_graph_blocks(
     graph_id: str,
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_GRAPH)
     ),
-) -> list[BlockInfo]:
+) -> Page[BlockInfo]:
     """List the unique blocks used by a graph."""
     from backend.blocks import get_block
 
@@ -401,7 +395,7 @@ async def list_graph_blocks(
         if block and not block.disabled:
             blocks.append(BlockInfo.from_internal(block))
 
-    return blocks
+    return page.slice(blocks)
 
 
 @graphs_router.get(
@@ -411,10 +405,11 @@ async def list_graph_blocks(
 )
 async def list_graph_credential_requirements(
     graph_id: str,
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> CredentialRequirementsResponse:
+) -> Page[CredentialRequirement]:
     """List credential requirements for a graph and matching user credentials."""
     graph = await graph_db.get_graph(
         graph_id=graph_id,
@@ -430,7 +425,7 @@ async def list_graph_credential_requirements(
     requirements = await get_credential_requirements(
         graph.credentials_input_schema, auth.user_id
     )
-    return CredentialRequirementsResponse(requirements=requirements)
+    return page.slice(requirements)
 
 
 @graphs_router.get(

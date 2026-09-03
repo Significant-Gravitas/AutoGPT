@@ -71,10 +71,78 @@ Some endpoints have additional per-endpoint limits (e.g. agent execution, file u
 When a rate limit is exceeded, the API returns HTTP `429 Too Many Requests` with a JSON body:
 
 ```json
-{"detail": "Rate limit exceeded (200 requests per 60s). Try again shortly."}
+{
+  "error": {
+    "code": "rate_limit_exceeded",
+    "message": "Rate limit exceeded (200 requests per 60s). Try again shortly.",
+    "details": null
+  }
+}
 ```
 
 The numbers in the message are those of the limit that was hit.
+
+## Errors
+
+Every v2 response that is not 2xx has the same body:
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Run #abc123 not found",
+    "details": null
+  }
+}
+```
+
+`code` is a stable snake_case identifier — branch on it rather than on `message`,
+which is written for humans and may be reworded. `details` carries structured
+context when the failure has any (a `422` lists the fields that failed
+validation) and is `null` otherwise.
+
+| `code` | Status |
+|--------|--------|
+| `bad_request` | 400 |
+| `unauthorized` | 401 |
+| `payment_required` | 402 |
+| `forbidden` | 403 |
+| `not_found` | 404 |
+| `conflict` | 409 |
+| `validation_error` | 422 |
+| `rate_limit_exceeded` | 429 |
+| `internal_error` | 500 |
+| `service_unavailable` | 503 |
+
+## Pagination
+
+Every list endpoint takes the same two query parameters and returns the same
+envelope:
+
+| Parameter | |
+|-----------|--|
+| `limit` | Items per page. 1-100, default 20. |
+| `cursor` | The previous response's `next_cursor`. Omit for the first page. |
+
+```json
+{
+  "items": [],
+  "next_cursor": "eyJ2IjoxLCJrIjoicCIsInAiOjJ9",
+  "total_count": 137
+}
+```
+
+Pass `next_cursor` back as `cursor` for the next page; it is `null` on the last
+page. Cursors are opaque — do not parse or construct them, and do not carry one
+from one endpoint to another: a cursor that did not come from this endpoint's
+last response is rejected with `400 bad_request`.
+
+`total_count` is the number of items matching the request across all pages. It
+is present on every list endpoint, and `null` on the two where the source cannot
+report one: `/credits/invoices` (Stripe does not return a total) and
+`/credits/transactions` (the history groups raw rows, so a row count would not
+match what paging yields).
+
 
 ## Available Scopes
 

@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -14,16 +14,15 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import get_user_credit_model
 from backend.executor import utils as execution_utils
 
-from ..common import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
     AgentRunRequest,
-    CredentialRequirementsResponse,
+    CredentialRequirement,
     LibraryAgent,
-    LibraryAgentListResponse,
     LibraryAgentUpdateRequest,
 )
+from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
 
 logger = logging.getLogger(__name__)
@@ -50,32 +49,23 @@ async def list_library_agents(
         default=None,
         description="Filter by `isFavorite` attribute",
     ),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(
-        default=DEFAULT_PAGE_SIZE,
-        ge=1,
-        le=MAX_PAGE_SIZE,
-        description=f"Items per page (max {MAX_PAGE_SIZE})",
-    ),
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_LIBRARY)
     ),
-) -> LibraryAgentListResponse:
+) -> Page[LibraryAgent]:
     """List agents in the user's library."""
     result = await library_db.list_library_agents(
         user_id=auth.user_id,
-        page=page,
-        page_size=page_size,
+        page=page.page,
+        page_size=page.limit,
         published=published,
         favorite=favorite,
     )
 
-    return LibraryAgentListResponse(
-        agents=[LibraryAgent.from_internal(a) for a in result.agents],
-        page=result.pagination.current_page,
-        page_size=result.pagination.page_size,
+    return page.paged(
+        [LibraryAgent.from_internal(a) for a in result.agents],
         total_count=result.pagination.total_items,
-        total_pages=result.pagination.total_pages,
     )
 
 
@@ -171,6 +161,7 @@ async def fork_library_agent(
     path="/agents/{agent_id}/runs",
     summary="Execute library agent",
     operation_id="executeLibraryAgent",
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def execute_agent(
     request: AgentRunRequest,
@@ -218,10 +209,11 @@ async def execute_agent(
 )
 async def list_agent_credential_requirements(
     agent_id: str,
+    page: PageRequest = Depends(page_request),
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> CredentialRequirementsResponse:
+) -> Page[CredentialRequirement]:
     """List credential requirements and matching user credentials for a library agent."""
     library_agent = await library_db.get_library_agent(agent_id, user_id=auth.user_id)
 
@@ -240,4 +232,4 @@ async def list_agent_credential_requirements(
     requirements = await get_credential_requirements(
         graph.credentials_input_schema, auth.user_id
     )
-    return CredentialRequirementsResponse(requirements=requirements)
+    return page.slice(requirements)
