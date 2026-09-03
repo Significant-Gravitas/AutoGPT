@@ -512,9 +512,10 @@ class TestEvaluateFeatureFlag:
 
     @pytest.fixture
     def user_context(self, mocker):
+        """A resolved context, so `authoritative` turns purely on evaluation."""
         return mocker.patch(
-            "backend.util.feature_flag._fetch_user_context_data",
-            return_value=Context.create("u-1"),
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create("u-1"), True),
         )
 
     @pytest.mark.asyncio
@@ -537,14 +538,22 @@ class TestEvaluateFeatureFlag:
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
 
     @pytest.mark.asyncio
-    async def test_a_failed_user_context_lookup_is_not(self, ld_client, mocker):
-        """The context lookup is a database read, so it fails independently of
-        LaunchDarkly's health."""
+    async def test_a_degraded_user_context_is_not(self, ld_client, mocker):
+        """The context lookup is a database read that SWALLOWS its failure and
+        returns an anonymous context, so evaluation still succeeds — against
+        the wrong user. That value must not be trusted as an answer."""
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
         mocker.patch(
-            "backend.util.feature_flag._fetch_user_context_data",
-            side_effect=Exception("db blip"),
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(side_effect=ConnectionError("database unreachable")),
         )
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+        ld_client.variation.return_value = False
+
+        result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, str(uuid.uuid4()))
+
+        assert result == (False, False)
+        ld_client.variation.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):

@@ -268,14 +268,28 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     Returns:
         LaunchDarkly Context object
     """
+    context, _ = await _fetch_user_context_status(user_id)
+    return context
+
+
+async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
+    """``(context, resolved)`` — see :func:`_fetch_user_context_data`.
+
+    ``resolved`` is False only when the lookup FAILED and the anonymous
+    context is standing in for real user data. A non-UUID key such as
+    ``"system"`` is anonymous by design and counts as resolved. The
+    distinction matters because an evaluation against a degraded context
+    still succeeds — it just answers for the wrong user — so callers acting
+    irreversibly on a ``False`` must not trust one.
+    """
     try:
         uuid.UUID(user_id)
     except ValueError:
         # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), True
 
     try:
-        return await _fetch_user_context(user_id)
+        return await _fetch_user_context(user_id), True
     except Exception as e:
         logger.warning(
             f"Failed to fetch user context for {user_id}: {e} — "
@@ -283,7 +297,7 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             "evaluations for this user may be degraded until the lookup "
             "succeeds"
         )
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), False
 
 
 def _anonymous_context(user_id: str) -> Context:
@@ -378,7 +392,7 @@ async def _evaluate_flag_value(
             return default, False
 
         # Get user context (role/email) from the Better Auth user table
-        context = await _fetch_user_context_data(user_id)
+        context, context_resolved = await _fetch_user_context_status(user_id)
 
         # Evaluate flag
         result = client.variation(flag_key, context, default)
@@ -386,7 +400,9 @@ async def _evaluate_flag_value(
         logger.debug(
             f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
         )
-        return result, True
+        # A degraded context evaluates fine, it just answers for an anonymous
+        # user rather than this one — so the value is a guess, not an answer.
+        return result, context_resolved
 
     except Exception as e:
         logger.warning(
