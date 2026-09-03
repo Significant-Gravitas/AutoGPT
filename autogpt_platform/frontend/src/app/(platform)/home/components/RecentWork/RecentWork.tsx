@@ -12,21 +12,21 @@ import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { HomeTileFilter } from "../HomeTileFilter/HomeTileFilter";
-import { ListeningAgents } from "../ListeningAgents/ListeningAgents";
-import { useListeningAgents } from "../ListeningAgents/useListeningAgents";
 import { OutcomeRow } from "./components/OutcomeRow";
+import { RunRow } from "./components/RunRow";
 import { WorkGroup } from "./components/WorkGroup";
 import { type OutcomeFilter, useOutcomeFilter } from "./useOutcomeFilter";
+import { useWorkflowRuns } from "./useWorkflowRuns";
 
 interface Props {
   dashboard: HomeDashboardResponse;
   className?: string;
 }
 
-/** One card for what the agents did: the briefing's run outcomes, then the
- *  durable things those runs produced, then a line for agents still waiting
- *  on a trigger. The two feeds describe the same day from two angles, so
- *  they share a header and one empty state. */
+/** One card for what the agents did: the briefing's run outcomes, the
+ *  durable things those runs produced, and each workflow's latest state
+ *  from the library feed. The feeds describe the same day from different
+ *  angles, so they share a header and one empty state. */
 export function RecentWork({ dashboard, className }: Props) {
   const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
@@ -37,10 +37,11 @@ export function RecentWork({ dashboard, className }: Props) {
     selectFilter,
     visibleOutcomes,
   } = useOutcomeFilter({ outcomes: briefing.outcomes });
-  const listeningAgents = useListeningAgents();
+  const runs = useWorkflowRuns();
   const hasOutcomes = briefing.outcomes.length > 0;
   const hasGroups = groups.length > 0;
-  const isEmpty = !hasOutcomes && !hasGroups && !briefing.narrative;
+  const hasRuns = runs.length > 0;
+  const isEmpty = !hasOutcomes && !hasGroups && !hasRuns && !briefing.narrative;
 
   return (
     <HomeTile
@@ -131,10 +132,19 @@ export function RecentWork({ dashboard, className }: Props) {
               </div>
             </section>
           ) : null}
+
+          {hasRuns ? (
+            <section aria-label="Workflows" className="pb-1">
+              <HomeSectionLabel>Workflows</HomeSectionLabel>
+              <div>
+                {runs.map((run) => (
+                  <RunRow key={run.id} run={run} />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
-
-      <ListeningAgents agents={listeningAgents} />
     </HomeTile>
   );
 }

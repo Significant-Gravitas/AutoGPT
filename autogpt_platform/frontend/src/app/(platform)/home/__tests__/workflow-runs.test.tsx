@@ -82,8 +82,8 @@ function mockDashboard(response: HomeDashboardResponse) {
   );
 }
 
-// The listening line reads the library's own agent list, not the home
-// aggregate, so that is what decides whether it shows.
+// The workflow rows read the library's own agent and execution feeds, not
+// the home aggregate, so those are what decide whether they show.
 function mockLibraryAgents(agents: Array<Partial<LibraryAgent>>) {
   const base = getGetV2ListLibraryAgentsResponseMock();
   server.use(
@@ -95,6 +95,7 @@ function mockLibraryAgents(agents: Array<Partial<LibraryAgent>>) {
         graph_id: `graph-${index}`,
         has_external_trigger: false,
         is_scheduled: false,
+        next_scheduled_run: null,
         ...agent,
       })),
       pagination: {
@@ -108,38 +109,46 @@ function mockLibraryAgents(agents: Array<Partial<LibraryAgent>>) {
   );
 }
 
-test("names the agents waiting on a trigger under Recent work", async () => {
+test("lists each workflow's latest state under Recent work", async () => {
   mockDashboard(dashboard);
+  const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
   mockLibraryAgents([
     { name: "Inbox Watcher", has_external_trigger: true },
-    { name: "Nightly Report", has_external_trigger: false },
+    {
+      name: "Daily Blog Draft",
+      is_scheduled: true,
+      next_scheduled_run: inTwoDays.toISOString(),
+    },
   ]);
 
   render(<HomePage />);
 
-  const line = await screen.findByRole("region", {
-    name: "Listening for triggers",
-  });
+  const workflows = await screen.findByRole("region", { name: "Workflows" });
   const card = screen
     .getByRole("heading", { name: "Recent work" })
     .closest("section");
-  expect(card?.contains(line)).toBe(true);
+  expect(card?.contains(workflows)).toBe(true);
+  expect(within(workflows).getByText("Inbox Watcher")).toBeDefined();
   expect(
-    within(line)
-      .getByRole("link", { name: "Inbox Watcher" })
-      .getAttribute("href"),
-  ).toBe("/library/agents/agent-0");
-  expect(within(line).queryByText("Nightly Report")).toBeNull();
+    within(workflows).getByText("Waiting for trigger event"),
+  ).toBeDefined();
+  expect(within(workflows).getByText("Daily Blog Draft")).toBeDefined();
+  expect(within(workflows).getByText("Scheduled to run in 2d")).toBeDefined();
+  expect(
+    within(workflows)
+      .getAllByRole("link", { name: /See/ })
+      .map((link) => link.getAttribute("href")),
+  ).toContain("/library/agents/agent-1");
+  // Rows are content, so the card's empty state stands down.
+  expect(screen.queryByText("Nothing to show yet")).toBeNull();
 });
 
-test("stays silent when no agent is waiting on a trigger", async () => {
+test("keeps the empty state when no workflow has anything to report", async () => {
   mockDashboard(dashboard);
-  mockLibraryAgents([{ name: "Nightly Report", has_external_trigger: false }]);
+  mockLibraryAgents([{ name: "Nightly Report" }]);
 
   render(<HomePage />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
-  expect(
-    screen.queryByRole("region", { name: "Listening for triggers" }),
-  ).toBeNull();
+  expect(screen.queryByRole("region", { name: "Workflows" })).toBeNull();
 });
