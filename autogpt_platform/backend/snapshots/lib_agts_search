@@ -49,6 +49,8 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
+      "organization_id": null,
+      "team_id": null,
       "marketplace_listing": null,
       "store_listing_version_id": null
     },
@@ -101,6 +103,8 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
+      "organization_id": null,
+      "team_id": null,
       "marketplace_listing": null,
       "store_listing_version_id": null
     }

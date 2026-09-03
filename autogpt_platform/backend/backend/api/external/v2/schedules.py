@@ -15,6 +15,7 @@ from backend.data import graph as graph_db
 from backend.data.tenancy import get_user_team_ids
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
@@ -63,6 +64,10 @@ async def delete_schedule(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_SCHEDULE)),
 ) -> None:
     """Delete an execution schedule."""
+    # The scheduler deletes by user id alone, so the org is checked here: a
+    # schedule the key's org cannot see must not be deletable through it.
+    await _assert_schedule_in_tenant(schedule_id, auth)
+
     try:
         await get_scheduler_client().delete_schedule(
             schedule_id=schedule_id,
@@ -104,7 +109,6 @@ async def create_graph_schedule(
         version=request.graph_version,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(
@@ -133,3 +137,14 @@ async def create_graph_schedule(
     )
 
     return AgentRunSchedule.from_internal(result)
+
+
+async def _assert_schedule_in_tenant(schedule_id: str, auth: TenantContext) -> None:
+    """404 for a schedule outside the organization the credentials act in."""
+    visible = await get_scheduler_client().get_graph_execution_schedules(
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_ids=await get_user_team_ids(auth.user_id, auth.organization_id),
+    )
+    if not any(schedule.id == schedule_id for schedule in visible):
+        raise NotFoundError(f"Schedule #{schedule_id} not found")

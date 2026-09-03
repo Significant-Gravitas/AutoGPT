@@ -11,7 +11,7 @@ heavy dependencies that are irrelevant for error handling tests.
 """
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -98,6 +98,11 @@ def test_not_found_error_on_delete_returns_404(
 ) -> None:
     """NotFoundError on DELETE should return 404, not 204 or 500."""
     mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
+    mocker.patch(
         "backend.api.features.library.db.delete_library_agent",
         new_callable=AsyncMock,
         side_effect=NotFoundError("Agent #gone not found"),
@@ -135,6 +140,11 @@ def test_value_error_returns_400(
     snapshot: Snapshot,
 ) -> None:
     """ValueError raised by the service layer should become a 400 response."""
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
     mocker.patch(
         "backend.api.features.library.db.update_library_agent",
         new_callable=AsyncMock,
@@ -219,6 +229,11 @@ def test_runtime_error_returns_500(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """RuntimeError (not ValueError) should hit the catch-all 500 handler."""
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=TEST_ORG_ID),
+    )
     mocker.patch(
         "backend.api.features.library.db.delete_library_agent",
         new_callable=AsyncMock,

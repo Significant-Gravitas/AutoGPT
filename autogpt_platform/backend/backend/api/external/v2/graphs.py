@@ -34,7 +34,7 @@ from .models import (
     MarketplaceAgentDetails,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, require_permission
+from .tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,6 @@ async def get_graph(
         user_id=auth.user_id,
         include_subgraphs=True,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(
@@ -157,7 +156,6 @@ async def update_graph(
         graph_id,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not existing_versions:
         raise HTTPException(
@@ -201,7 +199,6 @@ async def update_graph(
         user_id=auth.user_id,
         include_subgraphs=True,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     assert new_graph_version_with_subgraphs
     return Graph.from_internal(new_graph_version_with_subgraphs)
@@ -253,7 +250,6 @@ async def list_graph_versions(
         graph_id,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graphs:
         raise HTTPException(
@@ -288,7 +284,6 @@ async def set_active_version(
         new_active_version,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not new_active_graph:
         raise HTTPException(
@@ -301,7 +296,6 @@ async def set_active_version(
         version=None,
         user_id=auth.user_id,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
 
     await before_graph_activate(new_active_graph, user_id=auth.user_id)
@@ -332,13 +326,13 @@ async def update_graph_settings(
     """Update settings for a graph."""
     from backend.api.features.library import db as library_db
 
-    library_agent = await library_db.get_library_agent_by_graph_id(
-        graph_id=graph_id, user_id=auth.user_id
+    library_agent = in_tenant(
+        await library_db.get_library_agent_by_graph_id(
+            graph_id=graph_id, user_id=auth.user_id
+        ),
+        auth,
+        f"Graph #{graph_id}",
     )
-    if not library_agent:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, f"Graph #{graph_id} not found in user's library"
-        )
 
     updated_agent = await library_db.update_library_agent(
         user_id=auth.user_id,
@@ -361,15 +355,14 @@ async def get_library_agent_by_graph(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryAgent:
     """Get the library agent associated with a specific graph."""
-    agent = await library_db.get_library_agent_by_graph_id(
-        graph_id=graph_id,
-        user_id=auth.user_id,
+    agent = in_tenant(
+        await library_db.get_library_agent_by_graph_id(
+            graph_id=graph_id,
+            user_id=auth.user_id,
+        ),
+        auth,
+        f"Library agent for graph #{graph_id}",
     )
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No library agent found for graph #{graph_id}",
-        )
     return LibraryAgent.from_internal(agent)
 
 
@@ -392,7 +385,6 @@ async def list_graph_blocks(
         user_id=auth.user_id,
         include_subgraphs=True,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(
@@ -434,7 +426,6 @@ async def list_graph_credential_requirements(
         user_id=auth.user_id,
         include_subgraphs=True,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(

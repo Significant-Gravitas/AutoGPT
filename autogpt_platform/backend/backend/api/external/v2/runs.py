@@ -33,7 +33,7 @@ from .models import (
     AgentRunShareResponse,
 )
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, require_permission
+from .tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -78,6 +78,7 @@ async def list_reviews(
         status=status,
         page=page.page,
         page_size=page.limit,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -105,6 +106,9 @@ async def submit_reviews(
     All pending reviews for the run must be included in the request.
     Approving a review continues execution; rejecting terminates that branch.
     """
+    # Reviews carry no organization of their own; the run they belong to does.
+    await _assert_run_in_tenant(run_id, auth)
+
     # Validate run_id: ensure the submitted node_exec_ids belong to this run
     pending_reviews = await review_db.get_pending_reviews_for_execution(
         graph_exec_id=run_id,
@@ -301,6 +305,8 @@ async def delete_run(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> None:
     """Delete an agent run."""
+    await _assert_run_in_tenant(run_id, auth)
+
     await execution_db.delete_graph_execution(
         graph_exec_id=run_id,
         user_id=auth.user_id,
@@ -380,4 +386,17 @@ async def disable_sharing(
         is_shared=False,
         share_token=None,
         shared_at=None,
+    )
+
+
+async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> None:
+    """404 before acting on a run the credentials cannot reach."""
+    in_tenant(
+        await execution_db.get_graph_execution(
+            user_id=auth.user_id,
+            execution_id=run_id,
+            organization_id=auth.organization_id,
+        ),
+        auth,
+        f"Run #{run_id}",
     )

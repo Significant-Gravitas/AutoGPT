@@ -17,7 +17,7 @@ from ..models import (
     LibraryFolderUpdateRequest,
 )
 from ..pagination import Page, PageRequest, page_request
-from ..tenancy import TenantContext, require_permission
+from ..tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ async def list_folders(
     folders = await library_db.list_folders(
         user_id=auth.user_id,
         parent_id=parent_id,
+        organization_id=auth.organization_id,
     )
 
     return page.slice([LibraryFolder.from_internal(f) for f in folders])
@@ -58,7 +59,9 @@ async def get_folder_tree(
 
     Pagination applies to the root folders; each item carries its whole subtree.
     """
-    tree = await library_db.get_folder_tree(user_id=auth.user_id)
+    tree = await library_db.get_folder_tree(
+        user_id=auth.user_id, organization_id=auth.organization_id
+    )
 
     return page.slice([LibraryFolderTree.from_internal(f) for f in tree])
 
@@ -73,9 +76,10 @@ async def get_folder(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryFolder:
     """Get details of a specific folder."""
-    folder = await library_db.get_folder(
-        folder_id=folder_id,
-        user_id=auth.user_id,
+    folder = in_tenant(
+        await library_db.get_folder(folder_id=folder_id, user_id=auth.user_id),
+        auth,
+        f"Folder #{folder_id}",
     )
     return LibraryFolder.from_internal(folder)
 
@@ -112,6 +116,8 @@ async def update_folder(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Update properties of a folder."""
+    await _assert_folder_in_tenant(folder_id, auth)
+
     folder = await library_db.update_folder(
         folder_id=folder_id,
         user_id=auth.user_id,
@@ -133,6 +139,8 @@ async def move_folder(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryFolder:
     """Move a folder to a new parent. Set target_parent_id to null to move to root."""
+    await _assert_folder_in_tenant(folder_id, auth)
+
     folder = await library_db.move_folder(
         folder_id=folder_id,
         user_id=auth.user_id,
@@ -154,7 +162,18 @@ async def delete_folder(
     """
     Delete a folder and its subfolders. Agents in this folder will be moved to root.
     """
+    await _assert_folder_in_tenant(folder_id, auth)
+
     await library_db.delete_folder(
         folder_id=folder_id,
         user_id=auth.user_id,
+    )
+
+
+async def _assert_folder_in_tenant(folder_id: str, auth: TenantContext) -> None:
+    """404 before mutating a folder the credentials cannot reach."""
+    in_tenant(
+        await library_db.get_folder(folder_id=folder_id, user_id=auth.user_id),
+        auth,
+        f"Folder #{folder_id}",
     )

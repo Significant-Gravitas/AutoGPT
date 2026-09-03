@@ -8,6 +8,7 @@ the database is the one bound to the credential: a key minted in org A never
 passes org B, and a key with no org passes the caller's personal org.
 """
 
+import inspect
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
@@ -19,7 +20,7 @@ from prisma.enums import APIKeyPermission
 
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
-from backend.util.exceptions import NotAuthorizedError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from . import tenancy
 from .pagination import PageRequest
@@ -137,7 +138,7 @@ async def test_run_creation_carries_org_and_team(
     mocker.patch(
         "backend.api.features.library.db.get_library_agent",
         new_callable=AsyncMock,
-        return_value=Mock(graph_id="graph-1", graph_version=1),
+        return_value=Mock(organization_id=ORG_A, graph_id="graph-1", graph_version=1),
     )
     add_execution = mocker.patch(
         "backend.executor.utils.add_graph_execution",
@@ -195,8 +196,8 @@ async def test_marketplace_submissions_are_scoped_to_the_key_org(
 async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """`get_graph` treats a team as an exact-match filter, so a key that is
-    not pinned to one must pass None or it stops finding org-home graphs."""
+    """`get_graph` treats a team as an exact-match filter, so v2 read paths
+    pass none at all: with one, a key stops finding org-home graphs."""
     from .graphs import get_graph
 
     graph_db = mocker.patch(
@@ -209,7 +210,7 @@ async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
         await get_graph(graph_id="graph-1", version=None, auth=_key_for(ORG_A))
 
     assert graph_db.await_args.kwargs["organization_id"] == ORG_A
-    assert graph_db.await_args.kwargs["team_id"] is None
+    assert "team_id" not in graph_db.await_args.kwargs
 
 
 # ============================================================================
@@ -338,6 +339,237 @@ async def test_account_without_a_personal_org_is_rejected(
 
 
 # ============================================================================
+# Cross-organization access: an org-A key must not reach org-B resources
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_read_an_org_b_library_agent(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """404, not 403: whether it exists elsewhere is not this key's business."""
+    from .library.agents import get_library_agent
+
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B),
+    )
+
+    with pytest.raises(NotFoundError):
+        await get_library_agent(agent_id="la-1", auth=_key_for(ORG_A))
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_run_an_org_b_library_agent(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The run would be tenanted, billed and visible in org A."""
+    from .library.agents import execute_agent
+    from .models import AgentRunRequest
+
+    mocker.patch(
+        "backend.api.external.v2.library.agents.get_credit_model",
+        new_callable=AsyncMock,
+        return_value=Mock(get_credits=AsyncMock(return_value=100)),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B, graph_id="g1", graph_version=1),
+    )
+    add_execution = mocker.patch(
+        "backend.executor.utils.add_graph_execution",
+        new_callable=AsyncMock,
+        return_value=_run(),
+    )
+
+    with pytest.raises(NotFoundError):
+        await execute_agent(
+            request=AgentRunRequest(inputs={}),
+            agent_id="la-1",
+            auth=_key_for(ORG_A),
+        )
+    add_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_delete_an_org_b_library_agent(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    from .library.agents import delete_library_agent
+
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B),
+    )
+    delete = mocker.patch(
+        "backend.api.features.library.db.delete_library_agent",
+        new_callable=AsyncMock,
+    )
+
+    with pytest.raises(NotFoundError):
+        await delete_library_agent(agent_id="la-1", auth=_key_for(ORG_A))
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_execute_an_org_b_preset(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    from .library.presets import execute_preset
+
+    mocker.patch(
+        "backend.api.external.v2.library.presets.get_credit_model",
+        new_callable=AsyncMock,
+        return_value=Mock(get_credits=AsyncMock(return_value=100)),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B),
+    )
+    add_execution = mocker.patch(
+        "backend.executor.utils.add_graph_execution",
+        new_callable=AsyncMock,
+        return_value=_run(),
+    )
+
+    with pytest.raises(NotFoundError):
+        await execute_preset(preset_id="p-1", auth=_key_for(ORG_A))
+    add_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_delete_an_org_b_folder(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    from .library.folders import delete_folder
+
+    mocker.patch(
+        "backend.api.features.library.db.get_folder",
+        new_callable=AsyncMock,
+        return_value=Mock(organization_id=ORG_B),
+    )
+    delete = mocker.patch(
+        "backend.api.features.library.db.delete_folder", new_callable=AsyncMock
+    )
+
+    with pytest.raises(NotFoundError):
+        await delete_folder(folder_id="f-1", auth=_key_for(ORG_A))
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_org_a_key_cannot_delete_an_org_b_run(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    from .runs import delete_run
+
+    mocker.patch(
+        "backend.data.execution.get_graph_execution",
+        new_callable=AsyncMock,
+        return_value=_run(organization_id=ORG_B),
+    )
+    delete = mocker.patch(
+        "backend.data.execution.delete_graph_execution", new_callable=AsyncMock
+    )
+
+    with pytest.raises(NotFoundError):
+        await delete_run(run_id="run-1", auth=_key_for(ORG_A))
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_untagged_rows_stay_reachable(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Rows created before org tagging belong to their owner, not to nobody."""
+    from .library.agents import get_library_agent
+
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new_callable=AsyncMock,
+        return_value=_library_agent(organization_id=None),
+    )
+    from_internal = mocker.patch(
+        "backend.api.external.v2.models.LibraryAgent.from_internal"
+    )
+
+    await get_library_agent(agent_id="la-1", auth=_key_for(ORG_A))
+
+    assert from_internal.call_args.args[0].organization_id is None
+
+
+@pytest.mark.asyncio
+async def test_preset_and_review_listing_are_scoped_to_the_key_org(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """These list by user id underneath, so the org has to reach the query."""
+    from .library.presets import list_presets
+    from .runs import list_reviews
+
+    presets = mocker.patch(
+        "backend.api.features.library.db.list_presets",
+        new_callable=AsyncMock,
+        return_value=Mock(presets=[], pagination=Mock(total_items=0)),
+    )
+    reviews = mocker.patch(
+        "backend.data.human_review.get_reviews",
+        new_callable=AsyncMock,
+        return_value=([], Mock(total_items=0)),
+    )
+
+    await list_presets(graph_id=None, page=_page(), auth=_key_for(ORG_A))
+    await list_reviews(run_id=None, status=None, page=_page(), auth=_key_for(ORG_A))
+
+    assert presets.await_args.kwargs["organization_id"] == ORG_A
+    assert reviews.await_args.kwargs["organization_id"] == ORG_A
+
+
+def test_every_item_handler_checks_the_tenant() -> None:
+    """A handler that fetches by id must enforce the tenant on what it fetched.
+
+    Resolving the tenant is only half of it: several lookups underneath match
+    on user id alone, so a handler that skips the check reads across
+    organizations. Either form counts — `in_tenant` on the row, or passing the
+    org into a query that filters on it.
+    """
+    unchecked = [
+        f"{sorted(route.methods)[0]} {route.path}"
+        for route in v2_router.routes
+        if isinstance(route, APIRoute)
+        and "{" in route.path
+        and route.endpoint.__name__ not in _ITEM_HANDLERS_WITHOUT_TENANTED_ROWS
+        and not _checks_tenant(inspect.getsource(route.endpoint))
+    ]
+    assert not unchecked, f"item handlers that never check the tenant: {unchecked}"
+
+
+def _checks_tenant(source: str) -> bool:
+    return "in_tenant" in source or "organization_id=auth.organization_id" in source
+
+
+# Item handlers that touch nothing an organization owns: workspace files and
+# integration credentials are stored per user, and marketplace listings and
+# creator profiles are public — a published listing is readable by anyone.
+_ITEM_HANDLERS_WITHOUT_TENANTED_ROWS = {
+    "get_file",
+    "delete_file",
+    "download_file",
+    "delete_credential",
+    "get_agent_by_version",
+    "get_agent_details",
+    "get_creator_details",
+    "get_marketplace_listing_for_graph",
+    # Adds a public listing to the caller's own library; the row it creates is
+    # untagged, like the internal route's.
+    "add_agent_to_library",
+}
+
+
+# ============================================================================
 # Helpers
 # ============================================================================
 
@@ -382,6 +614,9 @@ def _mock_membership(
     prisma.orgmember.find_unique = AsyncMock(
         return_value=Mock(status=status, Org=Mock(id=org_id, deletedAt=deleted_at))
     )
+    prisma.teammember.find_unique = AsyncMock(
+        return_value=Mock(status="ACTIVE", Team=Mock(orgId=org_id))
+    )
     return prisma
 
 
@@ -389,7 +624,11 @@ def _page() -> PageRequest:
     return PageRequest(limit=20)
 
 
-def _run() -> GraphExecutionMeta:
+def _library_agent(organization_id: str | None) -> Mock:
+    return Mock(id="la-1", organization_id=organization_id, graph_id="g1")
+
+
+def _run(organization_id: str = ORG_A) -> GraphExecutionMeta:
     return GraphExecutionMeta.model_construct(
         id="run-1",
         user_id=USER_ID,
@@ -404,6 +643,6 @@ def _run() -> GraphExecutionMeta:
         is_shared=False,
         share_token=None,
         stats=None,
-        organization_id=ORG_A,
+        organization_id=organization_id,
         team_id=TEAM_A,
     )

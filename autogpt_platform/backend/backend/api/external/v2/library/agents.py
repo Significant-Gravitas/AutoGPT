@@ -22,7 +22,7 @@ from ..models import (
 )
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
-from ..tenancy import TenantContext, require_permission
+from ..tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +77,10 @@ async def get_library_agent(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> LibraryAgent:
     """Get detailed information about a specific agent in the user's library."""
-    agent = await library_db.get_library_agent(
-        id=agent_id,
-        user_id=auth.user_id,
+    agent = in_tenant(
+        await library_db.get_library_agent(id=agent_id, user_id=auth.user_id),
+        auth,
+        f"Agent #{agent_id}",
     )
     return LibraryAgent.from_internal(agent)
 
@@ -95,6 +96,8 @@ async def update_library_agent(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> LibraryAgent:
     """Update properties of a library agent."""
+    await _assert_agent_in_tenant(agent_id, auth)
+
     updated = await library_db.update_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -118,6 +121,8 @@ async def delete_library_agent(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
     """Remove an agent from the user's library."""
+    await _assert_agent_in_tenant(agent_id, auth)
+
     await library_db.delete_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -140,6 +145,8 @@ async def fork_library_agent(
     assigning new IDs. The cloned graph is added to the user's library as
     an independent agent that can be modified without affecting the original.
     """
+    await _assert_agent_in_tenant(agent_id, auth)
+
     forked = await library_db.fork_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -175,9 +182,10 @@ async def execute_agent(
         )
 
     # Get the library agent to find the graph ID and version
-    library_agent = await library_db.get_library_agent(
-        id=agent_id,
-        user_id=auth.user_id,
+    library_agent = in_tenant(
+        await library_db.get_library_agent(id=agent_id, user_id=auth.user_id),
+        auth,
+        f"Agent #{agent_id}",
     )
 
     result = await execution_utils.add_graph_execution(
@@ -205,7 +213,11 @@ async def list_agent_credential_requirements(
     ),
 ) -> Page[CredentialRequirement]:
     """List credential requirements and matching user credentials for a library agent."""
-    library_agent = await library_db.get_library_agent(agent_id, user_id=auth.user_id)
+    library_agent = in_tenant(
+        await library_db.get_library_agent(agent_id, user_id=auth.user_id),
+        auth,
+        f"Agent #{agent_id}",
+    )
 
     graph = await graph_db.get_graph(
         graph_id=library_agent.graph_id,
@@ -213,7 +225,6 @@ async def list_agent_credential_requirements(
         user_id=auth.user_id,
         include_subgraphs=True,
         organization_id=auth.organization_id,
-        team_id=auth.team_id,
     )
     if not graph:
         raise HTTPException(
@@ -225,3 +236,12 @@ async def list_agent_credential_requirements(
         graph.credentials_input_schema, auth.user_id
     )
     return page.slice(requirements)
+
+
+async def _assert_agent_in_tenant(agent_id: str, auth: TenantContext) -> None:
+    """404 before mutating an agent the credentials cannot reach."""
+    in_tenant(
+        await library_db.get_library_agent(id=agent_id, user_id=auth.user_id),
+        auth,
+        f"Agent #{agent_id}",
+    )

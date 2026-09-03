@@ -18,7 +18,7 @@ membership-verified tenant.
 """
 
 import logging
-from typing import Literal, Optional
+from typing import Literal, Optional, Protocol, TypeVar
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
 from fastapi import Header, HTTPException, Security
@@ -29,9 +29,11 @@ from starlette import status
 from backend.api.external import middleware
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.db import prisma
-from backend.util.exceptions import NotAuthorizedError
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound="TenantedRow")
 
 
 class TenantContext(BaseModel):
@@ -110,6 +112,29 @@ async def resolve_tenant(
     )
 
 
+class TenantedRow(Protocol):
+    """Any resource row that records which organization it belongs to."""
+
+    organization_id: Optional[str]
+
+
+def in_tenant(resource: Optional[T], auth: TenantContext, what: str) -> T:
+    """Return the resource, or 404 if it is missing or in another organization.
+
+    Resolving the tenant is not enough on its own: the by-id lookups underneath
+    v2 match on user id, so a key minted in one org would otherwise reach the
+    same user's rows in another. 404 rather than 403 — whether a resource
+    exists elsewhere is not this credential's business. Untagged rows (created
+    before org tagging) stay visible to their owner, as everywhere else.
+    """
+    if resource is None or (
+        resource.organization_id is not None
+        and resource.organization_id != auth.organization_id
+    ):
+        raise NotFoundError(f"{what} not found")
+    return resource
+
+
 async def resolve_credential_tenancy(
     auth: APIAuthorizationInfo,
 ) -> tuple[str, Optional[str]]:
@@ -120,6 +145,10 @@ async def resolve_credential_tenancy(
     """
     if auth.organization_id:
         await _assert_active_org_member(auth.user_id, auth.organization_id)
+        if auth.team_id_restriction:
+            await _assert_active_team_member(
+                auth.user_id, auth.organization_id, auth.team_id_restriction
+            )
         return auth.organization_id, auth.team_id_restriction
     return await _personal_tenancy(auth.user_id)
 

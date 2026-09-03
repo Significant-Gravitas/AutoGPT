@@ -29,7 +29,7 @@ from ..models import (
 )
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
-from ..tenancy import TenantContext, require_permission
+from ..tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ async def list_presets(
         page=page.page,
         page_size=page.limit,
         graph_id=graph_id,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -70,15 +71,11 @@ async def get_preset(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> AgentPreset:
     """Get details of a specific preset."""
-    preset = await library_db.get_preset(
-        user_id=auth.user_id,
-        preset_id=preset_id,
+    preset = in_tenant(
+        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
+        auth,
+        f"Preset #{preset_id}",
     )
-    if not preset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Preset #{preset_id} not found",
-        )
 
     return AgentPreset.from_internal(preset)
 
@@ -162,6 +159,8 @@ async def update_preset(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> AgentPreset:
     """Update properties of a preset. Only provided fields will be updated."""
+    await _assert_preset_in_tenant(preset_id, auth)
+
     preset = await library_db.update_preset(
         user_id=auth.user_id,
         preset_id=preset_id,
@@ -185,6 +184,8 @@ async def delete_preset(
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_LIBRARY)),
 ) -> None:
     """Delete a preset."""
+    await _assert_preset_in_tenant(preset_id, auth)
+
     await library_db.delete_preset(
         user_id=auth.user_id,
         preset_id=preset_id,
@@ -219,15 +220,11 @@ async def execute_preset(
         )
 
     # Fetch preset
-    preset = await library_db.get_preset(
-        user_id=auth.user_id,
-        preset_id=preset_id,
+    preset = in_tenant(
+        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
+        auth,
+        f"Preset #{preset_id}",
     )
-    if not preset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Preset #{preset_id} not found",
-        )
 
     # Merge preset inputs with overrides
     merged_inputs = {**preset.inputs, **request.inputs}
@@ -244,3 +241,12 @@ async def execute_preset(
         team_id=auth.team_id,
     )
     return AgentGraphRun.from_internal(result)
+
+
+async def _assert_preset_in_tenant(preset_id: str, auth: TenantContext) -> None:
+    """404 before mutating a preset the credentials cannot reach."""
+    in_tenant(
+        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
+        auth,
+        f"Preset #{preset_id}",
+    )
