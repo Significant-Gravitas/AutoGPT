@@ -3,14 +3,14 @@
  *
  * Every layer of this path had tests and every layer passed, yet composing
  * them produced a card that could never be completed. So this test drives the
- * whole path with nothing in it stubbed:
+ * whole path, mocking only its two ends:
  *
  *     ToolChain → SetupRequirementsCard → ChainActionCard → ConnectorRow
  *               → ConnectCredentialDialog → useOAuthConnect → the API
  *
  * The API is MSW rather than a live backend, and the consent screen is the one
  * unavoidable fake — no CI job can have a human approve a real OAuth grant.
- * Everything between those two ends is the real component.
+ * Every component in between is the real one.
  */
 
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
