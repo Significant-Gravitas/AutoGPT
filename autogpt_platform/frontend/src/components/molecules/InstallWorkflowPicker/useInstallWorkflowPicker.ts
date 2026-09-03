@@ -1,4 +1,5 @@
 import {
+  getGetExpertQueryKey,
   getListExpertsQueryKey,
   useInstallExpertWorkflow,
   useListExperts,
@@ -143,9 +144,14 @@ export function useInstallWorkflowPicker({
     }
     try {
       await installWorkflow({ expertId: expert.id, data });
-      await queryClient.invalidateQueries({
-        queryKey: getListExpertsQueryKey(),
-      });
+      // Both: the picker is opened from the team list and from one expert's
+      // own page, whose workflow section reads the single-expert query.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() }),
+        queryClient.invalidateQueries({
+          queryKey: getGetExpertQueryKey(expert.id),
+        }),
+      ]);
       toast({ title: `Installed on ${expert.name}`, variant: "success" });
       onClose();
     } catch {
