@@ -148,6 +148,14 @@ export function SetupRequirementsCard({
   const hasUserActionableInputs = isEditMode && needsInputs;
   const canAutoDismiss =
     needsCredentials && alreadyConnected && !hasUserActionableInputs;
+  // Inside a chain this card renders no Proceed of its own — the chain only
+  // renders one for inputs/questions — so a satisfied credential is the sole
+  // "go" signal; without this the chain stalls after the user connects.
+  const canAutoProceed =
+    Boolean(chainActions) &&
+    needsCredentials &&
+    isAllCredsComplete &&
+    !hasUserActionableInputs;
 
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
@@ -163,7 +171,7 @@ export function SetupRequirementsCard({
   // (cleanup cancels the first microtask, but the claim is still held, so
   // the second effect run can't re-claim and the send never fires).
   useEffect(() => {
-    if (!canAutoDismiss || hasSent) return;
+    if ((!canAutoDismiss && !canAutoProceed) || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
     const claimed = useConnectedProvidersStore
       .getState()
@@ -174,7 +182,7 @@ export function SetupRequirementsCard({
     }
     handleRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
-  }, [canAutoDismiss, hasSent]);
+  }, [canAutoDismiss, canAutoProceed, hasSent]);
 
   const canRun = checkCanRun(
     needsCredentials,
@@ -185,7 +193,7 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   useEffect(() => {
-    if (!chainActions || hasSent || canAutoDismiss) return;
+    if (!chainActions || hasSent || canAutoDismiss || canAutoProceed) return;
     if (!needsCredentials && !needsInputs) return;
     chainActions.register({
       id: actionId,
@@ -221,6 +229,7 @@ export function SetupRequirementsCard({
     chainActions,
     hasSent,
     canAutoDismiss,
+    canAutoProceed,
     canRun,
     actionId,
     needsCredentials,
@@ -231,7 +240,7 @@ export function SetupRequirementsCard({
     showAdvanced,
   ]);
 
-  if (hasSent || canAutoDismiss) {
+  if (hasSent || canAutoDismiss || canAutoProceed) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 

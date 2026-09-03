@@ -45,7 +45,11 @@ export function ConnectCredentialDialog({
     isConnecting,
     handleContinue,
     reset,
-  } = useConnectCredentialDialog({ provider, onConnected: onClose });
+  } = useConnectCredentialDialog({
+    provider,
+    onConnected: onClose,
+    scopes: schema.credentials_scopes,
+  });
 
   function handleClose() {
     reset();

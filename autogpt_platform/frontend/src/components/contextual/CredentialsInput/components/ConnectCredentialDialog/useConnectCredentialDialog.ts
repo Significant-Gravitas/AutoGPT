@@ -11,12 +11,21 @@ import { useState } from "react";
 interface Args {
   provider: string;
   onConnected: () => void;
+  scopes?: string[];
 }
 
-export function useConnectCredentialDialog({ provider, onConnected }: Args) {
+export function useConnectCredentialDialog({
+  provider,
+  onConnected,
+  scopes,
+}: Args) {
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
 
-  const oauth = useOAuthConnect({ provider, onSuccess: handleConnected });
+  const oauth = useOAuthConnect({
+    provider,
+    onSuccess: handleConnected,
+    scopes,
+  });
   const apiKey = useApiKeyConnectForm({ provider, onSuccess: handleConnected });
 
   // The dialog stays mounted while closed, so a half-filled key or a
