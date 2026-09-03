@@ -11,7 +11,7 @@ const EMOJI_RE =
 
 export function stripMarkdownForSpeech(md: string): string {
   return (
-    md
+    stripHtmlTags(md)
       // Code blocks (``` ... ```)
       .replace(/```[\s\S]*?```/g, "")
       // Inline code
@@ -35,12 +35,23 @@ export function stripMarkdownForSpeech(md: string): string {
       .replace(/^[\s]*[-*+]\s+/gm, "")
       // Ordered list markers
       .replace(/^[\s]*\d+\.\s+/gm, "")
-      // HTML tags
-      .replace(/<[^>]+>/g, "")
+      // HTML entities (tags are stripped by stripHtmlTags above)
+      .replace(/&[a-z]+;|&#\d+;/gi, " ")
       // Emoji
       .replace(EMOJI_RE, "")
       // Collapse multiple blank lines
       .replace(/\n{3,}/g, "\n\n")
       .trim()
   );
+}
+
+/** Removal can splice a new tag out of the text around it, so repeat until stable. */
+function stripHtmlTags(text: string): string {
+  let previous: string;
+  let current = text;
+  do {
+    previous = current;
+    current = current.replace(/<[^>]*>/g, "");
+  } while (current !== previous);
+  return current;
 }
