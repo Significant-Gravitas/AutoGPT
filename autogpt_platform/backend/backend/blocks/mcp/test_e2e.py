@@ -14,6 +14,7 @@ import os
 import pytest
 
 from backend.blocks.mcp.client import MCPClient
+from backend.blocks.mcp.protocol import LEGACY_PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION
 
 # Public MCP server that requires no authentication
 OPENAI_DOCS_MCP_URL = "https://developers.openai.com/mcp"
@@ -33,7 +34,11 @@ class TestRealMCPServer:
         client = MCPClient(OPENAI_DOCS_MCP_URL)
         result = await client.initialize()
 
-        assert result["protocolVersion"] == "2025-03-26"
+        assert result["protocolVersion"] in (
+            LEGACY_PROTOCOL_VERSION,
+            MODERN_PROTOCOL_VERSION,
+        )
+        assert client.era is not None
         assert "serverInfo" in result
         assert result["serverInfo"]["name"] == "openai-docs-mcp"
         assert "tools" in result.get("capabilities", {})

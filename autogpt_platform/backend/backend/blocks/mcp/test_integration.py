@@ -15,7 +15,12 @@ from aiohttp import web
 from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
-from backend.blocks.mcp.client import MCPClient
+from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.protocol import (
+    MODERN_PROTOCOL_VERSION,
+    MCPProtocolEra,
+    era_cache,
+)
 from backend.blocks.mcp.test_server import create_test_mcp_app
 from backend.data.model import OAuth2Credentials
 
@@ -28,8 +33,10 @@ class _MCPTestServer:
     This avoids event loop conflicts with pytest-asyncio.
     """
 
-    def __init__(self, auth_token: str | None = None):
+    def __init__(self, auth_token: str | None = None, **app_options):
         self.auth_token = auth_token
+        self.app_options = app_options
+        self.app: web.Application | None = None
         self.url: str = ""
         self._runner: web.AppRunner | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -44,7 +51,8 @@ class _MCPTestServer:
         self._loop.run_forever()
 
     async def _start(self):
-        app = create_test_mcp_app(auth_token=self.auth_token)
+        app = create_test_mcp_app(auth_token=self.auth_token, **self.app_options)
+        self.app = app
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", 0)
@@ -58,6 +66,21 @@ class _MCPTestServer:
         if not self._started.wait(timeout=5):
             raise RuntimeError("MCP test server failed to start within 5 seconds")
         return self
+
+    @property
+    def requests(self) -> list[dict]:
+        assert self.app is not None
+        return self.app["requests"]
+
+    @property
+    def sessions(self) -> set[str]:
+        assert self.app is not None
+        return self.app["sessions"]
+
+    @property
+    def deleted_sessions(self) -> list[str]:
+        assert self.app is not None
+        return self.app["deleted_sessions"]
 
     def stop(self):
         if self._loop and self._runner:
@@ -387,3 +410,221 @@ class TestMCPToolBlockIntegration:
         assert len(outputs) == 1
         assert outputs[0][0] == "result"
         assert outputs[0][1] == "No auth needed"
+
+
+# ── Protocol-era integration tests ───────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _fresh_era_cache():
+    era_cache.clear()
+    yield
+    era_cache.clear()
+
+
+def _server(**kwargs) -> _MCPTestServer:
+    server = _MCPTestServer(**kwargs)
+    server.start()
+    return server
+
+
+@pytest.fixture(scope="module")
+def modern_server():
+    server = _server(era="modern")
+    yield server
+    server.stop()
+
+
+@pytest.fixture(scope="module")
+def modern_sse_server():
+    server = _server(era="modern", sse=True)
+    yield server
+    server.stop()
+
+
+@pytest.fixture(scope="module")
+def dual_server():
+    server = _server(era="dual", sessions=True)
+    yield server
+    server.stop()
+
+
+@pytest.fixture(scope="module")
+def session_legacy_server():
+    server = _server(era="legacy", sessions=True)
+    yield server
+    server.stop()
+
+
+@pytest.fixture(scope="module")
+def incompatible_modern_server():
+    server = _server(era="modern", supported_versions=("2099-01-01",))
+    yield server
+    server.stop()
+
+
+class TestProtocolEras:
+    """The same client against legacy, modern and dual-era servers."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_modern_server_is_used_statelessly(self, modern_server):
+        client = _make_client(modern_server.url)
+        result = await client.initialize()
+
+        assert client.era is MCPProtocolEra.MODERN
+        assert result["protocolVersion"] == MODERN_PROTOCOL_VERSION
+        assert result["serverInfo"]["name"] == "test-mcp-server"
+        assert "tools" in result["capabilities"]
+
+        tools = await client.list_tools()
+        names = {t.name for t in tools}
+        # broken_header_tool carries an invalid x-mcp-header and must be dropped
+        assert names == {
+            "get_weather",
+            "add_numbers",
+            "echo",
+            "execute_sql",
+            "needs_confirmation",
+            "needs_elicitation",
+        }
+
+        result = await client.call_tool("get_weather", {"city": "Oslo"})
+        assert not result.is_error
+        assert json.loads(result.content[0]["text"])["city"] == "Oslo"
+
+        methods = [r["method"] for r in modern_server.requests]
+        assert "initialize" not in methods
+        assert "notifications/initialized" not in methods
+        call = next(r for r in modern_server.requests if r["method"] == "tools/call")
+        assert call["headers"]["Mcp-Method"] == "tools/call"
+        assert call["headers"]["Mcp-Name"] == "get_weather"
+        assert call["headers"]["MCP-Protocol-Version"] == MODERN_PROTOCOL_VERSION
+        assert "Mcp-Session-Id" not in call["headers"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_modern_server_over_sse(self, modern_sse_server):
+        client = _make_client(modern_sse_server.url)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.MODERN
+        result = await client.call_tool("echo", {"message": "hi"})
+        assert result.content[0]["text"] == "hi"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_legacy_fallback_from_method_not_found(self, mcp_server):
+        client = _make_client(mcp_server)
+        result = await client.initialize()
+        assert client.era is MCPProtocolEra.LEGACY
+        assert result["protocolVersion"] == "2025-03-26"
+        assert era_cache.get(client.server_url) is not None
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_legacy_fallback_from_plain_400(self, session_legacy_server):
+        client = _make_client(session_legacy_server.url)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.LEGACY
+        tools = await client.list_tools()
+        assert len(tools) == 3
+        methods = [r["method"] for r in session_legacy_server.requests]
+        assert methods[:2] == ["server/discover", "initialize"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_cached_era_skips_probe_on_next_connection(
+        self, session_legacy_server
+    ):
+        first = _make_client(session_legacy_server.url)
+        await first.initialize()
+        before = len(session_legacy_server.requests)
+
+        second = _make_client(session_legacy_server.url)
+        await second.initialize()
+        new_methods = [r["method"] for r in session_legacy_server.requests[before:]]
+        assert "server/discover" not in new_methods
+        assert new_methods[0] == "initialize"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_dual_server_prefers_modern(self, dual_server):
+        client = _make_client(dual_server.url)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.MODERN
+        result = await client.call_tool("add_numbers", {"a": 1, "b": 2})
+        assert json.loads(result.content[0]["text"])["result"] == 3
+        assert not dual_server.sessions
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_legacy_sessions_are_echoed_and_released(self, session_legacy_server):
+        client = _make_client(session_legacy_server.url)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.LEGACY
+        assert client._session_id
+        tools = await client.list_tools()
+        assert len(tools) == 3
+        session_id = client._session_id
+        await client.close()
+        assert session_id in session_legacy_server.deleted_sessions
+        assert client._session_id is None
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_x_mcp_header_is_mirrored(self, modern_server):
+        client = _make_client(modern_server.url)
+        await client.initialize()
+        await client.list_tools()
+        result = await client.call_tool(
+            "execute_sql", {"region": "eu-west", "query": "select 1"}
+        )
+        assert not result.is_error
+        call = [r for r in modern_server.requests if r["method"] == "tools/call"][-1]
+        assert call["headers"]["Mcp-Param-Region"] == "eu-west"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_header_mismatch_recovers_without_prior_list(self, modern_server):
+        client = _make_client(modern_server.url)
+        await client.initialize()
+        before = len(modern_server.requests)
+        result = await client.call_tool(
+            "execute_sql", {"region": "ap-south", "query": "select 1"}
+        )
+        assert not result.is_error
+        methods = [r["method"] for r in modern_server.requests[before:]]
+        assert methods == ["tools/call", "tools/list", "tools/call"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_input_required_request_state_round_trip(self, modern_server):
+        client = _make_client(modern_server.url)
+        await client.initialize()
+        result = await client.call_tool("needs_confirmation", {})
+        assert result.content[0]["text"] == "confirmed"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_input_requests_are_reported(self, modern_server):
+        client = _make_client(modern_server.url)
+        await client.initialize()
+        with pytest.raises(MCPClientError, match="requires interactive input"):
+            await client.call_tool("needs_elicitation", {})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_incompatible_modern_server(self, incompatible_modern_server):
+        client = _make_client(incompatible_modern_server.url)
+        with pytest.raises(MCPClientError, match="does not support any protocol"):
+            await client.initialize()
+        assert era_cache.get(client.server_url) is None
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_block_full_flow_against_modern_server(self, modern_server):
+        block = MCPToolBlock()
+        input_data = MCPToolBlock.Input(
+            server_url=modern_server.url,
+            selected_tool="get_weather",
+            tool_input_schema={
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+            tool_arguments={"city": "Paris"},
+        )
+
+        outputs = []
+        async for name, data in block.run(input_data, user_id=MOCK_USER_ID):
+            outputs.append((name, data))
+
+        assert outputs[0][0] == "result"
+        assert outputs[0][1]["city"] == "Paris"

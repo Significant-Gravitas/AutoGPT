@@ -9,7 +9,16 @@ import pytest
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
+from backend.blocks.mcp.protocol import MCPProtocolEra, era_cache
 from backend.util.test import execute_block_test
+
+
+@pytest.fixture(autouse=True)
+def _fresh_era_cache():
+    era_cache.clear()
+    yield
+    era_cache.clear()
+
 
 # ── SSE parsing unit tests ───────────────────────────────────────────
 
@@ -245,7 +254,8 @@ class TestMCPClient:
         assert result.is_error
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_initialize(self):
+    async def test_initialize_legacy(self):
+        """A server that rejects the modern probe gets the legacy handshake."""
         client = MCPClient("https://mcp.example.com")
 
         mock_result = {
@@ -255,14 +265,54 @@ class TestMCPClient:
         }
 
         with (
-            patch.object(client, "_send_request", return_value=mock_result) as mock_req,
+            patch.object(client, "_probe_modern", return_value=None),
+            patch.object(client, "_send_legacy", return_value=mock_result) as mock_req,
             patch.object(client, "_send_notification") as mock_notif,
         ):
             result = await client.initialize()
 
         mock_req.assert_called_once()
+        assert mock_req.call_args.args[0] == "initialize"
+        assert mock_req.call_args.args[1]["protocolVersion"] == "2025-03-26"
         mock_notif.assert_called_once_with("notifications/initialized")
         assert result["protocolVersion"] == "2025-03-26"
+        assert client.era is MCPProtocolEra.LEGACY
+        assert client.protocol_version == "2025-03-26"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_initialize_modern(self):
+        """A server answering server/discover is used statelessly."""
+        client = MCPClient("https://mcp.example.com")
+
+        discover_result = {
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {"tools": {}},
+            "_meta": {
+                "io.modelcontextprotocol/serverInfo": {
+                    "name": "modern-server",
+                    "version": "2.0.0",
+                }
+            },
+        }
+
+        async def fake_probe():
+            client.protocol_version = "2026-07-28"
+            return discover_result
+
+        with (
+            patch.object(client, "_probe_modern", side_effect=fake_probe),
+            patch.object(client, "_send_legacy") as mock_legacy,
+            patch.object(client, "_send_notification") as mock_notif,
+        ):
+            result = await client.initialize()
+
+        mock_legacy.assert_not_called()
+        mock_notif.assert_not_called()
+        assert client.era is MCPProtocolEra.MODERN
+        assert result["protocolVersion"] == "2026-07-28"
+        assert result["serverInfo"]["name"] == "modern-server"
+        assert result["capabilities"] == {"tools": {}}
 
 
 # ── MCPToolBlock unit tests ──────────────────────────────────────────

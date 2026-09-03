@@ -264,6 +264,11 @@ async def mcp_oauth_login(
             "server_url": server_url,
             "client_id": client_id,
             "client_secret": client_secret,
+            # RFC 8414 issuer identifier: validated against the ``iss``
+            # authorization-response parameter (RFC 9207) on callback, and
+            # recorded on the credential so it stays bound to the
+            # authorization server that issued it.
+            "issuer": metadata.get("issuer") or "",
         },
     )
 
@@ -288,6 +293,11 @@ class MCPOAuthCallbackRequest(BaseModel):
 
     code: str = Field(description="Authorization code from OAuth callback")
     state_token: str = Field(description="State token for CSRF verification")
+    iss: str | None = Field(
+        default=None,
+        description="Issuer identifier from the authorization response (RFC 9207). "
+        "When present it must match the authorization server discovered at login.",
+    )
 
 
 class MCPOAuthCallbackResponse(BaseModel):
@@ -321,6 +331,16 @@ async def mcp_oauth_callback(
         )
 
     meta = valid_state.state_metadata
+    expected_issuer = meta.get("issuer") or ""
+    if request.iss is not None and expected_issuer and request.iss != expected_issuer:
+        # RFC 9207 / MCP 2026-07-28: a present ``iss`` must match the issuer we
+        # discovered at login, otherwise the code may come from a mix-up attack.
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Authorization response issuer does not match the "
+            "authorization server this login was started with.",
+        )
+
     frontend_base_url = settings.config.frontend_base_url
     if not frontend_base_url:
         raise fastapi.HTTPException(
@@ -357,6 +377,7 @@ async def mcp_oauth_callback(
     credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
     credentials.metadata["mcp_token_url"] = meta["token_url"]
     credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
+    credentials.metadata["mcp_issuer"] = expected_issuer
 
     hostname = server_host(meta["server_url"])
     credentials.title = f"MCP: {hostname}"
@@ -505,6 +526,9 @@ async def _register_mcp_client(
                 "grant_types": ["authorization_code"],
                 "response_types": ["code"],
                 "token_endpoint_auth_method": "client_secret_post",
+                # Required by MCP 2026-07-28 so OIDC-backed authorization
+                # servers apply web-app redirect URI rules.
+                "application_type": "web",
             },
         )
         data = response.json()

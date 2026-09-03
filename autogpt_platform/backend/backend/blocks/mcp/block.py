@@ -176,8 +176,11 @@ class MCPToolBlock(Block):
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
         client = MCPClient(server_url, auth_token=auth_token)
-        await client.initialize()
-        result = await client.call_tool(tool_name, arguments)
+        try:
+            await client.initialize()
+            result = await client.call_tool(tool_name, arguments)
+        finally:
+            await client.close()
 
         if result.is_error:
             error_text = ""

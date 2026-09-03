@@ -23,10 +23,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
+  const iss = searchParams.get("iss");
 
   const success = Boolean(code && state);
   const message = success
-    ? { success: true, code, state }
+    ? { success: true, code, state, iss }
     : {
         success: false,
         message: `Missing parameters: ${searchParams.toString()}`,
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
         // Method 1: BroadcastChannel (reliable across tabs/popups, no opener needed)
         try {
           var bc = new BroadcastChannel("oauth_popup");
-          bc.postMessage({ message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message });
+          bc.postMessage({ message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, iss: msg.iss, message: msg.message });
           bc.close();
           sent = true;
         } catch(e) { /* BroadcastChannel not supported */ }
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
         try {
           if (window.opener && !window.opener.closed) {
             window.opener.postMessage(
-              { message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, message: msg.message },
+              { message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, iss: msg.iss, message: msg.message },
               window.location.origin
             );
             sent = true;
