@@ -1,10 +1,11 @@
 """Input-moderation behaviour when the graph can't be resolved.
 
 `moderate_graph_execution_inputs()` needs the graph's nodes to collect the
-inputs it moderates. When the lookup comes back empty it has to decide between
-letting an unmoderated execution through and killing a run it cannot vet; the
-`automod_fail_open` setting is what makes that an operator choice rather than
-an accident of control flow.
+inputs it moderates. The read bypasses the caller's access check — the run is
+already authorized by then — so an empty lookup means the version is gone, not
+that the runner may not read it. Whether that kills the run or lets it through
+unmoderated is the `automod_fail_open` operator setting, not an accident of
+control flow.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,7 +19,7 @@ from .manager import AutoModManager
 
 @pytest.mark.asyncio
 async def test_missing_graph_fails_closed_by_default() -> None:
-    """A graph that doesn't resolve means moderation could not run. Reporting
+    """A graph that no longer exists means moderation could not run. Reporting
     that as "passed" would let the execution through unvetted."""
     manager, db_client = _manager_with_graph(None, fail_open=False)
 
@@ -56,15 +57,22 @@ async def test_graph_without_nodes_passes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_graph_lookup_is_scoped_to_the_running_user() -> None:
-    """Whatever the resolution of the sub-agent case, the lookup must stay
-    tied to the user the execution runs as."""
-    manager, db_client = _manager_with_graph(MagicMock(nodes=[]), fail_open=False)
+async def test_marketplace_sub_agent_run_is_moderated_not_denied() -> None:
+    """SECRT-1125 lets a user execute a marketplace graph they cannot read, as
+    a sub-agent. Resolving the graph through their read gate would return None
+    for exactly those runs and fail them closed on an unrelated error, so the
+    read is bypassed: the run was already authorized by add_graph_execution().
+    """
+    graph = MagicMock(nodes=[])
+    manager, db_client = _manager_with_graph(graph, fail_open=False)
 
-    await manager.moderate_graph_execution_inputs(
+    result = await manager.moderate_graph_execution_inputs(
         db_client=db_client, graph_exec=_graph_exec()
     )
 
+    assert result is None, "an authorized sub-agent run must not be failed here"
+    assert db_client.get_graph.await_args.kwargs["skip_access_check"] is True
+    # Still the runner's own execution, and still version-specific.
     assert db_client.get_graph.await_args.kwargs["user_id"] == "runner-user-id"
     assert db_client.get_graph.await_args.kwargs["version"] == 3
 
