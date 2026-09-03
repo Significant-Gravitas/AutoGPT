@@ -56,12 +56,15 @@ export function FileChips({
           }
           exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
           transition={{ duration: DURATION, ease: EASE_OUT }}
-          className="w-full overflow-hidden"
+          // The pull towards the textarea belongs on the clipping box, not
+          // inside it: a negative bottom margin on the row would shrink this
+          // wrapper's auto height by the same amount and crop the chips.
+          className={cn("w-full overflow-hidden", stacked && "-mb-1.5")}
         >
           <div
             className={cn(
               "flex w-full flex-wrap gap-2 px-3 pb-2 pt-2",
-              stacked && "-mb-1.5 gap-1.5 p-0",
+              stacked && "gap-1.5 p-0",
             )}
           >
             <AnimatePresence initial={false} mode="popLayout">
