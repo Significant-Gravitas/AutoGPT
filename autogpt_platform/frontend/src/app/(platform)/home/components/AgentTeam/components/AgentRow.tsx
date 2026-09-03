@@ -1,7 +1,5 @@
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
-import Link from "next/link";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatWeeklySpend } from "../../../helpers";
@@ -12,58 +10,66 @@ interface Props {
   agent: HomeAgentStatus;
 }
 
+const ACTION_CLASS = "h-7 min-w-0 rounded-md px-2.5 text-xs";
+
+/** One expert with its status and two ways in. The detail line is gone:
+ *  anything that needs doing is already spelled out under Needs you. */
 export function AgentRow({ agent }: Props) {
   const spend = formatWeeklySpend(agent.spend_cents);
+  const nextRun = agent.next_run_time
+    ? `Next run ${formatUntil(agent.next_run_time)}`
+    : null;
+  const secondLine = [spend, nextRun].filter(Boolean).join(" · ");
+
   return (
-    <Link
-      href={`/team/${agent.expert.id}`}
-      className="group flex min-w-0 items-center gap-3 px-4 py-2.5 outline-none transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50"
-    >
+    <div className="flex min-w-0 items-center gap-3 px-4 py-2.5">
       <ExpertAvatar
         name={agent.expert.name}
         avatarUrl={agent.expert.avatar_url}
-        size={26}
+        size={32}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Text
             variant="body-medium"
-            className="truncate text-[13px] leading-4 text-zinc-900"
+            className="truncate leading-5 text-zinc-900"
           >
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1 text-zinc-500">
-          <Text variant="small" className="min-w-0 truncate leading-4">
-            {agent.detail}
+        {secondLine ? (
+          <Text
+            variant="small"
+            className="truncate tabular-nums leading-4 text-zinc-500"
+            unmask={false}
+          >
+            {secondLine}
           </Text>
-          {spend ? (
-            <Text
-              variant="small"
-              className="shrink-0 tabular-nums leading-4"
-              unmask={false}
-            >
-              {`· ${spend}`}
-            </Text>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-      {agent.next_run_time ? (
-        <Text
-          variant="small"
-          className="shrink-0 text-[11px] tabular-nums text-zinc-400 group-hover:text-zinc-600"
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button
+          as="NextLink"
+          href={`/copilot?expertId=${agent.expert.id}`}
+          variant="secondary"
+          size="small"
+          className={ACTION_CLASS}
+          aria-label={`Chat with ${agent.expert.name}`}
         >
-          {formatUntil(agent.next_run_time)}
-        </Text>
-      ) : (
-        <Icon
-          icon={ArrowRight01Icon}
-          size={14}
-          className="shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
-          aria-hidden="true"
-        />
-      )}
-    </Link>
+          Chat
+        </Button>
+        <Button
+          as="NextLink"
+          href={`/team/${agent.expert.id}`}
+          variant="secondary"
+          size="small"
+          className={ACTION_CLASS}
+          aria-label={`Manage ${agent.expert.name}`}
+        >
+          Manage
+        </Button>
+      </div>
+    </div>
   );
 }

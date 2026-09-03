@@ -224,16 +224,20 @@ test("shows weekly spend per agent and on the team line", async () => {
 
   render(<HomePage />);
 
-  // Spend sits in its own non-truncating element, so a long detail line can
-  // never clip the figure this tile exists to show.
-  const spend = await screen.findByText("· $9.00 this week");
-  expect(spend.className).toContain("shrink-0");
+  expect(await screen.findByText(/\$9\.00 this week/)).toBeDefined();
   expect(
     screen.getByText("1 working now · 7 ready · $12.50 this week"),
   ).toBeDefined();
-  // An expert with no attributed spend keeps its detail line unadorned.
-  expect(screen.getByText("Ready for the next task")).toBeDefined();
-  expect(screen.queryByText("· $0.00 this week")).toBeNull();
+  // An expert with no attributed spend shows no spend line at all, and the
+  // setup detail stays with Needs you rather than repeating here.
+  expect(screen.queryByText(/\$0\.00 this week/)).toBeNull();
+  expect(screen.queryByText("Ready for the next task")).toBeNull();
+  expect(
+    screen.getAllByRole("link", { name: /^Chat with / }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.getAllByRole("link", { name: /^Manage / }).length,
+  ).toBeGreaterThan(0);
 });
 
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
