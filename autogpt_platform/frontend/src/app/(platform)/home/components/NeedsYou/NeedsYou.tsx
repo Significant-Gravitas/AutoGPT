@@ -29,24 +29,24 @@ export function NeedsYou({ dashboard, className }: Props) {
       className={className}
       icon={AlertCircleIcon}
       title="Needs you"
+      badge={
+        <span
+          role="status"
+          aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
+          className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-700"
+        >
+          {itemCount}
+        </span>
+      }
       meta={
-        <>
-          <span
-            role="status"
-            aria-label={`${itemCount} ${itemCount === 1 ? "item needs" : "items need"} your attention`}
-            className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-zinc-700"
-          >
-            {itemCount}
-          </span>
-          {hasFilters ? (
-            <HomeTileFilter
-              ariaLabelPrefix="Filter interventions"
-              value={selectedKind}
-              options={filterOptions}
-              onChange={(value) => selectKind(value as typeof selectedKind)}
-            />
-          ) : null}
-        </>
+        hasFilters ? (
+          <HomeTileFilter
+            ariaLabelPrefix="Filter interventions"
+            value={selectedKind}
+            options={filterOptions}
+            onChange={(value) => selectKind(value as typeof selectedKind)}
+          />
+        ) : null
       }
     >
       <div className="divide-y divide-zinc-100">

@@ -1,6 +1,5 @@
 "use client";
 
-import NextLink from "next/link";
 import type { SitrepItemData } from "@/app/(platform)/library/types";
 import { Text } from "@/components/atoms/Text/Text";
 import { RunRow } from "./components/RunRow";
@@ -21,20 +20,12 @@ export function RecentWorkflowRuns({ runs }: Props) {
       aria-label="Recent workflow runs"
       className="border-t border-zinc-100 pb-1"
     >
-      <div className="flex items-center justify-between px-4 pb-1 pt-3">
-        <Text
-          variant="small-medium"
-          className="text-[11px] uppercase tracking-[0.06em] text-zinc-400"
-        >
-          Recent workflow runs
-        </Text>
-        <NextLink
-          href="/library"
-          className="text-[11px] font-medium text-zinc-500 outline-none transition-colors hover:text-zinc-900 focus-visible:underline"
-        >
-          View all
-        </NextLink>
-      </div>
+      <Text
+        variant="small-medium"
+        className="px-4 pb-1 pt-3 text-[11px] uppercase tracking-[0.06em] text-zinc-400"
+      >
+        Recent workflow runs
+      </Text>
       <div>
         {runs.map((run) => (
           <RunRow key={run.id} run={run} />

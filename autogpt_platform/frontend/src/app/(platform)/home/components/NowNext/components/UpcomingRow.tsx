@@ -10,11 +10,11 @@ interface Props {
 
 export function UpcomingRow({ item }: Props) {
   return (
-    <div className="relative flex items-center gap-3 py-2 pl-12 pr-4">
-      <span className="absolute left-4 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
+    <div className="relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4">
+      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 ring-2 ring-white">
         <Icon
           icon={item.kind === "followup" ? Calendar03Icon : Clock01Icon}
-          size={12}
+          size={15}
           aria-hidden="true"
         />
       </span>

@@ -11,10 +11,10 @@ interface Props {
   className?: string;
 }
 
-// The rail runs through the centre of each row's 24px marker, which sits
+// The rail runs through the centre of each row's 36px marker, which sits
 // 16px in from the tile edge.
 const TIMELINE_CLASS =
-  "relative before:absolute before:bottom-4 before:left-[27px] before:top-4 before:w-px before:bg-zinc-200";
+  "relative before:absolute before:bottom-5 before:left-[33px] before:top-5 before:w-px before:bg-zinc-200";
 
 export function NowNext({ dashboard, className }: Props) {
   return (

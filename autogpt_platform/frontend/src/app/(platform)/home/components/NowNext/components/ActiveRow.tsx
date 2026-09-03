@@ -9,20 +9,20 @@ interface Props {
   item: HomeActiveTask;
 }
 
-const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-12 pr-4";
+const ROW_CLASS = "relative flex items-center gap-3 py-2 pl-[3.75rem] pr-4";
 
 export function ActiveRow({ item }: Props) {
   const content = (
     <>
-      <span className="absolute left-4 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-white">
+      <span className="absolute left-4 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white">
         {item.expert ? (
           <ExpertAvatar
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
-            size={24}
+            size={36}
           />
         ) : (
-          <span className="size-2 rounded-full bg-primary" />
+          <span className="size-2.5 rounded-full bg-primary" />
         )}
       </span>
       <div className="min-w-0 flex-1">

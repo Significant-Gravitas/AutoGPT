@@ -8,7 +8,9 @@ interface Props {
   children: ReactNode;
   icon: IconSvgElement;
   title: string;
-  /** Right-aligned header content: counts, a filter, a link. */
+  /** Sits right after the title: a count, a status. */
+  badge?: ReactNode;
+  /** Right-aligned header content: a filter, a summary line. */
   meta?: ReactNode;
   className?: string;
   contentClassName?: string;
@@ -21,6 +23,7 @@ export function HomeTile({
   children,
   icon,
   title,
+  badge,
   meta,
   className,
   contentClassName,
@@ -49,6 +52,7 @@ export function HomeTile({
           >
             {title}
           </Text>
+          {badge}
         </div>
         {meta ? (
           <div className="flex shrink-0 items-center gap-2 text-xs text-zinc-500">

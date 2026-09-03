@@ -82,8 +82,8 @@ export function AttentionRow({ item, isProcessing, onDecision }: Props) {
           >
             {item.description}
           </Text>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-400">
-            <span className="font-medium text-zinc-500">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-zinc-500">
+            <span className="font-medium text-zinc-700">
               {item.expert?.name ?? KIND_LABELS[item.kind]}
             </span>
             <span aria-hidden="true">·</span>
