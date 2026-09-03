@@ -99,9 +99,8 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    # Stays in the schema under both flag states: the tool list
-                    # is part of the cached prompt prefix, so varying it per
-                    # user would cost every cohort its cache.
+                    # Worded for both flag states because `parameters` is a
+                    # property with no user or request context to gate on.
                     "description": (
                         "Continue/queue-into a prior sub; empty = new. Refused "
                         "when single-use subs are enabled — leave empty then."
