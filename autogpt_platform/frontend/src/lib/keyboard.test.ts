@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isComposingEvent, isKey } from "./keyboard";
+import { KEY_NAMES, isComposingEvent, isKey } from "./keyboard";
 
 function keydown(key: string, extra: Partial<KeyboardEvent> = {}) {
   const event = new KeyboardEvent("keydown", { key });
@@ -43,6 +44,11 @@ describe("isKey", () => {
     expect(isKey(reactKeydown(" "), " ")).toBe(true);
   });
 
+  it("matches any of several keys", () => {
+    expect(isKey(keydown(" "), "Enter", " ")).toBe(true);
+    expect(isKey(keydown("Escape"), "Enter", " ")).toBe(false);
+  });
+
   it("does not match a different key", () => {
     expect(isKey(keydown("Escape"), "Enter")).toBe(false);
   });
@@ -50,5 +56,33 @@ describe("isKey", () => {
   it("never matches while composing, even if the key name matches", () => {
     expect(isKey(keydown("Enter", { isComposing: true }), "Enter")).toBe(false);
     expect(isKey(reactKeydown("Enter", { keyCode: 229 }), "Enter")).toBe(false);
+  });
+
+  it("matches again once composition is over (Safari Enter flow)", () => {
+    expect(isKey(keydown("Enter", { keyCode: 229 }), "Enter")).toBe(false);
+    expect(isKey(keydown("Enter", { keyCode: 13 }), "Enter")).toBe(true);
+  });
+
+  it("lets an Android soft-keyboard Enter (keyCode 13) through", () => {
+    expect(
+      isKey(
+        keydown("Unidentified", { keyCode: 229, isComposing: true }),
+        "Enter",
+      ),
+    ).toBe(false);
+    expect(isKey(keydown("Enter", { keyCode: 13 }), "Enter")).toBe(true);
+  });
+});
+
+describe("ESLint keyboard selectors", () => {
+  it("cover exactly the KEY_NAMES list", () => {
+    const config = readFileSync(".eslintrc.json", "utf8");
+    const lists = [...config.matchAll(/value=\/\^\(([^)]+)\)\$\//g)].map((m) =>
+      m[1].split("|"),
+    );
+    expect(lists.length).toBeGreaterThan(0);
+    for (const list of lists) {
+      expect(new Set(list)).toEqual(new Set(KEY_NAMES));
+    }
   });
 });
