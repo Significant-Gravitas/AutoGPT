@@ -46,6 +46,19 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
+class FeatureFlagBackend(str, Enum):
+    """Which vendor answers a feature flag read.
+
+    ``DUAL`` evaluates both and returns LaunchDarkly's answer, so a
+    disagreement is measurable before the switch without changing what
+    any user sees.
+    """
+
+    LAUNCHDARKLY = "launchdarkly"
+    POSTHOG = "posthog"
+    DUAL = "dual"
+
+
 class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
@@ -682,6 +695,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
+    feature_flag_backend: FeatureFlagBackend = Field(
+        default=FeatureFlagBackend.LAUNCHDARKLY,
+        description="Which vendor answers feature flag reads: launchdarkly "
+        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
+        "every disagreement).",
+    )
+
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
@@ -1068,6 +1088,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key. Only used for local feature-flag "
+        "evaluation; without it flag reads fall back to a remote /flags call.",
     )
 
     # Add more secret fields as needed
