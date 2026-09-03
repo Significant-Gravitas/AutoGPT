@@ -1,40 +1,46 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import { Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
-const configText = readFileSync(resolve(process.cwd(), ".eslintrc.json"), {
-  encoding: "utf8",
-});
-const keyboardSelectors = [
-  ...configText.matchAll(/"selector": "([^"]+)"/g),
-].map(([, selector]) => ({ selector, message: "Use the keyboard helper" }));
-
 function lint(source: string) {
-  return new Linter().verify(source, {
-    parserOptions: { ecmaVersion: 2022 },
-    rules: {
-      "no-restricted-syntax": ["error", ...keyboardSelectors],
+  return spawnSync(
+    resolve(process.cwd(), "node_modules/.bin/eslint"),
+    ["--stdin", "--stdin-filename", "src/keyboard-rule-fixture.ts"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      input: source,
     },
-  });
+  );
+}
+
+function expectLintToPass(source: string) {
+  const result = lint(source);
+  expect(result.stderr).toBe("");
+  expect(result.status).toBe(0);
+}
+
+function expectKeyboardRuleToFail(source: string) {
+  const result = lint(source);
+  expect(result.status).toBe(1);
+  expect(result.stdout).toContain('use isKey(e, "Enter")');
+  expect(result.stdout).toContain("no-restricted-syntax");
 }
 
 describe("keyboard no-restricted-syntax selectors", () => {
-  it.each(['status === "Enter";', 'switch (status) { case "Enter": break; }'])(
-    "allows unrelated key-name literals: %s",
-    (source) => {
-      expect(lint(source)).toEqual([]);
-    },
-  );
+  it.each([
+    'const status = ""; status === "Enter";',
+    'const status = ""; switch (status) { case "Enter": break; }',
+  ])("allows unrelated key-name literals: %s", (source) => {
+    expectLintToPass(source);
+  });
 
   it.each([
-    'event.key === "Enter";',
-    "event.key === ENTER_KEY;",
-    '"Enter" === event.key;',
-    'switch (event.key) { case "Enter": break; }',
+    'const event = { key: "" }; event.key === "Enter";',
+    'const event = { key: "" }; const ENTER_KEY = "Enter"; event.key === ENTER_KEY;',
+    'const event = { key: "" }; "Enter" === event.key;',
+    'const event = { key: "" }; switch (event.key) { case "Enter": break; }',
   ])("rejects direct .key handling: %s", (source) => {
-    expect(lint(source)).toEqual([
-      expect.objectContaining({ ruleId: "no-restricted-syntax" }),
-    ]);
+    expectKeyboardRuleToFail(source);
   });
 });
