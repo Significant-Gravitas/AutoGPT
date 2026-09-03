@@ -10,13 +10,16 @@ vi.mock("@/lib/hooks/useBreakpoint", () => ({
 function renderDialog({
   title,
   controlled,
+  forceOpen,
 }: {
   title?: string;
   controlled?: { isOpen: boolean; set: (open: boolean) => void };
+  forceOpen?: boolean;
 }) {
   return render(
     <Dialog
       title={title}
+      forceOpen={forceOpen}
       controlled={controlled ?? { isOpen: true, set: vi.fn() }}
     >
       <Dialog.Content>
@@ -77,6 +80,20 @@ describe("Dialog", () => {
     const set = vi.fn();
     renderDialog({ title: "Test", controlled: { isOpen: true, set } });
 
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("keeps a force-open dialog open on Escape", () => {
+    const set = vi.fn();
+    renderDialog({
+      title: "Test",
+      forceOpen: true,
+      controlled: { isOpen: true, set },
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.keyDown(document, { key: "Escape", isComposing: true });
 
     expect(set).not.toHaveBeenCalled();

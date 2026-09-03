@@ -60,16 +60,19 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
     wrapperClassName,
     amountPrefix,
     amountSuffix,
+    onKeyDown,
     ...props
   },
   ref,
 ) {
+  // Consumers never see keydowns an IME is still composing; see AGENTS.md
+  // "Keyboard handling". Only wired when a consumer handler exists so inputs
+  // without one keep a stable `undefined` prop.
   function handleKeyDown(e: React.KeyboardEvent<InputElement>) {
     if (isComposingEvent(e)) return;
-    (props.onKeyDown as React.KeyboardEventHandler<InputElement> | undefined)?.(
-      e,
-    );
+    (onKeyDown as React.KeyboardEventHandler<InputElement>)(e);
   }
+  const guardedOnKeyDown = onKeyDown ? handleKeyDown : undefined;
 
   const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
     useInput({
@@ -130,7 +133,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
-          onKeyDown={handleKeyDown}
+          onKeyDown={guardedOnKeyDown}
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
           id={props.id}
@@ -175,7 +178,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
-          onKeyDown={handleKeyDown}
+          onKeyDown={guardedOnKeyDown}
           prefix={amountPrefix}
           suffix={amountSuffix}
         />
@@ -206,7 +209,7 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
         onChange={handleInputChange}
         {...(hideLabel ? { "aria-label": label } : {})}
         {...props}
-        onKeyDown={handleKeyDown}
+        onKeyDown={guardedOnKeyDown}
         type={inputType}
       />
     );

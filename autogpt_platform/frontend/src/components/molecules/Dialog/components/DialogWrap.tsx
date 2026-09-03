@@ -72,12 +72,11 @@ export function DialogWrap({
     [isForceOpen],
   );
 
+  // Radix closes the dialog on Escape by default (through onOpenChange, which
+  // honours forceOpen in Dialog.tsx). Only veto it while an IME is composing so
+  // Escape can dismiss the candidate window without losing the dialog.
   function handleEscapeKeyDown(event: KeyboardEvent) {
-    if (isComposingEvent(event)) {
-      event.preventDefault();
-      return;
-    }
-    if (!isForceOpen) handleClose();
+    if (isComposingEvent(event)) event.preventDefault();
   }
 
   useEffect(() => {
