@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import asyncio
 import io
 import logging
 import re
@@ -75,15 +76,18 @@ _SNOWFLAKE = re.compile(r"^\d{15,21}$")
 # knowledge of Discord's two mention markups.
 ROLE_ID_PREFIX = "role:"
 
+# Send-time member lookup: at most this many distinct @names are queried per
+# message, each returning up to this many prefix matches.
+MENTION_QUERY_CAP = 8
+MENTION_QUERY_LIMIT = 20
+# First word after an @ that is not inside an email, URL or existing token.
+_MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
+
 
 class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
-        # Privileged: lets @DisplayName resolve against the whole server
-        # instead of only members already in the cache. Opt-in because Discord
-        # rejects the login unless the portal grants it too.
-        intents.members = config.members_intent_enabled()
         # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
         # role, and user pings the LLM might produce. Client-level default
         # applies to every send() + reply() below.
@@ -160,7 +164,9 @@ class DiscordAdapter(SocketAdapter):
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
-            rendered, allowed = _resolve_mentions(text, mentionable_users)
+            rendered, allowed = _resolve_mentions(
+                text, await self._mentionables_for(channel, text, mentionable_users)
+            )
             # tts=False is the default but we pin it explicitly — AutoPilot
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
@@ -205,7 +211,9 @@ class DiscordAdapter(SocketAdapter):
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
-        rendered, allowed = _resolve_mentions(text, mentionable_users)
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, mentionable_users)
+        )
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
         except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 5xx
@@ -359,7 +367,7 @@ class DiscordAdapter(SocketAdapter):
         than discarding what already posted (a retry would duplicate it).
         """
         rendered, allowed = _resolve_mentions(
-            text, _guild_mentionables(getattr(channel, "guild", None))
+            text, await self._mentionables_for(channel, text, ())
         )
         first: Optional[discord.Message] = None
         for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
@@ -678,20 +686,73 @@ class DiscordAdapter(SocketAdapter):
     def _collect_mentionable_users(
         self, message: discord.Message
     ) -> tuple[tuple[str, str], ...]:
-        """Who the bot may ping back this turn: every member and role of the
-        server the message came from, plus the author and anyone mentioned.
-
-        ``@everyone`` and ``@here`` are never on the list, so a stray one in
-        model output stays plain text and ``AllowedMentions`` keeps them off
-        regardless. In a DM there is no server, so only the author and the
-        people mentioned in the message qualify.
-        """
+        """The author and anyone mentioned in the inbound message. Server
+        members and roles are looked up at send time from the names the bot
+        actually uses (see ``_mentionables_for``)."""
         bot_id = self._client.user.id if self._client.user else None
-        return _guild_mentionables(
-            message.guild,
-            [message.author, *message.mentions],
-            exclude_id=bot_id,
-        )
+        pairs: list[tuple[str, str]] = []
+        for user in (message.author, *message.mentions):
+            if user.id == bot_id:
+                continue
+            pair = (user.display_name, str(user.id))
+            if pair not in pairs:
+                pairs.append(pair)
+        return tuple(pairs)
+
+    async def _mentionables_for(
+        self,
+        channel: discord.abc.Messageable,
+        text: str,
+        known: tuple[tuple[str, str], ...],
+    ) -> tuple[tuple[str, str], ...]:
+        """Everyone ``text`` may ping in ``channel``: ``known`` (author and
+        inbound mentions) plus, for a server channel, any member whose display
+        name or username matches an ``@Name`` in the text and any role by name.
+
+        Members are found with a gateway member query per name, which needs no
+        privileged intent and works on any server. ``@everyone`` and ``@here``
+        are never listed, so they stay plain text and the ping object keeps
+        them off regardless. A DM has no server, so only ``known`` applies.
+        """
+        guild = getattr(channel, "guild", None)
+        if not isinstance(guild, discord.Guild):
+            return known
+        bot_id = self._client.user.id if self._client.user else None
+        pairs: list[tuple[str, str]] = list(known)
+        seen: set[tuple[str, str]] = set(pairs)
+
+        def add(name: Optional[str], token_id: str) -> None:
+            if name and (name, token_id) not in seen:
+                seen.add((name, token_id))
+                pairs.append((name, token_id))
+
+        role_names: set[str] = set()
+        for role in guild.roles:
+            if role.id == guild.id or role.is_default():
+                continue
+            add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+            role_names.add(role.name.casefold())
+        for query in _mention_queries(text):
+            if query.casefold() in role_names:
+                continue
+            try:
+                members = await guild.query_members(
+                    query=query, limit=MENTION_QUERY_LIMIT, cache=False
+                )
+            except (
+                asyncio.TimeoutError,
+                ValueError,
+                discord.ClientException,
+                discord.HTTPException,
+            ):
+                logger.warning("Member lookup for @%s failed", query, exc_info=True)
+                continue
+            for member in members:
+                if member.id == bot_id or member.bot:
+                    continue
+                add(member.display_name, str(member.id))
+                add(member.name, str(member.id))
+        return tuple(pairs)
 
     async def _thread_history(
         self, message: discord.Message
@@ -874,39 +935,15 @@ def _mention_token(_name: str, token_id: str) -> str:
     return f"<@{token_id}>"
 
 
-def _guild_mentionables(
-    guild: Optional[discord.Guild],
-    extra_users: Optional[list] = None,
-    exclude_id: Optional[int] = None,
-) -> tuple[tuple[str, str], ...]:
-    """Build the ``(name, id)`` allowlist for ``guild``: every cached member by
-    display name and username, and every role except the default
-    ``@everyone`` role, whose id is the guild id. Role ids carry
-    ``ROLE_ID_PREFIX`` so the resolver can emit role markup and the ping
-    object can list them as roles. ``extra_users`` are always included even
-    if the member cache has not seen them."""
-    pairs: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    def add(name: Optional[str], token_id: str) -> None:
-        if not name or (name, token_id) in seen:
-            return
-        seen.add((name, token_id))
-        pairs.append((name, token_id))
-
-    for user in extra_users or ():
-        if user is None or user.id == exclude_id:
+def _mention_queries(text: str) -> list[str]:
+    """The distinct first words following an ``@`` in ``text``, capped, used as
+    member-query prefixes. ``everyone`` and ``here`` are skipped outright."""
+    queries: list[str] = []
+    for match in _MENTION_CANDIDATE.finditer(text):
+        word = match.group(1).rstrip("'-")
+        if word.casefold() in ("everyone", "here") or word in queries:
             continue
-        add(getattr(user, "display_name", None), str(user.id))
-    if guild is None:
-        return tuple(pairs)
-    for member in guild.members:
-        if member.id == exclude_id or getattr(member, "bot", False):
-            continue
-        add(member.display_name, str(member.id))
-        add(getattr(member, "name", None), str(member.id))
-    for role in guild.roles:
-        if role.id == guild.id or role.name in ("@everyone", "here"):
-            continue
-        add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
-    return tuple(pairs)
+        queries.append(word)
+        if len(queries) >= MENTION_QUERY_CAP:
+            break
+    return queries

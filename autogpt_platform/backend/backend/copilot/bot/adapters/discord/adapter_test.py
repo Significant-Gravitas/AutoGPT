@@ -12,6 +12,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
+    _mention_queries,
     _resolve_mentions,
 )
 
@@ -61,10 +62,14 @@ def _role(role_id: int, name: str) -> MagicMock:
 
 
 def _guild_with(members: list[MagicMock], roles: list[MagicMock]) -> MagicMock:
-    guild = MagicMock()
+    guild = MagicMock(spec=discord.Guild)
     guild.id = 777
     guild.members = members
-    guild.roles = [_role(777, "@everyone"), *roles]
+    everyone = _role(777, "@everyone")
+    everyone.is_default.return_value = True
+    for role in roles:
+        role.is_default.return_value = False
+    guild.roles = [everyone, *roles]
     return guild
 
 
@@ -727,23 +732,60 @@ class TestCollectMentionableUsers:
         msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoGPT")])
         assert adapter._collect_mentionable_users(msg) == (("Asker", "5000"),)
 
-    def test_guild_members_and_roles_are_pingable_but_everyone_is_not(self):
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_finds_members_and_roles_but_never_everyone(
+        self,
+    ):
         adapter, _ = _bare_adapter(bot_id=1000)
         bently = _mention(3000, "Bently")
         bently.name = "bentlybro"
         bently.bot = False
         bot_member = _mention(1000, "AutoGPT")
         bot_member.bot = True
-        guild = _guild_with([bently, bot_member], [_role(42, "Platform")])
-        msg = _message("<@1000> who is on call?", mentions=[], guild=guild)
+        guild = _guild_with([], [_role(42, "Platform")])
+        guild.query_members = AsyncMock(return_value=[bently, bot_member])
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
 
-        result = adapter._collect_mentionable_users(msg)
+        result = await adapter._mentionables_for(
+            channel, "Paging @Bently and @Platform, not @everyone", (("Nick", "2"),)
+        )
 
+        guild.query_members.assert_awaited_once_with(
+            query="Bently", limit=20, cache=False
+        )
+        assert ("Nick", "2") in result
         assert ("Bently", "3000") in result
         assert ("bentlybro", "3000") in result
         assert ("Platform", "role:42") in result
         assert not any(name == "@everyone" for name, _ in result)
         assert not any(token == "1000" for _, token in result)
+
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_in_a_dm_keeps_only_known_users(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = MagicMock(spec=discord.DMChannel)
+        result = await adapter._mentionables_for(
+            channel, "Hey @Bently", (("Nick", "2"),)
+        )
+        assert result == (("Nick", "2"),)
+
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_survives_a_failed_member_query(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        guild = _guild_with([], [_role(42, "Platform")])
+        guild.query_members = AsyncMock(side_effect=TimeoutError())
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        result = await adapter._mentionables_for(channel, "Hey @Ghost", ())
+
+        assert result == (("Platform", "role:42"),)
+
+    def test_mention_queries_strip_punctuation_and_skip_everyone(self):
+        assert _mention_queries(
+            "cc @Bently, @Platform. and @everyone plus x@mail.com <@123>"
+        ) == ["Bently", "Platform"]
 
     def test_role_mentions_in_the_inbound_message_become_readable(self):
         adapter, _ = _bare_adapter(bot_id=1000)
