@@ -1,4 +1,6 @@
 import { isChainableToolPart, type MessagePart } from "../helpers";
+import type { ToolUIPart } from "ai";
+import { ExpertChangeGroup } from "../../ToolChain/ExpertCards";
 import { buildChainSegments } from "../../ToolChain/helpers";
 import { ToolChain } from "../../ToolChain/ToolChain";
 import type {
@@ -46,6 +48,16 @@ export function ChainMessageParts({
           isStreaming={
             isCurrentlyStreaming && segmentIndex === lastChainSegmentIndex
           }
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (segment.kind === "experts") {
+      return (
+        <ExpertChangeGroup
+          key={`${messageID}-experts-${segment.index}`}
+          parts={segment.parts as ToolUIPart[]}
+          isCurrentlyStreaming={isCurrentlyStreaming}
           readOnly={readOnly}
         />
       );
