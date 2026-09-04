@@ -63,13 +63,14 @@ export function ConnectCredentialDialog({
     onClose();
   }
 
-  // The hook resets before calling this; device auth completes inside
-  // ConnectMethodView and never passes through the hook, so it resets here.
+  // The hook has already reset by the time it calls this.
   function handleConnected() {
     onConnected?.();
     onClose();
   }
 
+  // Device auth completes inside ConnectMethodView, bypassing the hook, so
+  // this is the only place its reset can happen.
   function handleDeviceAuthSuccess() {
     reset();
     handleConnected();

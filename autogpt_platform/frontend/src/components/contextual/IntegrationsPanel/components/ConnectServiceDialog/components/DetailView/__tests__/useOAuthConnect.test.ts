@@ -460,6 +460,30 @@ describe("useOAuthConnect — login request shape", () => {
     ).toEqual(["github", { scopes: "repo", credential_id: "cred-old" }]);
   });
 
+  it("does not retry a 404 that is not about the upgrade target", async () => {
+    await setupSuccessfulPopup();
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
+      makeApiError(404, { detail: "Provider 'foo' does not support OAuth" }),
+    );
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({
+        provider: "foo",
+        onSuccess: vi.fn(),
+        scopes: ["repo"],
+        credentialID: "cred-1",
+      }),
+    );
+    await result.current.connect();
+
+    // That 404 is raised before the endpoint reads the upgrade target, so
+    // re-sending without it fails identically.
+    expect(vi.mocked(getV1InitiateOauthFlow)).toHaveBeenCalledTimes(1);
+  });
+
   it("retries without the upgrade target when the backend 404s it", async () => {
     await setupSuccessfulPopup();
     const { getV1InitiateOauthFlow, postV1ExchangeOauthCodeForTokens } =

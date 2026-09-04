@@ -101,6 +101,7 @@ export function SetupRequirementsCard({
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -150,7 +151,7 @@ export function SetupRequirementsCard({
   // A trigger card's message carries the account its webhook registers under,
   // which the backend requires the user to have picked — so neither auto path
   // may send it, and the chain gives it a Proceed instead.
-  const needsManualPick = inputsMode === "trigger";
+  const needsManualPick = isTriggerMode;
   const canAutoDismiss =
     needsCredentials &&
     alreadyConnected &&
@@ -258,7 +259,7 @@ export function SetupRequirementsCard({
   }
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(
