@@ -1,5 +1,7 @@
 """Organization management API routes."""
 
+import os
+from datetime import datetime
 from typing import Annotated
 
 from autogpt_libs.auth import (
@@ -10,7 +12,11 @@ from autogpt_libs.auth import (
 )
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Query, Security, UploadFile
+
+from backend.api.features.store import exceptions as store_exceptions
+from backend.api.features.store import media as store_media
+from backend.data.org_credit import get_org_spend_by_team
 
 from . import db as org_db
 from .model import (
@@ -20,6 +26,8 @@ from .model import (
     OrgAliasResponse,
     OrgMemberResponse,
     OrgResponse,
+    OrgSpendResponse,
+    TeamSpendBucket,
     TransferOwnershipRequest,
     UpdateMemberRequest,
     UpdateOrgData,
@@ -106,6 +114,59 @@ async def update_org(
             avatar_url=request.avatar_url,
         ),
     )
+
+
+_AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+@router.post(
+    "/{org_id}/avatar",
+    summary="Upload organization avatar",
+    tags=["orgs"],
+)
+async def upload_org_avatar(
+    org_id: str,
+    file: UploadFile,
+    ctx: Annotated[
+        RequestContext,
+        Security(requires_org_permission(OrgAction.RENAME_ORG)),
+    ],
+) -> OrgResponse:
+    """Upload an avatar image for the organization and persist its URL.
+
+    The storage path is derived server-side from the verified org id; the
+    client-supplied filename is only used for extension validation.
+    """
+    _verify_org_path(ctx, org_id)
+
+    if file.content_type not in store_media.ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            400,
+            detail=(
+                "Avatar must be an image; allowed content types: "
+                f"{', '.join(sorted(store_media.ALLOWED_IMAGE_TYPES))}"
+            ),
+        )
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if extension not in _AVATAR_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            400,
+            detail=(
+                "Avatar file extension must be one of: "
+                f"{', '.join(sorted(_AVATAR_ALLOWED_EXTENSIONS))}"
+            ),
+        )
+
+    try:
+        avatar_url = await store_media.upload_media(
+            user_id=ctx.user_id, file=file, organization_id=org_id
+        )
+    except store_exceptions.MediaUploadError as e:
+        # Same 400 the global ValueError handler produces on the main app;
+        # raised explicitly so the route is self-contained.
+        raise HTTPException(400, detail=str(e)) from e
+
+    return await org_db.update_org(org_id, UpdateOrgData(avatar_url=avatar_url))
 
 
 @router.delete(
@@ -237,6 +298,36 @@ async def transfer_ownership(
 ) -> None:
     _verify_org_path(ctx, org_id)
     await org_db.transfer_ownership(org_id, ctx.user_id, request.new_owner_id)
+
+
+# --- Spend ---
+
+
+@router.get(
+    "/{org_id}/spend",
+    summary="Per-team spend breakdown",
+    tags=["orgs"],
+)
+async def get_org_spend(
+    org_id: str,
+    ctx: Annotated[
+        RequestContext,
+        Security(requires_org_permission(OrgAction.MANAGE_BILLING)),
+    ],
+    from_time: Annotated[datetime | None, Query(alias="from")] = None,
+    to_time: Annotated[datetime | None, Query(alias="to")] = None,
+) -> OrgSpendResponse:
+    """Credits spent by the org, grouped by the team each debit was attributed to.
+
+    Requires org-level MANAGE_BILLING (owner or billing_manager). Usage with no
+    team attribution — org-home spend and legacy personal-org migrations — is
+    reported in a single bucket with ``team_id = null``.
+    """
+    _verify_org_path(ctx, org_id)
+    buckets = await get_org_spend_by_team(
+        org_id, start_time=from_time, end_time=to_time
+    )
+    return OrgSpendResponse(teams=[TeamSpendBucket(**bucket) for bucket in buckets])
 
 
 # --- Aliases ---
