@@ -982,7 +982,7 @@ TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-logi
 
 Post the report with `gh pr comment --attach`. Each attached file is uploaded to GitHub's own asset store, and any image the body already references by that path is rewritten to point at the uploaded asset. Screenshots never touch a repo branch.
 
-**This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
+**This step is MANDATORY. Every test run MUST post a PR comment — with the screenshots attached, or an image-free INCOMPLETE report when attachment is unavailable (see the fallback below). Never nothing.**
 
 **Attachments are permanent.** A `user-attachments` asset stays reachable by anyone holding its URL regardless of repo visibility, and deleting the comment does not reliably revoke it — there is no undo. Look at every screenshot for credentials, tokens, or customer data before this step runs.
 
@@ -992,12 +992,16 @@ Post the report with `gh pr comment --attach`. Each attached file is uploaded to
 # Too-old gh is not fatal here: the report still gets posted, just without
 # images, through the same fallback path a failed upload takes (below).
 GH_VERSION=$(gh version 2>/dev/null | head -1 | awk '{print $3}')
-ATTACH_OK=1
+# Numeric compare, not `sort -V`: BSD sort on macOS may lack -V, and an empty
+# substitution would silently read as "too old" on a perfectly good gh.
+GH_MAJOR=${GH_VERSION%%.*}; GH_REST=${GH_VERSION#*.}; GH_MINOR=${GH_REST%%.*}
+ATTACH_OK=0
 ATTACH_SKIP_REASON=""
-if [ "$(printf '%s\n2.99.0\n' "${GH_VERSION:-0}" | sort -V | head -1)" != "2.99.0" ]; then
+if [ "${GH_MAJOR:-0}" -gt 2 ] 2>/dev/null || { [ "${GH_MAJOR:-0}" -eq 2 ] && [ "${GH_MINOR:-0}" -ge 99 ]; } 2>/dev/null; then
+  ATTACH_OK=1
+else
   ATTACH_SKIP_REASON="gh ${GH_VERSION:-not found} is below 2.99.0 — upgrade gh"
   echo "WARN: ${ATTACH_SKIP_REASON}; posting the report without images."
-  ATTACH_OK=0
 fi
 ```
 
@@ -1016,9 +1020,10 @@ MAX_ATTACHMENTS=50   # per gh pr comment invocation
 [ -n "$RESULTS_DIR" ] && [ -d "$RESULTS_DIR" ] || { echo "ERROR: RESULTS_DIR is unset or not a directory: '$RESULTS_DIR'"; exit 1; }
 STEP7_ORIG_DIR=$PWD
 cd "$RESULTS_DIR" || exit 1
+NULLGLOB_WAS=$(shopt -p nullglob)   # restore the caller's setting, don't force it off
 shopt -s nullglob
 SCREENSHOT_FILES=(*.png)
-shopt -u nullglob
+$NULLGLOB_WAS
 if [ ${#SCREENSHOT_FILES[@]} -eq 0 ]; then
   echo "ERROR: No screenshots found in $RESULTS_DIR. Test run is incomplete."
   exit 1
@@ -1079,9 +1084,15 @@ POSTED=""
 if [ "$ATTACH_OK" = 1 ]; then
   for attempt in 1 2 3; do
     # The marker was minted seconds ago, so attempt 1 cannot already be posted.
+    # A lookup that errors is "unknown", not "not found": posting on unknown is
+    # how the duplicate the marker exists to prevent would get made.
     if [ "$attempt" -gt 1 ]; then
-      POSTED=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-        | jq -r --arg m "$RUN_MARKER" '.[] | select(.body | contains($m)) | .html_url' | head -1)
+      if ! FOUND=$(set -o pipefail; gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          | jq -r --arg m "$RUN_MARKER" 'first(.[] | select(.body | contains($m)) | .html_url) // empty'); then
+        echo "Attempt $attempt: marker lookup failed; not posting until it can be confirmed"
+        sleep $((attempt * attempt * 2)); continue
+      fi
+      POSTED=${FOUND%%$'\n'*}
       [ -n "$POSTED" ] && break
     fi
     # Take the URL by shape, not position: gh prints its update notice on stderr at
@@ -1098,13 +1109,22 @@ fi
 If `gh` is too old, the run is over the cap, or all three attempts failed, post the report **without** images and say so, so the run is visibly incomplete rather than silently missing its evidence. The run continues into Step 8 — an image-free report is not approvable, and that is Step 8's job to say:
 
 ```bash
+LOOKUP_UNKNOWN=0
 if [ -z "$POSTED" ] && [ "$ATTACH_OK" = 1 ]; then
   # One last marker check — a final attempt may have landed despite reporting failure.
-  POSTED=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-    | jq -r --arg m "$RUN_MARKER" '.[] | select(.body | contains($m)) | .html_url' | head -1)
+  if FOUND=$(set -o pipefail; gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+      | jq -r --arg m "$RUN_MARKER" 'first(.[] | select(.body | contains($m)) | .html_url) // empty'); then
+    POSTED=${FOUND%%$'\n'*}
+  else
+    LOOKUP_UNKNOWN=1
+  fi
 fi
 RUN_INCOMPLETE=0
-if [ -z "$POSTED" ]; then
+if [ -z "$POSTED" ] && [ "$LOOKUP_UNKNOWN" = 1 ]; then
+  # Can't tell whether the report landed; a fallback post here risks a duplicate.
+  RUN_INCOMPLETE=1
+  echo "ERROR: could not confirm whether the report was posted (GitHub API errors). Check the PR for marker ${RUN_MARKER} before re-running Step 7."
+elif [ -z "$POSTED" ]; then
   RUN_INCOMPLETE=1
   [ "$ATTACH_OK" = 1 ] && ATTACH_SKIP_REASON="the upload failed 3 times"
   FALLBACK_FILE=$(mktemp)
