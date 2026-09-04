@@ -8,7 +8,6 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.copilot.model import ChatSession
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 # Workflow rules appended to the system prompt on every copilot turn
@@ -667,26 +666,33 @@ def get_delegation_supplement() -> str:
 """
 
 
-async def build_autopilot_delegation_supplement(
-    user_id: str | None, session: ChatSession
-) -> str:
-    """The delegation rules, or ``""`` when this turn must not delegate.
+async def autopilot_delegation_active(user_id: str | None, origin: str | None) -> bool:
+    """Whether this turn both receives the delegation rules and is held to them.
 
-    Only a human-driven turn gets them, which bounds delegation to one level:
+    One predicate for the instruction and its enforcement: a turn told nothing
+    about single-use subs must not be refused for resuming one.
+
+    Only a human-driven turn qualifies, which bounds delegation to one level:
     every sub is opened ``origin="automation"``. Unknown origin counts as
     automation, the call :func:`child_session_origin` makes.
     """
-    if not user_id or session.metadata.origin != "interactive":
-        return ""
-    if not await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False):
-        return ""
-    return get_autopilot_delegation_supplement()
+    if not user_id or origin != "interactive":
+        return False
+    return await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False)
 
 
-def get_autopilot_delegation_supplement() -> str:
-    """Rules for the ``AUTOPILOT_DELEGATION`` cohort — protecting this turn's
-    own context, unlike :func:`get_delegation_supplement`, which is about
-    handing work to a teammate.
+async def build_autopilot_delegation_supplement(
+    user_id: str | None, origin: str | None
+) -> str:
+    """The delegation rules, or ``""`` when this turn must not delegate."""
+    if not await autopilot_delegation_active(user_id, origin):
+        return ""
+    return _autopilot_delegation_rules()
+
+
+def _autopilot_delegation_rules() -> str:
+    """The rules themselves. Private: calling it directly bypasses the flag
+    and the origin guard, which is the whole no-op-when-off guarantee.
 
     Keep the explicit prohibition on doing the work in this transcript — that
     is what induces delegation. Wordings without it measured 0/25.

@@ -1,8 +1,9 @@
 """Tests for prompting helpers."""
 
+import ast
 import importlib
 import inspect
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -107,9 +108,7 @@ class TestAutopilotDelegationSupplement:
     async def test_flag_off_leaves_the_prompt_byte_identical(self, monkeypatch):
         _set_flag(monkeypatch, False)
         assert (
-            await prompting.build_autopilot_delegation_supplement(
-                "u1", _interactive_session()
-            )
+            await prompting.build_autopilot_delegation_supplement("u1", "interactive")
             == ""
         )
 
@@ -119,9 +118,7 @@ class TestAutopilotDelegationSupplement:
     ):
         flag = _set_flag(monkeypatch, True)
         assert (
-            await prompting.build_autopilot_delegation_supplement(
-                None, _interactive_session()
-            )
+            await prompting.build_autopilot_delegation_supplement(None, "interactive")
             == ""
         )
         flag.assert_not_awaited()
@@ -130,11 +127,12 @@ class TestAutopilotDelegationSupplement:
     async def test_flag_on_returns_the_rules(self, monkeypatch):
         flag = _set_flag(monkeypatch, True)
         result = await prompting.build_autopilot_delegation_supplement(
-            "u1", _interactive_session()
+            "u1", "interactive"
         )
-        assert result == prompting.get_autopilot_delegation_supplement()
+        assert result == prompting._autopilot_delegation_rules()
         assert result != ""
         assert flag.await_args.args[0] is Flag.AUTOPILOT_DELEGATION
+        assert flag.await_args.args[1] == "u1", "must evaluate for THIS user"
         assert flag.await_args.kwargs["default"] is False
 
     @pytest.mark.asyncio
@@ -143,7 +141,7 @@ class TestAutopilotDelegationSupplement:
         the chain."""
         flag = _set_flag(monkeypatch, True)
         result = await prompting.build_autopilot_delegation_supplement(
-            "u1", _session_with_origin("automation")
+            "u1", "automation"
         )
         assert result == ""
         flag.assert_not_awaited()
@@ -152,25 +150,22 @@ class TestAutopilotDelegationSupplement:
     async def test_unknown_origin_counts_as_automation(self, monkeypatch):
         """Matches child_session_origin."""
         _set_flag(monkeypatch, True)
-        assert (
-            await prompting.build_autopilot_delegation_supplement(
-                "u1", _session_with_origin(None)
-            )
-            == ""
-        )
+        assert await prompting.build_autopilot_delegation_supplement("u1", None) == ""
 
     def test_the_rules_name_the_tool_and_forbid_continuing_a_sub(self):
-        rules = prompting.get_autopilot_delegation_supplement()
+        rules = prompting._autopilot_delegation_rules()
         assert "run_sub_session" in rules
         assert "Do not try to continue a previous one" in rules
         # Polling a still-running sub must stay allowed.
         assert "get_sub_session_result" in rules
 
     def test_both_engines_append_the_gated_supplement(self):
+        """Asserted against the AST, not the text: ``getsource`` returns
+        comments, so a grep stays green on a commented-out concatenation."""
         for module in (baseline_service, sdk_service):
-            source = inspect.getsource(module)
-            assert "await build_autopilot_delegation_supplement(" in source, module
-            assert "+ autopilot_delegation_supplement" in source, module
+            concatenated = _system_prompt_operands(module)
+            assert concatenated, f"no system_prompt assignment found in {module}"
+            assert "autopilot_delegation_supplement" in concatenated, module
 
 
 def _set_flag(monkeypatch, enabled: bool) -> AsyncMock:
@@ -179,11 +174,20 @@ def _set_flag(monkeypatch, enabled: bool) -> AsyncMock:
     return flag
 
 
-def _interactive_session() -> MagicMock:
-    return _session_with_origin("interactive")
-
-
-def _session_with_origin(origin: str | None) -> MagicMock:
-    session = MagicMock()
-    session.metadata.origin = origin
-    return session
+def _system_prompt_operands(module) -> set[str]:
+    """Names concatenated into the module's ``system_prompt = a + b + ...``."""
+    tree = ast.parse(inspect.getsource(module))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(t, ast.Name) and t.id == "system_prompt" for t in node.targets
+        ):
+            continue
+        names |= {
+            operand.id
+            for operand in ast.walk(node.value)
+            if isinstance(operand, ast.Name)
+        }
+    return names

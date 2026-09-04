@@ -1856,7 +1856,7 @@ async def stream_chat_completion_baseline(
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     # Independent of experts_enabled: about this turn's context, not a team.
     autopilot_delegation_supplement = await build_autopilot_delegation_supplement(
-        user_id, session
+        user_id, session.metadata.origin
     )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical

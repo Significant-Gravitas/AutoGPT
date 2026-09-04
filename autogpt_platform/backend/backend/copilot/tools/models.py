@@ -417,9 +417,9 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-AutoPilot conversation. Use with "
-            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
-            "to continue it."
+            "The session_id of the sub-AutoPilot conversation. Open it at "
+            "``sub_autopilot_session_link`` to see what it did; resuming it "
+            "is refused when one sub per unit of work is in force."
         ),
     )
     sub_autopilot_session_link: str | None = Field(

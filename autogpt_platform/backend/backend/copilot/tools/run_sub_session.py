@@ -32,13 +32,13 @@ from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
+from backend.copilot.prompting import autopilot_delegation_active
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .models import (
@@ -102,8 +102,8 @@ class RunSubSessionTool(BaseTool):
                     # `parameters` has no request context, so one wording
                     # has to cover both flag states.
                     "description": (
-                        "Continue a prior sub; empty = new. Refused when "
-                        "single-use subs are enabled."
+                        "Continue a prior sub; empty = new. Refused when one "
+                        "sub per unit of work is in force."
                     ),
                     "default": "",
                 },
@@ -146,16 +146,22 @@ class RunSubSessionTool(BaseTool):
         # sub spawned inside a dry-run conversation doesn't silently
         # escalate to a live run.
         sub_session_param = sub_autopilot_session_id.strip()
-        if sub_session_param and await is_feature_enabled(
-            Flag.AUTOPILOT_DELEGATION, user_id, default=False
+        if sub_session_param and await autopilot_delegation_active(
+            user_id, session.metadata.origin
         ):
-            # A reused sub accumulates the context delegation exists to
-            # avoid; it measured worse than not delegating at all.
+            # Same predicate as the delegation rules: a turn never told subs
+            # are single-use must not be refused for reusing one.
+            logger.info(
+                f"[delegation] refused sub resumption for session="
+                f"{session.session_id[:12]} — one sub per unit of work"
+            )
             return ErrorResponse(
                 message=(
-                    "Subs are single-use: leave sub_autopilot_session_id empty "
-                    "and put what the sub needs into the prompt. To poll a "
-                    "running sub, use get_sub_session_result."
+                    "One sub per unit of work: leave sub_autopilot_session_id "
+                    "empty and put what the next sub needs into the prompt. A "
+                    "finished sub's summary is already in your context — "
+                    "restate the parts it needs. To poll a sub that is still "
+                    "running, use get_sub_session_result."
                 ),
                 session_id=session.session_id,
             )

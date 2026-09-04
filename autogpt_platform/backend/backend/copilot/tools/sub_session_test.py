@@ -58,6 +58,21 @@ def _session(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def delegation_flag_off(monkeypatch):
+    """Pin the delegation gate off for every test in this module.
+
+    The refusal branch sits before the ownership, expert-scope and origin
+    guards, so an ambient flag makes those pre-existing tests non-deterministic
+    and, when on, unreachable. Tests that want it on re-patch via
+    ``_set_delegation_flag``.
+    """
+    monkeypatch.setattr(
+        "backend.copilot.tools.run_sub_session.autopilot_delegation_active",
+        AsyncMock(return_value=False),
+    )
+
+
 @pytest.fixture
 def mock_queue(monkeypatch):
     """Patch the enqueue helpers + the stream-registry session creator at
@@ -1069,7 +1084,7 @@ class TestRunSubSessionPerIntent:
             sub_autopilot_session_id="prev-sub",
         )
         assert isinstance(r, ErrorResponse)
-        assert "single-use" in r.message
+        assert "One sub per unit of work" in r.message
         assert "get_sub_session_result" in r.message
         assert looked_up == []
 
@@ -1077,13 +1092,14 @@ class TestRunSubSessionPerIntent:
     async def test_a_fresh_sub_is_unaffected(
         self, monkeypatch, mock_queue, mock_waiter, mock_model
     ):
-        _set_delegation_flag(monkeypatch, True)
+        gate = _set_delegation_flag(monkeypatch, True)
 
         r = await RunSubSessionTool()._execute(
             user_id="alice", session=_session("alice"), prompt="do the thing"
         )
         assert not isinstance(r, ErrorResponse)
         assert len(mock_model["created"]) == 1
+        gate.assert_not_awaited()  # no resume id, so the gate is never reached
 
     @pytest.mark.asyncio
     async def test_flag_off_still_resumes_an_owned_sub(
@@ -1108,8 +1124,8 @@ class TestRunSubSessionPerIntent:
 
 
 def _set_delegation_flag(monkeypatch, enabled: bool) -> AsyncMock:
-    flag = AsyncMock(return_value=enabled)
+    gate = AsyncMock(return_value=enabled)
     monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.is_feature_enabled", flag
+        "backend.copilot.tools.run_sub_session.autopilot_delegation_active", gate
     )
-    return flag
+    return gate
