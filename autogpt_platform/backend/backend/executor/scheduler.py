@@ -810,8 +810,32 @@ def execute_morning_briefing(user_id: str) -> None:
             timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
         )
         logger.info("Morning briefing for user %s: %s", user_id[:12], result)
+        if result.get("reason") == "flag_disabled":
+            run_async(
+                _self_delete_morning_briefing_schedule(user_id),
+                timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+            )
     except Exception as e:
         logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
+
+
+async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
+    """Drop a briefing cron whose feature flag has since been turned off.
+
+    The registration marker goes with it: left set, it would suppress lazy
+    re-registration for the rest of its TTL if the flag comes back on.
+    Best-effort — the next daily fire retries the cleanup.
+    """
+    from backend.copilot.briefing.scheduling import clear_briefing_registration_marker
+
+    try:
+        await get_scheduler_client().remove_morning_briefing_schedule(user_id=user_id)
+        await clear_briefing_registration_marker(user_id)
+    except Exception:
+        logger.warning(
+            f"Failed to remove morning briefing job for user {user_id[:12]}",
+            exc_info=True,
+        )
 
 
 def execute_nightly_batch_sync(user_id: str):
@@ -2495,6 +2519,24 @@ class Scheduler(AppService):
             ),
         }
 
+    @expose
+    def remove_morning_briefing_schedule(self, user_id: str) -> dict:
+        """Delete one user's morning-briefing cron.
+
+        Deliberately not routed through ``delete_graph_execution_schedule``:
+        that path authorizes via ``_job_to_info``, which parses only graph and
+        copilot-turn kwargs and would reject this job's ``{"user_id": ...}``
+        shape as corrupt. The job id embeds the user id, so it is self-scoping.
+        """
+        job_id = f"morning_briefing_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if job is None:
+            return {"id": job_id, "user_id": user_id, "removed": False}
+        job.remove()
+        self._invalidate_jobs_cache()
+        logger.info(f"Removed morning briefing job {job_id} for user {user_id[:12]}")
+        return {"id": job_id, "user_id": user_id, "removed": True}
+
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
     # ONE per-user cron at user-local 03:00 fans out all batch-family
@@ -2717,6 +2759,9 @@ class SchedulerClient(AppServiceClient):
 
     add_morning_briefing_schedule = endpoint_to_async(
         Scheduler.add_morning_briefing_schedule
+    )
+    remove_morning_briefing_schedule = endpoint_to_async(
+        Scheduler.remove_morning_briefing_schedule
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)

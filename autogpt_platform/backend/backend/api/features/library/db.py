@@ -16,9 +16,6 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.api.features.store.store_listing_versions import (
-    installable_store_version_where,
-)
 from backend.data.db import get_database_schema, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
@@ -72,51 +69,6 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
         row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
     }
-
-
-async def _fetch_matching_store_version_ids(
-    agents: list[prisma.models.LibraryAgent],
-) -> dict[tuple[str, int], str]:
-    """Map (graph_id, graph_version) → approved StoreListingVersion id.
-
-    Only approved, non-deleted versions are returned so the ids are always
-    valid install targets. Matching on the exact graph version keeps installs
-    version-stable: the id refers to the snapshot the library agent holds,
-    not the listing's current active version.
-    """
-    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
-    if not pairs:
-        return {}
-    pair_filters = [
-        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
-        for graph_id, graph_version in sorted(pairs)
-    ]
-    try:
-        versions = await prisma.models.StoreListingVersion.prisma().find_many(
-            where={
-                "OR": pair_filters,
-                **installable_store_version_where(),
-            },
-            distinct=["agentGraphId", "agentGraphVersion"],
-            order=[
-                {"agentGraphId": "asc"},
-                {"agentGraphVersion": "asc"},
-                {"createdAt": "desc"},
-                {"id": "desc"},
-            ],
-        )
-    except Exception:
-        logger.warning(
-            "Failed to fetch store listing versions for library agents",
-            exc_info=True,
-        )
-        return {}
-    matches: dict[tuple[str, int], str] = {}
-    for version in versions:
-        pair = (version.agentGraphId, version.agentGraphVersion)
-        if pair in pairs and pair not in matches:
-            matches[pair] = version.id
-    return matches
 
 
 async def _fetch_marketplace_details(
@@ -281,10 +233,9 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -296,9 +247,6 @@ async def list_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -372,10 +320,9 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, graph_ids),
         _fetch_schedule_info(user_id),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -387,9 +334,6 @@ async def list_favorite_library_agents(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -442,12 +386,10 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     (
         marketplace_details,
         schedule_info,
-        store_version_ids,
         sub_graphs,
     ) = await asyncio.gather(
         _fetch_marketplace_details(library_agent.AgentGraph.id),
         _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id),
-        _fetch_matching_store_version_ids([library_agent]),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
     store_listing, profile = marketplace_details
@@ -458,9 +400,6 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,
-        store_listing_version_id=store_version_ids.get(
-            (library_agent.agentGraphId, library_agent.agentGraphVersion)
-        ),
     )
 
 
