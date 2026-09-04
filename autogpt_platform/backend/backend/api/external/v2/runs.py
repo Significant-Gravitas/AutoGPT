@@ -14,10 +14,8 @@ from prisma.enums import APIKeyPermission, ReviewStatus
 from pydantic import JsonValue
 from starlette import status
 
-from backend.api.external.middleware import require_permission
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.execution import ExecutionContext
 from backend.data.graph import get_graph_settings
 from backend.data.model import USER_TIMEZONE_NOT_SET
@@ -35,6 +33,7 @@ from .models import (
     AgentRunShareResponse,
 )
 from .pagination import Page, PageRequest, page_request
+from .tenancy import TenantContext, in_tenant, require_permission
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -64,7 +63,7 @@ async def list_reviews(
         description="Filter by review status",
     ),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.READ_RUN_REVIEW)
     ),
 ) -> Page[AgentRunReview]:
@@ -79,6 +78,7 @@ async def list_reviews(
         status=status,
         page=page.page,
         page_size=page.limit,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -96,7 +96,7 @@ async def list_reviews(
 async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),
 ) -> AgentRunReviewsSubmitResponse:
@@ -106,6 +106,9 @@ async def submit_reviews(
     All pending reviews for the run must be included in the request.
     Approving a review continues execution; rejecting terminates that branch.
     """
+    # Reviews carry no organization of their own; the run they belong to does.
+    await _assert_run_in_tenant(run_id, auth)
+
     # Validate run_id: ensure the submitted node_exec_ids belong to this run
     pending_reviews = await review_db.get_pending_reviews_for_execution(
         graph_exec_id=run_id,
@@ -172,6 +175,8 @@ async def submit_reviews(
                     user_id=auth.user_id,
                     graph_exec_id=run_id,
                     execution_context=execution_context,
+                    organization_id=auth.organization_id,
+                    team_id=auth.team_id,
                 )
                 logger.info(f"Resumed execution {run_id}")
             except Exception as e:
@@ -197,9 +202,7 @@ async def submit_reviews(
 async def list_runs(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_RUN)),
 ) -> Page[AgentGraphRun]:
     """List agent runs, optionally filtered by graph ID."""
     result = await execution_db.get_graph_executions_paginated(
@@ -207,6 +210,7 @@ async def list_runs(
         graph_id=graph_id,
         page=page.page,
         page_size=page.limit,
+        organization_id=auth.organization_id,
     )
 
     return page.paged(
@@ -222,15 +226,14 @@ async def list_runs(
 )
 async def get_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_RUN)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_RUN)),
 ) -> AgentGraphRunDetails:
     """Get detailed information about a specific run."""
     result = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
         include_node_executions=True,
+        organization_id=auth.organization_id,
     )
 
     if not result:
@@ -250,9 +253,7 @@ async def get_run(
 )
 async def stop_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_RUN)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> AgentGraphRun:
     """
     Stop a running execution.
@@ -263,6 +264,7 @@ async def stop_run(
     exec = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
+        organization_id=auth.organization_id,
     )
     if not exec:
         raise HTTPException(
@@ -280,6 +282,7 @@ async def stop_run(
     updated_exec = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
+        organization_id=auth.organization_id,
     )
 
     if not updated_exec:
@@ -299,11 +302,11 @@ async def stop_run(
 )
 async def delete_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_RUN)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
 ) -> None:
     """Delete an agent run."""
+    await _assert_run_in_tenant(run_id, auth)
+
     await execution_db.delete_graph_execution(
         graph_exec_id=run_id,
         user_id=auth.user_id,
@@ -323,7 +326,7 @@ async def delete_run(
 )
 async def enable_sharing(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
+    auth: TenantContext = Security(
         require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
     ),
 ) -> AgentRunShareResponse:
@@ -331,6 +334,7 @@ async def enable_sharing(
     execution = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
+        organization_id=auth.organization_id,
     )
     if not execution:
         raise HTTPException(
@@ -362,14 +366,13 @@ async def enable_sharing(
 )
 async def disable_sharing(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.SHARE_RUN)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.SHARE_RUN)),
 ) -> None:
     """Disable public sharing for a run."""
     execution = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=run_id,
+        organization_id=auth.organization_id,
     )
     if not execution:
         raise HTTPException(
@@ -383,4 +386,17 @@ async def disable_sharing(
         is_shared=False,
         share_token=None,
         shared_at=None,
+    )
+
+
+async def _assert_run_in_tenant(run_id: str, auth: TenantContext) -> None:
+    """404 before acting on a run the credentials cannot reach."""
+    in_tenant(
+        await execution_db.get_graph_execution(
+            user_id=auth.user_id,
+            execution_id=run_id,
+            organization_id=auth.organization_id,
+        ),
+        auth,
+        f"Run #{run_id}",
     )

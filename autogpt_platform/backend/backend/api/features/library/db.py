@@ -1322,6 +1322,7 @@ async def list_folders(
     user_id: str,
     parent_id: Optional[str] = None,
     include_relations: bool = True,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolder]:
     """
     Lists folders for a user, optionally filtered by parent.
@@ -1341,6 +1342,7 @@ async def list_folders(
         user_id,
         extra_where={"parentId": parent_id},
         include_relations=include_relations,
+        organization_id=organization_id,
     )
 
     return [
@@ -1355,6 +1357,7 @@ async def list_folders(
 
 async def get_folder_tree(
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolderTree]:
     """
     Gets the full folder tree for a user.
@@ -1368,7 +1371,7 @@ async def get_folder_tree(
     logger.debug(f"Getting folder tree for user #{user_id}")
 
     # Fetch all folders for the user
-    all_folders = await _fetch_user_folders(user_id)
+    all_folders = await _fetch_user_folders(user_id, organization_id=organization_id)
 
     # Build a map of folder ID to folder data
     folder_map: dict[str, library_model.LibraryFolderTree] = {
@@ -1399,6 +1402,7 @@ async def _fetch_user_folders(
     user_id: str,
     extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
     include_relations: bool = True,
+    organization_id: Optional[str] = None,
 ) -> list[prisma.models.LibraryFolder]:
     """
     Shared helper to fetch folders for a user with consistent query params.
@@ -1418,6 +1422,11 @@ async def _fetch_user_folders(
     }
     if extra_where:
         where_clause.update(extra_where)
+    if organization_id is not None:
+        # Own rows in this org, plus rows created before org tagging.
+        where_clause["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
 
     return await prisma.models.LibraryFolder.prisma().find_many(
         where=where_clause,
@@ -1977,6 +1986,7 @@ async def list_presets(
     graph_id: Optional[str] = None,
     expert_id: str | None = None,
     filter_by_expert: bool = False,
+    organization_id: Optional[str] = None,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -2014,6 +2024,11 @@ async def list_presets(
         query_filter["agentGraphId"] = graph_id
     if filter_by_expert:
         query_filter["expertId"] = expert_id
+    if organization_id is not None:
+        # Own rows in this org, plus rows created before org tagging.
+        query_filter["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
 
     presets_records = await prisma.models.AgentPreset.prisma().find_many(
         where=query_filter,

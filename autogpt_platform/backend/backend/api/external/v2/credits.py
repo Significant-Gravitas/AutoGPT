@@ -15,17 +15,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission, SubscriptionTier
 from starlette.concurrency import run_in_threadpool
 
-from backend.api.external.middleware import require_permission
 from backend.copilot.rate_limit import get_tier_multipliers
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.credit import (
     PendingChangeUnknown,
     get_active_subscription_period_end,
+    get_credit_model,
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_billing_cycle,
-    get_user_credit_model,
 )
 from backend.data.execution_cost_summary import get_user_cost_summary
 from backend.data.user import get_user_by_id
@@ -39,6 +37,7 @@ from .models import (
     SubscriptionStatus,
 )
 from .pagination import Page, PageRequest, page_request, single_page_request
+from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +55,10 @@ credits_router = APIRouter(tags=["credits"])
     operation_id="getCreditBalance",
 )
 async def get_balance(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> CreditBalance:
     """Get the current credit balance for the authenticated user."""
-    user_credit_model = await get_user_credit_model(auth.user_id)
+    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
     balance = await user_credit_model.get_credits(auth.user_id)
 
     return CreditBalance(balance=balance)
@@ -78,9 +75,7 @@ async def get_transactions(
         description="Filter by transaction type (TOP_UP, USAGE, GRANT, REFUND)",
     ),
     page: PageRequest = Depends(page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> Page[CreditTransaction]:
     """Get credit transaction history for the authenticated user.
 
@@ -88,7 +83,7 @@ async def get_transactions(
     of one run collapses into one item), so a row count would not match what
     paging through this endpoint yields.
     """
-    user_credit_model = await get_user_credit_model(auth.user_id)
+    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
 
     token = page.token
     history = await user_credit_model.get_transaction_history(
@@ -114,9 +109,7 @@ async def get_transactions(
     operation_id="getSubscriptionStatus",
 )
 async def get_subscription_status(
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> SubscriptionStatus:
     """Get the current subscription tier, pricing, and pending changes."""
     user = await get_user_by_id(auth.user_id)
@@ -217,9 +210,7 @@ async def get_subscription_status(
 )
 async def list_invoices(
     page: PageRequest = Depends(single_page_request),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> Page[InvoiceItem]:
     """Recent Stripe invoices for the current user.
 
@@ -227,7 +218,7 @@ async def list_invoices(
     total here, so `next_cursor` and `total_count` are always `null`; raise
     `limit` to see further back.
     """
-    user_credit_model = await get_user_credit_model(auth.user_id)
+    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
     invoices = await user_credit_model.list_invoices(auth.user_id, limit=page.limit)
 
     return page.uncounted([InvoiceItem.from_internal(inv) for inv in invoices])
@@ -253,9 +244,7 @@ async def get_cost_summary(
         le=50,
         description="Maximum number of top-cost runs to return.",
     ),
-    auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_CREDITS)
-    ),
+    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
 ) -> AutomationCostSummary:
     """Aggregated cost breakdown for the user's graph executions."""
     if since is not None and until is not None and since > until:

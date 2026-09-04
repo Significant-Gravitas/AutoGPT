@@ -42,6 +42,8 @@ class LibraryFolder(pydantic.BaseModel):
     updated_at: datetime.datetime
     agent_count: int = 0  # Direct agents in folder
     subfolder_count: int = 0  # Direct child folders
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -61,6 +63,8 @@ class LibraryFolder(pydantic.BaseModel):
             updated_at=folder.updatedAt,
             agent_count=agent_count,
             subfolder_count=subfolder_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
@@ -239,6 +243,8 @@ class LibraryAgent(pydantic.BaseModel):
         description="ISO 8601 timestamp of the next scheduled run, if any",
     )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+    organization_id: str | None = None
+    team_id: str | None = None
     marketplace_listing: Optional["MarketplaceListing"] = None
     store_listing_version_id: Optional[str] = pydantic.Field(
         default=None,
@@ -413,6 +419,8 @@ class LibraryAgent(pydantic.BaseModel):
             is_favorite=agent.isFavorite,
             is_hidden=agent.isHidden,
             folder_id=agent.folderId,
+            organization_id=agent.organizationId,
+            team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
