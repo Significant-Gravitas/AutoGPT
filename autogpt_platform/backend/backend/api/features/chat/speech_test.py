@@ -154,6 +154,15 @@ def test_speech_rejects_an_unknown_kind(record_usage: AsyncMock) -> None:
     record_usage.assert_not_awaited()
 
 
+def test_speech_allows_every_voice_the_model_takes(
+    record_usage: AsyncMock,
+) -> None:
+    # An allow-list that lags the provider's roster 400s a voice that works.
+    for voice in ("marin", "cedar", "fable", "echo"):
+        response = client.post("/speech", json={"text": "hello", "voice": voice})
+        assert response.status_code == 200, voice
+
+
 def test_speech_rejects_an_unknown_voice(record_usage: AsyncMock) -> None:
     response = client.post("/speech", json={"text": "hello", "voice": "morgan"})
 
