@@ -5,20 +5,11 @@ import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import Link from "next/link";
 import { SectionHeader } from "../SectionHeader";
 import { ExpertCard } from "./components/ExpertCard";
-import { ExpertProfileSheet } from "./components/ExpertProfileSheet/ExpertProfileSheet";
 import { useExpertsSection } from "./useExpertsSection";
 
 export function ExpertsSection() {
-  const {
-    isLoggedIn,
-    templates,
-    hiredTemplateIds,
-    isLoading,
-    isError,
-    selectedTemplateId,
-    openTemplate,
-    closeSheet,
-  } = useExpertsSection();
+  const { isLoggedIn, templates, hiredTemplateIds, isLoading, isError } =
+    useExpertsSection();
 
   if (!isLoggedIn) {
     return null;
@@ -58,15 +49,10 @@ export function ExpertsSection() {
               key={template.id}
               expert={template}
               isHired={hiredTemplateIds.has(template.id)}
-              onClick={() => openTemplate(template.id)}
             />
           ))}
         </div>
       )}
-      <ExpertProfileSheet
-        expert={templates.find((t) => t.id === selectedTemplateId) ?? null}
-        onClose={closeSheet}
-      />
     </section>
   );
 }

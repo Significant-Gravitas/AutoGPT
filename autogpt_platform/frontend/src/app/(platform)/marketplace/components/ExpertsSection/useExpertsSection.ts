@@ -4,12 +4,8 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { useState } from "react";
 
 export function useExpertsSection() {
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    null,
-  );
   const { isLoggedIn } = useAuth();
 
   const templatesQuery = useListExpertTemplates({
@@ -32,8 +28,5 @@ export function useExpertsSection() {
     hiredTemplateIds,
     isLoading: isLoggedIn && templatesQuery.isLoading,
     isError: templatesQuery.isError,
-    selectedTemplateId,
-    openTemplate: setSelectedTemplateId,
-    closeSheet: () => setSelectedTemplateId(null),
   };
 }

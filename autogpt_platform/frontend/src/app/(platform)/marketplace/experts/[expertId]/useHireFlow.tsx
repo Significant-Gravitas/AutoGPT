@@ -1,7 +1,6 @@
 import {
   getGetExpertQueryKey,
   useHireExpert,
-  useListExperts,
   useUpdateExpertSoul,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Expert } from "@/app/api/__generated__/models/expert";
@@ -32,43 +31,31 @@ function celebrate(result: HireResult) {
   });
 }
 
-export function useExpertProfileSheet(
-  expert: Expert | null,
-  onClose: () => void,
-) {
+/** Hiring from the expert page: hire the template, offer a voice pick when
+ *  the persona ships writing samples, then celebrate and hand the user to
+ *  the expert's first thread. */
+export function useHireFlow(expert: Expert | null) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  // Set once a hire succeeds for a persona that ships writing samples: it
-  // swaps the sheet to the voice pick before the hire is celebrated.
+  // Set once a hire succeeds for a persona with writing samples: it opens
+  // the voice pick before the hire is celebrated.
   const [hireResult, setHireResult] = useState<HireResult | null>(null);
   const pendingCelebrationRef = useRef<HireResult | null>(null);
-
-  const expertsQuery = useListExperts({
-    query: { select: (x) => x.data as Expert[] },
-  });
-
-  const isHired =
-    expert !== null &&
-    (!expert.is_template ||
-      (expertsQuery.data ?? []).some(
-        (hired) => hired.source_template_id === expert.id,
-      ));
 
   const { mutateAsync: hireExpert, isPending: isHiring } = useHireExpert();
   const { mutateAsync: updateSoul, isPending: isSavingVoice } =
     useUpdateExpertSoul();
 
-  function handleClose() {
+  function finish() {
     const completedHire = pendingCelebrationRef.current;
     pendingCelebrationRef.current = null;
     setHireResult(null);
     if (completedHire) {
       celebrate(completedHire);
-      // Hiring isn't installing: hand the user straight to the expert's thread
-      // with kickoff=1 so it introduces itself and starts its day-one job.
+      // Hiring isn't installing: hand the user straight to the expert's
+      // thread with kickoff=1 so it introduces itself and starts its job.
       router.push(`/copilot?expertId=${completedHire.expert.id}&kickoff=1`);
     }
-    onClose();
   }
 
   async function hire() {
@@ -78,13 +65,11 @@ export function useExpertProfileSheet(
       const result = response.data as HireResult;
       await invalidateExpertRosterQueries(queryClient);
       pendingCelebrationRef.current = result;
-      // Offer the voice pick when the persona ships writing samples; otherwise
-      // finish with the classic celebration toast.
       if ((expert.voice_samples ?? []).length > 0) {
         setHireResult(result);
         return;
       }
-      handleClose();
+      finish();
     } catch {
       toast({
         title: `Couldn't hire ${expert.name}`,
@@ -104,7 +89,7 @@ export function useExpertProfileSheet(
     // Nothing storable (missing sample, blank custom text): keep the hired
     // expert's existing voice instead of blanking it with an empty PATCH.
     if (voicePreferences === null) {
-      skipVoice();
+      finish();
       return;
     }
     try {
@@ -136,21 +121,16 @@ export function useExpertProfileSheet(
       });
       return;
     }
-    handleClose();
-  }
-
-  function skipVoice() {
-    handleClose();
+    finish();
   }
 
   return {
-    isHired,
-    isHiring,
     hire,
+    isHiring,
     hireResult,
     pickVoice,
-    skipVoice,
+    skipVoice: finish,
+    dismissVoicePick: finish,
     isSavingVoice,
-    handleClose,
   };
 }
