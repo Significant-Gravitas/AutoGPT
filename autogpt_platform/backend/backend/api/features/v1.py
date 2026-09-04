@@ -829,6 +829,10 @@ async def configure_user_auto_top_up(
             await credit_model.top_up_credits(user_id, request.amount)
         else:
             await credit_model.top_up_credits(user_id, 0)
+    except NotImplementedError as e:
+        raise HTTPException(
+            status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
     except ValueError as e:
         known_messages = (
             "must not be negative",
