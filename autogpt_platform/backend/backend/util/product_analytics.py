@@ -78,10 +78,10 @@ def track(
     """Send one event for *user_id*. Silently no-ops when analytics is off."""
     if not user_id:
         return
-    client = get_posthog_client()
-    if client is None:
-        return
     try:
+        client = get_posthog_client()
+        if client is None:
+            return
         client.capture(
             distinct_id=user_id,
             event=event.value,
@@ -231,7 +231,6 @@ def track_schedule_created(
     run_at: datetime | None = None,
     graph_id: str | None = None,
     session_id: str | None = None,
-    name: str | None = None,
 ) -> None:
     track(
         user_id,
@@ -245,7 +244,6 @@ def track_schedule_created(
             "run_at": run_at.isoformat() if run_at else None,
             "graph_id": graph_id,
             "session_id": session_id,
-            "name": name,
         },
     )
 
@@ -316,7 +314,7 @@ def track_integration_connected(
     user_id: str,
     provider: str,
     credential_type: str,
-    method: Literal["oauth", "manual"],
+    method: Literal["oauth", "manual", "device_code"],
 ) -> None:
     track(
         user_id,

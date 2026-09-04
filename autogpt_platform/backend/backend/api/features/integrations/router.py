@@ -714,6 +714,12 @@ async def device_auth_poll(
         logger.debug(
             f"Device auth approved for user {user_id} and provider {provider.value}"
         )
+        product_analytics.track_integration_connected(
+            user_id=user_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            method="device_code",
+        )
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),

@@ -4,9 +4,14 @@ import {
   getArchiveExpertMockHandler,
   getGetExpertDetachPreviewMockHandler,
   getGetExpertMockHandler,
+  getInstallExpertWorkflowMockHandler,
   getListExpertRunsMockHandler,
+  getListExpertsMockHandler,
   getResumeExpertSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetV2ListLibraryAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/library/library.msw";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
@@ -148,6 +153,29 @@ const mariaRuns: ExpertRun[] = [
     link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
   },
 ];
+
+const ownLibraryAgent = {
+  id: "lib-private",
+  graph_id: "graph-private",
+  graph_version: 1,
+  name: "My Private Agent",
+  description: "Never published to the marketplace",
+  creator_name: "You",
+  image_url: null,
+  marketplace_listing: null,
+} as unknown as LibraryAgent;
+
+function libraryResponse(agents: LibraryAgent[]): LibraryAgentResponse {
+  return {
+    agents,
+    pagination: {
+      total_items: agents.length,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 10,
+    },
+  } as LibraryAgentResponse;
+}
 
 beforeEach(() => {
   server.use(
@@ -322,5 +350,80 @@ describe("ExpertDetailPage", () => {
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalled());
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/team"));
+  });
+
+  test("installs one of the user's own agents as a workflow", async () => {
+    const user = userEvent.setup();
+    let installBody: unknown;
+    server.use(
+      getListExpertsMockHandler([maria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([ownLibraryAgent]),
+      ),
+      getInstallExpertWorkflowMockHandler(async (info) => {
+        installBody = await info.request.json();
+        return {
+          id: "wf-private",
+          store_listing_version_id: null,
+          library_agent_id: "lib-private",
+          graph_id: "graph-private",
+          name: "My Private Agent",
+          description: null,
+        };
+      }),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await user.click(screen.getByRole("button", { name: "Install workflow" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const row = await within(dialog).findByTestId("install-workflow-option");
+    expect(within(row).getByText("My Private Agent")).toBeDefined();
+    await user.click(within(row).getByRole("button", { name: "Install" }));
+
+    await waitFor(() =>
+      expect(installBody).toEqual({ library_agent_id: "lib-private" }),
+    );
+  });
+
+  test("marks an already-installed workflow instead of offering Install", async () => {
+    const user = userEvent.setup();
+    const installed = { ...ownLibraryAgent, id: "lib-1" } as LibraryAgent;
+    server.use(
+      getListExpertsMockHandler([maria]),
+      getGetV2ListLibraryAgentsMockHandler200(libraryResponse([installed])),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await user.click(screen.getByRole("button", { name: "Install workflow" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const row = await within(dialog).findByTestId("install-workflow-option");
+    expect(within(row).getByText("Installed")).toBeDefined();
+    expect(within(row).queryByRole("button", { name: "Install" })).toBeNull();
+  });
+
+  test("shows the workflow description rather than an unknown creator", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([maria]),
+      getGetV2ListLibraryAgentsMockHandler200(
+        libraryResponse([{ ...ownLibraryAgent, description: "" }]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await screen.findByRole("heading", { name: "Maria" });
+    await user.click(screen.getByRole("button", { name: "Install workflow" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const row = await within(dialog).findByTestId("install-workflow-option");
+    expect(within(row).getByText("From your library")).toBeDefined();
+    expect(within(row).queryByText("Unknown")).toBeNull();
   });
 });

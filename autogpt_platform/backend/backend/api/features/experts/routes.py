@@ -1,7 +1,7 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
@@ -25,12 +25,19 @@ from backend.api.features.experts.models import (
     validate_avatar_url,
 )
 from backend.util import product_analytics
+from backend.util.exceptions import NotFoundError
 
 router = APIRouter(
     prefix="/experts",
     tags=["experts", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+# Templates are marketplace content: the expert page shows them to signed-out
+# visitors, so they live on a router without the session requirement. It must
+# be mounted before ``router`` so ``/templates`` isn't swallowed by
+# ``/{expert_id}``.
+public_router = APIRouter(prefix="/experts", tags=["experts"])
 
 
 class HireRequest(BaseModel):
@@ -39,7 +46,18 @@ class HireRequest(BaseModel):
 
 
 class InstallWorkflowRequest(BaseModel):
-    store_listing_version_id: str
+    """One workflow source: a marketplace listing, or the caller's own agent."""
+
+    store_listing_version_id: str | None = None
+    library_agent_id: str | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> "InstallWorkflowRequest":
+        if bool(self.store_listing_version_id) == bool(self.library_agent_id):
+            raise ValueError(
+                "Provide exactly one of store_listing_version_id, library_agent_id"
+            )
+        return self
 
 
 class CreatePodRequest(BaseModel):
@@ -103,7 +121,7 @@ class CreateRaisedExpertRequest(BaseModel):
         return value.strip() or None
 
 
-@router.get("/templates", operation_id="list_expert_templates")
+@public_router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
 
@@ -376,7 +394,7 @@ async def update_expert_soul(
 @router.post(
     "/{expert_id}/workflows",
     operation_id="install_expert_workflow",
-    responses={404: {"description": "Expert not found"}},
+    responses={404: {"description": "Expert or workflow not found"}},
 )
 async def install_expert_workflow(
     expert_id: str,
@@ -385,9 +403,12 @@ async def install_expert_workflow(
 ) -> ExpertWorkflowRef:
     try:
         return await experts_db.install_workflow(
-            user_id, expert_id, request.store_listing_version_id
+            user_id,
+            expert_id,
+            store_listing_version_id=request.store_listing_version_id,
+            library_agent_id=request.library_agent_id,
         )
-    except experts_db.ExpertNotFoundError as e:
+    except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
