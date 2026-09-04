@@ -48,13 +48,16 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.markers import append_error_marker
+from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
-from backend.integrations.codex.transport import PooledCodexRuntimeLease
+from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -65,7 +68,7 @@ from backend.util.prompt import (
 )
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLLMModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -124,9 +127,9 @@ from ..response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
+    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
-    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -797,6 +800,13 @@ async def _consume_sdk_until_done(
                     ),
                 ):
                     continue
+                # The envelope goes out just ahead of the error it explains,
+                # so a client acting on it has it in hand before the turn is
+                # reported failed. Same contract as the baseline path.
+                if isinstance(dispatched, StreamError):
+                    codex_failure = _provider_failure_for(ctx)
+                    if codex_failure is not None:
+                        yield StreamProviderFailure(failure=codex_failure.as_part())
                 yield dispatched
 
             # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -1355,6 +1365,11 @@ class _StreamContext:
     attachments: "PreparedAttachments"
     compaction: CompactionTracker
     lock: AsyncClusterLock
+    # The Codex gateway for this turn, when the route is a ChatGPT
+    # subscription. Carried here so the error path can ask it what actually
+    # failed: by the time a provider failure reaches this layer it is CLI
+    # text, and the gateway holds the last point at which it was typed.
+    codex_gateway: "CodexAnthropicGateway | None" = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1500,14 +1515,30 @@ def _append_error_marker(
     display_msg: str,
     *,
     retryable: bool = False,
+    failure: dict[str, Any] | None = None,
 ) -> None:
-    """Append a copilot error marker to *session* so it persists across refresh."""
-    if session is None:
-        return
-    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
-    session.messages.append(
-        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
-    )
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Delegates to the shared writer so both engines produce the same row: the
+    frontend's rendering contract lives in one place, and a failure recorded
+    on a Codex turn carries the same envelope a baseline turn would.
+    """
+    append_error_marker(session, display_msg, retryable=retryable, failure=failure)
+
+
+def _provider_failure_for(ctx: "_StreamContext") -> ProviderFailure | None:
+    """What the Codex gateway last named, if it named anything.
+
+    The gateway is the last point where a provider failure is still a typed
+    exception; downstream it is an HTTP status, then CLI text. Reading it
+    here is what lets a Codex turn say "your ChatGPT login expired" rather
+    than "the assistant ran into an error".
+
+    ``None`` on the platform route, and on a Codex turn whose failure the
+    gateway declined to name -- the caller keeps its existing behaviour.
+    """
+    gateway = ctx.codex_gateway
+    return gateway.last_failure if gateway is not None else None
 
 
 def _is_error_marker(msg: ChatMessage) -> bool:
@@ -1599,6 +1630,7 @@ class _InterruptedAttempt:
         display_msg: str,
         *,
         retryable: bool,
+        failure: dict[str, Any] | None = None,
     ) -> list[StreamBaseResponse]:
         """Re-attach partial + synthetic tool_result rows + error marker.
 
@@ -1617,7 +1649,12 @@ class _InterruptedAttempt:
             session.messages.extend(self.partial)
             self.partial = []
         events = _flush_orphan_tool_uses_to_session(session, state)
-        _append_error_marker(session, display_msg, retryable=retryable)
+        _append_error_marker(
+            session,
+            display_msg,
+            retryable=retryable,
+            failure=failure,
+        )
         return events
 
 
@@ -2353,9 +2390,10 @@ def _build_system_prompt_value(
     the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
-    returned.  Note this causes the CLI to REPLACE its built-in prompt via
-    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
-    which loses Claude Code's default prompt and its cache markers entirely.
+    returned.  This intentionally replaces the CLI's built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset).
+    Per-session prompt caching remains available; only the shared Claude Code
+    preset prefix and its cross-user cache reuse are removed.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
@@ -3603,10 +3641,16 @@ def _dispatch_response(
             response.errorText,
             response.code,
         )
+        failure = _provider_failure_for(ctx)
         _append_error_marker(
             ctx.session,
-            response.errorText,
-            retryable=response.code in _RETRYABLE_STREAM_ERROR_CODES,
+            failure.message if failure else response.errorText,
+            retryable=(
+                failure.retryable
+                if failure
+                else response.code in _RETRYABLE_STREAM_ERROR_CODES
+            ),
+            failure=failure.as_part() if failure else None,
         )
 
     if isinstance(response, StreamReasoningStart):
@@ -4367,12 +4411,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
-    credential_lease: CredentialLease | PooledCodexRuntimeLease | None = None,
+    credential_lease: CredentialLease | CodexCredentialLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4591,6 +4634,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     codex_gateway: CodexAnthropicGateway | None = None
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
+    turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -4728,13 +4772,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast" and not is_codex_transport:
-            # The request asked for Fast but this turn runs on the SDK
-            # engine (building-mode pin or engine-switch continuation).
-            # Tell stale pickers — a client that missed the original
-            # data-mode-changed (reload, second tab) re-syncs here.
-            yield StreamModeChanged(mode="extended_thinking")
-
         set_execution_context(
             user_id,
             session,
@@ -4793,13 +4830,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            route_mode = "fast" if mode == "fast" else "thinking"
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
-                route_mode,
+                # This turn is on the SDK engine by definition.
+                "thinking",
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, PooledCodexRuntimeLease):
+            if isinstance(credential_lease, CodexCredentialLease):
                 codex_gateway = CodexAnthropicGateway(
                     agent_session=credential_lease,
                     model=sdk_model,
@@ -4869,9 +4906,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sid,
                 )
 
-        # Use SystemPromptPreset with exclude_dynamic_sections=True on
-        # every turn — including resumed ones — so all turns share the
-        # same static prefix and hit the cross-user prompt cache.
+        # When cross-user caching is enabled, use SystemPromptPreset with
+        # exclude_dynamic_sections=True on every turn — including resumed
+        # ones — so all turns share the same static prefix.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
         # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
@@ -4906,11 +4943,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
-            effort=(
-                "medium"
-                if mode == "fast"
-                else (config.claude_agent_thinking_effort or "high")
-            ),
+            effort=config.claude_agent_thinking_effort or "high",
         )
         if not is_codex_transport:
             # The Claude/OpenRouter paths use provider-USD controls. A Codex
@@ -5256,6 +5289,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             attachments=attachments,
             compaction=compaction,
             lock=lock,
+            codex_gateway=codex_gateway,
         )
 
         # ---------------------------------------------------------------
@@ -5367,8 +5401,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_retry.resume = None
                     sdk_options_retry.session_id = session_id
-                # Recompute system_prompt for retry — the preset is safe on
-                # every turn (requires CLI ≥ 2.1.98, bundled in
+                # Recompute system_prompt for retry. When enabled, the preset
+                # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
                 sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
@@ -5644,6 +5678,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 interrupted, attempts_exhausted, transient_exhausted, stream_err
             )
             if failure is not None:
+                provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
                     state.adapter._end_text_if_open(cleanup_events)
@@ -5653,6 +5688,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         state,
                         failure.display_msg,
                         retryable=failure.retryable,
+                        failure=(
+                            provider_failure.as_part() if provider_failure else None
+                        ),
                     )
                 )
                 for response in cleanup_events:
@@ -5750,7 +5788,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # so this is a no-op for those and only kicks in for unhandled errors
         # that bypass the retry-loop handlers entirely.
         if not ended_with_stream_error:
-            interrupted.finalize(session, state, display_msg, retryable=is_transient)
+            interrupted.finalize(
+                session,
+                state,
+                display_msg,
+                retryable=is_transient,
+                failure=(
+                    codex_gateway.last_failure.as_part()
+                    if codex_gateway and codex_gateway.last_failure
+                    else None
+                ),
+            )
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
@@ -5979,6 +6027,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
             )
+            # What this turn ran on, recorded on the turn rather than read
+            # back off the session later, so a route change cannot rewrite it.
+            stamp_segment(
+                session.messages,
+                pre_turn_message_count,
+                turn_segment,
+            )
             try:
                 await asyncio.shield(upsert_chat_session(session))
                 logger.info(
@@ -6205,7 +6260,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
-                    mode=mode,
                     model=model,
                     organization_id=organization_id,
                     team_id=team_id,
@@ -6305,6 +6359,19 @@ def _canonical_model(model: str) -> str:
 
 def _same_model(a: str, b: str | None) -> bool:
     return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _sdk_serving_segment(
+    credential_lease: CredentialLease | CodexCredentialLease | None,
+) -> Segment:
+    """The immutable route that actually serves this SDK turn."""
+    if credential_lease is None:
+        return Segment("platform", None, is_segment_zero=False)
+    return Segment(
+        "codex",
+        credential_lease.credentials.id,
+        is_segment_zero=False,
+    )
 
 
 def _stamp_turn_messages(

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
 from backend.integrations.providers import provider_key
 
+from .codex import CodexDeviceAuthHandler
 from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
@@ -232,6 +233,7 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 # Device Code Grant handlers (RFC 8628)
 # ------------------------------------------------------------------ #
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
+    CodexDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]
 

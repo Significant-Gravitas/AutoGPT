@@ -61,6 +61,10 @@ export interface ConnectorRequest {
   fields: CredentialField[];
   selected: Record<string, CredentialsMetaInput | undefined>;
   onChange: (key: string, value?: CredentialsMetaInput) => void;
+  /** The user finished a sign-in on this row. Distinct from a credential
+   *  merely being present, which is also true of a card re-rendered from
+   *  chat history. */
+  onConnected: () => void;
 }
 
 export interface ConnectorRow {
@@ -70,6 +74,7 @@ export interface ConnectorRow {
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
+  onConnected: () => void;
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -109,5 +114,7 @@ export function toConnectorRows(
     selected: row.selected,
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
+    onConnected: () =>
+      row.targets.forEach(({ request }) => request.onConnected()),
   }));
 }
