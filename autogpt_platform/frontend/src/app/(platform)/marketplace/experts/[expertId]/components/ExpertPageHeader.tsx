@@ -5,6 +5,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import type { ExpertAccent } from "../../../components/ExpertsSection/helpers";
 
@@ -16,30 +17,35 @@ interface Props {
 
 export function ExpertPageHeader({ expert, accent, actions }: Props) {
   return (
-    <header className="flex flex-col gap-5 sm:flex-row sm:items-start">
-      <div className="flex min-w-0 flex-1 items-start gap-4">
-        <Avatar className="h-16 w-16 shrink-0 bg-white ring-1 ring-black/5">
+    <header>
+      <div className="flex flex-wrap items-center gap-4 sm:gap-5">
+        <Avatar className="h-18 w-18 shrink-0 bg-white shadow-sm ring-1 ring-black/5">
           {expert.avatar_url ? (
             <AvatarImage src={expert.avatar_url} alt={expert.name} />
           ) : null}
           <AvatarFallback>{expert.name}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0 flex-1 pt-0.5">
-          <h1 className="text-2xl font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[28px] font-semibold leading-8 tracking-[-0.02em] text-zinc-900">
             {expert.name}
           </h1>
-          <div className="mt-0.5 flex items-center gap-1.5 text-sm text-zinc-500">
-            <Icon icon={accent.roleIcon} size={14} className={accent.icon} />
+          <span
+            className={cn(
+              "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+              accent.pill,
+            )}
+          >
+            <Icon icon={accent.roleIcon} size={12} />
             {expert.role}
-          </div>
-          {expert.tagline ? (
-            <p className="mt-3 max-w-prose text-[15px] leading-6 text-zinc-600">
-              {expert.tagline}
-            </p>
-          ) : null}
+          </span>
         </div>
+        <div className="w-full sm:w-auto">{actions}</div>
       </div>
-      <div className="sm:shrink-0 sm:pt-1">{actions}</div>
+      {expert.tagline ? (
+        <p className="mt-5 max-w-[60ch] text-[17px] leading-7 text-zinc-600">
+          {expert.tagline}
+        </p>
+      ) : null}
     </header>
   );
 }

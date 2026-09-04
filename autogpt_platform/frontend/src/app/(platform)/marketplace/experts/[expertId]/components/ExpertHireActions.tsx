@@ -4,6 +4,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
+// A white, hairline-bordered secondary so the button sits quietly next to
+// the status badge instead of reading as a solid grey slab.
+const SECONDARY_CLASS =
+  "border-zinc-200 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-zinc-300 hover:bg-zinc-50";
+
 interface Props {
   expert: Expert;
   hiredExpert: Expert | null;
@@ -20,8 +25,8 @@ export function ExpertHireActions({
 }: Props) {
   if (hiredExpert) {
     return (
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Badge variant="success" className="w-fit">
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="success">
           <Icon icon={CheckmarkCircle02Icon} size={14} />
           On your team
         </Badge>
@@ -30,6 +35,7 @@ export function ExpertHireActions({
           href={`/copilot?expertId=${hiredExpert.id}`}
           variant="secondary"
           size="small"
+          className={SECONDARY_CLASS}
         >
           {`Chat with ${expert.name}`}
         </Button>
