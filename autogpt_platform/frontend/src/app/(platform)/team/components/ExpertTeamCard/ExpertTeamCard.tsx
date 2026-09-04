@@ -6,6 +6,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -168,10 +169,10 @@ export function ExpertTeamCard({
               {workflowCount} {workflowCount === 1 ? "workflow" : "workflows"}
             </Text>
             {needsSetupCount > 0 ? (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-inset ring-amber-200">
+              <Badge variant="warning" size="small">
                 {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"}{" "}
                 setup
-              </span>
+              </Badge>
             ) : null}
           </div>
         </Link>

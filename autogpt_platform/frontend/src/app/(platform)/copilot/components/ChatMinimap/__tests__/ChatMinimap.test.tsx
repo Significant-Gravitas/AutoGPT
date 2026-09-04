@@ -16,18 +16,22 @@ const MESSAGES = [
   textMessage("m1", "user", "Plan my week\nMonday first"),
   textMessage("m2", "assistant", "Here is the plan"),
   textMessage("m3", "user", "Now the budget"),
+  textMessage("m4", "assistant", "Budget done"),
+  textMessage("m5", "user", "And travel"),
 ];
 
 describe("ChatMinimap", () => {
-  it("renders one tick per message once the thread is long enough", () => {
+  it("renders one tick per user message, skipping assistant turns", () => {
     render(<ChatMinimap messages={MESSAGES} />);
     expect(screen.getAllByRole("button")).toHaveLength(3);
     expect(screen.getByLabelText("Jump to: Plan my week")).toBeDefined();
+    expect(screen.queryByLabelText("Jump to: Here is the plan")).toBeNull();
   });
 
-  it("renders nothing for short threads", () => {
+  it("renders nothing until enough of the messages are yours", () => {
+    // Four messages, but only two of them sent by the user.
     const { container } = render(
-      <ChatMinimap messages={MESSAGES.slice(0, 2)} />,
+      <ChatMinimap messages={MESSAGES.slice(0, 4)} />,
     );
     expect(container.textContent).toBe("");
   });
@@ -63,13 +67,14 @@ describe("ChatMinimap", () => {
 });
 
 describe("minimap helpers", () => {
-  it("falls back to role labels for text-free turns", () => {
+  it("drops assistant turns and labels text-free user messages", () => {
     const entries = toMinimapEntries([
       { id: "t1", role: "assistant", parts: [] } as unknown as UIMessage,
       { id: "t2", role: "user", parts: [] } as unknown as UIMessage,
     ]);
-    expect(entries[0].title).toBe("Autopilot worked on this");
-    expect(entries[1].title).toBe("Your message");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe("t2");
+    expect(entries[0].title).toBe("Your message");
   });
 
   it("truncates long titles with an ellipsis", () => {
@@ -81,12 +86,12 @@ describe("minimap helpers", () => {
   });
 
   it("swells ticks toward the cursor and tapers with distance", () => {
-    expect(tickScale(3, null)).toBe(0.4);
+    expect(tickScale(3, null)).toBe(0.6);
     expect(tickScale(3, 3)).toBe(1);
     expect(tickScale(4, 3)).toBeCloseTo(0.8);
-    expect(tickScale(9, 3)).toBe(0.4);
+    expect(tickScale(9, 3)).toBe(0.6);
     expect(tickColor(0)).toBe("bg-zinc-800");
-    expect(tickColor(1)).toBe("bg-zinc-400");
-    expect(tickColor(4)).toBe("bg-zinc-300");
+    expect(tickColor(1)).toBe("bg-zinc-500");
+    expect(tickColor(4)).toBe("bg-zinc-400");
   });
 });

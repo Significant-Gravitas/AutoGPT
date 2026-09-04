@@ -38,19 +38,20 @@ from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
+from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import experts_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
 from backend.monitoring import (
-    NotificationJobArgs,
-    process_existing_batches,
-    process_weekly_summary,
+    flush_matured_alerts,
     report_block_error_rates,
     report_execution_accuracy_alerts,
     report_late_executions,
+    send_due_briefings,
 )
+from backend.monitoring.instrumentation import SCHEDULER_JOBS
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -66,6 +67,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserPaywalledError,
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
@@ -251,6 +253,11 @@ async def _execute_graph(**kwargs):
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserPaywalledError as e:
+        # Expected while the owner has no subscription: skip quietly. The
+        # schedule stays registered so it resumes on its own once they
+        # subscribe, and a recurring tick is not an error worth paging on.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
         logger.warning(
@@ -369,6 +376,9 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
+            llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+                args.user_id
+            )
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
@@ -380,6 +390,11 @@ async def _execute_copilot_turn(**kwargs):
                 # defaults to "interactive" and schedule_followup becomes a
                 # way to reach the staffing tools with nobody watching.
                 origin="automation",
+                # Model-authored or not, it still runs on the connection the
+                # user chose — a scheduled turn should not quietly bill to a
+                # different one than the chat it follows up on.
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             )
             if args.expert_id and new_session.expert_id is None:
                 # The scope check above passed, so the expert was archived or
@@ -820,8 +835,32 @@ def execute_morning_briefing(user_id: str) -> None:
             timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
         )
         logger.info("Morning briefing for user %s: %s", user_id[:12], result)
+        if result.get("reason") == "flag_disabled":
+            run_async(
+                _self_delete_morning_briefing_schedule(user_id),
+                timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS,
+            )
     except Exception as e:
         logger.error("Morning briefing failed for user %s: %s", user_id[:12], e)
+
+
+async def _self_delete_morning_briefing_schedule(user_id: str) -> None:
+    """Drop a briefing cron whose feature flag has since been turned off.
+
+    The registration marker goes with it: left set, it would suppress lazy
+    re-registration for the rest of its TTL if the flag comes back on.
+    Best-effort — the next daily fire retries the cleanup.
+    """
+    from backend.copilot.briefing.scheduling import clear_briefing_registration_marker
+
+    try:
+        await get_scheduler_client().remove_morning_briefing_schedule(user_id=user_id)
+        await clear_briefing_registration_marker(user_id)
+    except Exception:
+        logger.warning(
+            f"Failed to remove morning briefing job for user {user_id[:12]}",
+            exc_info=True,
+        )
 
 
 def execute_nightly_batch_sync(user_id: str):
@@ -1653,7 +1692,7 @@ def _job_to_info(
 
 
 def _index_entry(
-    job_id: str, args: Union[GraphExecutionJobArgs, CopilotTurnJobArgs]
+    job_id: str, args: GraphExecutionJobArgs | CopilotTurnJobArgs
 ) -> ScheduleIndexEntry:
     """Build the index row for a schedule.
 
@@ -1671,23 +1710,6 @@ def _index_entry(
         team_id=args.team_id,
         expert_id=args.expert_id,
     )
-
-
-class NotificationJobInfo(NotificationJobArgs):
-    id: str
-    name: str
-    next_run_time: str
-
-    @staticmethod
-    def from_db(
-        job_args: NotificationJobArgs, job_obj: JobObj
-    ) -> "NotificationJobInfo":
-        return NotificationJobInfo(
-            id=job_obj.id,
-            name=job_obj.name,
-            next_run_time=job_obj.next_run_time.isoformat(),
-            **job_args.model_dump(),
-        )
 
 
 class Scheduler(AppService):
@@ -1757,15 +1779,16 @@ class Scheduler(AppService):
             pool_size=self.db_pool_size(),
             max_overflow=0,
         )
+        self._schedule_index = ScheduleIndex(execution_engine, schema=db_schema)
         try:
-            self._schedule_index = ScheduleIndex(execution_engine, schema=db_schema)
             self._schedule_index.ensure_table()
         except Exception:
-            self._schedule_index = None
-            logger.error(
-                "Schedule index setup failed; filtered schedule reads will "
-                "fall back to the full jobstore scan",
-                exc_info=True,
+            # Two replicas racing create_all(), or a transient DB error. Keep
+            # the index so writes still go through once the table exists; the
+            # backfill thread retries the setup before it reconciles.
+            logger.exception(
+                "Schedule index setup failed; filtered schedule reads fall back "
+                "to the full jobstore scan until the backfill retries it"
             )
 
         self.scheduler = BackgroundScheduler(
@@ -1804,25 +1827,34 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
-            # Notification PROCESS WEEKLY SUMMARY
-            # Runs every Monday at 9 AM UTC
+            # ALERTS — empty the ten-minute debounce window. Runs every
+            # minute so a condition raised at :01 goes out at :11, not at the
+            # next quarter hour.
             self.scheduler.add_job(
-                process_weekly_summary,
-                CronTrigger.from_crontab("0 9 * * 1"),
-                id="process_weekly_summary",
-                kwargs={},
+                flush_matured_alerts,
+                id="flush_matured_alerts",
+                trigger="interval",
                 replace_existing=True,
-                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+                seconds=60,
+                # Belt and braces. This only stops APScheduler double-firing
+                # the RPC; the RPC returns as soon as the pass is spawned, so
+                # the real guards are the in-process one in NotificationManager
+                # and the per-user claim the work itself takes.
+                max_instances=1,
+                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
             )
 
-            # Notification PROCESS EXISTING BATCHES
-            # self.scheduler.add_job(
-            #     process_existing_batches,
-            #     id="process_existing_batches",
-            #     CronTrigger.from_crontab("0 12 * * 5"),
-            #     replace_existing=True,
-            #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-            # )
+            # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
+            # is a different UTC hour for each of them.
+            self.scheduler.add_job(
+                send_due_briefings,
+                CronTrigger.from_crontab("30 * * * *"),
+                id="send_due_briefings",
+                kwargs={},
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
 
             # Notification LATE EXECUTIONS ALERT
             self.scheduler.add_job(
@@ -2002,7 +2034,7 @@ class Scheduler(AppService):
         self,
         *,
         dispatch_func,
-        job_args: Union[GraphExecutionJobArgs, CopilotTurnJobArgs],
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
         trigger,
         name: str | None,
     ) -> JobObj:
@@ -2310,6 +2342,13 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                # The one scheduler metric with an alert on it was never set.
+                # Only an accepted read may publish it: a read that was
+                # invalidated mid-query is stale by definition and must not
+                # overwrite a newer count another reader has already set.
+                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
+                    len(jobs)
+                )
         return jobs
 
     def _invalidate_jobs_cache(self) -> None:
@@ -2362,7 +2401,20 @@ class Scheduler(AppService):
 
         jobs: list[JobObj] = []
         for job_id in job_ids:
-            job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            try:
+                job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                # lookup_job() reconstitutes the pickle without the guard the
+                # full scan has; a job whose callable no longer resolves must
+                # not turn one user's listing into a 500. Drop the row so it
+                # stops being a candidate, like the full scan does.
+                logger.warning(
+                    "Skipping schedule %s that could not be loaded",
+                    job_id,
+                    exc_info=True,
+                )
+                self._delete_schedule_index_row(job_id)
+                continue
             if job is None:
                 # Job vanished outside our delete path — typically a fired
                 # one-shot that APScheduler auto-removed. Drop the row so
@@ -2375,7 +2427,7 @@ class Scheduler(AppService):
     def _upsert_schedule_index_row(
         self,
         job_id: str,
-        job_args: Union[GraphExecutionJobArgs, CopilotTurnJobArgs],
+        job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
     ) -> None:
         """Best-effort: an index write must never fail a schedule mutation.
         A missed write means filtered listings can omit this schedule until
@@ -2408,6 +2460,13 @@ class Scheduler(AppService):
         index = self._schedule_index
         if index is None:
             return
+        if not self.scheduler.running:
+            # BaseScheduler.shutdown() flips the state outside the jobstore
+            # lock, after which get_jobs()/get_job() answer "nothing" for
+            # everything. Reconciling on that view would wipe the shared
+            # index for every replica.
+            logger.warning("Scheduler is not running; skipping index reconcile")
+            return
         jobs = self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value)
         entries = []
         for job in jobs:
@@ -2423,12 +2482,35 @@ class Scheduler(AppService):
         # jobstore first: a schedule added while this scan ran is in the
         # index and not in our snapshot, and must survive.
         stale = index.all_job_ids() - {e.job_id for e in entries}
-        confirmed_gone = [
-            job_id
-            for job_id in stale
-            if self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-            is None
-        ]
+        if not self.scheduler.running or (not entries and stale):
+            # A shutdown raced the scan, or the scan came back empty while
+            # the index still has rows: neither is evidence the rows are
+            # stale, so keep them for the next reconcile.
+            logger.warning(
+                "Skipping stale-row sweep: scan returned %d jobs against %d "
+                "index rows (running=%s)",
+                len(entries),
+                len(stale),
+                self.scheduler.running,
+            )
+            self._schedule_index_ready = True
+            return
+        confirmed_gone = []
+        for job_id in stale:
+            try:
+                if (
+                    self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+                    is None
+                ):
+                    confirmed_gone.append(job_id)
+            except Exception:
+                # A row that cannot be reconstituted is not proof the job is
+                # gone; leave it for the full scan's own cleanup.
+                logger.warning(
+                    "Could not load job %s while reconciling the index",
+                    job_id,
+                    exc_info=True,
+                )
         index.delete_many(confirmed_gone)
 
         self._schedule_index_ready = True
@@ -2443,12 +2525,13 @@ class Scheduler(AppService):
 
         def _run():
             try:
+                if self._schedule_index is not None:
+                    self._schedule_index.ensure_table()
                 self._reconcile_schedule_index()
             except Exception:
-                logger.error(
+                logger.exception(
                     "Schedule index backfill failed; filtered schedule reads "
-                    "will use the full jobstore scan until the next reconcile",
-                    exc_info=True,
+                    "will use the full jobstore scan until the next reconcile"
                 )
 
         threading.Thread(target=_run, daemon=True, name="ScheduleIndexBackfill").start()
@@ -2535,12 +2618,12 @@ class Scheduler(AppService):
         return results
 
     @expose
-    def execute_process_existing_batches(self, kwargs: dict):
-        process_existing_batches(**kwargs)
+    def execute_flush_matured_alerts(self):
+        flush_matured_alerts()
 
     @expose
-    def execute_process_weekly_summary(self):
-        process_weekly_summary()
+    def execute_send_due_briefings(self):
+        send_due_briefings()
 
     @expose
     def execute_report_late_executions(self):
@@ -2727,6 +2810,24 @@ class Scheduler(AppService):
                 job.next_run_time.isoformat() if job.next_run_time else None
             ),
         }
+
+    @expose
+    def remove_morning_briefing_schedule(self, user_id: str) -> dict:
+        """Delete one user's morning-briefing cron.
+
+        Deliberately not routed through ``delete_graph_execution_schedule``:
+        that path authorizes via ``_job_to_info``, which parses only graph and
+        copilot-turn kwargs and would reject this job's ``{"user_id": ...}``
+        shape as corrupt. The job id embeds the user id, so it is self-scoping.
+        """
+        job_id = f"morning_briefing_{user_id}"
+        job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+        if job is None:
+            return {"id": job_id, "user_id": user_id, "removed": False}
+        job.remove()
+        self._invalidate_jobs_cache()
+        logger.info(f"Removed morning briefing job {job_id} for user {user_id[:12]}")
+        return {"id": job_id, "user_id": user_id, "removed": True}
 
     # --- Dream nightly batch (P-0.2 + P-0.4 consolidated) ---
     #
@@ -2950,6 +3051,9 @@ class SchedulerClient(AppServiceClient):
 
     add_morning_briefing_schedule = endpoint_to_async(
         Scheduler.add_morning_briefing_schedule
+    )
+    remove_morning_briefing_schedule = endpoint_to_async(
+        Scheduler.remove_morning_briefing_schedule
     )
 
     add_nightly_batch_schedule = endpoint_to_async(Scheduler.add_nightly_batch_schedule)

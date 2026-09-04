@@ -46,6 +46,7 @@ _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
 _CHARTER = {
     "name": "Otto",
     "role": "Inbox triage",
+    "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
@@ -74,6 +75,7 @@ def _template(template_id: str = "tpl-scout"):
         id=template_id,
         name="Scout",
         role="Market research",
+        tagline="Tracks your competitors and reports what changed.",
         identity="You track competitors.",
         boundaries="You never contact anyone outside the team.",
         voice_preferences="Short and factual.",
@@ -87,6 +89,11 @@ def _created(name: str = "Scout", expert_id: str = "exp-1"):
         id=expert_id,
         name=name,
         role="Market research",
+        tagline="Tracks your competitors and reports what changed.",
+        identity="You track competitors.",
+        boundaries="You never contact anyone outside the team.",
+        voice_preferences="Short and factual.",
+        weekly_budget=None,
         avatar_url=None,
         color="sky-300",
     )
@@ -98,6 +105,7 @@ def _hired_otto():
         id="exp-2",
         name="Otto",
         role="Inbox triage",
+        tagline="Sorts your morning inbox.",
         identity="You group the morning inbox.",
         boundaries="You never send a reply yourself.",
         voice_preferences="Plain sentences.",
@@ -135,9 +143,11 @@ def _env(
     )
     db.get_expert = AsyncMock(return_value=_hired_otto())
     db.update_soul_if_current = AsyncMock(return_value=_created("Otto", "exp-2"))
+    db.list_experts = AsyncMock(return_value=[])
     shared_redis = AsyncMock(return_value=redis or _FakeRedis())
     with (
         patch(f"{_HIRE_MODULE}.experts_db", MagicMock(return_value=db)),
+        patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
@@ -214,9 +224,25 @@ class TestPreviewNeverWrites:
             resp = await _raise(make_session(_USER), **_CHARTER)
         assert isinstance(resp, ExpertChangeProposedResponse)
         assert resp.applied is False
+        assert resp.preview.tagline == _CHARTER["tagline"]
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_preview_carries_the_template_tagline(self):
+        with _env():
+            resp = await _hire(make_session(_USER), template_id="tpl-scout")
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.preview.tagline == _template().tagline
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_without_tagline_is_refused(self):
+        with _env() as db:
+            resp = await _raise(make_session(_USER), **{**_CHARTER, "tagline": " "})
+        assert isinstance(resp, ErrorResponse)
+        assert "tagline" in resp.message
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -267,6 +293,57 @@ class TestPreviewNeverWrites:
         assert "color" in resp.message
         assert len(redis.store) == 0
         db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_refuses_a_duplicate_active_name(self):
+        """Re-raising an existing teammate is the observed stale-context
+        loop — the model must be pointed at the live expert, not allowed to
+        propose a twin."""
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(
+                    id="exp-7", name="otto", role="Inbox triage", is_archived=False
+                )
+            ]
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        assert "already exists" in resp.message
+        assert "exp-7" in resp.message
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_refuses_when_the_roster_cannot_be_read(self):
+        """Nothing downstream enforces name uniqueness, so a roster read that
+        failed must not pass for "no duplicate"."""
+        with _env() as db:
+            db.list_experts.side_effect = RuntimeError("connection reset")
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ErrorResponse)
+        assert "Try again" in resp.message
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_matching_bug_is_not_dressed_up_as_a_roster_outage(self):
+        """Only the read is recoverable — a bug in the name matching would
+        otherwise be retried forever behind a "try again" message."""
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(id="exp-7", name=None, role="Ops", is_archived=False)
+            ]
+            with pytest.raises(AttributeError):
+                await _raise(make_session(_USER), **_CHARTER)
+            db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_allows_reusing_an_archived_name(self):
+        with _env() as db:
+            db.list_experts.return_value = [
+                SimpleNamespace(
+                    id="exp-7", name="Otto", role="Inbox triage", is_archived=True
+                )
+            ]
+            resp = await _raise(make_session(_USER), **_CHARTER)
+        assert isinstance(resp, ExpertChangeProposedResponse)
 
 
 class TestPreviewTimeLimits:
@@ -456,12 +533,16 @@ class TestConfirm:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
         assert resp.expert.name == "Otto"
+        assert resp.expert.tagline == _created().tagline
+        assert resp.expert.about == _created().identity
+        assert resp.expert.boundaries == _created().boundaries
         db.create_raised_expert.assert_awaited_once_with(
             _USER,
             _CHARTER["name"],
             _CHARTER["role"],
             None,
             color=_CHARTER["color"],
+            tagline=_CHARTER["tagline"],
             about=_CHARTER["about"],
             boundaries=_CHARTER["boundaries"],
             weekly_budget=2000,

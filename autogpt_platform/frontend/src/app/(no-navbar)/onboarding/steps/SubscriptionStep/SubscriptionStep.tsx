@@ -50,6 +50,12 @@ export function SubscriptionStep() {
               key={cycle}
               type="button"
               onClick={() => setBilling(cycle)}
+              // Read by DataFast's script directly (delegated click listener on
+              // document), the same way the marketing site tags its CTAs — no
+              // JS needed. The `-cycle` suffix becomes the `cycle` metadata key.
+              data-fast-goal="paywall_billing_toggle"
+              data-fast-goal-cycle={cycle}
+              data-fast-goal-surface="onboarding_paywall"
               className={cn(
                 "rounded-full border-none px-4 py-1.5 text-xs font-medium transition-all",
                 billing === cycle
@@ -83,6 +89,7 @@ export function SubscriptionStep() {
                 loading={isUpdatingTier && selectedPlan === plan.key}
                 disabled={isUpdatingTier && selectedPlan !== plan.key}
                 priceCaption="billing-period"
+                ctaGoalSurface="onboarding_paywall"
                 className={cn(
                   plan.key === PLAN_KEYS.MAX && "order-1 md:order-none",
                   plan.key === PLAN_KEYS.PRO && "order-2 md:order-none",

@@ -31,11 +31,13 @@ enough that dialect-native upserts aren't worth the coupling.
 """
 
 import logging
-from typing import Optional, Sequence
+from collections.abc import Sequence
+from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Column, MetaData, String, Table, delete, insert, or_, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -90,13 +92,23 @@ class ScheduleIndex:
             {**e.model_dump(), "organization_id": e.organization_id or None}
             for e in entries
         ]
-        with self._engine.begin() as conn:
-            conn.execute(
-                delete(self._table).where(
-                    self._table.c.job_id.in_([r["job_id"] for r in rows])
-                )
-            )
-            conn.execute(insert(self._table), rows)
+        # delete-then-insert is not conflict-safe across replicas: under READ
+        # COMMITTED a concurrent backfill's uncommitted rows are invisible to
+        # the delete and then collide on the primary key. One retry after the
+        # other transaction commits resolves it.
+        for attempt in (1, 2):
+            try:
+                with self._engine.begin() as conn:
+                    conn.execute(
+                        delete(self._table).where(
+                            self._table.c.job_id.in_([r["job_id"] for r in rows])
+                        )
+                    )
+                    conn.execute(insert(self._table), rows)
+                return
+            except IntegrityError:
+                if attempt == 2:
+                    raise
 
     def delete(self, job_id: str) -> None:
         self.delete_many([job_id])

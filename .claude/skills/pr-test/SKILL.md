@@ -5,12 +5,24 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.1.0"
+  version: "2.2.1"
 ---
 
 # Manual E2E Test
 
 Test a PR/branch end-to-end by building the full platform, interacting via browser and API, capturing screenshots, and reporting results.
+
+**Changelog 2.2.0** — auth flow updated for Better Auth (Supabase signup is
+gone), env-setup gaps closed, a proven Playwright fallback for agent-browser,
+a billing-test trap that produces false passes, safer process cleanup, and a
+mock-provider pattern for deterministic $0 testing. Learned on
+[#14206](https://github.com/Significant-Gravitas/AutoGPT/pull/14206) — see the
+[evidence comment](https://github.com/Significant-Gravitas/AutoGPT/pull/14206#issuecomment-5511429524).
+**2.2.1** — corrects two claims from 2.2.0 that didn't survive live-stack
+verification (JWKS does **not** rotate on a frontend restart; the local
+Postgres port is `5432`, not `54322`) and hardens the auth setup (explicit
+password-length/allowlist/rate-limit failure modes, fail-fast on an empty
+token, password kept out of process args).
 
 ## Critical Requirements
 
@@ -48,6 +60,18 @@ Each test scenario in the report MUST have:
 - **Screenshot Evidence**: Before/after screenshots with explanations
 
 ## State Manipulation for Realistic Testing
+
+**Billing-test trap — this one produces a false pass, not a visible failure.**
+LLM block cost filters key on the *platform-owned* credential id. A run made
+with the test user's own API key bills nothing by design, so a credits
+before/after assertion silently passes on zero deltas either way. Any test
+that verifies credit reconciliation MUST use the system credential, not a
+user-supplied key. Related: Ollama block entries are configured with an
+explicit `$0` run-based cost (`BlockCostType.RUN, cost_amount=0` in
+`block_cost_config.py`), not a token-metered one — so pre/post-flight cost
+deltas are always 0 for them regardless of credential. Never use an Ollama
+model to test credit reconciliation; pick any hosted model billed through the
+system credential instead.
 
 When testing features that depend on specific states (rate limits, credits, quotas):
 
@@ -158,7 +182,7 @@ fi
 : "${PR_TEST_USER_PASSWORD:?PR_TEST_USER_PASSWORD is empty after env+prompt — supply a value before re-running}"
 ```
 
-For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's Supabase — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default).
+For **local docker-compose** runs, a fresh dev user is created on first call to the signup snippet below. For **dev-preview** runs, the test user lives in the project's hosted auth backend — ask the user for the current valid credentials each session (the previously-shared `test@test.com` test account was disabled on 2026-05-23 after its credentials leaked into this very SKILL — do NOT re-introduce a default). **`PR_TEST_USER_PASSWORD` should always be a throwaway/test-only credential, never a real account's password** — the auth requests in 3h go over plain HTTP on `localhost:3000` for local runs, which has no transport encryption. If a dev-preview run's target isn't on `localhost`, confirm it's HTTPS before sending credentials to it.
 
 ## Step 1: Understand the PR
 
@@ -337,6 +361,57 @@ cp $REPO_ROOT/autogpt_platform/backend/.env $BACKEND_DIR/.env
 cp $REPO_ROOT/autogpt_platform/frontend/.env $FRONTEND_DIR/.env
 ```
 
+**A copy from the root worktree is no longer sufficient on a recent `dev`** —
+auth moved from Supabase to Better Auth (see 3h) and two vars are easy to
+miss because nothing fails loudly without them, it just 401s later:
+
+- `$BACKEND_DIR/.env` needs `JWT_JWKS_URL` — the Better Auth JWKS endpoint the
+  backend verifies tokens against. The `localhost:3000` value below is for
+  **native mode only**. In docker mode it's harmless to have it in `.env`
+  because `docker-compose.platform.yml` overrides it with the
+  Compose-reachable `http://frontend:3000/api/auth/jwks` — but if you ever run
+  the backend against this `.env` value directly (bypassing Compose), a
+  `localhost` value inside a container resolves to itself, not the frontend,
+  and every call 401s with no other symptom.
+- `$FRONTEND_DIR/.env` needs its **own** `DATABASE_URL` — Better Auth runs
+  inside the Next.js app and talks to Postgres directly, it does not go
+  through the backend. **Derive it from `$BACKEND_DIR/.env`'s `DB_USER` /
+  `DB_PASS` / `DB_PORT` / `DB_NAME` rather than copying
+  `frontend/.env.default`'s placeholder verbatim** — the placeholder happens
+  to match the stock local defaults, but if `backend/.env`'s `DB_PASS` was
+  ever customized (rotated secret, non-default port), copying the placeholder
+  silently points Better Auth at the wrong database instead of the one the
+  rest of the stack actually uses.
+
+```bash
+# [ -n ... ], not grep -q alone — a present-but-empty JWT_JWKS_URL= would
+# otherwise be treated as "already set" and skip the fallback, leaving the
+# backend without a JWKS endpoint to verify tokens against.
+[ -n "$(grep '^JWT_JWKS_URL=' $BACKEND_DIR/.env | cut -d= -f2-)" ] || echo "JWT_JWKS_URL=http://localhost:3000/api/auth/jwks" >> $BACKEND_DIR/.env  # native mode only — see note above
+
+if [ -n "$(grep '^DATABASE_URL=' $FRONTEND_DIR/.env | cut -d= -f2-)" ]; then
+  # grep -q alone matches a present-but-empty DATABASE_URL= too, which would
+  # otherwise skip derivation and leave Better Auth pointed at nothing.
+  echo "Frontend DATABASE_URL: already set (not touching it)"
+else
+  # cut -f2 (not -f2-) truncates any value containing '=' (base64 secrets do); -f2- keeps the rest.
+  DB_USER=$(grep '^DB_USER=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_PASS=$(grep '^DB_PASS=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_PORT=$(grep '^DB_PORT=' $BACKEND_DIR/.env | cut -d= -f2-)
+  DB_NAME=$(grep '^DB_NAME=' $BACKEND_DIR/.env | cut -d= -f2-)
+  : "${DB_USER:?}" "${DB_PASS:?}" "${DB_PORT:?}" "${DB_NAME:?}"  # fail loudly, not with a silently-empty URL
+  # Percent-encode user/pass — a raw '@', '#', '?', '%', or ':' in either would
+  # otherwise be misparsed as URL structure instead of credential content.
+  # Via env vars, not `jq --arg`, which would put DB_PASS in the process arglist.
+  DB_USER_ENC=$(DB_USER_VAL="$DB_USER" jq -rn '$ENV.DB_USER_VAL|@uri')
+  DB_PASS_ENC=$(DB_PASS_VAL="$DB_PASS" jq -rn '$ENV.DB_PASS_VAL|@uri')
+  echo "DATABASE_URL=postgresql://${DB_USER_ENC}:${DB_PASS_ENC}@localhost:${DB_PORT}/${DB_NAME}" >> $FRONTEND_DIR/.env
+  # Reconstructed, not regex-redacted — a password containing '@' would otherwise
+  # leak its tail past a naive "redact up to the first @" pattern.
+  echo "Frontend DATABASE_URL: postgresql://${DB_USER_ENC}:***@localhost:${DB_PORT}/${DB_NAME}"
+fi
+```
+
 ### 3b. Configure copilot authentication
 
 The copilot needs an LLM API to function. Two approaches (try subscription first):
@@ -394,15 +469,24 @@ done
 
 **Native mode also:** when running the app natively (see 3e-native), kill any stray host processes and free the app ports before starting — otherwise `poetry run app` and `pnpm dev` will fail to bind.
 
-```bash
-# Kill stray native app processes from prior runs
-pkill -9 -f "python.*backend" 2>/dev/null || true
-pkill -9 -f "poetry run app" 2>/dev/null || true
-pkill -9 -f "next-server|next dev" 2>/dev/null || true
+**Kill by port, not by broad process pattern.** A pattern-based
+`pkill -f "python.*backend"` (or anything matching by worktree cwd) is too
+coarse on a host running several worktrees — it has taken out the frontend
+and a mock server sitting on other ports along with the intended backend
+process. Target the pid actually holding each port instead — this only kills
+whoever is bound to that specific port, which is narrower than a pattern
+match, but **it is not worktree isolation**: if a sibling worktree's own dev
+server happens to be using one of these ports (e.g. its frontend also on
+:3000), this kills that too. `lsof` tells you who holds the port, not who
+owns it — a `docker-proxy` pid there means a compose stack owns it.
 
-# Free app ports (errors per port are ignored — port may simply be unused)
+```bash
+# Free app ports one at a time — errors per port are ignored (port may simply
+# be unused). `xargs -r` is GNU-only (macOS xargs rejects -r); the `[ -n ]`
+# guard below is the portable equivalent.
 for port in 3000 8006 8001 8002 8005 8008; do
-  lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
+  pids=$(lsof -ti :$port -sTCP:LISTEN 2>/dev/null)
+  [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
 done
 ```
 
@@ -504,32 +588,44 @@ done
 
 ### 3h. Create test user and get auth token
 
+The platform moved off Supabase auth to Better Auth, embedded in the
+Next.js app at `/api/auth/*`. Signup and sign-in both go through the frontend
+now, not Kong on :8000 — and `/api/auth/token` mints a backend-API JWT from a
+**session cookie**, it does not accept credentials directly, so sign-in has to
+happen first to get that cookie.
+
+Better Auth's default minimum password length is **12 characters** — shorter
+values fail signup with `PASSWORD_TOO_SHORT` and every step below degrades
+silently into an empty token unless you check for it.
+
 ```bash
-ANON_KEY=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | sed 's/.*NEXT_PUBLIC_SUPABASE_ANON_KEY=//' | tr -d '[:space:]')
+COOKIE_JAR=$(mktemp)
+trap 'rm -f "$COOKIE_JAR"' EXIT  # cleans up on early exit too, not just the happy path
+# Via env vars, not `jq --arg`, which would put the password in the process arglist.
+AUTH_PAYLOAD=$(PR_TEST_USER_EMAIL="$PR_TEST_USER_EMAIL" PR_TEST_USER_PASSWORD="$PR_TEST_USER_PASSWORD" \
+  jq -nc '{email:$ENV.PR_TEST_USER_EMAIL,password:$ENV.PR_TEST_USER_PASSWORD,name:"PR Test User"}')
 
-# Signup (idempotent — returns "User already registered" if exists)
-SIGNUP_PAYLOAD=$(jq -nc --arg e "$PR_TEST_USER_EMAIL" --arg p "$PR_TEST_USER_PASSWORD" '{email:$e,password:$p}')
-RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
-  -H "apikey: $ANON_KEY" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD")
+# Signup (idempotent — a real error body means "already exists" only if you
+# check; -d passes the payload as an argument, which leaks the password into
+# process listings, so pipe it through stdin with --data-binary @- instead.
+# --noproxy guards against an inherited proxy env var routing the password
+# through a proxy. --max-time bounds it — without one, a server that accepts
+# the connection but never responds hangs setup indefinitely instead of
+# reaching the empty-$TOKEN failure check below).
+SIGNUP_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --max-time 15 --noproxy localhost,127.0.0.1,::1 -X POST 'http://localhost:3000/api/auth/sign-up/email' \
+  -H 'Content-Type: application/json' --data-binary @-)
+echo "$SIGNUP_RESULT" | grep -qi '"code"' && echo "Signup: $SIGNUP_RESULT"  # log it — "already exists" and "password too short" look identical downstream otherwise
 
-# If "Database error finding user", restart supabase-auth and retry —
-# capture the retry result back into $RESULT so the token step below
-# reads the post-retry state, not the original failure.
-if echo "$RESULT" | grep -q "Database error"; then
-  docker restart supabase-auth && sleep 5
-  RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
-    -H "apikey: $ANON_KEY" \
-    -H 'Content-Type: application/json' \
-    -d "$SIGNUP_PAYLOAD")
-fi
+# Sign in — sets the better-auth.session_token cookie in $COOKIE_JAR.
+# Capture the body: a failure here (e.g. account exists with a different
+# password) otherwise only shows up as an empty $TOKEN with no explanation.
+SIGNIN_RESULT=$(printf '%s' "$AUTH_PAYLOAD" | curl -s --max-time 15 --noproxy localhost,127.0.0.1,::1 -c "$COOKIE_JAR" -X POST 'http://localhost:3000/api/auth/sign-in/email' \
+  -H 'Content-Type: application/json' --data-binary @-)
+echo "$SIGNIN_RESULT" | grep -qi '"code"' && echo "Sign-in: $SIGNIN_RESULT"
 
-# Get auth token
-TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
-  -H "apikey: $ANON_KEY" \
-  -H 'Content-Type: application/json' \
-  -d "$SIGNUP_PAYLOAD" | jq -r '.access_token // ""')
+# Mint a backend-API JWT from the session cookie
+TOKEN=$(curl -s -b "$COOKIE_JAR" 'http://localhost:3000/api/auth/token' | jq -r '.token // ""')
+[ -n "$TOKEN" ] || { echo "ERROR: auth setup failed — TOKEN is empty. Check password length (min 12 chars), AUTH_ALLOW_NEW_ACCOUNTS, AUTH_SIGNUP_ALLOWLIST, and rate limiting on /api/auth/*."; exit 1; }
 ```
 
 **Use this token for ALL API calls:**
@@ -621,7 +717,47 @@ echo "After: $AFTER_STATE"
 echo "Expected change: {describe what should have changed}"
 ```
 
+### Mock-provider pattern (deterministic, $0)
+
+For timeout/latency/error-handling behavior that would otherwise need a real
+LLM call, point the OpenAI SDK at a local mock instead — it honours
+`OPENAI_BASE_URL`, so a small local Responses-API server can stand in for the
+provider while everything downstream (executor, credentials, billing) still
+runs for real. This proved out 4/4 test items at $0 in this run. **This
+covers LLM blocks (`providers.py`) and the Codex block** — the copilot's own
+LLM calls go through `backend/util/clients.py`, which passes `base_url`
+explicitly and does not read `OPENAI_BASE_URL`, so this trick doesn't reach
+copilot chat.
+
+```bash
+# In $BACKEND_DIR/.env, point the OpenAI provider at a local mock server
+# that implements the subset of the Responses API you need (e.g. delayed
+# responses to test timeout handling, or a 500 to test error surfacing).
+# Restart the backend after changing this — it's read at startup.
+OPENAI_BASE_URL=http://localhost:{mock_port}/v1
+```
+
+**Use a throwaway/dummy provider credential with the mock, never the system
+credential** — only the transport is faked, so the credential lookup still
+runs for real and whatever key you configure gets sent as a header to your
+local mock server. A dummy key also means the mock server's logs (which may
+end up pasted into a PR comment) can't leak a real one. Aside from the
+credential, this is safe to use for anything that isn't itself testing model
+*output* quality.
+
+In **docker mode**, `localhost` inside the backend container isn't reachable
+from your host-side mock server — point `OPENAI_BASE_URL` at a
+Compose-reachable hostname instead (or `host.docker.internal` with a
+`host-gateway` entry), and set it before `docker compose up` or restart the
+affected services after changing `$BACKEND_DIR/.env`.
+
+Keep the mock server's own response timeout short — the OpenAI SDK's default
+client timeout is 600s, so a hung mock stalls every LLM-backed block for that
+long instead of failing fast.
+
 ### Browser testing with agent-browser
+
+Primary tool — use this wherever `agent-browser` is installed:
 
 ```bash
 # Close any existing session
@@ -666,6 +802,38 @@ agent-browser --session-name pr-test snapshot | grep "text:"
 - `/library` — Agent library (for testing listing/import features)
 - `/library/agents/{id}` — Agent detail with run history
 - `/marketplace` — Marketplace
+
+**Fallback — if `agent-browser` isn't installed on the host, don't let `npx`
+download it.** Use `@playwright/test` instead — the package is already in the
+frontend's `node_modules`, but **the Chromium binary itself is not**;
+Playwright caches browser binaries separately (`~/.cache/ms-playwright/` by
+default) and nothing installs them automatically. Run
+`pnpm exec playwright install chromium` once per host if `chromium.launch()`
+fails looking for an executable, then use it for finer control over timing
+(`waitForSelector`, explicit timeouts) than agent-browser's CLI gives you:
+
+```bash
+cd $FRONTEND_DIR  # required — @playwright/test is only declared here, not at the repo root
+# Check the installer's own exit status, not grep's — piping through grep to
+# drop blank lines would otherwise swallow a real install failure and let
+# chromium.launch() below fail later with a much less clear error.
+pnpm exec playwright install chromium
+[ $? -eq 0 ] || { echo "ERROR: playwright install chromium failed"; exit 1; }
+
+node -e "
+const { chromium } = require('@playwright/test');
+(async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto('http://localhost:3000/login');
+    await page.screenshot({ path: '$RESULTS_DIR/01-login.png' });
+  } finally {
+    await browser.close();  // otherwise a goto timeout leaks a headless Chromium process
+  }
+})();
+"
+```
 
 ### Checking logs
 
@@ -1113,9 +1281,14 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 
 ## Known issues and workarounds
 
-### Problem: "Database error finding user" on signup
-**Cause:** Supabase auth service schema cache is stale after migration.
-**Fix:** `docker restart supabase-auth && sleep 5` then retry signup.
+### Problem: Signup/sign-in fails with no useful error
+**Cause:** Better Auth's default minimum password length is 12 characters, or
+`AUTH_ALLOW_NEW_ACCOUNTS=false` / `AUTH_SIGNUP_ALLOWLIST` is blocking new
+accounts, or you're rate-limited after repeated signup attempts (`429 Too many
+requests`) — all three degrade into an empty `$TOKEN` further down if you
+don't check the raw response (see 3h).
+**Fix:** Log the raw signup/sign-in response body before minting the token,
+not just the token itself.
 
 ### Problem: Copilot returns auth errors in subscription mode
 **Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but `CLAUDE_CODE_OAUTH_TOKEN` is not set or expired.
@@ -1143,7 +1316,7 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 **Fix:** `pkill -9 -f "agent-browser|chromium|Chrome for Testing" && sleep 2`, then reopen the browser with a fresh `--session-name`. If still failing, verify via `agent-browser eval` + `agent-browser snapshot` (DOM state) instead of relying on PNGs — the feature under test is the same.
 
 ### Problem: Services not starting after `docker compose up`
-**Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.
+**Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If the `db` container isn't healthy: `docker restart autogpt_platform-db-1 && sleep 10`.
 
 ### Problem: Docker uses cached layers with old code (PR changes not visible)
 **Cause:** `docker compose up --build` reuses cached `COPY` layers from previous builds. If the PR branch changes Python files but the previous build already cached that layer from `dev`, the container runs `dev` code.
@@ -1152,7 +1325,3 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 ### Problem: `agent-browser open` loses login session
 **Cause:** Without session persistence, `agent-browser open` starts fresh.
 **Fix:** Use `--session-name pr-test` on ALL agent-browser commands. This auto-saves/restores cookies and localStorage across navigations. Alternatively, use `agent-browser eval "window.location.href = '...'"` to navigate within the same context.
-
-### Problem: Supabase auth returns "Database error querying schema"
-**Cause:** The database schema changed (migration ran) but supabase-auth has a stale schema cache.
-**Fix:** `docker restart supabase-db && sleep 10 && docker restart supabase-auth && sleep 8`. If user data was lost, re-signup.

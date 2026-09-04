@@ -99,6 +99,39 @@ describe("buildChainSegments", () => {
   ])("routes legacy %s cards through ToolChain", (toolName) => {
     expect(isChainableToolPart(toolPart(toolName))).toBe(true);
   });
+
+  it("splits the chain around an expert approval", () => {
+    const parts = [
+      toolPart("web_search"),
+      toolPart("raise_expert", {}, { type: "expert_change_proposed" }),
+      toolPart("web_fetch"),
+    ];
+
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+      { kind: "experts", parts: [parts[1]], index: 1 },
+      { kind: "chain", parts: [parts[2]], index: 2 },
+    ]);
+  });
+
+  it("groups back-to-back expert changes into one segment", () => {
+    const raise = (id: string): MessagePart =>
+      ({ ...toolPart("raise_expert"), toolCallId: id }) as MessagePart;
+    const parts = [
+      raise("a"),
+      { type: "step-start" } as MessagePart,
+      raise("b"),
+      toolPart("confirm_expert_change"),
+      textPart("All three are ready for your OK."),
+      raise("c"),
+    ];
+
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "experts", parts: [parts[0], parts[2], parts[3]], index: 0 },
+      { kind: "part", part: parts[4], index: 4 },
+      { kind: "experts", parts: [parts[5]], index: 5 },
+    ]);
+  });
 });
 
 describe("toChainRow", () => {
@@ -142,6 +175,21 @@ describe("toChainRow", () => {
       2,
     );
     expect(settled).toMatchObject({ text: "Thought", state: "done" });
+  });
+
+  it("drops a settled reasoning part that has no text", () => {
+    expect(
+      toChainRow(
+        { type: "reasoning", text: "", state: "done" } as MessagePart,
+        0,
+      ),
+    ).toBeNull();
+    expect(
+      toChainRow(
+        { type: "reasoning", text: "", state: "streaming" } as MessagePart,
+        0,
+      ),
+    ).toMatchObject({ text: "Thinking…" });
   });
 
   it("marks failed tool calls with their error detail", () => {
@@ -239,19 +287,6 @@ describe("isLiftedSetupRow", () => {
     expect(lifted && isLiftedSetupRow(lifted)).toBe(true);
     expect(notLifted && isLiftedSetupRow(notLifted)).toBe(false);
   });
-
-  it("does not lift an expert approval, whose card never registers", () => {
-    const row = toChainRow(
-      toolPart(
-        "hire_expert",
-        {},
-        { type: "expert_change_proposed", preview: { name: "Otto" } },
-      ),
-      0,
-    );
-
-    expect(row && isLiftedSetupRow(row)).toBe(false);
-  });
 });
 
 describe("isChainPart", () => {
@@ -261,6 +296,16 @@ describe("isChainPart", () => {
     );
     expect(isChainPart(toolPart("web_search"))).toBe(true);
     expect(isChainPart(textPart("Hello"))).toBe(false);
+  });
+
+  it.each([
+    "hire_expert",
+    "raise_expert",
+    "update_expert",
+    "confirm_expert_change",
+  ])("keeps %s out of the chain so its card stands on its own", (toolName) => {
+    expect(isChainPart(toolPart(toolName))).toBe(false);
+    expect(isChainableToolPart(toolPart(toolName))).toBe(false);
   });
 });
 
@@ -407,18 +452,23 @@ describe("getChainHeading", () => {
 });
 
 describe("buildChainSegments edge cases", () => {
-  it("folds trailing narration optimistically while streaming", () => {
+  // Trailing text is the answer until a tool call proves otherwise. Folding
+  // it in optimistically meant it rendered as a chain row and then jumped
+  // out to message text when the text outgrew the narration cap or the
+  // turn settled.
+  it("keeps trailing narration out of the chain while streaming", () => {
     const parts = [toolPart("web_search"), textPart("Wrapping up.")];
 
-    expect(buildChainSegments(parts, isChainPart, true)).toEqual([
-      { kind: "chain", parts, index: 0 },
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+      { kind: "part", part: parts[1], index: 1 },
     ]);
   });
 
   it("keeps trailing narration out of a settled chain", () => {
     const parts = [toolPart("web_search"), textPart("Here you go.")];
 
-    expect(buildChainSegments(parts, isChainPart, false)).toEqual([
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
     ]);

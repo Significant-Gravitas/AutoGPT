@@ -40,6 +40,7 @@ from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
+from .list_team import ListTeamTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -123,6 +124,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
     "delegate_to_expert": DelegateToExpertTool(),
+    "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
@@ -211,6 +213,9 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # Read-only, but it shares the same gate: with the flag off there is no
+    # team to list.
+    "list_team": "delegation",
 }
 
 

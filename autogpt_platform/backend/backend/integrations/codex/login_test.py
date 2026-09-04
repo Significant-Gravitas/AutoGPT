@@ -19,6 +19,7 @@ from backend.integrations.codex.login import (
     CodexLoginTransport,
     CodexSharedLoginState,
     RedisCodexLoginStateStore,
+    _active_key,
 )
 from backend.integrations.codex.models import (
     CodexAccountSnapshot,
@@ -652,7 +653,7 @@ def _credentials() -> OAuth2Credentials:
         access_token=SecretStr("access-secret"),
         refresh_token=SecretStr("refresh-secret"),
         scopes=[],
-        refresh_strategy="provider_runtime",
+        refresh_strategy="oauth_handler",
         provider_state=SecretStr("provider-secret"),
         provider_state_version=1,
     )
@@ -695,3 +696,17 @@ def _jwt(payload: dict[str, object]) -> str:
 def _base64url(payload: dict[str, object]) -> str:
     encoded = json.dumps(payload, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(encoded).decode().rstrip("=")
+
+
+@pytest.mark.asyncio
+async def test_get_active_returns_str_even_when_redis_hands_back_bytes():
+    redis = FakeRedis()
+    redis.values[_active_key("user-123")] = b"login-123"
+    store = RedisCodexLoginStateStore(ttl_seconds=1200, owner_lease_seconds=30)
+    with patch(
+        "backend.integrations.codex.login.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        assert await store.get_active("user-123") == "login-123"
+        redis.values[_active_key("user-123")] = None
+        assert await store.get_active("user-123") is None

@@ -160,6 +160,7 @@ export function PaywallModal() {
                     loading={isPending && selectedTier === plan.key}
                     disabled={isPending && selectedTier !== plan.key}
                     priceCaption="billing-period"
+                    ctaGoalSurface="upgrade_modal"
                   />
                 ))}
               </div>

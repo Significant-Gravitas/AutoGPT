@@ -101,8 +101,11 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "This confirmation_id is unknown or has expired — previews last "
-            f"{PROPOSAL_TTL_MINUTES} minutes. Call {_PREVIEW_TOOLS} again for "
-            "a fresh preview."
+            f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
+            "earlier in this conversation, that change is APPLIED and the "
+            "expert exists — call list_team to check before doing anything "
+            f"else. Only call {_PREVIEW_TOOLS} again for a genuinely new "
+            "change."
         ),
         session_id=session_id,
     )
@@ -378,6 +381,7 @@ async def _apply_raise(
             preview.role or None,
             preview.voice_preferences or None,
             color=preview.color or None,
+            tagline=preview.tagline or None,
             about=preview.about or None,
             boundaries=preview.boundaries or None,
             weekly_budget=preview.weekly_budget,
@@ -546,6 +550,11 @@ def _summary(expert: Expert) -> ExpertSummary:
         id=expert.id,
         name=expert.name,
         role=expert.role,
+        tagline=expert.tagline,
+        about=expert.identity,
+        boundaries=expert.boundaries,
+        voice_preferences=expert.voice_preferences,
+        weekly_budget=expert.weekly_budget,
         avatar_url=expert.avatar_url,
         color=expert.color,
     )
