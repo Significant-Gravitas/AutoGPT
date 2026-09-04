@@ -95,13 +95,14 @@ TEST_CREDENTIALS_INPUT = {
 
 
 def AICredentialsField() -> AICredentials:
-    return CredentialsField(
-        description="API key for the LLM provider.",
-        discriminator="model",
-        discriminator_mapping={
-            model.value: model.metadata.provider for model in LLMModel
-        },
-    )
+ return CredentialsField(
+ description="API key for the LLM provider. Not required for Ollama (local models).",
+ discriminator="model",
+ discriminator_mapping={
+ model.value: model.metadata.provider for model in LLMModel
+ },
+ default=None,
+ )
 
 
 class LLMResponse(BaseModel):
@@ -224,7 +225,7 @@ def get_parallel_tool_calls_param(
 
 
 async def llm_call(
-    credentials: APIKeyCredentials,
+    credentials: Optional[APIKeyCredentials] = None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -259,7 +260,7 @@ async def llm_call(
 
 
 async def _llm_call(
-    credentials: APIKeyCredentials,
+    credentials: Optional[APIKeyCredentials] = None,
     llm_model: LLMModel,
     prompt: list[dict],
     max_tokens: int | None,
@@ -343,7 +344,7 @@ async def _llm_call(
     provider_response = await call_provider(
         provider=cast(Any, provider),
         model=llm_model.value,
-        api_key=credentials.api_key.get_secret_value(),
+        api_key=credentials.api_key.get_secret_value() if credentials else "",
         messages=prompt,
         max_tokens=max_tokens,
         tools=tools,
@@ -505,7 +506,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
     async def llm_call(
         self,
-        credentials: APIKeyCredentials,
+        credentials: Optional[APIKeyCredentials] = None,
         llm_model: LLMModel,
         prompt: list[dict],
         max_tokens: int | None,
@@ -531,7 +532,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: Optional[APIKeyCredentials] = None, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
@@ -941,7 +942,7 @@ class AITextGeneratorBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: Optional[APIKeyCredentials] = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
         response = await block.run_once(input_data, "response", credentials=credentials)
@@ -949,7 +950,7 @@ class AITextGeneratorBlock(AIBlockBase):
         return response["response"]
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: Optional[APIKeyCredentials] = None, **kwargs
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
             **{
@@ -1041,13 +1042,13 @@ class AITextSummarizerBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: Optional[APIKeyCredentials] = None, **kwargs
     ) -> BlockOutput:
         async for output_name, output_data in self._run(input_data, credentials):
             yield output_name, output_data
 
     async def _run(
-        self, input_data: Input, credentials: APIKeyCredentials
+        self, input_data: Input, credentials: Optional[APIKeyCredentials] = None
     ) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
@@ -1095,7 +1096,7 @@ class AITextSummarizerBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: Optional[APIKeyCredentials] = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
         response = await block.run_once(input_data, "response", credentials=credentials)
@@ -1103,7 +1104,7 @@ class AITextSummarizerBlock(AIBlockBase):
         return response
 
     async def _summarize_chunk(
-        self, chunk: str, input_data: Input, credentials: APIKeyCredentials
+        self, chunk: str, input_data: Input, credentials: Optional[APIKeyCredentials] = None
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
@@ -1133,7 +1134,7 @@ class AITextSummarizerBlock(AIBlockBase):
         return summary
 
     async def _combine_summaries(
-        self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
+        self, summaries: list[str], input_data: Input, credentials: Optional[APIKeyCredentials] = None
     ) -> str:
         combined_text = "\n\n".join(summaries)
 
@@ -1254,7 +1255,7 @@ class AIConversationBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: Optional[APIKeyCredentials] = None,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
         response = await block.run_once(input_data, "response", credentials=credentials)
@@ -1262,7 +1263,7 @@ class AIConversationBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: Optional[APIKeyCredentials] = None, **kwargs
     ) -> BlockOutput:
         has_messages = any(
             isinstance(m, dict)
@@ -1400,7 +1401,7 @@ class AIListGeneratorBlock(AIBlockBase):
     async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
+        credentials: Optional[APIKeyCredentials] = None,
     ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
         response = await llm_block.run_once(
@@ -1410,7 +1411,7 @@ class AIListGeneratorBlock(AIBlockBase):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self, input_data: Input, *, credentials: Optional[APIKeyCredentials] = None, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 

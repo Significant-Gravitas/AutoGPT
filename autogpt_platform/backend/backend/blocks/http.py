@@ -207,7 +207,11 @@ class SendWebRequestBlock(Block):
         )
 
         # Decide how to parse the response
-        if response.headers.get("content-type", "").startswith("application/json"):
+        content_type = response.headers.get("content-type", "")
+        is_json = content_type.startswith("application/json") or content_type.endswith(
+            "+json"
+        )
+        if is_json:
             result = None if response.status == 204 else response.json()
         else:
             result = response.text()
