@@ -27,18 +27,11 @@ from backend.data.execution import (
     exec_channel,
     graph_all_channel,
 )
+from backend.util.testing import is_tcp_port_reachable
 
 
 def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
+    return is_tcp_port_reachable(redis_client.HOST, redis_client.PORT)
 
 
 pytestmark = pytest.mark.skipif(
