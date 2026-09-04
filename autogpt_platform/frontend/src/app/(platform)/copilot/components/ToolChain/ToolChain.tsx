@@ -165,6 +165,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const questionRequests = pendingActions
     .map((entry) => entry.questions)
     .filter((request) => request !== undefined);
+  const needsManualProceed = pendingActions.some(
+    (entry) => entry.manualProceed,
+  );
   const hasCardWork =
     connectorRequests.length > 0 ||
     mcpRequests.length > 0 ||
@@ -343,6 +346,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
+            manualProceed={needsManualProceed}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />

@@ -230,7 +230,7 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("waits for the user on a trigger card, whose account they must pick", async () => {
+  it("gives a trigger card a Proceed instead of auto-sending it", async () => {
     const onSend = vi.fn();
     render(
       <CredentialsProvider>
@@ -243,8 +243,33 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     await completeConnectFlow();
 
     // buildTriggerSetupMessage carries the credential the webhook registers
-    // under, so the account must be chosen rather than auto-picked.
+    // under, so the account must be chosen rather than auto-picked — but
+    // excluding the auto-send without adding a button leaves the card with no
+    // way forward at all, which is worse than sending the wrong account.
     await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+    await screen.findByRole("button", { name: "Proceed" });
+  });
+
+  it("gives a trigger card a Proceed when a sibling already connected its provider", async () => {
+    // The auto-dismiss path fires before any account is selected and sends
+    // `credentials={}`; the backend then re-issues the card, the re-issued one
+    // has already lost the dedupe claim, and the chat waits forever.
+    savedCredentials = [oauthCredential("cred-existing", [REQUIRED_SCOPE])];
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: SESSION_ID, providers: ["github"] });
+
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[triggerPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await screen.findByRole("button", { name: "Proceed" });
     expect(onSend).not.toHaveBeenCalled();
   });
 });

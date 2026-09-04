@@ -138,6 +138,7 @@ function renderCard(
       mcp={[]}
       inputs={[]}
       questions={[]}
+      manualProceed={false}
       isReady
       onProceed={onProceed}
       {...overrides}
@@ -223,6 +224,7 @@ describe("ChainActionCard", () => {
             mcp={[]}
             inputs={[]}
             questions={[]}
+            manualProceed={false}
             isReady
             onProceed={vi.fn()}
           />
@@ -378,6 +380,7 @@ describe("ChainActionCard", () => {
           mcp={[]}
           inputs={[inputsRequest()]}
           questions={[]}
+          manualProceed={false}
           isReady
           onProceed={onProceed}
         />,
@@ -975,6 +978,7 @@ describe("ChainActionCard", () => {
           mcp={[]}
           inputs={[]}
           questions={[{ ...request, answers: { region: "Europe" } }]}
+          manualProceed={false}
           isReady
           onProceed={onProceed}
         />,
