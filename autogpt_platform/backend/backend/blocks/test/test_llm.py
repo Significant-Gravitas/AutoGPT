@@ -10,6 +10,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+from backend.util.llm.providers import ProviderResponse
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1689,8 +1690,6 @@ class TestOllamaCredentials:
 
     @pytest.mark.asyncio
     async def test_ollama_call_does_not_require_credentials(self):
-        from backend.util.llm.providers import ProviderResponse
-
         provider_response = ProviderResponse(
             content="local response",
             prompt_tokens=2,
@@ -1716,19 +1715,19 @@ class TestOllamaCredentials:
 
     @pytest.mark.asyncio
     async def test_remote_model_without_credentials_fails_before_provider_call(self):
-        with patch(
-            "backend.util.llm.providers.call_provider", new_callable=AsyncMock
-        ) as call_provider:
-            with pytest.raises(
-                ValueError, match=r"Credentials are required for openai/"
-            ):
-                await llm._llm_call(
-                    credentials=None,
-                    llm_model=llm.DEFAULT_LLM_MODEL,
-                    prompt=[{"role": "user", "content": "Hello"}],
-                    max_tokens=100,
-                    compress_prompt_to_fit=False,
-                )
+        with (
+            patch(
+                "backend.util.llm.providers.call_provider", new_callable=AsyncMock
+            ) as call_provider,
+            pytest.raises(ValueError, match=r"Credentials are required for openai/"),
+        ):
+            await llm._llm_call(
+                credentials=None,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                compress_prompt_to_fit=False,
+            )
 
         call_provider.assert_not_awaited()
 
@@ -1739,14 +1738,19 @@ class TestOllamaCredentials:
             prompt="Hello",
             model=llm.LLMModel.OLLAMA_LLAMA3_3,
         )
-        block.llm_call = AsyncMock(return_value="local response")  # type: ignore
 
-        outputs = [item async for item in block.run(input_data)]
+        with patch.object(
+            block,
+            "llm_call",
+            new_callable=AsyncMock,
+            return_value="local response",
+        ) as mock_llm_call:
+            outputs = [item async for item in block.run(input_data)]
 
         assert ("response", "local response") in outputs
-        block.llm_call.assert_awaited_once()
-        assert block.llm_call.await_args is not None
-        structured_input, credentials = block.llm_call.await_args.args
+        mock_llm_call.assert_awaited_once()
+        assert mock_llm_call.await_args is not None
+        structured_input, credentials = mock_llm_call.await_args.args
         assert credentials is None
         assert structured_input.credentials is None
         assert structured_input.model == llm.LLMModel.OLLAMA_LLAMA3_3
