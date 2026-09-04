@@ -17,8 +17,6 @@ import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { PulseChips } from "../PulseChips/PulseChips";
-import { usePulseChips } from "../PulseChips/usePulseChips";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
@@ -59,9 +57,7 @@ export function EmptySession({
   const greetingName = getGreetingName(user);
   const intro = useOnboardingIntroCard();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const pulseChips = usePulseChips();
   const { options, recipient, isLoadingRecipient, selectRecipient } =
     useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
@@ -219,24 +215,16 @@ export function EmptySession({
 
           {/* The recap sits under the composer: the empty state's job is to
               get a message typed, so the briefing reads as context below it
-              rather than as a wall above it. */}
+              rather than as a wall above it. Workflow activity lives on
+              /home, under the briefing, so nothing stands in for a missing
+              recap here. */}
           {!intro.isVisible &&
             !intro.isAwaitingGreeting &&
-            (isExpertsEnabled ? (
+            isExpertsEnabled && (
               <div className="mx-auto mb-6 w-full max-w-[42rem]">
-                <CopilotHome
-                  fallback={
-                    isAgentBriefingEnabled ? (
-                      <PulseChips chips={pulseChips} onChipClick={onSend} />
-                    ) : null
-                  }
-                />
+                <CopilotHome />
               </div>
-            ) : (
-              isAgentBriefingEnabled && (
-                <PulseChips chips={pulseChips} onChipClick={onSend} />
-              )
-            ))}
+            )}
         </div>
 
         {/* The greeting page is deliberately quiet: its own prompts are
