@@ -129,10 +129,18 @@ class TestSdkDelegationSupplement:
 
     def test_the_rules_lead_with_the_prohibition_and_name_the_tool(self):
         rules = prompting._sdk_delegation_rules()
-        # Both are load-bearing and measured: a version carrying the
-        # prohibition as a later, permission-framed bullet scored 9/25.
+        # Load-bearing and measured: a version carrying the prohibition as a
+        # later, permission-framed bullet scored 9/25 against this one's 25/25.
         assert rules.strip().splitlines()[1].startswith("Do not ")
         assert "`Agent`" in rules
+
+    def test_the_rules_keep_graph_building_in_this_conversation(self):
+        """A sub-agent never receives this system prompt, so it has neither the
+        building guide nor the shared tool notes. Delegating lookups is the
+        point; delegating the build is a regression, so it is pinned."""
+        rules = prompting._sdk_delegation_rules()
+        assert "Build and validate the graph yourself" in rules
+        assert "build and validate graphs" not in rules
 
     def test_only_the_sdk_engine_appends_it(self):
         """Asserted against the AST, not the text: ``getsource`` returns

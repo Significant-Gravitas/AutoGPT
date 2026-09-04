@@ -684,18 +684,23 @@ def _sdk_delegation_rules() -> str:
 
     Names ``Agent`` because that is what the CLI presents to the model today;
     ``_SDK_BUILTIN_ALWAYS`` allows ``Task`` too, so a CLI rename disables the
-    wording rather than the tool. Measured at n=25 first-move and n=5 full
-    runs: this wording delegates 25/25 and peaks at 3,250 tokens, where a
-    306-token version of the same rules managed 9/25. The prohibition has to
-    lead — versions carrying it as a later, permission-framed bullet do not
-    work.
+    wording rather than the tool.
+
+    Two things here are measured and should not be changed without
+    re-measuring. The prohibition has to **lead**: a version carrying it as a
+    later, permission-framed bullet delegated 9 times in 25 against this one's
+    25. And it covers **lookups only** — a sub-agent never receives this
+    system prompt, so it has neither the building guide nor the shared tool
+    notes, and telling it to build graphs hands that work to the one executor
+    without the instructions for it.
     """
     return """
 
-### Delegating execution
-Do not search blocks, read schemas, or build and validate graphs in this
-conversation. Send each such unit of work to `Agent`, giving it the goal and
-the done-condition, and continue from the report it returns.
+### Delegating lookups
+Do not search blocks or read block schemas in this conversation — one schema
+can be 8,000 tokens and stays in your context for the rest of the session.
+Send each lookup to `Agent`, telling it what you need to know, and continue
+from what it reports. Build and validate the graph yourself.
 """
 
 
