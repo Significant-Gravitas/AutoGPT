@@ -176,6 +176,11 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
+    # AutoPilot hands each unit of concrete work to an in-process sub-agent
+    # instead of doing it in its own transcript. SDK engine only — the
+    # baseline engine has no sub-agent tool. Off by default.
+    AUTOPILOT_DELEGATION = "autopilot-delegation"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""

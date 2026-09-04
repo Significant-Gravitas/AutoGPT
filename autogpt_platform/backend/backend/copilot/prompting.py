@@ -8,6 +8,8 @@ handling the distinction between:
 
 from functools import cache
 
+from backend.util.feature_flag import Flag, is_feature_enabled
+
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
 # template).  These are cross-tool rules (file sharing, @@agptfile: refs,
@@ -661,6 +663,39 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
+"""
+
+
+async def build_sdk_delegation_supplement(user_id: str | None) -> str:
+    """The delegation rules, or ``""`` when the cohort flag is off.
+
+    One gate, so a flag-off system prompt is byte-identical to today's by
+    construction. Anonymous turns fail closed.
+    """
+    if not user_id:
+        return ""
+    if not await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False):
+        return ""
+    return _sdk_delegation_rules()
+
+
+def _sdk_delegation_rules() -> str:
+    """The rules themselves. Private: calling it directly bypasses the flag.
+
+    Names ``Agent`` because that is what the CLI presents to the model today;
+    ``_SDK_BUILTIN_ALWAYS`` allows ``Task`` too, so a CLI rename disables the
+    wording rather than the tool. Measured at n=25 first-move and n=5 full
+    runs: this wording delegates 25/25 and peaks at 3,250 tokens, where a
+    306-token version of the same rules managed 9/25. The prohibition has to
+    lead — versions carrying it as a later, permission-framed bullet do not
+    work.
+    """
+    return """
+
+### Delegating execution
+Do not search blocks, read schemas, or build and validate graphs in this
+conversation. Send each such unit of work to `Agent`, giving it the goal and
+the done-condition, and continue from the report it returns.
 """
 
 
