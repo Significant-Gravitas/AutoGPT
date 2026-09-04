@@ -20,7 +20,7 @@ const ENTRIES = [
 
 export function AutopilotAboutSection() {
   return (
-    <section className="space-y-6">
+    <section className="space-y-5">
       <p className="text-base leading-relaxed text-zinc-600">
         {AUTOPILOT_BLURB}
       </p>

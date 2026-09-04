@@ -23,7 +23,7 @@ export function AutopilotWorkflowsSection({ experts }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {owners.map((expert) => (
         <section key={expert.id} aria-label={`${expert.name} workflows`}>
           <Link
@@ -33,7 +33,7 @@ export function AutopilotWorkflowsSection({ experts }: Props) {
             <span className="font-medium text-zinc-900">{expert.name}</span>
             <span className="text-zinc-500">{expert.role}</span>
           </Link>
-          <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-200/80 bg-white">
+          <div className="divide-y divide-zinc-100 rounded-lg border border-zinc-200/80 bg-white">
             {expert.workflows.map((workflow) => (
               <div
                 key={workflow.id}

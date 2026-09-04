@@ -68,6 +68,10 @@ const config = {
         sans: ["var(--font-body)"],
         mono: ["var(--font-geist-mono)"],
         poppins: ["var(--font-heading)"],
+        inter: ["var(--font-inter)"],
+      },
+      fontSize: {
+        xs: ["13px", { lineHeight: "1.25rem" }],
       },
       fontWeight: {
         medium: "var(--fw-medium)",

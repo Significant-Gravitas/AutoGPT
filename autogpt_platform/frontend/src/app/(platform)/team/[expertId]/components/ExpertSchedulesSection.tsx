@@ -14,6 +14,7 @@ import {
   filterExpertSchedules,
   SCHEDULE_FILTERS,
   ScheduleFilter,
+  ACTION_BUTTON_CLASS,
 } from "../../helpers";
 import { CreateScheduleDialog } from "./CreateScheduleDialog";
 import { FilterIconMenu } from "./FilterIconMenu";
@@ -56,18 +57,19 @@ export function ExpertSchedulesSection({
             <Button
               variant="secondary"
               size="small"
-              leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+              className={ACTION_BUTTON_CLASS}
+              leftIcon={<Icon icon={PlusSignIcon} size={14} />}
               onClick={() => setIsCreateOpen(true)}
             >
               Create schedule
             </Button>
           ) : null}
           <SearchInput
-            size="small"
+            size="xsmall"
             value={query}
             onChange={setQuery}
             placeholder="Search schedules"
-            className="w-56"
+            className="w-48"
           />
           <FilterIconMenu
             label="Filter schedules"
@@ -92,11 +94,12 @@ export function ExpertSchedulesSection({
               <GraphScheduleListItem
                 schedule={schedule}
                 iconClassName={accentClassName}
+                actionClassName={ACTION_BUTTON_CLASS}
                 editAction={
                   <EditScheduleModal
                     graphId={schedule.graph_id}
                     schedule={schedule}
-                    triggerClassName="shrink-0"
+                    triggerClassName={`${ACTION_BUTTON_CLASS} shrink-0`}
                   />
                 }
               />

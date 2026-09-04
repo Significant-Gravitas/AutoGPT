@@ -51,7 +51,7 @@ export function ExpertCover({ className, color, src, status }: Props) {
   return (
     <div
       className={cn(
-        "relative h-32 w-full overflow-hidden rounded-[1.75rem] bg-zinc-100",
+        "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
         className,
       )}
     >
@@ -64,7 +64,7 @@ export function ExpertCover({ className, color, src, status }: Props) {
       />
       {statusStyle ? (
         <span
-          className={`absolute bottom-3 right-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle.className}`}
+          className={`absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle.className}`}
         >
           <Icon icon={statusStyle.icon} size={13} />
           {statusStyle.label}

@@ -27,22 +27,23 @@ export function TeamRosterToolbar({
       <SearchInput
         value={query}
         onChange={onQueryChange}
-        size="small"
+        size="xsmall"
         placeholder="Search experts"
         aria-label="Search experts"
-        className="w-full sm:w-56"
+        className="w-full sm:w-48"
       />
       <Select
         id="team-filter"
         label="Filter"
         hideLabel
         size="small"
+        className="h-7 rounded-md px-2.5 text-xs"
         value={filter}
         onValueChange={(next) => onFilterChange(next as TeamFilter)}
         options={FILTER_OPTIONS}
         // The hidden-label Select reserves `mb-6` for error text it never
         // shows, which pushes its trigger off the toolbar's centre line.
-        wrapperClassName="w-40 !mb-0"
+        wrapperClassName="w-36 !mb-0"
       />
     </div>
   );

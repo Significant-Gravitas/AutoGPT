@@ -50,20 +50,20 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex items-center gap-4 rounded-[1.5rem] border border-zinc-100 bg-white px-3 py-3 transition-shadow hover:shadow-md"
+      className="group relative flex items-center gap-4 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink
           href={libraryHref}
           aria-label={`Open ${name} tasks`}
-          className="absolute inset-0 z-0 rounded-[1.5rem]"
+          className="absolute inset-0 z-0 rounded-lg"
         />
       ) : null}
 
       <div
         className={cn(
           accentClassName,
-          "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border-0",
+          "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
         )}
       >
         <Icon
@@ -81,7 +81,7 @@ export function ExpertWorkflowListItem({
           </Text>
           <span
             className={cn(
-              "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
+              "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
               status.className,
             )}
           >
@@ -122,7 +122,7 @@ export function ExpertWorkflowListItem({
           name={name}
           builderHref={builderHref}
           chatHref={chatHref}
-          buttonClassName="h-9 w-9 border-transparent p-0 text-zinc-700 hover:border-transparent hover:bg-zinc-50"
+          buttonClassName="h-8 w-8 rounded-md border-transparent p-0 text-zinc-700 hover:border-transparent hover:bg-zinc-50"
         />
         {libraryAgent ? (
           <span className="ml-1">

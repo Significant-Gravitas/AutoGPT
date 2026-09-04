@@ -16,6 +16,7 @@ import {
   filterExpertWorkflows,
   WORKFLOW_FILTERS,
   WorkflowFilter,
+  ACTION_BUTTON_CLASS,
 } from "../../helpers";
 import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
 import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
@@ -48,17 +49,18 @@ export function ExpertWorkflowsSection({ expert, onInstallWorkflow }: Props) {
           <Button
             variant="secondary"
             size="small"
-            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+            className={ACTION_BUTTON_CLASS}
+            leftIcon={<Icon icon={PlusSignIcon} size={14} />}
             onClick={onInstallWorkflow}
           >
             Install workflow
           </Button>
           <SearchInput
-            size="small"
+            size="xsmall"
             value={query}
             onChange={setQuery}
             placeholder="Search workflows"
-            className="w-56"
+            className="w-48"
           />
           <FilterIconMenu
             label="Filter workflows"

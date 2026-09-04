@@ -42,7 +42,7 @@ export function ExpertSummaryCard({
     >
       <section
         aria-label={`${expert.name} activity`}
-        className="flex flex-col gap-2 rounded-[2rem] bg-white p-5 shadow-zinc-950 smooth-shadow-ring-sm"
+        className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4"
       >
         <div className="flex items-center justify-between gap-2">
           <Text variant="large-medium" className="text-base text-zinc-700">
@@ -51,7 +51,7 @@ export function ExpertSummaryCard({
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
         </div>
         {isActivityLoading ? (
-          <Skeleton className="h-[5.25rem] w-full rounded-xl" />
+          <Skeleton className="h-[5.25rem] w-full rounded-lg" />
         ) : isActivityError ? (
           <Text variant="small" className="text-zinc-500">
             Activity unavailable
@@ -71,10 +71,10 @@ export function ExpertSummaryCard({
 
       <section
         aria-label={`${expert.name} activity streak`}
-        className="flex flex-col rounded-[2rem] bg-white p-5 shadow-zinc-950 smooth-shadow-ring-sm"
+        className="flex flex-col rounded-xl border border-zinc-200 bg-white p-4"
       >
         {isActivityLoading ? (
-          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-lg" />
         ) : isActivityError ? (
           <Text variant="small" className="text-zinc-500">
             Streak unavailable

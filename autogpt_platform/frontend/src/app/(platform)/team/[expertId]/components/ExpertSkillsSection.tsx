@@ -9,6 +9,7 @@ import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
 import { useExpertSkills } from "./useExpertSkills";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expert: Expert;
@@ -46,17 +47,18 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
           <Button
             variant="secondary"
             size="small"
-            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+            className={ACTION_BUTTON_CLASS}
+            leftIcon={<Icon icon={PlusSignIcon} size={14} />}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <SearchInput
-            size="small"
+            size="xsmall"
             value={query}
             onChange={setQuery}
             placeholder="Search skills"
-            className="w-56"
+            className="w-48"
           />
         </div>
       </div>

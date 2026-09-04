@@ -14,14 +14,12 @@ export function ExpertAboutSection({
   boundaries,
 }: Props) {
   return (
-    <section className="space-y-6">
+    <section className="space-y-5 font-inter">
       {bio ? (
-        <p className="whitespace-pre-line text-base leading-relaxed text-zinc-600">
-          {bio}
-        </p>
+        <p className="whitespace-pre-line text-xs text-zinc-600">{bio}</p>
       ) : null}
 
-      <dl className="space-y-5">
+      <dl className="space-y-4">
         <ProfileEntry label="Identity" value={identity} />
         <ProfileEntry label="Voice" value={voicePreferences} />
         <ProfileEntry label="Boundaries" value={boundaries} />
@@ -38,8 +36,8 @@ interface ProfileEntryProps {
 function ProfileEntry({ label, value }: ProfileEntryProps) {
   return (
     <div>
-      <dt className="text-sm font-medium text-zinc-900">{label}</dt>
-      <dd className="mt-1 whitespace-pre-line text-base leading-relaxed text-zinc-600">
+      <dt className="text-xs font-medium text-zinc-900">{label}</dt>
+      <dd className="mt-1 whitespace-pre-line text-xs text-zinc-600">
         {value || "Not set yet."}
       </dd>
     </div>

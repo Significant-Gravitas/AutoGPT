@@ -12,9 +12,10 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { ExpertWorkflowCardMenu } from "./ExpertWorkflowCardMenu";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
-const ACTION_BUTTON_CLASS =
-  "h-8 w-8 border-transparent bg-white/90 p-0 text-zinc-700 shadow-sm hover:border-transparent hover:bg-white";
+const ICON_BUTTON_CLASS =
+  "h-7 w-7 rounded-md border-transparent bg-white/90 p-0 text-zinc-700 hover:border-transparent hover:bg-white";
 
 interface ActionsProps {
   workflow: ExpertWorkflowRef;
@@ -32,7 +33,7 @@ export function ExpertWorkflowActions({
   name,
   builderHref,
   chatHref,
-  buttonClassName = ACTION_BUTTON_CLASS,
+  buttonClassName = ICON_BUTTON_CLASS,
   menuClassName = buttonClassName,
 }: ActionsProps) {
   return (
@@ -46,7 +47,7 @@ export function ExpertWorkflowActions({
           aria-label="Edit workflow"
           className={buttonClassName}
         >
-          <Icon icon={PencilEdit02Icon} size={16} />
+          <Icon icon={PencilEdit02Icon} size={14} />
         </Button>
       ) : null}
       <Button
@@ -57,7 +58,7 @@ export function ExpertWorkflowActions({
         aria-label="Ask about this workflow"
         className={buttonClassName}
       >
-        <Icon icon={SparklesIcon} size={16} />
+        <Icon icon={SparklesIcon} size={14} />
       </Button>
       <ExpertWorkflowCardMenu
         workflow={workflow}
@@ -94,8 +95,8 @@ export function ExpertWorkflowRunButton({
           type="button"
           variant={variant}
           size="small"
+          className={ACTION_BUTTON_CLASS}
           leftIcon={<Icon icon={PlayIcon} size={14} />}
-          className="min-w-0"
         >
           {isTriggerWorkflow ? "Set up trigger" : "Run"}
         </Button>

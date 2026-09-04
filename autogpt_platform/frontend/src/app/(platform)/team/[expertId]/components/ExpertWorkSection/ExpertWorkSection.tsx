@@ -12,6 +12,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expertId: string;
@@ -40,7 +41,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
             aria-pressed={needsReviewOnly}
             onClick={() => setNeedsReviewOnly((value) => !value)}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+              "rounded-md px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
               needsReviewOnly
                 ? "bg-amber-100 text-amber-700 ring-amber-200"
                 : "bg-white text-zinc-500 ring-zinc-200 hover:text-zinc-800",
@@ -53,8 +54,8 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
 
       {runsQuery.isLoading ? (
         <div className="space-y-3">
-          <Skeleton className="h-16 w-full rounded-xl" />
-          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-16 w-full rounded-lg" />
         </div>
       ) : runsQuery.isError && runsQuery.data == null ? (
         <ErrorCard
@@ -102,7 +103,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
 
 function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 ring-1 ring-inset ring-zinc-200">
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 ring-1 ring-inset ring-zinc-200">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-zinc-900">
           {run.agent_name}
@@ -116,7 +117,12 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
           ) : null}
         </div>
       </div>
-      <Button variant="secondary" size="small" onClick={onOpen}>
+      <Button
+        variant="secondary"
+        size="small"
+        className={ACTION_BUTTON_CLASS}
+        onClick={onOpen}
+      >
         Open
       </Button>
     </div>

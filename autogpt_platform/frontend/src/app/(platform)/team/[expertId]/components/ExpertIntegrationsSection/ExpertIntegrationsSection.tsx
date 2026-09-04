@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expertId: string;
@@ -64,7 +65,8 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
                 <Button
                   variant="secondary"
                   size="small"
-                  leftIcon={<Icon icon={Share01Icon} size={16} />}
+                  className={ACTION_BUTTON_CLASS}
+                  leftIcon={<Icon icon={Share01Icon} size={14} />}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
                   }
@@ -91,23 +93,24 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           <Button
             variant="secondary"
             size="small"
-            leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+            className={ACTION_BUTTON_CLASS}
+            leftIcon={<Icon icon={PlusSignIcon} size={14} />}
             onClick={openConnect}
           >
             Add integration
           </Button>
           <SearchInput
-            size="small"
+            size="xsmall"
             value={query}
             onChange={setQuery}
             placeholder="Search integrations"
-            className="w-56"
+            className="w-48"
           />
         </div>
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-lg" />
       ) : isError ? (
         <ErrorCard
           context="this expert's integrations"

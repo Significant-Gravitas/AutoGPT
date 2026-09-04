@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { BookOpen01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { ExpertSkillEntry } from "./useExpertSkills";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   entry: ExpertSkillEntry;
@@ -23,13 +24,13 @@ export function ExpertSkillListItem({
   const triggers = entry.library?.triggers ?? [];
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between"
       data-testid="expert-skill-row"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <div
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large bg-violet-50 text-violet-700",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-violet-50 text-violet-700",
             accentClassName,
             "border-0",
           )}
@@ -49,7 +50,7 @@ export function ExpertSkillListItem({
               {triggers.map((trigger) => (
                 <span
                   key={trigger}
-                  className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                  className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
                 >
                   {trigger}
                 </span>
@@ -65,6 +66,7 @@ export function ExpertSkillListItem({
             href="/library/skills"
             variant="ghost"
             size="small"
+            className={ACTION_BUTTON_CLASS}
           >
             Open in library
           </Button>
@@ -72,6 +74,7 @@ export function ExpertSkillListItem({
         <Button
           variant="secondary"
           size="small"
+          className={ACTION_BUTTON_CLASS}
           disabled={isSaving}
           onClick={() => onRemove(entry.name)}
           aria-label={`Remove ${entry.name}`}

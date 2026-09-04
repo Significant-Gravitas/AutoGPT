@@ -8,11 +8,11 @@ import { formatDistanceToNow } from "date-fns";
 /** Section headings sit outside the cards, so they need the cards' own content
  *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
  *  up with the text inside them instead of with the card edge. */
-export const SECTION_INSET_CLASS = "px-5";
+export const SECTION_INSET_CLASS = "px-4";
 
-/** The Button atom is pill-shaped by default; team actions sit in rows and read
- *  better squared off. */
-export const ACTION_BUTTON_CLASS = "!rounded-xl";
+/** The Button atom is pill-shaped and tall by default; team actions match the
+ *  home briefing's compact row buttons. */
+export const ACTION_BUTTON_CLASS = "h-7 min-w-0 !rounded-md px-2.5 text-xs";
 
 /** The `outline` variant's zinc-700 border is too heavy at this size, so team
  *  actions soften it while keeping the hover lift. */
@@ -29,7 +29,7 @@ export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
 export const TEAM_GRID_CLASS =
-  "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
+  "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3";
 
 /** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
 export const POD_NAME_MAX_LENGTH = 100;

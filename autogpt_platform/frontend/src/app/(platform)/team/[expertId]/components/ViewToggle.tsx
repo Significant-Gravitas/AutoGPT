@@ -16,7 +16,7 @@ export function ViewToggle<T extends string>({
   onChange,
 }: Props<T>) {
   return (
-    <div className="flex items-center rounded-xl border border-zinc-200 p-0.5">
+    <div className="flex h-7 items-center rounded-md border border-zinc-200 p-0.5">
       {options.map((option) => (
         <button
           key={option.value}
@@ -25,11 +25,11 @@ export function ViewToggle<T extends string>({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "flex h-7 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:text-zinc-800",
+            "flex h-full w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:text-zinc-800",
             value === option.value && "bg-zinc-100 text-zinc-900",
           )}
         >
-          <Icon icon={option.icon} size={15} />
+          <Icon icon={option.icon} size={14} />
         </button>
       ))}
     </div>

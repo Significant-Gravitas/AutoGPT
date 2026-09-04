@@ -37,12 +37,12 @@ export function FilterIconMenu<T extends string>({
           size="icon"
           aria-label={label}
           className={cn(
-            "h-9 w-9 rounded-xl border-zinc-200 p-0",
+            "h-7 w-7 rounded-md border-zinc-200 p-0",
             isActive &&
               "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white",
           )}
         >
-          <Icon icon={FilterHorizontalIcon} size={16} />
+          <Icon icon={FilterHorizontalIcon} size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[11rem]">

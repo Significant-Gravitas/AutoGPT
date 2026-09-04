@@ -1717,13 +1717,9 @@ async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
 ):
     from backend.copilot.tools.skills import ParsedSkill
 
-    listed = ParsedSkill(
-        name="Deep Research", description="Research anything", body=""
-    )
+    listed = ParsedSkill(name="Deep Research", description="Research anything", body="")
     monkeypatch.setattr(experts_db, "read_user_skill_with_body", _none_skill)
-    monkeypatch.setattr(
-        experts_db, "list_user_skills", _listing_skills([listed])
-    )
+    monkeypatch.setattr(experts_db, "list_user_skills", _listing_skills([listed]))
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 

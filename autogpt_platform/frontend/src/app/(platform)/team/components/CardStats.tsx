@@ -12,7 +12,7 @@ export function CardStats({ className, children }: Props) {
   return (
     <dl
       className={cn(
-        "flex items-stretch rounded-3xl bg-zinc-50 px-2 py-3 ring-1 ring-inset ring-zinc-100",
+        "flex items-stretch rounded-lg bg-zinc-50 px-2 py-2 ring-1 ring-inset ring-zinc-100",
         className,
       )}
     >

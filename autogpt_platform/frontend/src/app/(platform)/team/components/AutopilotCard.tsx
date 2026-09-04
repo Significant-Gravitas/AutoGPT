@@ -4,7 +4,11 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
+import {
+  AUTOPILOT_BLURB,
+  AUTOPILOT_ROLE,
+  ACTION_BUTTON_CLASS,
+} from "../helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -22,12 +26,12 @@ export function AutopilotCard({
   return (
     <section
       aria-label="Autopilot"
-      className="flex flex-col overflow-hidden rounded-[2.25rem] bg-white shadow-zinc-950 transition-transform duration-200 smooth-shadow-ring-sm hover:-translate-y-0.5"
+      className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white"
     >
       <Link
         href="/team/autopilot"
         aria-label="View Autopilot"
-        className="flex flex-1 flex-col items-start p-3 pb-5"
+        className="flex flex-1 flex-col items-start p-2 pb-4"
       >
         <ExpertCover
           color={undefined}
@@ -37,11 +41,7 @@ export function AutopilotCard({
 
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-11 ml-1 flex size-[5.25rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
-            <AutoGPTLogo
-              hideText
-              viewBox="47 -1 42 42"
-              className="size-11"
-            />
+            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-11" />
           </span>
         </div>
 
@@ -58,7 +58,7 @@ export function AutopilotCard({
         </div>
 
         <div className="w-full px-2">
-          <CardStats className="mt-4 w-full">
+          <CardStats className="mt-3 w-full">
             <CardStat label="Schedules">{scheduleCount}</CardStat>
             <CardStat label="Skills">{skillCount}</CardStat>
             <CardStat label="Workflows">{workflowCount}</CardStat>
@@ -66,14 +66,14 @@ export function AutopilotCard({
         </div>
       </Link>
 
-      <div className="flex items-center gap-2 px-5 pb-5">
+      <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           as="NextLink"
           href="/copilot"
           variant="secondary"
           size="small"
-          className="flex-1 !rounded-2xl"
-          leftIcon={<Icon icon={PencilEdit02Icon} size={16} />}
+          className={`${ACTION_BUTTON_CLASS} flex-1`}
+          leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
         >
           Chat
         </Button>

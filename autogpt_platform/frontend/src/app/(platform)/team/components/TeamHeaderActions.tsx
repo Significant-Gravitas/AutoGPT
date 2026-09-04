@@ -18,7 +18,7 @@ export function TeamHeaderActions({ onNewPod }: Props) {
         variant="primary"
         size="small"
         className={ACTION_BUTTON_CLASS}
-        leftIcon={<Icon icon={SparklesIcon} className="size-4" />}
+        leftIcon={<Icon icon={SparklesIcon} className="size-3.5" />}
       >
         New Expert
       </Button>
@@ -27,7 +27,7 @@ export function TeamHeaderActions({ onNewPod }: Props) {
         size="small"
         onClick={onNewPod}
         className={OUTLINE_ACTION_BUTTON_CLASS}
-        leftIcon={<Icon icon={UserGroupIcon} className="size-4" />}
+        leftIcon={<Icon icon={UserGroupIcon} className="size-3.5" />}
       >
         New Pod
       </Button>

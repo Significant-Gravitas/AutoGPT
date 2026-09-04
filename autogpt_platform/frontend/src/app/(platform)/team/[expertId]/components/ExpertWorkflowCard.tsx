@@ -40,23 +40,23 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-[1.75rem] border border-zinc-100 bg-white transition-shadow hover:shadow-md"
+      className="group relative flex w-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
     >
       {libraryHref ? (
         <NextLink
           href={libraryHref}
           aria-label={`Open ${name} tasks`}
-          className="absolute inset-0 z-0 rounded-[1.75rem]"
+          className="absolute inset-0 z-0 rounded-xl"
         />
       ) : null}
 
-      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-36 items-center justify-center overflow-hidden rounded-[1.375rem] bg-zinc-100">
+      <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
         <ExpertCover
           className="absolute inset-0 h-full w-full rounded-none"
           color={coverColor}
         />
         <div className="relative">
-          <WorkflowChain chain={workflow.chain ?? []} />
+          <WorkflowChain chain={workflow.chain ?? []} size="sm" />
         </div>
         <div className="pointer-events-auto absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100">
           <ExpertWorkflowActions
@@ -98,7 +98,7 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
           ) : null}
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
               status.className,
             )}
           >

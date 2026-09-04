@@ -27,7 +27,7 @@ import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
-  "mx-auto min-h-screen w-full max-w-[1180px] space-y-6 pb-20 pt-8 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
+  "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 pb-16 pt-6 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 const TABS = [
   { value: "overview", label: "Team Overview", icon: UserGroupIcon },
@@ -126,9 +126,9 @@ export default function TeamPage() {
               <TabsLineTrigger
                 key={tab.value}
                 value={tab.value}
-                className="gap-2 data-[state=active]:text-zinc-900"
+                className="gap-1.5 px-2.5 py-2 text-[13px] leading-5 data-[state=active]:text-zinc-900"
               >
-                <Icon icon={tab.icon} size={16} />
+                <Icon icon={tab.icon} size={14} />
                 {tab.label}
               </TabsLineTrigger>
             ))}

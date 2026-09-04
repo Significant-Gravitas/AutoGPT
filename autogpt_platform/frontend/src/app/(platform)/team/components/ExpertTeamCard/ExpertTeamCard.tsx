@@ -34,6 +34,7 @@ import {
   getExpertRosterStatus,
   getNeedsSetupCount,
   getWeeklySpend,
+  ACTION_BUTTON_CLASS,
 } from "../../helpers";
 import { CardStat, CardStats } from "../CardStats";
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
@@ -41,10 +42,10 @@ import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
 
 const COVER_ACTION_CLASS =
-  "size-9 rounded-full bg-white/90 p-0 text-zinc-700 shadow-sm backdrop-blur hover:bg-white hover:text-zinc-900";
+  "size-8 rounded-lg bg-white/90 p-0 text-zinc-700 backdrop-blur hover:bg-white hover:text-zinc-900";
 
 /** The card's corners are heavily rounded, so its actions are too. */
-const FOOTER_BUTTON_CLASS = "flex-1 !rounded-2xl";
+const FOOTER_BUTTON_CLASS = `${ACTION_BUTTON_CLASS} flex-1`;
 const FOOTER_OUTLINE_BUTTON_CLASS = `${FOOTER_BUTTON_CLASS} !border-zinc-200 hover:!border-zinc-300`;
 
 interface Props {
@@ -90,9 +91,9 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-[2.25rem] bg-white shadow-zinc-950 transition-transform duration-200 smooth-shadow-ring-sm hover:-translate-y-0.5">
+    <div className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
       {/* Floated over the cover so the whole body stays one link target. */}
-      <div className="absolute right-5 top-5 z-10 flex items-center gap-1.5">
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         {pods.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -157,7 +158,7 @@ export function ExpertTeamCard({
       <Link
         href={`/team/${expert.id}`}
         aria-label={`View ${expert.name}`}
-        className="flex flex-1 flex-col items-center p-3 pb-5"
+        className="flex flex-1 flex-col items-center p-2 pb-4"
       >
         <ExpertCover color={expert.color} status={rosterStatus} />
 
@@ -223,7 +224,7 @@ export function ExpertTeamCard({
         </div>
 
         <div className="w-full px-2">
-          <CardStats className="mt-4 w-full">
+          <CardStats className="mt-3 w-full">
             <CardStat label="Schedules">{schedules.length}</CardStat>
             <CardStat label="Skills">{expert.skills.length}</CardStat>
             <CardStat label="Workflows">{expert.workflows.length}</CardStat>
@@ -233,13 +234,14 @@ export function ExpertTeamCard({
       </Link>
 
       {isPaused ? (
-        <div className="mx-5 mb-4 flex items-center justify-between gap-2 rounded-3xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
+        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
           <Text variant="body" className="text-amber-700">
             Schedules paused
           </Text>
           <Button
             variant="secondary"
             size="small"
+            className={ACTION_BUTTON_CLASS}
             loading={isResuming}
             onClick={handleResume}
           >
@@ -248,14 +250,14 @@ export function ExpertTeamCard({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 px-5 pb-5">
+      <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           as="NextLink"
           href={`/copilot?expertId=${expert.id}`}
           variant="secondary"
           size="small"
           className={FOOTER_BUTTON_CLASS}
-          leftIcon={<Icon icon={PencilEdit02Icon} size={16} />}
+          leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
         >
           Chat
         </Button>
@@ -263,7 +265,7 @@ export function ExpertTeamCard({
           variant="outline"
           size="small"
           className={FOOTER_OUTLINE_BUTTON_CLASS}
-          leftIcon={<Icon icon={PlusSignIcon} size={16} />}
+          leftIcon={<Icon icon={PlusSignIcon} size={14} />}
           onClick={handleInstallClick}
         >
           Install workflow

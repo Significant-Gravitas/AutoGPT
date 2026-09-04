@@ -3,6 +3,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expert: Expert;
@@ -11,7 +12,7 @@ interface Props {
 
 export function ExpertSettingsSection({ expert, onFire }: Props) {
   return (
-    <section className="rounded-2xl border border-red-200 bg-red-50/50 p-5">
+    <section className="rounded-xl border border-red-200 bg-red-50/50 p-4">
       <Text variant="large-medium" className="text-red-700">
         Danger zone
       </Text>
@@ -22,7 +23,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       <Button
         variant="destructive"
         size="small"
-        className="mt-4"
+        className={`${ACTION_BUTTON_CLASS} mt-4`}
         onClick={onFire}
         data-testid="expert-fire-button"
       >

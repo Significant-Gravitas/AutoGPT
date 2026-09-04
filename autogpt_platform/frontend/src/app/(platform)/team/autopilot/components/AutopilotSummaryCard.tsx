@@ -19,7 +19,7 @@ export function AutopilotSummaryCard({
   return (
     <aside
       aria-label="Team at a glance"
-      className="flex flex-col gap-4 self-start rounded-[2rem] bg-white p-5 shadow-zinc-950 smooth-shadow-ring-sm"
+      className="flex flex-col gap-4 self-start rounded-xl border border-zinc-200 bg-white p-4"
     >
       <Text variant="large-medium" className="text-base text-zinc-700">
         Team at a glance
@@ -45,7 +45,7 @@ export function AutopilotSummaryCard({
               <li key={expert.id}>
                 <Link
                   href={`/team/${expert.id}`}
-                  className="flex items-baseline justify-between gap-2 rounded-xl px-2 py-1.5 hover:bg-zinc-50"
+                  className="flex items-baseline justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-50"
                 >
                   <span className="truncate text-sm font-medium text-zinc-800">
                     {expert.name}

@@ -27,7 +27,7 @@ import { AutopilotWorkflowsSection } from "./components/AutopilotWorkflowsSectio
 import { useAutopilotPage } from "./useAutopilotPage";
 
 const MAIN_CLASS =
-  "container min-h-screen max-w-[1180px] space-y-6 pb-20 pt-8 sm:px-8 md:px-12";
+  "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
@@ -44,9 +44,9 @@ export default function AutopilotPage() {
   if (!ready || isLoading) {
     return (
       <main className={MAIN_CLASS}>
-        <Skeleton className="h-20 w-full rounded-2xl" />
-        <Skeleton className="h-10 w-full rounded-2xl" />
-        <Skeleton className="h-48 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-10 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </main>
     );
   }
@@ -88,9 +88,9 @@ export default function AutopilotPage() {
             <TabsLineTrigger
               key={tab.value}
               value={tab.value}
-              className="gap-2 data-[state=active]:text-zinc-900"
+              className="gap-1.5 px-2.5 py-2 text-[13px] leading-5 data-[state=active]:text-zinc-900"
             >
-              <Icon icon={tab.icon} size={16} />
+              <Icon icon={tab.icon} size={14} />
               {tab.label}
             </TabsLineTrigger>
           ))}

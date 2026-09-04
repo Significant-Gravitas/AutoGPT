@@ -109,7 +109,7 @@ export function ExpertIntegrationGroups({
             type="single"
             collapsible
             defaultValue={group.id}
-            className="w-full overflow-hidden rounded-2xl border border-[#DADADC] bg-white"
+            className="w-full overflow-hidden rounded-xl border border-[#DADADC] bg-white"
           >
             <AccordionItem value={group.id} className="border-b-0">
               <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]">
@@ -123,7 +123,7 @@ export function ExpertIntegrationGroups({
                   <span className="text-[16px] font-medium leading-[26px] tracking-[-0.08px] text-black">
                     {group.name}
                   </span>
-                  <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[14px] font-medium leading-[22px] text-black">
+                  <span className="inline-flex items-center justify-center rounded-md bg-[#EFF1F4] px-2 py-[2px] text-[14px] font-medium leading-[22px] text-black">
                     {group.integrations.length}
                   </span>
                 </div>
@@ -166,7 +166,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
           <span className="text-[14px] font-medium leading-[22px] text-[#1F1F20]">
             {name}
           </span>
-          <span className="inline-flex items-center justify-center rounded-[10px] bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
+          <span className="inline-flex items-center justify-center rounded-md bg-[#EFF1F4] px-2 py-[2px] text-[12px] font-medium leading-[20px] text-[#505057]">
             {TYPE_LABELS[integration.type] ?? integration.type}
           </span>
         </div>

@@ -80,8 +80,8 @@ function ChainTile({
   return (
     <span
       className={cn(
-        "flex items-center justify-center bg-white shadow-sm ring-1 ring-zinc-200/70",
-        isSmall ? "size-9 rounded-xl" : "size-12 rounded-2xl",
+        "flex items-center justify-center bg-white ring-1 ring-zinc-200/70",
+        isSmall ? "size-9 rounded-lg" : "size-12 rounded-xl",
       )}
     >
       {item.provider ? (
