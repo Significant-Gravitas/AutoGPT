@@ -165,15 +165,12 @@ function MainArea({
             onDroppedFilesConsumed={() => setDroppedFiles([])}
             hasFloatingControls={showNewLayout}
           />
-          {/* Mounted on mobile too: it owns the session-entry reset that
-              forgets the previous chat's artifact, and the chat column's
-              artifacts button is mounted on every viewport. Only the
-              auto-opening is desktop-only. */}
+          {/* Owns the session-entry reset that forgets the previous chat's
+              artifact. */}
           {isArtifactsEnabled && (
             <ContextPanelAutoOpen
               key={`context-auto-open-${sessionId ?? "new"}`}
               sessionId={sessionId}
-              canAutoOpen={!isMobile}
             />
           )}
         </FileDropZone>

@@ -377,11 +377,17 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   });
 }
 
-export function resolveModeChangedMode(dataPart: {
+/**
+ * True when the server reports it moved a turn to a different execution
+ * engine. Nothing displays the engine and nothing can request one — the only
+ * consumer widens its post-finish refetch window, because a switch takes
+ * longer to settle. The named engine is deliberately not returned.
+ */
+export function isEngineSwitchPart(dataPart: {
   type: string;
   data?: unknown;
-}): "extended_thinking" | "fast" | null {
-  if (dataPart.type !== "data-mode-changed") return null;
+}): boolean {
+  if (dataPart.type !== "data-mode-changed") return false;
   const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
-  return mode === "extended_thinking" || mode === "fast" ? mode : null;
+  return mode === "extended_thinking" || mode === "fast";
 }

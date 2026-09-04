@@ -36,6 +36,9 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -150,7 +153,6 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
-    record_graph_execution,
     record_graph_operation,
 )
 from backend.notifications import lifecycle
@@ -1003,7 +1005,11 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
@@ -2113,8 +2119,6 @@ async def execute_graph(
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
         )
-        # Record successful graph execution
-        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
             await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
@@ -2122,10 +2126,6 @@ async def execute_graph(
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
-        # Record failed graph execution
-        record_graph_execution(
-            graph_id=graph_id, status="validation_error", user_id=user_id
-        )
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -2138,8 +2138,6 @@ async def execute_graph(
             },
         )
     except Exception:
-        # Record any other failures
-        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
         record_graph_operation(operation="execute", status="error")
         raise
 
