@@ -9,16 +9,8 @@ import pytest
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPCallResult, MCPClient, MCPClientError
-from backend.blocks.mcp.protocol import MCPProtocolEra, era_cache
+from backend.blocks.mcp.protocol import MCPProtocolEra
 from backend.util.test import execute_block_test
-
-
-@pytest.fixture(autouse=True)
-def _fresh_era_cache():
-    era_cache.clear()
-    yield
-    era_cache.clear()
-
 
 # ── SSE parsing unit tests ───────────────────────────────────────────
 
@@ -469,6 +461,44 @@ class TestMCPToolBlock:
         assert "Tool not found" in outputs[0][1]
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_call_mcp_tool_closes_client_when_call_fails(self):
+        block = MCPToolBlock()
+
+        with (
+            patch.object(MCPClient, "initialize", AsyncMock(return_value={})),
+            patch.object(
+                MCPClient,
+                "call_tool",
+                AsyncMock(side_effect=MCPClientError("boom")),
+            ),
+            patch.object(MCPClient, "close", AsyncMock()) as mock_close,
+        ):
+            with pytest.raises(MCPClientError, match="boom"):
+                await block._call_mcp_tool("https://mcp.example.com", "tool", {})
+
+        mock_close.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_call_mcp_tool_forwards_input_schema(self):
+        block = MCPToolBlock()
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        call_tool = AsyncMock(
+            return_value=MCPCallResult(content=[{"type": "text", "text": "ok"}])
+        )
+
+        with (
+            patch.object(MCPClient, "initialize", AsyncMock(return_value={})),
+            patch.object(MCPClient, "call_tool", call_tool),
+            patch.object(MCPClient, "close", AsyncMock()),
+        ):
+            result = await block._call_mcp_tool(
+                "https://mcp.example.com", "tool", {"x": "1"}, input_schema=schema
+            )
+
+        assert result == "ok"
+        call_tool.assert_awaited_once_with("tool", {"x": "1"}, input_schema=schema)
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_parses_json_text(self):
         block = MCPToolBlock()
 
@@ -482,7 +512,7 @@ class TestMCPToolBlock:
         async def mock_init(self):
             return {}
 
-        async def mock_call(self, name, args):
+        async def mock_call(self, name, args, **kwargs):
             return mock_result
 
         with (
@@ -509,7 +539,7 @@ class TestMCPToolBlock:
         async def mock_init(self):
             return {}
 
-        async def mock_call(self, name, args):
+        async def mock_call(self, name, args, **kwargs):
             return mock_result
 
         with (
@@ -537,7 +567,7 @@ class TestMCPToolBlock:
         async def mock_init(self):
             return {}
 
-        async def mock_call(self, name, args):
+        async def mock_call(self, name, args, **kwargs):
             return mock_result
 
         with (
@@ -562,7 +592,7 @@ class TestMCPToolBlock:
         async def mock_init(self):
             return {}
 
-        async def mock_call(self, name, args):
+        async def mock_call(self, name, args, **kwargs):
             return mock_result
 
         with (
@@ -590,7 +620,7 @@ class TestMCPToolBlock:
         async def mock_init(self):
             return {}
 
-        async def mock_call(self, name, args):
+        async def mock_call(self, name, args, **kwargs):
             return mock_result
 
         with (
@@ -622,7 +652,9 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+        async def mock_call(
+            server_url, tool_name, arguments, auth_token=None, input_schema=None
+        ):
             captured_tokens.append(auth_token)
             return "ok"
 
@@ -655,7 +687,9 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
+        async def mock_call(
+            server_url, tool_name, arguments, auth_token=None, input_schema=None
+        ):
             captured_tokens.append(auth_token)
             return "ok"
 

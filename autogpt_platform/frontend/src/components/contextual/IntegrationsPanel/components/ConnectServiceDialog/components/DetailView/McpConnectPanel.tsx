@@ -85,6 +85,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
       const exchanged = await postV2ExchangeOauthCodeForMcpTokens({
         code: result.code,
         state_token,
+        iss: result.iss,
       });
 
       await invalidateCredentials();

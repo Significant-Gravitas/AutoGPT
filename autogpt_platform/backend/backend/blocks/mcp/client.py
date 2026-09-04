@@ -20,10 +20,12 @@ References:
 
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NoReturn
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.blocks.mcp.protocol import (
+    CLIENT_INFO,
     ERROR_HEADER_MISMATCH,
     ERROR_METHOD_NOT_FOUND,
     ERROR_MISSING_CLIENT_CAPABILITY,
@@ -50,7 +52,7 @@ from backend.blocks.mcp.protocol import (
     name_header_for,
     negotiate_version,
 )
-from backend.util.request import HTTPClientError, HTTPServerError, Requests, Response
+from backend.util.request import HTTPClientError, Requests, Response
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +62,12 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
+# ``Requests`` retries throttled/5xx responses forever unless told otherwise.
+# MCP calls run inside graph executions and chat turns, so keep them bounded.
+_HTTP_RETRY_ATTEMPTS = 3
 
 
-@dataclass
-class MCPTool:
+class MCPTool(BaseModel):
     """Represents an MCP tool discovered from a server."""
 
     name: str
@@ -71,11 +75,10 @@ class MCPTool:
     input_schema: dict[str, Any]
 
 
-@dataclass
-class MCPCallResult:
+class MCPCallResult(BaseModel):
     """Result from calling an MCP tool."""
 
-    content: list[dict[str, Any]] = field(default_factory=list)
+    content: list[dict[str, Any]] = Field(default_factory=list)
     is_error: bool = False
 
 
@@ -85,9 +88,10 @@ class MCPClientError(Exception):
     pass
 
 
-@dataclass
-class _Reply:
+class _Reply(BaseModel):
     """A decoded HTTP reply: status, parsed JSON-RPC body (if any), headers."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     status: int
     body: dict[str, Any] | None
@@ -197,25 +201,10 @@ class MCPClient:
         """
         requests = Requests(
             raise_for_status=False,
-            retry_max_attempts=1,
+            retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
         )
         return await requests.post(self.server_url, json=payload)
-
-    @staticmethod
-    def _raise_for_status(response: Response) -> None:
-        """Mirror ``Requests(raise_for_status=True)`` for statuses we don't handle."""
-        if response.ok or 300 <= response.status < 400:
-            return
-        message = (
-            f"HTTP {response.status} Error: {response.reason}, "
-            f"Body: {response.content.decode(errors='replace')}"
-        )
-        if 400 <= response.status <= 499:
-            raise HTTPClientError(message, response.status)
-        if 500 <= response.status <= 599:
-            raise HTTPServerError(message, response.status)
-        raise Exception(message)
 
     def _decode_reply(self, response: Response, *, strict: bool) -> _Reply:
         """Decode a reply body as JSON or SSE.
@@ -250,7 +239,7 @@ class MCPClient:
         )
 
     @staticmethod
-    def _raise_jsonrpc_error(body: dict[str, Any]) -> None:
+    def _raise_jsonrpc_error(body: dict[str, Any]) -> NoReturn:
         error = body["error"]
         if isinstance(error, dict):
             raise MCPClientError(
@@ -267,17 +256,18 @@ class MCPClient:
         """Legacy request: session header in, ``Mcp-Session-Id`` captured out."""
         payload = self._build_jsonrpc_request(method, params)
         response = await self._post(payload, self._build_headers())
-        self._raise_for_status(response)
+        response.raise_for_status()
 
         session_id = response.headers.get(HEADER_SESSION_ID)
         if session_id:
             self._session_id = session_id
 
-        reply = self._decode_reply(response, strict=True)
-        assert reply.body is not None
-        if "error" in reply.body:
-            self._raise_jsonrpc_error(reply.body)
-        return reply.body.get("result")
+        body = self._decode_reply(response, strict=True).body
+        if body is None:
+            raise MCPClientError("MCP server returned an empty response")
+        if "error" in body:
+            self._raise_jsonrpc_error(body)
+        return body.get("result")
 
     async def _send_notification(self, method: str) -> None:
         """Send a JSON-RPC notification (no id, no response expected)."""
@@ -285,6 +275,7 @@ class MCPClient:
         notification = {"jsonrpc": "2.0", "method": method}
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
         )
         await requests.post(self.server_url, json=notification)
@@ -295,7 +286,7 @@ class MCPClient:
             {
                 "protocolVersion": LEGACY_PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "AutoGPT-Platform", "version": "1.0.0"},
+                "clientInfo": dict(CLIENT_INFO),
             },
         )
         # Send initialized notification (no response expected)
@@ -307,6 +298,14 @@ class MCPClient:
         return result
 
     # ───────────────────────── modern era ─────────────────────────
+
+    @staticmethod
+    def _server_info_from(result: Any) -> dict[str, Any] | None:
+        """``io.modelcontextprotocol/serverInfo`` from a modern result's ``_meta``."""
+        if not isinstance(result, dict):
+            return None
+        server_info = (result.get("_meta") or {}).get(META_SERVER_INFO)
+        return server_info if isinstance(server_info, dict) else None
 
     def _modern_headers(
         self, method: str, params: dict[str, Any] | None, protocol_version: str
@@ -365,7 +364,12 @@ class MCPClient:
         if code == ERROR_UNSUPPORTED_PROTOCOL_VERSION and not _retried_version:
             self._adopt_negotiated_version(reply)
             self._remember_era()
-            return await self._send_modern(method, params, _retried_version=True)
+            return await self._send_modern(
+                method,
+                params,
+                _retried_version=True,
+                _retried_headers=_retried_headers,
+            )
 
         if (
             code == ERROR_HEADER_MISMATCH
@@ -376,7 +380,12 @@ class MCPClient:
             # The server's tool definition may have gained ``x-mcp-header``
             # annotations since we last listed tools: refresh and retry once.
             await self._refresh_header_params()
-            return await self._send_modern(method, params, _retried_headers=True)
+            return await self._send_modern(
+                method,
+                params,
+                _retried_version=_retried_version,
+                _retried_headers=True,
+            )
 
         if code == ERROR_MISSING_CLIENT_CAPABILITY:
             raise MCPClientError(
@@ -391,7 +400,7 @@ class MCPClient:
         if not reply.response.ok:
             if reply.body and "error" in reply.body:
                 self._raise_jsonrpc_error(reply.body)
-            self._raise_for_status(reply.response)
+            reply.response.raise_for_status()
 
         if reply.body is None:
             # 2xx without a usable JSON-RPC body: surface the same errors the
@@ -408,10 +417,9 @@ class MCPClient:
             raise MCPClientError(
                 f"MCP server returned unrecognized resultType {result_type!r}"
             )
-        if isinstance(result, dict):
-            server_info = (result.get("_meta") or {}).get(META_SERVER_INFO)
-            if isinstance(server_info, dict):
-                self.server_info = server_info
+        server_info = self._server_info_from(result)
+        if server_info is not None:
+            self.server_info = server_info
         return result
 
     async def _refresh_header_params(self) -> None:
@@ -432,7 +440,7 @@ class MCPClient:
         init = dict(result)
         init["protocolVersion"] = version
         init.setdefault("capabilities", {})
-        init["serverInfo"] = (result.get("_meta") or {}).get(META_SERVER_INFO) or {}
+        init["serverInfo"] = MCPClient._server_info_from(result) or {}
         return init
 
     # ───────────────────────── era detection ─────────────────────────
@@ -440,8 +448,23 @@ class MCPClient:
     def _remember_era(self) -> None:
         if self.era is not None and self.protocol_version:
             era_cache.set(
-                self.server_url, MCPServerProtocol(self.era, self.protocol_version)
+                self.server_url,
+                MCPServerProtocol(era=self.era, protocol_version=self.protocol_version),
             )
+
+    def _forget_era(self) -> None:
+        """Drop a cached era assumption that just failed, before re-probing."""
+        era_cache.forget(self.server_url)
+        self.era = None
+        self.protocol_version = None
+        self._session_id = None
+
+    @staticmethod
+    def _is_credential_or_rate_error(error: Exception) -> bool:
+        return (
+            isinstance(error, HTTPClientError)
+            and error.status_code in _NO_FALLBACK_STATUSES
+        )
 
     async def _probe_modern(self) -> dict[str, Any] | None:
         """Send ``server/discover`` and classify the server's era.
@@ -462,7 +485,7 @@ class MCPClient:
                 )
 
         if reply.status in _NO_FALLBACK_STATUSES or reply.status >= 500:
-            self._raise_for_status(reply.response)
+            reply.response.raise_for_status()
 
         if reply.response.ok:
             result = reply.result
@@ -513,28 +536,26 @@ class MCPClient:
             self._remember_era()
             return result
 
+        # A cached era is an assumption.  If the matching handshake is rejected
+        # for a protocol-shaped reason (the server rolled back or upgraded),
+        # drop it and probe once from scratch.  Credential and rate-limit
+        # errors say nothing about the era and propagate unchanged.
         if self.era is MCPProtocolEra.MODERN:
             try:
                 result = await self._send_modern("server/discover")
-            except MCPClientError:
-                # Cached assumption failed (e.g. server rolled back): re-probe.
-                era_cache.forget(self.server_url)
-                self.era = None
-                self.protocol_version = None
+            except (MCPClientError, HTTPClientError) as e:
+                if self._is_credential_or_rate_error(e):
+                    raise
+                self._forget_era()
                 return await self.initialize()
             return self._finish_modern_init(result if isinstance(result, dict) else {})
 
         try:
             result = await self._legacy_initialize()
-        except HTTPClientError as e:
-            if e.status_code in _NO_FALLBACK_STATUSES:
+        except (MCPClientError, HTTPClientError) as e:
+            if self._is_credential_or_rate_error(e):
                 raise
-            # Cached as legacy but the handshake was rejected: the server may
-            # have upgraded to modern-only.  Re-probe once from scratch.
-            era_cache.forget(self.server_url)
-            self.era = None
-            self.protocol_version = None
-            self._session_id = None
+            self._forget_era()
             return await self.initialize()
         self._remember_era()
         return result
@@ -543,8 +564,8 @@ class MCPClient:
         version = self.protocol_version or MODERN_PROTOCOL_VERSION
         self.protocol_version = version
         self.server_capabilities = result.get("capabilities") or {}
-        server_info = (result.get("_meta") or {}).get(META_SERVER_INFO)
-        if isinstance(server_info, dict):
+        server_info = self._server_info_from(result)
+        if server_info is not None:
             self.server_info = server_info
         return self._discover_result_to_init(result, version)
 
@@ -658,7 +679,11 @@ class MCPClient:
             return
         try:
             headers = self._build_headers()
-            requests = Requests(raise_for_status=False, extra_headers=headers)
+            requests = Requests(
+                raise_for_status=False,
+                retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+                extra_headers=headers,
+            )
             await requests.delete(self.server_url)
         except Exception:
             pass
@@ -702,6 +727,20 @@ class MCPClient:
             )
         return tools
 
+    @staticmethod
+    def _header_params_from_schema(
+        tool_name: str, input_schema: dict[str, Any]
+    ) -> list[HeaderParam]:
+        try:
+            return collect_header_params(input_schema)
+        except InvalidHeaderAnnotation as e:
+            # The same rule that drops the tool from ``list_tools``: a
+            # spec-violating annotation makes the tool uncallable.
+            raise MCPClientError(
+                f"MCP tool '{tool_name}' has an invalid x-mcp-header "
+                f"annotation and cannot be called: {e}"
+            ) from e
+
     async def call_tool(
         self,
         tool_name: str,
@@ -723,10 +762,12 @@ class MCPClient:
             MCPCallResult with the tool's response content.
         """
         if input_schema is not None and tool_name not in self._header_params:
-            try:
-                self._header_params[tool_name] = collect_header_params(input_schema)
-            except InvalidHeaderAnnotation:
-                self._header_params[tool_name] = []
+            if self.era is None:
+                await self.initialize()
+            if self.era is MCPProtocolEra.MODERN:
+                self._header_params[tool_name] = self._header_params_from_schema(
+                    tool_name, input_schema
+                )
 
         params: dict[str, Any] = {"name": tool_name, "arguments": arguments}
         result = await self._send_request("tools/call", params)
@@ -734,32 +775,33 @@ class MCPClient:
         # Multi Round-Trip Requests: a modern server may hand back an interim
         # result.  We declare no elicitation/sampling/roots capability, so a
         # compliant server only ever asks us to echo ``requestState``.
-        for _ in range(_MAX_INPUT_REQUIRED_RETRIES):
-            if not (
-                isinstance(result, dict)
-                and result.get("resultType") == RESULT_TYPE_INPUT_REQUIRED
-            ):
-                break
+        round_trips = 0
+        while (
+            isinstance(result, dict)
+            and result.get("resultType") == RESULT_TYPE_INPUT_REQUIRED
+        ):
             if result.get("inputRequests"):
                 raise MCPClientError(
                     f"MCP tool '{tool_name}' requires interactive input "
                     "(elicitation/sampling) mid-execution, which is not "
                     "supported yet"
                 )
+            if round_trips >= _MAX_INPUT_REQUIRED_RETRIES:
+                raise MCPClientError(
+                    f"MCP tool '{tool_name}' kept requesting more input after "
+                    f"{_MAX_INPUT_REQUIRED_RETRIES} extra round-trips; the "
+                    "server may already have applied its side effects"
+                )
+            round_trips += 1
             retry_params = dict(params)
             if "requestState" in result:
                 retry_params["requestState"] = result["requestState"]
             result = await self._send_request("tools/call", retry_params)
-        else:
-            raise MCPClientError(
-                f"MCP tool '{tool_name}' kept requesting more input after "
-                f"{_MAX_INPUT_REQUIRED_RETRIES} attempts"
-            )
 
         if not result:
             return MCPCallResult(is_error=True)
 
         return MCPCallResult(
-            content=result.get("content", []),
-            is_error=result.get("isError", False),
+            content=result.get("content") or [],
+            is_error=bool(result.get("isError", False)),
         )

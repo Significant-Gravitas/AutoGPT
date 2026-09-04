@@ -21,7 +21,7 @@ from backend.blocks.mcp.protocol import (
     MCPProtocolEra,
     era_cache,
 )
-from backend.blocks.mcp.test_server import create_test_mcp_app
+from backend.blocks.mcp.test_server import MODERN_EXTRA_TOOLS, create_test_mcp_app
 from backend.data.model import OAuth2Credentials
 
 MOCK_USER_ID = "test-user-integration"
@@ -415,13 +415,6 @@ class TestMCPToolBlockIntegration:
 # ── Protocol-era integration tests ───────────────────────────────────
 
 
-@pytest.fixture(autouse=True)
-def _fresh_era_cache():
-    era_cache.clear()
-    yield
-    era_cache.clear()
-
-
 def _server(**kwargs) -> _MCPTestServer:
     server = _MCPTestServer(**kwargs)
     server.start()
@@ -468,6 +461,7 @@ class TestProtocolEras:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_modern_server_is_used_statelessly(self, modern_server):
+        before = len(modern_server.requests)
         client = _make_client(modern_server.url)
         result = await client.initialize()
 
@@ -492,10 +486,11 @@ class TestProtocolEras:
         assert not result.is_error
         assert json.loads(result.content[0]["text"])["city"] == "Oslo"
 
-        methods = [r["method"] for r in modern_server.requests]
+        requests = modern_server.requests[before:]
+        methods = [r["method"] for r in requests]
         assert "initialize" not in methods
         assert "notifications/initialized" not in methods
-        call = next(r for r in modern_server.requests if r["method"] == "tools/call")
+        call = next(r for r in requests if r["method"] == "tools/call")
         assert call["headers"]["Mcp-Method"] == "tools/call"
         assert call["headers"]["Mcp-Name"] == "get_weather"
         assert call["headers"]["MCP-Protocol-Version"] == MODERN_PROTOCOL_VERSION
@@ -519,12 +514,13 @@ class TestProtocolEras:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_legacy_fallback_from_plain_400(self, session_legacy_server):
+        before = len(session_legacy_server.requests)
         client = _make_client(session_legacy_server.url)
         await client.initialize()
         assert client.era is MCPProtocolEra.LEGACY
         tools = await client.list_tools()
         assert len(tools) == 3
-        methods = [r["method"] for r in session_legacy_server.requests]
+        methods = [r["method"] for r in session_legacy_server.requests[before:]]
         assert methods[:2] == ["server/discover", "initialize"]
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -568,12 +564,33 @@ class TestProtocolEras:
         client = _make_client(modern_server.url)
         await client.initialize()
         await client.list_tools()
+        before = len(modern_server.requests)
         result = await client.call_tool(
             "execute_sql", {"region": "eu-west", "query": "select 1"}
         )
         assert not result.is_error
-        call = [r for r in modern_server.requests if r["method"] == "tools/call"][-1]
-        assert call["headers"]["Mcp-Param-Region"] == "eu-west"
+        calls = [
+            r for r in modern_server.requests[before:] if r["method"] == "tools/call"
+        ]
+        assert len(calls) == 1
+        assert calls[0]["headers"]["Mcp-Param-Region"] == "eu-west"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_known_schema_avoids_header_mismatch_round_trip(self, modern_server):
+        client = _make_client(modern_server.url)
+        await client.initialize()
+        schema = next(
+            t["inputSchema"] for t in MODERN_EXTRA_TOOLS if t["name"] == "execute_sql"
+        )
+        before = len(modern_server.requests)
+        result = await client.call_tool(
+            "execute_sql",
+            {"region": "us-east", "query": "select 1"},
+            input_schema=schema,
+        )
+        assert not result.is_error
+        methods = [r["method"] for r in modern_server.requests[before:]]
+        assert methods == ["tools/call"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_header_mismatch_recovers_without_prior_list(self, modern_server):

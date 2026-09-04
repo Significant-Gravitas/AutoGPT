@@ -361,6 +361,25 @@ class Response:
     def ok(self) -> bool:
         return 200 <= self.status < 300
 
+    def raise_for_status(self) -> None:
+        """Raise the same error ``Requests(raise_for_status=True)`` would have.
+
+        For callers that need to inspect an error body before deciding what a
+        status means, and only then want the standard exception.
+        """
+        if self.status >= 400:
+            raise http_status_error(self.status, self.reason, self.content)
+
+
+def http_status_error(status: int, reason: str | None, body: bytes) -> Exception:
+    """Build the exception ``Requests`` raises for an HTTP error status."""
+    message = f"HTTP {status} Error: {reason}, Body: {body.decode(errors='replace')}"
+    if 400 <= status <= 499:
+        return HTTPClientError(message, status)
+    if 500 <= status <= 599:
+        return HTTPServerError(message, status)
+    return Exception(message)
+
 
 def _return_last_result(retry_state: RetryCallState) -> "Response":
     """
@@ -550,16 +569,9 @@ class Requests:
                         response.raise_for_status()
                     except ClientResponseError as e:
                         body = await response.read()
-                        error_message = f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
-
-                        # Raise specific exceptions based on status code range
-                        if 400 <= response.status <= 499:
-                            raise HTTPClientError(error_message, response.status) from e
-                        elif 500 <= response.status <= 599:
-                            raise HTTPServerError(error_message, response.status) from e
-                        else:
-                            # Generic fallback for other HTTP errors
-                            raise Exception(error_message) from e
+                        raise http_status_error(
+                            response.status, response.reason, body
+                        ) from e
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):

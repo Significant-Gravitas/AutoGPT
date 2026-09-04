@@ -40,18 +40,19 @@ export async function GET(request: Request) {
   <body style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f9fafb;">
     <div style="text-align: center; max-width: 400px; padding: 2rem;">
       <div id="spinner" style="margin: 0 auto 1rem; width: 32px; height: 32px; border: 3px solid #e5e7eb; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
-      <p id="status" style="color: #374151; font-size: 16px;">Completing sign-in...</p>
+      <p id="status" role="status" aria-live="polite" style="color: #374151; font-size: 16px;">Completing sign-in...</p>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     <script>
       (function() {
         var msg = ${safeJsonStringify(message)};
+        var payload = { message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, iss: msg.iss, message: msg.message };
         var sent = false;
 
         // Method 1: BroadcastChannel (reliable across tabs/popups, no opener needed)
         try {
           var bc = new BroadcastChannel("oauth_popup");
-          bc.postMessage({ message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, iss: msg.iss, message: msg.message });
+          bc.postMessage(payload);
           bc.close();
           sent = true;
         } catch(e) { /* BroadcastChannel not supported */ }
@@ -59,10 +60,7 @@ export async function GET(request: Request) {
         // Method 2: window.opener.postMessage (fallback for same-origin popups)
         try {
           if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(
-              { message_type: "mcp_oauth_result", success: msg.success, code: msg.code, state: msg.state, iss: msg.iss, message: msg.message },
-              window.location.origin
-            );
+            window.opener.postMessage(payload, window.location.origin);
             sent = true;
           }
         } catch(e) { /* opener not available (COOP) */ }
@@ -72,7 +70,7 @@ export async function GET(request: Request) {
         // for a single shared slot (poller destructively reads its own key).
         try {
           if (msg.state) {
-            localStorage.setItem("oauth_popup_result_" + msg.state, JSON.stringify({ message_type: "mcp_oauth_result", ...msg }));
+            localStorage.setItem("oauth_popup_result_" + msg.state, JSON.stringify(payload));
             sent = true;
           }
         } catch(e) { /* localStorage not available */ }

@@ -175,11 +175,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       const mcpProvider = allProviders?.["mcp"];
       if (mcpProvider) {
-        await mcpProvider.mcpOAuthCallback(result.code, state_token);
+        await mcpProvider.mcpOAuthCallback(
+          result.code,
+          state_token,
+          result.iss,
+        );
       } else {
         const cbRes = await postV2ExchangeOauthCodeForMcpTokens({
           code: result.code,
           state_token,
+          iss: result.iss,
         });
         if (!(cbRes.status >= 200 && cbRes.status < 300)) {
           const d =

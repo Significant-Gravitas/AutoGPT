@@ -42,16 +42,9 @@ from backend.blocks.mcp.protocol import (
     name_header_for,
     negotiate_version,
 )
-from backend.util.request import HTTPClientError, HTTPServerError
+from backend.util.request import HTTPClientError, HTTPServerError, Response
 
 SERVER_URL = "https://mcp.example.com/mcp"
-
-
-@pytest.fixture(autouse=True)
-def _fresh_era_cache():
-    era_cache.clear()
-    yield
-    era_cache.clear()
 
 
 # ───────────────────────── header encoding ─────────────────────────
@@ -130,18 +123,26 @@ class TestHeaderParams:
         }
         params = collect_header_params(schema)
         assert params == [
-            HeaderParam(("region",), "Region", "string"),
-            HeaderParam(("opts", "retries"), "Retries", "integer"),
-            HeaderParam(("opts", "dry"), "Dry-Run", "boolean"),
+            HeaderParam(path=("region",), header_name="Region", json_type="string"),
+            HeaderParam(
+                path=("opts", "retries"), header_name="Retries", json_type="integer"
+            ),
+            HeaderParam(
+                path=("opts", "dry"), header_name="Dry-Run", json_type="boolean"
+            ),
         ]
 
     def test_extract_formats_and_omits_missing(self):
         params = [
-            HeaderParam(("region",), "Region", "string"),
-            HeaderParam(("opts", "retries"), "Retries", "integer"),
-            HeaderParam(("opts", "dry"), "Dry-Run", "boolean"),
-            HeaderParam(("absent",), "Absent", "string"),
-            HeaderParam(("nul",), "Nul", "string"),
+            HeaderParam(path=("region",), header_name="Region", json_type="string"),
+            HeaderParam(
+                path=("opts", "retries"), header_name="Retries", json_type="integer"
+            ),
+            HeaderParam(
+                path=("opts", "dry"), header_name="Dry-Run", json_type="boolean"
+            ),
+            HeaderParam(path=("absent",), header_name="Absent", json_type="string"),
+            HeaderParam(path=("nul",), header_name="Nul", json_type="string"),
         ]
         headers = extract_header_params(
             params,
@@ -154,7 +155,9 @@ class TestHeaderParams:
         }
 
     def test_extract_encodes_unsafe_values(self):
-        params = [HeaderParam(("greeting",), "Greeting", "string")]
+        params = [
+            HeaderParam(path=("greeting",), header_name="Greeting", json_type="string")
+        ]
         headers = extract_header_params(params, {"greeting": "Hello, 世界"})
         assert headers["Mcp-Param-Greeting"] == "=?base64?SGVsbG8sIOS4lueVjA==?="
 
@@ -203,7 +206,9 @@ class TestHeaderParams:
 class TestEraCache:
     def test_set_get_forget(self):
         cache = MCPServerEraCache(ttl_seconds=60)
-        value = MCPServerProtocol(MCPProtocolEra.MODERN, MODERN_PROTOCOL_VERSION)
+        value = MCPServerProtocol(
+            era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
+        )
         assert cache.get(SERVER_URL) is None
         cache.set(SERVER_URL, value)
         assert cache.get(SERVER_URL) == value
@@ -214,16 +219,35 @@ class TestEraCache:
         cache = MCPServerEraCache(ttl_seconds=0)
         cache.set(
             SERVER_URL,
-            MCPServerProtocol(MCPProtocolEra.LEGACY, LEGACY_PROTOCOL_VERSION),
+            MCPServerProtocol(
+                era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+            ),
         )
         assert cache.get(SERVER_URL) is None
+
+    def test_least_recently_used_entry_is_evicted(self):
+        cache = MCPServerEraCache(ttl_seconds=60, max_entries=2)
+        legacy = MCPServerProtocol(
+            era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+        )
+        cache.set("https://a.example/mcp", legacy)
+        cache.set("https://b.example/mcp", legacy)
+        # Touching ``a`` makes ``b`` the oldest entry.
+        assert cache.get("https://a.example/mcp") is legacy
+        cache.set("https://c.example/mcp", legacy)
+        assert len(cache) == 2
+        assert cache.get("https://b.example/mcp") is None
+        assert cache.get("https://a.example/mcp") is legacy
+        assert cache.get("https://c.example/mcp") is legacy
 
 
 # ───────────────────────── fake transport ─────────────────────────
 
 
-class _FakeResponse:
-    def __init__(
+class _FakeResponse(Response):
+    """A canned ``Response``; decoding and status handling are inherited."""
+
+    def __init__(  # pyright: ignore[reportMissingSuperCall]
         self,
         status: int,
         body: Any = None,
@@ -233,24 +257,15 @@ class _FakeResponse:
     ):
         self.status = status
         self.reason = "reason"
-        self.headers = {"content-type": "application/json"}
+        self.headers = {"content-type": "application/json"}  # type: ignore[assignment]
         self.headers.update(headers or {})
+        self.url = SERVER_URL
         if text is not None:
             self.content = text.encode()
         elif body is None:
             self.content = b""
         else:
             self.content = json.dumps(body).encode()
-
-    @property
-    def ok(self) -> bool:
-        return 200 <= self.status < 300
-
-    def json(self):
-        return json.loads(self.content.decode())
-
-    def text(self):
-        return self.content.decode()
 
 
 def _rpc_result(result: Any, request_id: int = 1) -> dict[str, Any]:
@@ -290,6 +305,8 @@ class _Transport:
         queue = self.script.get(payload["method"])
         if not queue:
             raise AssertionError(f"unexpected request {payload['method']}")
+        # Replies are consumed in order; the last one is sticky and answers
+        # every further request, so a one-entry script is "always reply X".
         return queue.pop(0) if len(queue) > 1 else queue[0]
 
     def methods(self) -> list[str]:
@@ -335,7 +352,7 @@ class TestEraDetection:
         assert HEADER_SESSION_ID not in headers
         cached = era_cache.get(SERVER_URL)
         assert cached == MCPServerProtocol(
-            MCPProtocolEra.MODERN, MODERN_PROTOCOL_VERSION
+            era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
         )
 
     async def test_legacy_server_answering_method_not_found(self):
@@ -378,7 +395,7 @@ class TestEraDetection:
         await client.initialize()
         assert client.era is MCPProtocolEra.LEGACY
         assert era_cache.get(SERVER_URL) == MCPServerProtocol(
-            MCPProtocolEra.LEGACY, LEGACY_PROTOCOL_VERSION
+            era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
         )
 
     @pytest.mark.parametrize("status", [404, 405, 406, 415])
@@ -444,7 +461,7 @@ class TestEraDetection:
         with pytest.raises(MCPClientError, match="does not support any protocol"):
             await client.initialize()
 
-    @pytest.mark.parametrize("status", [401, 403])
+    @pytest.mark.parametrize("status", [401, 403, 407, 429])
     async def test_auth_failures_propagate_without_fallback(self, status: int):
         transport = _Transport({"server/discover": [_FakeResponse(status)]})
         client = _client(transport, auth_token="bad")
@@ -463,7 +480,9 @@ class TestEraDetection:
     async def test_cached_legacy_skips_modern_probe(self):
         era_cache.set(
             SERVER_URL,
-            MCPServerProtocol(MCPProtocolEra.LEGACY, LEGACY_PROTOCOL_VERSION),
+            MCPServerProtocol(
+                era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+            ),
         )
         transport = _Transport(
             {"initialize": [_FakeResponse(200, _rpc_result(LEGACY_INIT_RESULT))]}
@@ -476,7 +495,9 @@ class TestEraDetection:
         """A server that upgraded to modern-only rejects initialize; re-detect."""
         era_cache.set(
             SERVER_URL,
-            MCPServerProtocol(MCPProtocolEra.LEGACY, LEGACY_PROTOCOL_VERSION),
+            MCPServerProtocol(
+                era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+            ),
         )
         transport = _Transport(
             {
@@ -492,7 +513,9 @@ class TestEraDetection:
     async def test_cached_modern_reprobes_when_discover_fails(self):
         era_cache.set(
             SERVER_URL,
-            MCPServerProtocol(MCPProtocolEra.MODERN, MODERN_PROTOCOL_VERSION),
+            MCPServerProtocol(
+                era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
+            ),
         )
         transport = _Transport(
             {
@@ -506,6 +529,81 @@ class TestEraDetection:
         client = _client(transport)
         await client.initialize()
         assert client.era is MCPProtocolEra.LEGACY
+
+    async def test_cached_modern_reprobes_after_plain_400(self):
+        """A rolled-back server answers server/discover with a bare 400."""
+        era_cache.set(
+            SERVER_URL,
+            MCPServerProtocol(
+                era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
+            ),
+        )
+        transport = _Transport(
+            {
+                "server/discover": [
+                    _FakeResponse(400, text="Bad Request: Missing session ID"),
+                    _FakeResponse(400, text="Bad Request: Missing session ID"),
+                ],
+                "initialize": [_FakeResponse(200, _rpc_result(LEGACY_INIT_RESULT))],
+            }
+        )
+        client = _client(transport)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.LEGACY
+        cached = era_cache.get(SERVER_URL)
+        assert cached is not None and cached.era is MCPProtocolEra.LEGACY
+        assert transport.methods() == [
+            "server/discover",
+            "server/discover",
+            "initialize",
+        ]
+
+    @pytest.mark.parametrize("status", [401, 403, 407, 429])
+    async def test_cached_modern_keeps_cache_on_credential_errors(self, status):
+        cached = MCPServerProtocol(
+            era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
+        )
+        era_cache.set(SERVER_URL, cached)
+        transport = _Transport({"server/discover": [_FakeResponse(status)]})
+        client = _client(transport, auth_token="stale")
+        with pytest.raises(HTTPClientError) as exc:
+            await client.initialize()
+        assert exc.value.status_code == status
+        assert transport.methods() == ["server/discover"]
+        assert era_cache.get(SERVER_URL) == cached
+
+    async def test_cached_legacy_reprobes_after_jsonrpc_error(self):
+        """A 200 carrying a JSON-RPC error on initialize also re-detects."""
+        era_cache.set(
+            SERVER_URL,
+            MCPServerProtocol(
+                era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+            ),
+        )
+        transport = _Transport(
+            {
+                "initialize": [_FakeResponse(200, _rpc_error(ERROR_METHOD_NOT_FOUND))],
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+            }
+        )
+        client = _client(transport)
+        await client.initialize()
+        assert client.era is MCPProtocolEra.MODERN
+        assert transport.methods() == ["initialize", "server/discover"]
+
+    @pytest.mark.parametrize("status", [401, 403, 407, 429])
+    async def test_cached_legacy_keeps_cache_on_credential_errors(self, status):
+        cached = MCPServerProtocol(
+            era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+        )
+        era_cache.set(SERVER_URL, cached)
+        transport = _Transport({"initialize": [_FakeResponse(status)]})
+        client = _client(transport, auth_token="stale")
+        with pytest.raises(HTTPClientError) as exc:
+            await client.initialize()
+        assert exc.value.status_code == status
+        assert transport.methods() == ["initialize"]
+        assert era_cache.get(SERVER_URL) == cached
 
     async def test_send_request_detects_era_lazily(self):
         transport = _Transport(
@@ -804,6 +902,7 @@ class TestModernRequests:
             await client.call_tool("ask", {})
 
     async def test_input_required_loop_is_bounded(self):
+        # One sticky reply: the server asks for another round-trip forever.
         client, transport = _modern_client(
             {
                 "tools/call": [
@@ -820,6 +919,59 @@ class TestModernRequests:
         with pytest.raises(MCPClientError, match="kept requesting more input"):
             await client.call_tool("loop", {})
         assert transport.methods().count("tools/call") == 4
+
+    async def test_input_required_completes_on_last_permitted_round_trip(self):
+        """The reply to the final retry is inspected, not discarded."""
+        interim = _FakeResponse(
+            200,
+            _rpc_result({"resultType": "input_required", "requestState": "again"}),
+        )
+        final = _FakeResponse(
+            200, _rpc_result({"content": [{"type": "text", "text": "DONE"}]})
+        )
+        client, transport = _modern_client({"tools/call": [interim] * 3 + [final]})
+        await client.initialize()
+        result = await client.call_tool("slow", {})
+        assert not result.is_error
+        assert result.content == [{"type": "text", "text": "DONE"}]
+        assert transport.methods().count("tools/call") == 4
+
+    async def test_call_tool_rejects_invalid_annotation_in_known_schema(self):
+        client, transport = _modern_client(
+            {"tools/call": [_FakeResponse(200, _rpc_result({"content": []}))]}
+        )
+        await client.initialize()
+        schema = {
+            "type": "object",
+            "properties": {"tags": {"type": "array", "x-mcp-header": "Tags"}},
+        }
+        with pytest.raises(MCPClientError, match="invalid x-mcp-header"):
+            await client.call_tool("tagged", {"tags": []}, input_schema=schema)
+        assert "tools/call" not in transport.methods()
+
+    async def test_alternating_version_and_header_errors_terminate(self):
+        """Each retry kind happens at most once, whatever order they arrive in."""
+        client, transport = _modern_client(
+            {
+                "tools/list": [_FakeResponse(200, _rpc_result({"tools": []}))],
+                "tools/call": [
+                    _FakeResponse(400, _rpc_error(ERROR_HEADER_MISMATCH)),
+                    _FakeResponse(
+                        400,
+                        _rpc_error(
+                            ERROR_UNSUPPORTED_PROTOCOL_VERSION,
+                            data={"supported": [MODERN_PROTOCOL_VERSION]},
+                        ),
+                    ),
+                    _FakeResponse(400, _rpc_error(ERROR_HEADER_MISMATCH)),
+                ],
+            }
+        )
+        await client.initialize()
+        with pytest.raises(MCPClientError, match=str(ERROR_HEADER_MISMATCH)):
+            await client.call_tool("t", {})
+        assert transport.methods().count("tools/call") == 3
+        assert transport.methods().count("tools/list") == 1
 
     async def test_missing_capability_error(self):
         client, _ = _modern_client(

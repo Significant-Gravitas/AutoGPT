@@ -21,9 +21,11 @@ import binascii
 import re
 import threading
 import time
-from dataclasses import dataclass
+from collections import OrderedDict
 from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 LEGACY_PROTOCOL_VERSION = "2025-03-26"
 MODERN_PROTOCOL_VERSION = "2026-07-28"
@@ -82,9 +84,10 @@ class MCPProtocolEra(str, Enum):
 # ────────────────────────────── era cache ──────────────────────────────
 
 
-@dataclass(frozen=True)
-class MCPServerProtocol:
+class MCPServerProtocol(BaseModel):
     """What we last learned about a server: its era and negotiated version."""
+
+    model_config = ConfigDict(frozen=True)
 
     era: MCPProtocolEra
     protocol_version: str
@@ -99,13 +102,20 @@ class MCPServerEraCache:
     callers drop an entry as soon as its assumption fails.
 
     In-memory and per process on purpose: the cost of a miss is one extra
-    round-trip, which is not worth a cross-process dependency.
+    round-trip, which is not worth a cross-process dependency.  Keys are
+    user-supplied URLs, so the cache is bounded: once full, the least
+    recently used entry is evicted.
     """
 
-    def __init__(self, ttl_seconds: float = 3600.0):
+    def __init__(self, ttl_seconds: float = 3600.0, max_entries: int = 1024):
         self.ttl_seconds = ttl_seconds
-        self._entries: dict[str, tuple[MCPServerProtocol, float]] = {}
+        self.max_entries = max_entries
+        self._entries: OrderedDict[str, tuple[MCPServerProtocol, float]] = OrderedDict()
         self._lock = threading.Lock()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._entries)
 
     def get(self, server_url: str) -> MCPServerProtocol | None:
         with self._lock:
@@ -116,11 +126,15 @@ class MCPServerEraCache:
             if expires_at <= time.monotonic():
                 del self._entries[server_url]
                 return None
+            self._entries.move_to_end(server_url)
             return value
 
     def set(self, server_url: str, value: MCPServerProtocol) -> None:
         with self._lock:
             self._entries[server_url] = (value, time.monotonic() + self.ttl_seconds)
+            self._entries.move_to_end(server_url)
+            while len(self._entries) > self.max_entries:
+                self._entries.popitem(last=False)
 
     def forget(self, server_url: str) -> None:
         with self._lock:
@@ -245,9 +259,10 @@ _SCHEMA_ARRAY_OR_COMPOSITION_KEYS = (
 )
 
 
-@dataclass(frozen=True)
-class HeaderParam:
+class HeaderParam(BaseModel):
     """A tool parameter the server asked us to mirror into a header."""
+
+    model_config = ConfigDict(frozen=True)
 
     path: tuple[str, ...]
     header_name: str
@@ -273,7 +288,9 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
         annotation = schema.get(_HEADER_PARAM_PROPERTY)
         if annotation is not None and path:
             _validate_annotation(annotation, schema, path, seen_names)
-            found.append(HeaderParam(path, annotation, schema["type"]))
+            found.append(
+                HeaderParam(path=path, header_name=annotation, json_type=schema["type"])
+            )
         properties = schema.get("properties")
         if isinstance(properties, dict):
             for key, sub in properties.items():

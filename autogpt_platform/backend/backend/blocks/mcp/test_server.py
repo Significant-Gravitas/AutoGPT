@@ -18,6 +18,7 @@ is exercised against real HTTP:
 import json
 import logging
 import uuid
+from typing import Literal
 
 from aiohttp import web
 
@@ -411,7 +412,7 @@ async def handle_mcp_delete(request: web.Request) -> web.Response:
 
 def create_test_mcp_app(
     auth_token: str | None = None,
-    era: str = "legacy",
+    era: Literal["legacy", "modern", "dual"] = "legacy",
     *,
     sse: bool = False,
     sessions: bool = False,
@@ -428,8 +429,6 @@ def create_test_mcp_app(
             ``400`` like the reference SDKs.
         supported_versions: (modern) protocol versions advertised/accepted.
     """
-    if era not in ("legacy", "modern", "dual"):
-        raise ValueError(f"unknown era {era!r}")
     app = web.Application()
     app.router.add_post("/mcp", handle_mcp_request)
     app.router.add_delete("/mcp", handle_mcp_delete)
