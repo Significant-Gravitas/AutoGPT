@@ -8,8 +8,6 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.util.feature_flag import Flag, is_feature_enabled
-
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
 # template).  These are cross-tool rules (file sharing, @@agptfile: refs,
@@ -663,68 +661,6 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
-"""
-
-
-async def autopilot_delegation_active(user_id: str | None, origin: str | None) -> bool:
-    """Whether this turn both receives the delegation rules and is held to them.
-
-    One predicate for the instruction and its enforcement: a turn told nothing
-    about single-use subs must not be refused for resuming one.
-
-    Only a human-driven turn qualifies, which bounds delegation to one level:
-    every sub is opened ``origin="automation"``. Unknown origin counts as
-    automation, the call :func:`child_session_origin` makes.
-    """
-    if not user_id or origin != "interactive":
-        return False
-    return await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False)
-
-
-async def build_autopilot_delegation_supplement(
-    user_id: str | None, origin: str | None
-) -> str:
-    """The delegation rules, or ``""`` when this turn must not delegate."""
-    if not await autopilot_delegation_active(user_id, origin):
-        return ""
-    return _autopilot_delegation_rules()
-
-
-def _autopilot_delegation_rules() -> str:
-    """The rules themselves. Private: calling it directly bypasses the flag
-    and the origin guard, which is the whole no-op-when-off guarantee.
-
-    Keep the explicit prohibition on doing the work in this transcript — that
-    is what induces delegation. Wordings without it measured 0/25.
-    """
-    return """
-
-### Delegating execution to a sub-AutoPilot
-Your context is the scarcest resource you have: it holds the goal, the plan
-and every decision you have made, and it has to stay readable for the whole
-task.
-
-So delegate the concrete work. Hand each unit of it to `run_sub_session`:
-searching for blocks, reading schemas, building and validating a graph,
-working through a file, fixing what a validation reported. The sub has the
-same tools and its own context; you get back its summary, and the bulk of
-what it read never enters yours.
-
-- **Give the sub what it needs to finish.** It cannot see this conversation.
-  Say what to achieve, what "done" looks like, and any decision you have
-  already made that it would otherwise have to guess.
-- **One sub per unit of work.** Each `run_sub_session` call starts a fresh
-  sub. Do not try to continue a previous one — a sub that accumulates across
-  several tasks re-creates the very problem this avoids. Durable state
-  belongs in the graph, in workspace files, or in memory, not in a sub's
-  transcript. (`get_sub_session_result` to poll a sub that is *still running*
-  is a different thing and is fine.)
-- **You still own the outcome.** A sub that returns blocked or partial is
-  your next step, not your final answer: decide what changes and dispatch a
-  new one.
-- **Reach for a tool yourself only when delegating is plainly wasteful** —
-  a single cheap check whose result is small. Anything whose result could be
-  large goes to a sub.
 """
 
 

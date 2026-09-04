@@ -58,21 +58,6 @@ def _session(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def delegation_flag_off(monkeypatch):
-    """Pin the delegation gate off for every test in this module.
-
-    The refusal branch sits before the ownership, expert-scope and origin
-    guards, so an ambient flag makes those pre-existing tests non-deterministic
-    and, when on, unreachable. Tests that want it on re-patch via
-    ``_set_delegation_flag``.
-    """
-    monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.autopilot_delegation_active",
-        AsyncMock(return_value=False),
-    )
-
-
 @pytest.fixture
 def mock_queue(monkeypatch):
     """Patch the enqueue helpers + the stream-registry session creator at
@@ -357,15 +342,13 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resume_accepts_legacy_sub_without_origin(
+    async def test_a_legacy_sub_passes_the_origin_guard_and_is_still_refused(
         self, monkeypatch, mock_queue, mock_waiter
     ):
-        """A sub started before ``origin`` shipped reads back as ``None``.
-
-        Every parent that stored a sub session id and re-feeds it holds one of
-        those, so refusing an unknown origin here would break live sub-sessions
-        to close a hole they never opened — the staffing guard is where an
-        unknown origin fails closed instead.
+        """A sub started before ``origin`` shipped reads back as ``None``, so
+        it passes the origin guard rather than failing it — but every sub is
+        single-use now, so it is refused for that reason instead. Pinned
+        because the two refusals are easy to confuse when reading a report.
         """
         legacy_sub = _session("alice", "other-session", origin=None)
         legacy_sub.messages = []
@@ -385,8 +368,10 @@ class TestRunSubSession:
             wait_for_result=0,
         )
 
-        assert not isinstance(result, ErrorResponse)
-        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
+        assert isinstance(result, ErrorResponse)
+        assert "One sub per unit of work" in result.message
+        assert "was started by a person" not in result.message
+        mock_waiter.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
@@ -1059,55 +1044,14 @@ class TestActorParameter:
         assert "Sub-AutoPilot" not in (result.message or "")
 
 
-class TestRunSubSessionPerIntent:
-    """``AUTOPILOT_DELEGATION`` makes every sub single-use."""
+class TestRunSubSessionSingleUse:
+    """Every sub is single-use: a reused one accumulates the context
+    delegation exists to avoid, whoever is driving the turn."""
 
     @pytest.mark.asyncio
-    async def test_resume_refused_before_the_ownership_lookup(
-        self, monkeypatch, mock_queue, mock_waiter
+    async def test_resuming_an_owned_sub_is_refused(
+        self, mock_queue, mock_waiter, mock_model
     ):
-        looked_up: list[str] = []
-
-        async def fake_get(session_id: str):
-            looked_up.append(session_id)
-            return None
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
-        )
-        _set_delegation_flag(monkeypatch, True)
-
-        r = await RunSubSessionTool()._execute(
-            user_id="alice",
-            session=_session("alice"),
-            prompt="carry on",
-            sub_autopilot_session_id="prev-sub",
-        )
-        assert isinstance(r, ErrorResponse)
-        assert "One sub per unit of work" in r.message
-        assert "get_sub_session_result" in r.message
-        assert looked_up == []
-
-    @pytest.mark.asyncio
-    async def test_a_fresh_sub_is_unaffected(
-        self, monkeypatch, mock_queue, mock_waiter, mock_model
-    ):
-        gate = _set_delegation_flag(monkeypatch, True)
-
-        r = await RunSubSessionTool()._execute(
-            user_id="alice", session=_session("alice"), prompt="do the thing"
-        )
-        assert not isinstance(r, ErrorResponse)
-        assert len(mock_model["created"]) == 1
-        gate.assert_not_awaited()  # no resume id, so the gate is never reached
-
-    @pytest.mark.asyncio
-    async def test_flag_off_still_resumes_an_owned_sub(
-        self, monkeypatch, mock_queue, mock_waiter, mock_model
-    ):
-        """The OFF path reaches the pre-existing resume branch untouched."""
-        _set_delegation_flag(monkeypatch, False)
-
         await RunSubSessionTool()._execute(
             user_id="alice", session=_session("alice"), prompt="first"
         )
@@ -1119,13 +1063,34 @@ class TestRunSubSessionPerIntent:
             prompt="second",
             sub_autopilot_session_id=sub_id,
         )
+        assert isinstance(r, ErrorResponse)
+        assert "One sub per unit of work" in r.message
+        assert "get_sub_session_result" in r.message
+        assert len(mock_model["created"]) == 1, "refused, not silently re-created"
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_sub_is_unaffected(self, mock_queue, mock_waiter, mock_model):
+        r = await RunSubSessionTool()._execute(
+            user_id="alice", session=_session("alice"), prompt="do the thing"
+        )
         assert not isinstance(r, ErrorResponse)
-        assert len(mock_model["created"]) == 1, "resumed, not re-created"
+        assert len(mock_model["created"]) == 1
 
-
-def _set_delegation_flag(monkeypatch, enabled: bool) -> AsyncMock:
-    gate = AsyncMock(return_value=enabled)
-    monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.autopilot_delegation_active", gate
-    )
-    return gate
+    @pytest.mark.asyncio
+    async def test_the_ownership_guard_still_runs_first(
+        self, monkeypatch, mock_queue, mock_waiter
+    ):
+        """The refusal sits after the ownership, origin and route guards, so
+        those keep describing production rather than becoming unreachable."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.get_chat_session",
+            AsyncMock(return_value=None),
+        )
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="carry on",
+            sub_autopilot_session_id="someone-elses",
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "is not a session you own" in r.message

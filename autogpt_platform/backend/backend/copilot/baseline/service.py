@@ -77,7 +77,6 @@ from backend.copilot.pending_messages import (
 )
 from backend.copilot.prompting import (
     SHARED_TOOL_NOTES,
-    build_autopilot_delegation_supplement,
     get_delegation_supplement,
     get_graphiti_supplement,
 )
@@ -1854,10 +1853,6 @@ async def stream_chat_completion_baseline(
         Flag.HIRE_EXPERTS, user_id, default=False
     )
     delegation_supplement = get_delegation_supplement() if experts_enabled else ""
-    # Independent of experts_enabled: about this turn's context, not a team.
-    autopilot_delegation_supplement = await build_autopilot_delegation_supplement(
-        user_id, session.metadata.origin
-    )
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
@@ -1868,7 +1863,6 @@ async def stream_chat_completion_baseline(
         base_system_prompt
         + SHARED_TOOL_NOTES
         + delegation_supplement
-        + autopilot_delegation_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix

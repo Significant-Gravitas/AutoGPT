@@ -32,7 +32,6 @@ from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
 from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
-from backend.copilot.prompting import autopilot_delegation_active
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
@@ -146,25 +145,6 @@ class RunSubSessionTool(BaseTool):
         # sub spawned inside a dry-run conversation doesn't silently
         # escalate to a live run.
         sub_session_param = sub_autopilot_session_id.strip()
-        if sub_session_param and await autopilot_delegation_active(
-            user_id, session.metadata.origin
-        ):
-            # Same predicate as the delegation rules: a turn never told subs
-            # are single-use must not be refused for reusing one.
-            logger.info(
-                f"[delegation] refused sub resumption for session="
-                f"{session.session_id[:12]} — one sub per unit of work"
-            )
-            return ErrorResponse(
-                message=(
-                    "One sub per unit of work: leave sub_autopilot_session_id "
-                    "empty and put what the next sub needs into the prompt. A "
-                    "finished sub's summary is already in your context — "
-                    "restate the parts it needs. To poll a sub that is still "
-                    "running, use get_sub_session_result."
-                ),
-                session_id=session.session_id,
-            )
         if sub_session_param:
             owned = await get_chat_session(sub_session_param)
             if owned is None or owned.user_id != user_id:
@@ -216,7 +196,23 @@ class RunSubSessionTool(BaseTool):
                     message="codex_session_route_mismatch",
                     session_id=session.session_id,
                 )
-            inner_session_id = sub_session_param
+            # Last, so the ownership, origin and route guards above stay
+            # reachable: a reused sub accumulates the context delegation
+            # exists to avoid, whoever is driving the turn.
+            logger.info(
+                f"[sub-session] refused resumption of {sub_session_param[:12]} "
+                f"for session={session.session_id[:12]} — subs are single-use"
+            )
+            return ErrorResponse(
+                message=(
+                    "One sub per unit of work: leave sub_autopilot_session_id "
+                    "empty and put what the next sub needs into the prompt. A "
+                    "finished sub's summary is already in your context — "
+                    "restate the parts it needs. To poll a sub that is still "
+                    "running, use get_sub_session_result."
+                ),
+                session_id=session.session_id,
+            )
         else:
             new_session = await create_chat_session(
                 user_id,

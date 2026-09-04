@@ -1,16 +1,8 @@
 """Tests for prompting helpers."""
 
-import ast
 import importlib
-import inspect
-from unittest.mock import AsyncMock
-
-import pytest
 
 from backend.copilot import prompting
-from backend.copilot.baseline import service as baseline_service
-from backend.copilot.sdk import service as sdk_service
-from backend.util.feature_flag import Flag
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -99,95 +91,3 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
-
-
-class TestAutopilotDelegationSupplement:
-    """One gate both engines go through, so flag-off is provably a no-op."""
-
-    @pytest.mark.asyncio
-    async def test_flag_off_leaves_the_prompt_byte_identical(self, monkeypatch):
-        _set_flag(monkeypatch, False)
-        assert (
-            await prompting.build_autopilot_delegation_supplement("u1", "interactive")
-            == ""
-        )
-
-    @pytest.mark.asyncio
-    async def test_anonymous_turn_fails_closed_without_consulting_the_flag(
-        self, monkeypatch
-    ):
-        flag = _set_flag(monkeypatch, True)
-        assert (
-            await prompting.build_autopilot_delegation_supplement(None, "interactive")
-            == ""
-        )
-        flag.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_flag_on_returns_the_rules(self, monkeypatch):
-        flag = _set_flag(monkeypatch, True)
-        result = await prompting.build_autopilot_delegation_supplement(
-            "u1", "interactive"
-        )
-        assert result == prompting._autopilot_delegation_rules()
-        assert result != ""
-        assert flag.await_args.args[0] is Flag.AUTOPILOT_DELEGATION
-        assert flag.await_args.args[1] == "u1", "must evaluate for THIS user"
-        assert flag.await_args.kwargs["default"] is False
-
-    @pytest.mark.asyncio
-    async def test_a_sub_session_is_never_told_to_delegate(self, monkeypatch):
-        """A sub told to delegate would spawn its own, with nothing bounding
-        the chain."""
-        flag = _set_flag(monkeypatch, True)
-        result = await prompting.build_autopilot_delegation_supplement(
-            "u1", "automation"
-        )
-        assert result == ""
-        flag.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_unknown_origin_counts_as_automation(self, monkeypatch):
-        """Matches child_session_origin."""
-        _set_flag(monkeypatch, True)
-        assert await prompting.build_autopilot_delegation_supplement("u1", None) == ""
-
-    def test_the_rules_name_the_tool_and_forbid_continuing_a_sub(self):
-        rules = prompting._autopilot_delegation_rules()
-        assert "run_sub_session" in rules
-        assert "Do not try to continue a previous one" in rules
-        # Polling a still-running sub must stay allowed.
-        assert "get_sub_session_result" in rules
-
-    def test_both_engines_append_the_gated_supplement(self):
-        """Asserted against the AST, not the text: ``getsource`` returns
-        comments, so a grep stays green on a commented-out concatenation."""
-        for module in (baseline_service, sdk_service):
-            concatenated = _system_prompt_operands(module)
-            assert concatenated, f"no system_prompt assignment found in {module}"
-            assert "autopilot_delegation_supplement" in concatenated, module
-
-
-def _set_flag(monkeypatch, enabled: bool) -> AsyncMock:
-    flag = AsyncMock(return_value=enabled)
-    monkeypatch.setattr("backend.copilot.prompting.is_feature_enabled", flag)
-    return flag
-
-
-def _system_prompt_operands(module) -> set[str]:
-    """Names concatenated into the module's ``system_prompt = a + b + ...``."""
-    tree = ast.parse(inspect.getsource(module))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(
-            isinstance(t, ast.Name) and t.id == "system_prompt" for t in node.targets
-        ):
-            continue
-        names |= {
-            operand.id
-            for operand in ast.walk(node.value)
-            if isinstance(operand, ast.Name)
-        }
-    return names
