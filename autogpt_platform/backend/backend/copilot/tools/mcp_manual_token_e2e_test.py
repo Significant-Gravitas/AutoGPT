@@ -13,6 +13,7 @@ and ``IntegrationCredentialsManager.refresh_if_needed`` run for real, which
 is precisely where the token used to be dropped.
 """
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -23,6 +24,7 @@ from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import router
 from backend.data.model import Credentials
+from backend.util.request import HTTPClientError
 
 from ._test_data import make_session
 from .models import MCPToolsDiscoveredResponse, SetupRequirementsResponse
@@ -40,26 +42,36 @@ app.dependency_overrides[get_user_id] = lambda: _USER_ID
 class FakeCredentialsStore:
     """In-memory stand-in for ``IntegrationCredentialsStore``.
 
+    Rows are keyed by ``user_id`` — the real store scopes every read to the
+    owner, and a harness that ignored it would pass just as happily against
+    code that served one user another's MCP token.
+
     Only the handful of methods this path touches are implemented; anything
     else should fail loudly rather than silently return a mock.
     """
 
     def __init__(self) -> None:
-        self.rows: list[Credentials] = []
+        self.by_user: dict[str, list[Credentials]] = {}
+
+    @property
+    def rows(self) -> list[Credentials]:
+        return self.by_user.get(_USER_ID, [])
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
-        self.rows.append(credentials)
+        self.by_user.setdefault(user_id, []).append(credentials)
 
     async def get_creds_by_provider(
         self, user_id: str, provider: str
     ) -> list[Credentials]:
-        return [c for c in self.rows if c.provider == provider]
+        return [c for c in self.by_user.get(user_id, []) if c.provider == provider]
 
     async def get_creds_by_id(self, user_id: str, credentials_id: str):
-        return next((c for c in self.rows if c.id == credentials_id), None)
+        owned = self.by_user.get(user_id, [])
+        return next((c for c in owned if c.id == credentials_id), None)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        self.rows = [c for c in self.rows if c.id != credentials_id]
+        owned = self.by_user.get(user_id, [])
+        self.by_user[user_id] = [c for c in owned if c.id != credentials_id]
 
 
 @pytest_asyncio.fixture
@@ -77,8 +89,19 @@ async def store():
             return_value=fake,
         ),
         patch("backend.api.features.mcp.routes.creds_manager.store", fake),
+        # ``invalidate_mcp_credential`` goes through ``mgr.delete``, which
+        # takes a Redis lock. Only the store is faked here.
+        patch(
+            "backend.integrations.creds_manager.IntegrationCredentialsManager._locked",
+            _noop_lock,
+        ),
     ):
         yield fake
+
+
+@contextlib.asynccontextmanager
+async def _noop_lock(*_args, **_kwargs):
+    yield
 
 
 @pytest_asyncio.fixture
@@ -185,3 +208,66 @@ async def test_trailing_slash_variant_still_resolves(client, store):
         )
 
     assert MockClient.call_args.kwargs["auth_token"] == _TOKEN
+
+
+async def test_dead_token_is_invalidated_on_401(client, store):
+    """The self-healing path this PR unblocks.
+
+    Before the fix the lookup returned ``None``, so ``creds is not None`` was
+    never true and the dead row survived every retry — which is why the UI
+    could keep showing Connected forever.
+    """
+    await _store_token(client)
+    assert len(store.rows) == 1
+
+    dead = _mcp_client()
+    dead.initialize = AsyncMock(
+        side_effect=HTTPClientError("HTTP 401", status_code=401)
+    )
+    with patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=dead):
+        response = await RunMCPToolTool()._execute(
+            user_id=_USER_ID,
+            session=make_session(_USER_ID),
+            server_url=_SERVER_URL,
+            tool_name="get_analytics",
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert store.rows == []
+
+
+async def test_scope_level_403_keeps_the_credential(client, store):
+    """A 403 is routinely "this token may not call *that tool*". Deleting on
+    it forces a re-entry that fails identically."""
+    await _store_token(client)
+
+    forbidden = _mcp_client()
+    forbidden.initialize = AsyncMock(
+        side_effect=HTTPClientError("HTTP 403", status_code=403)
+    )
+    with patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=forbidden):
+        await RunMCPToolTool()._execute(
+            user_id=_USER_ID,
+            session=make_session(_USER_ID),
+            server_url=_SERVER_URL,
+            tool_name="get_analytics",
+        )
+
+    assert len(store.rows) == 1
+
+
+async def test_another_users_token_is_not_resolved(client, store):
+    """Credential lookup is scoped to the owner."""
+    await _store_token(client)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.MCPClient",
+        return_value=_mcp_client([_tool("get_analytics")]),
+    ) as MockClient:
+        await RunMCPToolTool()._execute(
+            user_id="a-different-user",
+            session=make_session("a-different-user"),
+            server_url=_SERVER_URL,
+        )
+
+    assert MockClient.call_args.kwargs["auth_token"] is None

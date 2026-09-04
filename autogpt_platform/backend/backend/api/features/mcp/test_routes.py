@@ -4,6 +4,7 @@ Uses httpx.AsyncClient with ASGITransport instead of fastapi.testclient.TestClie
 to avoid creating blocking portals that can corrupt pytest-asyncio's session event loop.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import fastapi
@@ -457,37 +458,24 @@ class TestOAuthCallback:
         assert "token exchange failed" in response.json()["detail"].lower()
 
 
-def _accepting_server():
-    """Patch the ``/token`` verification probe into a server that accepts."""
-    return patch(
-        "backend.api.features.mcp.routes.MCPClient",
-        return_value=_probe_client(),
-    )
-
-
-def _rejecting_server(status_code: int = 401):
-    """Patch the verification probe into a server that rejects the token."""
-    return patch(
-        "backend.api.features.mcp.routes.MCPClient",
-        return_value=_probe_client(
-            HTTPClientError(f"HTTP {status_code}", status_code=status_code)
-        ),
-    )
-
-
-def _unreachable_server():
-    """Patch the verification probe into a server that is having a bad day."""
-    return patch(
-        "backend.api.features.mcp.routes.MCPClient",
-        return_value=_probe_client(HTTPServerError("HTTP 503", status_code=503)),
-    )
-
-
 def _probe_client(error: Exception | None = None):
     client = AsyncMock()
     client.initialize = AsyncMock(side_effect=error)
     client.close = AsyncMock()
     return client
+
+
+def _probe_server(error: Exception | None = None):
+    """Patch the ``/token`` verification probe. No *error* means the server
+    accepts the token."""
+    return patch(
+        "backend.api.features.mcp.routes.MCPClient",
+        return_value=_probe_client(error),
+    )
+
+
+def _accepting_server():
+    return _probe_server()
 
 
 class TestStoreToken:
@@ -568,7 +556,7 @@ class TestStoreToken:
         actually authenticates — not merely that a row was written
         (SECRT-2592)."""
         with (
-            _rejecting_server(),
+            _probe_server(HTTPClientError("HTTP 401", status_code=401)),
             patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
         ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
@@ -591,7 +579,7 @@ class TestStoreToken:
         """A 5xx says nothing about the token — refusing the save would strand
         the user during someone else's outage."""
         with (
-            _unreachable_server(),
+            _probe_server(HTTPServerError("HTTP 503", status_code=503)),
             patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
         ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
@@ -634,6 +622,79 @@ class TestStoreToken:
             "https://mcp.example.com/mcp", auth_token="my-api-key-123"
         )
         probe.close.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("status_code", [403, 404, 429])
+    async def test_store_token_stores_when_status_is_not_a_rejection(
+        self, client, status_code
+    ):
+        """Only a 401 unambiguously means "this credential was refused".
+
+        A bare 403 is as often a per-scope decision or a WAF blocking our
+        egress IP; a 404 is a wrong MCP path. Blocking the save on those would
+        tell the user their token is wrong when it isn't.
+        """
+        with (
+            _probe_server(
+                HTTPClientError(f"HTTP {status_code}", status_code=status_code)
+            ),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "probably-fine",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_requires_https(self, client):
+        """The token rides in an Authorization header — never over cleartext."""
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.create = AsyncMock()
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "http://mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "https" in response.json()["detail"].lower()
+        mock_cm.create.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_survives_a_hanging_server(self, client):
+        """MCPClient sets no timeout and no retry ceiling, so an unbounded
+        probe could pin the handler forever."""
+        hanging = _probe_client()
+        hanging.initialize = AsyncMock(side_effect=asyncio.TimeoutError)
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient", return_value=hanging),
+            patch("backend.api.features.mcp.routes._PROBE_TIMEOUT_SECONDS", 0.01),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "probably-fine",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_called_once()
 
 
 class TestSSRFValidation:
@@ -679,7 +740,7 @@ class TestSSRFValidation:
             response = await client.post(
                 "/token",
                 json={
-                    "server_url": "http://127.0.0.1/mcp",
+                    "server_url": "https://127.0.0.1/mcp",
                     "token": "some-token",
                 },
             )

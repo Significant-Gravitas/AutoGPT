@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
-    AUTH_STATUS_CODES,
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
     normalize_mcp_url,
@@ -22,7 +21,12 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
 )
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url_host
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    validate_url_host,
+)
 
 from .base import BaseTool
 from .models import (
@@ -241,8 +245,16 @@ class RunMCPToolTool(BaseTool):
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
                         if probe_err.status_code in AUTH_STATUS_CODES:
-                            await invalidate_mcp_credential(user_id, creds.id)
                             connected = False
+                            # Only a 401 proves the credential itself was
+                            # refused; a bare 403 is as often a scope decision
+                            # about a valid token, and deleting on that forces
+                            # a re-entry that fails identically.
+                            if (
+                                probe_err.status_code
+                                in CREDENTIAL_REJECTED_STATUS_CODES
+                            ):
+                                await invalidate_mcp_credential(user_id, creds.id)
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -298,15 +310,15 @@ class RunMCPToolTool(BaseTool):
 
         except HTTPClientError as e:
             if e.status_code in AUTH_STATUS_CODES:
-                # 401/403 → user needs to (re)authenticate.  Fire the setup
-                # card whether or not we have a stored credential row: when
-                # `creds` is None the user has never connected, and when it
-                # is non-None the stored token has been revoked / expired
-                # server-side without us knowing (refresh_if_needed only
-                # refreshes when local `access_token_expires_at` says so).
-                # If we have a stale row, delete it so the next attempt
-                # doesn't loop on the same dead token.
-                if creds is not None:
+                # 401/403 → user needs to (re)authenticate. Fire the setup card
+                # whether or not we have a stored credential row. Drop the row
+                # only on a 401, which is the one status that means the
+                # credential itself was refused — a 403 is routinely a
+                # per-tool scope decision about a token that is otherwise fine.
+                if (
+                    creds is not None
+                    and e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
+                ):
                     await invalidate_mcp_credential(user_id, creds.id)
                 return self._build_setup_requirements(server_url, session_id)
             host = server_host(server_url)

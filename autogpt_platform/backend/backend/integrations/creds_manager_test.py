@@ -9,7 +9,7 @@ from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
-    _is_refreshable,
+    _may_need_refresh,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
@@ -389,7 +389,7 @@ def _provider_runtime_credentials() -> OAuth2Credentials:
     )
 
 
-class TestIsRefreshable:
+class TestMayNeedRefresh:
     """A credential that can never be refreshed must not drag a handler in.
 
     Regression for SECRT-2592: static MCP bearer tokens (stored by
@@ -398,18 +398,18 @@ class TestIsRefreshable:
     perfectly usable token into a failed credential lookup.
     """
 
-    def test_static_token_is_not_refreshable(self):
-        assert not _is_refreshable(_static_mcp_credentials())
+    def test_static_token_needs_no_refresh(self):
+        assert not _may_need_refresh(_static_mcp_credentials())
 
-    def test_expiring_token_is_refreshable(self):
+    def test_expiring_token_may_need_refresh(self):
         cred = _static_mcp_credentials()
         cred.access_token_expires_at = 1
-        assert _is_refreshable(cred)
+        assert _may_need_refresh(cred)
 
-    def test_token_with_refresh_token_is_refreshable(self):
+    def test_token_with_refresh_token_may_need_refresh(self):
         cred = _static_mcp_credentials()
         cred.refresh_token = SecretStr("refresh")
-        assert _is_refreshable(cred)
+        assert _may_need_refresh(cred)
 
     @pytest.mark.asyncio
     async def test_refresh_if_needed_returns_static_token_unchanged(self):

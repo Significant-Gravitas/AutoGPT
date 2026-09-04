@@ -5,6 +5,7 @@ Provides endpoints for MCP tool discovery and OAuth authentication so the
 frontend can list available tools on an MCP server before placing a block.
 """
 
+import asyncio
 import logging
 from typing import Annotated, Any
 
@@ -16,7 +17,6 @@ from pydantic import BaseModel, Field, SecretStr
 from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
-    AUTH_STATUS_CODES,
     auto_lookup_mcp_credential,
     normalize_mcp_url,
     server_host,
@@ -25,7 +25,14 @@ from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, Requests, validate_url_host
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    HTTPServerError,
+    Requests,
+    validate_url_host,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -33,6 +40,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 router = fastapi.APIRouter(tags=["mcp"])
 creds_manager = IntegrationCredentialsManager()
+
+# Verifying a token is best-effort; it must never outlast a user's patience.
+_PROBE_TIMEOUT_SECONDS = 10
+_PROBE_CLOSE_TIMEOUT_SECONDS = 5
 
 
 # ====================== Tool Discovery ====================== #
@@ -438,36 +449,60 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
+    # The token travels in an ``Authorization`` header, so refuse to send it
+    # over a scheme that puts it on the wire in cleartext (CWE-319).
+    # ``validate_url_host`` permits http:// for MCP servers generally; a
+    # credential is a higher bar.
+    if not server_url.lower().startswith("https://"):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="MCP server URL must use https:// — an API token cannot be "
+            "sent over an unencrypted connection.",
+        )
+
     # A 2xx from this endpoint is what turns the setup card's pill green, so
     # it has to mean "this token authenticates against the server" rather than
-    # "a row was written".  One ``initialize`` round-trip is the cheapest
-    # proof.  Only an explicit auth rejection blocks the save: a timeout or a
-    # 5xx is the server's problem, not the token's, and refusing to store on
-    # those would strand the user during an outage.
+    # "a row was written". One ``initialize`` round-trip is the cheapest proof.
+    # Only an unambiguous rejection blocks the save: any other outcome says
+    # nothing about the token, and refusing to store would strand the user.
     probe_client = MCPClient(server_url, auth_token=token)
     try:
-        await probe_client.initialize()
-    except HTTPClientError as e:
-        if e.status_code in AUTH_STATUS_CODES:
+        # MCPClient sets no timeout and no retry ceiling, so an unbounded probe
+        # can pin this handler indefinitely on a server that keeps answering
+        # 503. Verification is best-effort — cap it and move on.
+        await asyncio.wait_for(
+            probe_client.initialize(), timeout=_PROBE_TIMEOUT_SECONDS
+        )
+    except (HTTPClientError, HTTPServerError) as e:
+        if e.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
             raise fastapi.HTTPException(
                 status_code=400,
                 detail=f"{hostname} rejected this token. "
                 "Please check that you copied it correctly and try again.",
             )
+        # Includes a bare 403, which is as often a scope decision or a WAF
+        # blocking our egress IP as it is a bad token.
         logger.info(
             "Could not verify MCP token against %s (HTTP %s) — storing anyway",
             hostname,
             e.status_code,
         )
-    except Exception:
+    except Exception as e:
+        # No ``exc_info``: HTTPClientError embeds the whole decoded response
+        # body, which a hostile server controls.
         logger.info(
-            "Could not verify MCP token against %s — storing anyway",
+            "Could not verify MCP token against %s (%s) — storing anyway",
             hostname,
-            exc_info=True,
+            type(e).__name__,
         )
     finally:
         # Without the DELETE the probe leaks a session row server-side.
-        await probe_client.close()
+        try:
+            await asyncio.wait_for(
+                probe_client.close(), timeout=_PROBE_CLOSE_TIMEOUT_SECONDS
+            )
+        except Exception:
+            logger.debug("MCP probe close failed for %s", hostname)
 
     # Collect IDs of old credentials to clean up after successful create.
     old_cred_ids: list[str] = []
