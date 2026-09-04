@@ -13,11 +13,12 @@ export type SelectedTriggerKind =
 
 export function isNewAgentTaskDisabled(args: {
   sidebarLoading: boolean;
+  sidebarHasError?: boolean;
   isTemplateLoading: boolean;
   activeTab: string;
 }): boolean {
   return (
-    args.sidebarLoading ||
+    (args.sidebarLoading && !args.sidebarHasError) ||
     (args.isTemplateLoading && args.activeTab === "templates")
   );
 }

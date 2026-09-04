@@ -4,9 +4,16 @@ import {
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
+  getGetV2ListTriggerAgentsMockHandler422,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
-import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListGraphExecutionsMockHandler,
+  getGetV1ListGraphExecutionsMockHandler422,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import {
+  getGetV1ListExecutionSchedulesForAGraphMockHandler,
+  getGetV1ListExecutionSchedulesForAGraphMockHandler422,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import {
   getGetV2GetASpecificPresetMockHandler,
   getGetV2GetASpecificPresetResponseMock,
@@ -19,7 +26,13 @@ import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
@@ -27,6 +40,9 @@ import { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
 import { PRESETS_PAGE_SIZE } from "../components/NewAgentLibraryView/hooks/useAgentPresetsQuery";
+import { SidebarRunsList } from "../components/NewAgentLibraryView/components/sidebar/SidebarRunsList/SidebarRunsList";
+import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
 
 const PARENT_ID = "parent-agent-id";
 const PARENT_GRAPH_ID = "parent-graph-id";
@@ -78,10 +94,13 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 // Per-test render wrapper so we can set the nuqs initial URL state
 // (e.g. activeTab=triggers) — Radix tab clicks don't always round-trip
 // through the NuqsTestingAdapter within a single sync frame.
-function renderWithInitialParams(ui: ReactNode, searchParams = "") {
-  const queryClient = new QueryClient({
+function renderWithInitialParams(
+  ui: ReactNode,
+  searchParams = "",
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <NuqsTestingAdapter searchParams={searchParams}>
@@ -171,6 +190,97 @@ describe("Library agent view — trigger agents", () => {
     server.resetHandlers();
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
+  });
+
+  test.each([
+    ["run history", getGetV1ListGraphExecutionsMockHandler422],
+    ["schedules", getGetV1ListExecutionSchedulesForAGraphMockHandler422],
+    ["presets", getGetV2ListPresetsMockHandler422],
+    ["trigger agents", getGetV2ListTriggerAgentsMockHandler422],
+  ])(
+    "keeps new agent tasks available when %s fails",
+    async (_name, errorHandler) => {
+      server.use(
+        ...baseHandlers({
+          input_schema: {},
+          credentials_input_schema: {},
+          has_external_trigger: false,
+          recommended_schedule_cron: "0 9 * * *",
+        }),
+        emptyPresetsHandler,
+        emptySchedulesHandler,
+        getGetV2ListTriggerAgentsMockHandler([]),
+      );
+      server.use(errorHandler());
+
+      renderWithInitialParams(<NewAgentLibraryView />);
+
+      await screen.findByText(/when retrieving data/i);
+      const newTaskButton = screen.getByRole("button", {
+        name: "New agent task",
+      });
+      await waitFor(() => {
+        expect(newTaskButton.hasAttribute("disabled")).toBe(false);
+      });
+      await userEvent.click(newTaskButton);
+      expect(await screen.findByRole("dialog")).toBeDefined();
+    },
+  );
+
+  test("notifies the parent after recovery while another sidebar query stays stale", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    const onCountsChange = vi.fn();
+    const schedulesKey =
+      getGetV1ListExecutionSchedulesForAGraphQueryKey(PARENT_GRAPH_ID);
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+    );
+    server.use(getGetV1ListGraphExecutionsMockHandler422());
+
+    renderWithInitialParams(
+      <SidebarRunsList
+        agent={getGetV2GetLibraryAgentResponseMock({
+          id: PARENT_ID,
+          graph_id: PARENT_GRAPH_ID,
+        })}
+        onSelectRun={vi.fn()}
+        onCountsChange={onCountsChange}
+      />,
+      "",
+      queryClient,
+    );
+
+    await waitFor(() => {
+      expect(onCountsChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ hasError: true, loading: true }),
+      );
+      expect(queryClient.getQueryState(schedulesKey)?.status).toBe("success");
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: schedulesKey,
+        refetchType: "none",
+      });
+    });
+    server.use(...baseHandlers());
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: getGetV1ListGraphExecutionsQueryKey(PARENT_GRAPH_ID),
+      });
+    });
+
+    await waitFor(() => {
+      expect(onCountsChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ hasError: false, loading: false }),
+      );
+    });
+    expect(queryClient.getQueryState(schedulesKey)?.isInvalidated).toBe(true);
+    expect(screen.queryByText(/when retrieving data/i)).toBeNull();
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {

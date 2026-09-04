@@ -38,6 +38,28 @@ describe("new agent task availability", () => {
       }),
     ).toBe(false);
   });
+
+  test("is enabled when sidebar data failed instead of loading forever", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: true,
+        sidebarHasError: true,
+        isTemplateLoading: false,
+        activeTab: "runs",
+      }),
+    ).toBe(false);
+  });
+
+  test("still waits for the selected template when sidebar data failed", () => {
+    expect(
+      isNewAgentTaskDisabled({
+        sidebarLoading: true,
+        sidebarHasError: true,
+        isTemplateLoading: true,
+        activeTab: "templates",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("activeItem param prefix contract", () => {
