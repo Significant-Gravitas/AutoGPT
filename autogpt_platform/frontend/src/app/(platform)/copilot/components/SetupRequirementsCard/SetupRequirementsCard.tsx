@@ -154,11 +154,15 @@ export function SetupRequirementsCard({
   // signal; without this the chain stalls after the user connects. It must be
   // the sign-in and not merely a satisfied credential: every card in the chat
   // history re-mounts on load with its credential already in place.
+  // Trigger cards are excluded: `hasUserActionableInputs` is edit-mode only, and
+  // a trigger's message carries the account the webhook registers under, which
+  // the user is meant to choose rather than have auto-picked.
   const canAutoProceed =
     Boolean(chainActions) &&
     justConnected &&
     isAllCredsComplete &&
-    !hasUserActionableInputs;
+    !hasUserActionableInputs &&
+    inputsMode !== "trigger";
 
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer

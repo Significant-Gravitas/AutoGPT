@@ -53,10 +53,7 @@ export function ConnectCredentialDialog({
     reset,
   } = useConnectCredentialDialog({
     provider,
-    onConnected: () => {
-      onConnected?.();
-      onClose();
-    },
+    onConnected: handleConnected,
     scopes: schema.credentials_scopes,
     credentialID,
   });
@@ -66,12 +63,16 @@ export function ConnectCredentialDialog({
     onClose();
   }
 
-  // Device auth completes inside ConnectMethodView, so it never passes through
-  // the hook's success path and has to report the connection itself.
-  function handleDeviceAuthSuccess() {
-    reset();
+  // The hook resets before calling this; device auth completes inside
+  // ConnectMethodView and never passes through the hook, so it resets here.
+  function handleConnected() {
     onConnected?.();
     onClose();
+  }
+
+  function handleDeviceAuthSuccess() {
+    reset();
+    handleConnected();
   }
 
   const connectable: ConnectableProvider = {

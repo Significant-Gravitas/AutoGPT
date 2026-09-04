@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -10,6 +10,7 @@ import {
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 interface Args {
   provider: string;
@@ -26,6 +27,7 @@ type Phase = "idle" | "awaiting_user" | "polling" | "done" | "error";
 const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
 export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
+  const credentialsActions = useContext(CredentialsActionsContext);
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<Phase>("idle");
   const [userCode, setUserCode] = useState("");
@@ -83,6 +85,9 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           stopPolling();
           toast({ title: "Connected via device auth", variant: "success" });
           await invalidateConnectionQueries(queryClient);
+          // Invalidation emits no cache event unless something already
+          // subscribed to the credentials query.
+          credentialsActions?.reload();
           onSuccess(credentials ?? undefined);
           return;
         }

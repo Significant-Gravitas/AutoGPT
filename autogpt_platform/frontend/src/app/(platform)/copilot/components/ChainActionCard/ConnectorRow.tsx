@@ -94,13 +94,17 @@ export function ConnectorRow({ row }: Props) {
 /** The account a re-auth should upgrade in place. Signing in without it can
  *  grant narrower scopes than the user already had and leave a second row for
  *  the same provider, which no ConnectorRow can ever resolve. Only safe when
- *  exactly one account exists — otherwise picking one would be a guess. */
+ *  exactly one account exists — otherwise picking one would be a guess.
+ *  Managed and system credentials are excluded: the backend refuses to upgrade
+ *  either, so offering one turns every Connect click into a 400. */
 function upgradableCredentialID(
   provider: string,
   allProviders: CredentialsProvidersContextType | null,
 ) {
   const oauthCredentials = filterSystemCredentials(
     allProviders?.[provider]?.savedCredentials ?? [],
-  ).filter((credential) => credential.type === "oauth2");
+  ).filter(
+    (credential) => credential.type === "oauth2" && !credential.is_managed,
+  );
   return oauthCredentials.length === 1 ? oauthCredentials[0].id : undefined;
 }

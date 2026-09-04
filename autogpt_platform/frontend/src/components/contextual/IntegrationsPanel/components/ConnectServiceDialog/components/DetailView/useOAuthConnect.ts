@@ -80,9 +80,10 @@ export function useOAuthConnect({
     try {
       // Without the scopes the consent screen grants provider defaults, and
       // a credential missing a required scope never satisfies the caller.
-      const initiateResponse = await getV1InitiateOauthFlow(
+      const initiateResponse = await initiateLogin(
         provider,
-        buildLoginParams(scopes, credentialID),
+        scopes,
+        credentialID,
       );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
@@ -172,4 +173,25 @@ function buildLoginParams(scopes?: string[], credentialID?: string) {
   if (scopes?.length) params.scopes = scopes.join(",");
   if (credentialID) params.credential_id = credentialID;
   return Object.keys(params).length > 0 ? params : undefined;
+}
+
+/** The upgrade target comes from an in-memory list that can be stale — the
+ *  very staleness this flow exists to survive — and the backend 404s an id it
+ *  cannot find. Fall back to a fresh grant rather than leaving a dead button. */
+async function initiateLogin(
+  provider: string,
+  scopes?: string[],
+  credentialID?: string,
+) {
+  try {
+    return await getV1InitiateOauthFlow(
+      provider,
+      buildLoginParams(scopes, credentialID),
+    );
+  } catch (error) {
+    if (!credentialID || (error as { status?: number })?.status !== 404) {
+      throw error;
+    }
+    return getV1InitiateOauthFlow(provider, buildLoginParams(scopes));
+  }
 }

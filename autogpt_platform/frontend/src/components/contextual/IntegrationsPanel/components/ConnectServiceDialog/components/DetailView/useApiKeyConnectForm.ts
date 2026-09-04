@@ -53,8 +53,8 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
 
       toast({ title: "API key saved", variant: "success" });
       await invalidateConnectionQueries(queryClient);
-      // Same reason as the OAuth branch: invalidation emits no cache event
-      // unless something already subscribed to the credentials query.
+      // Invalidation emits no cache event unless something already
+      // subscribed to the credentials query.
       credentialsActions?.reload();
       // Narrow by shape rather than by status code: the comment above keeps
       // this flow indifferent to a 201 ↔ 200 swap, and only the success

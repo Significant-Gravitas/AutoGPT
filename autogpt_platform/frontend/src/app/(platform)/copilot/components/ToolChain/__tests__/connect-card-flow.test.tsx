@@ -146,7 +146,7 @@ describe("copilot Connect card", () => {
     expect(onSend.mock.calls[0][0]).toContain(
       "I've configured the required credentials.",
     );
-    expect(await screen.findByText("Connected. Continuing…")).toBeDefined();
+    await screen.findByText("Connected. Continuing…");
   });
 
   it("offers the existing account for upgrade instead of a fresh grant", async () => {
@@ -176,15 +176,159 @@ describe("copilot Connect card", () => {
     await completeConnectFlow();
 
     await waitFor(() => expect(savedCredentials).toHaveLength(2));
-    expect(
-      await screen.findByRole("button", { name: "Connect" }),
-    ).toBeDefined();
+    await screen.findByRole("button", { name: "Connect" });
     expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilot Connect card, cards that owe more than a credential", () => {
+  beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
+    savedCredentials = [];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "github", description: "Repositories" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/github/login", () => {
+        requestedScopes = REQUIRED_SCOPE;
+        return HttpResponse.json({
+          login_url: "https://github.com/login/oauth/authorize",
+          state_token: "state-token",
+        });
+      }),
+      http.post("*/api/integrations/github/callback", () => {
+        savedCredentials = [oauthCredential("cred-new", [REQUIRED_SCOPE])];
+        return HttpResponse.json(savedCredentials[0]);
+      }),
+    );
+  });
+
+  afterEach(resetStores);
+
+  it("waits for the user when the card also collects run inputs", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[partWithInputs()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await completeConnectFlow();
+
+    // Auto-sending here would run the block with the inputs the user has not
+    // filled in yet, discarding them.
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("waits for the user on a trigger card, whose account they must pick", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[triggerPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await completeConnectFlow();
+
+    // buildTriggerSetupMessage carries the credential the webhook registers
+    // under, so the account must be chosen rather than auto-picked.
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilot Connect card, upgrade-target selection", () => {
+  beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([{ name: "github", description: "Repositories" }]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/github/login", ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        requestedScopes = query.get("scopes") ?? "";
+        upgradedCredentialID = query.get("credential_id");
+        return HttpResponse.json({
+          login_url: "https://github.com/login/oauth/authorize",
+          state_token: "state-token",
+        });
+      }),
+      http.post("*/api/integrations/github/callback", () =>
+        HttpResponse.json({ id: "cred-new", provider: "github" }),
+      ),
+    );
+  });
+
+  afterEach(resetStores);
+
+  it("picks no upgrade target when two accounts could be the one", async () => {
+    savedCredentials = [
+      oauthCredential("cred-a", ["notifications"]),
+      oauthCredential("cred-b", ["read:user"]),
+    ];
+
+    renderChain();
+    await completeConnectFlow();
+
+    // Choosing between them would be a guess; the backend upgrades in place,
+    // so guessing wrong silently broadens the wrong account.
+    await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
+    expect(upgradedCredentialID).toBeNull();
+  });
+
+  it("does not offer a managed account, which the backend refuses to upgrade", async () => {
+    savedCredentials = [
+      {
+        ...oauthCredential("cred-managed", ["notifications"]),
+        is_managed: true,
+      },
+    ];
+
+    renderChain();
+    await completeConnectFlow();
+
+    // _prepare_scope_upgrade 400s a managed credential, so offering one makes
+    // every Connect click fail and the row permanently unconnectable.
+    await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
+    expect(upgradedCredentialID).toBeNull();
+  });
+
+  it("does not offer an API-key account for an OAuth upgrade", async () => {
+    savedCredentials = [
+      { id: "cred-key", provider: "github", type: "api_key", title: "GitHub" },
+    ];
+
+    renderChain();
+    await completeConnectFlow();
+
+    await waitFor(() => expect(requestedScopes).toBe(REQUIRED_SCOPE));
+    expect(upgradedCredentialID).toBeNull();
   });
 });
 
 describe("copilot Connect card, API-key provider", () => {
   beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
     savedCredentials = [];
     server.use(
       http.get("*/api/integrations/providers", () =>
@@ -243,6 +387,8 @@ describe("copilot Connect card, API-key provider", () => {
 
 describe("copilot Connect card, already satisfied", () => {
   beforeEach(() => {
+    requestedScopes = null;
+    upgradedCredentialID = null;
     // The state a chat is in after the user connected and later reopened it:
     // every card in the history re-mounts with its credential already there.
     savedCredentials = [
@@ -286,7 +432,7 @@ describe("copilot Connect card, already satisfied", () => {
   it("stays silent when a finished card re-mounts from chat history", async () => {
     const { onSend } = renderChain();
 
-    await settle();
+    await settle(1);
 
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -304,7 +450,7 @@ describe("copilot Connect card, already satisfied", () => {
       </CredentialsProvider>,
     );
 
-    await settle();
+    await settle(2);
 
     // The auto-send claim is keyed by provider set, so two cards are two
     // claims — each would fire its own message on mount.
@@ -362,11 +508,16 @@ function setupRequirementsPart(): MessagePart {
   } as unknown as MessagePart;
 }
 
-/** Long enough for the credential list, the row's auto-select and the
- *  auto-send effect to have all run had they been going to. */
-async function settle() {
-  await waitFor(() => expect(screen.queryByText("Connect")).toBeDefined());
-  await new Promise((resolve) => setTimeout(resolve, 800));
+/** Waits on a positive signal — every row resolved against the refreshed
+ *  credential list — so a "nothing was sent" assertion cannot pass merely
+ *  because nothing has mounted yet. The old form waited on
+ *  `queryByText(...)).toBeDefined()`, which accepts the `null` of a miss and
+ *  resolved on the first tick, leaving a bare sleep as the only barrier. */
+async function settle(connectedRows: number) {
+  await screen.findByText("Plug in what this needs");
+  await waitFor(() =>
+    expect(screen.getAllByText("Connected")).toHaveLength(connectedRows),
+  );
 }
 
 function slackRequirementsPart(): MessagePart {
@@ -413,5 +564,43 @@ function apiKeyRequirementsPart(): MessagePart {
         },
       },
     },
+  } as unknown as MessagePart;
+}
+function oauthCredential(id: string, scopes: string[]) {
+  return { id, provider: "github", type: "oauth2", title: "GitHub", scopes };
+}
+function resetStores() {
+  cleanup();
+  useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
+  // The auto-send claim is a module singleton keyed by session id, so a later
+  // test reusing SESSION_ID would silently dismiss its own card.
+  useConnectedProvidersStore.getState().clearSession(SESSION_ID);
+}
+function partWithInputs(): MessagePart {
+  const base = setupRequirementsPart() as unknown as Record<string, unknown>;
+  const output = base.output as Record<string, unknown>;
+  const setup = output.setup_info as Record<string, unknown>;
+  return {
+    ...base,
+    output: {
+      ...output,
+      setup_info: {
+        ...setup,
+        requirements: {
+          inputs: [
+            { name: "url", title: "URL", type: "string", required: true },
+          ],
+        },
+      },
+    },
+  } as unknown as MessagePart;
+}
+
+function triggerPart(): MessagePart {
+  const base = setupRequirementsPart() as unknown as Record<string, unknown>;
+  return {
+    ...base,
+    type: "tool-setup_agent_webhook_trigger",
+    toolCallId: "call-setup_agent_webhook_trigger",
   } as unknown as MessagePart;
 }
