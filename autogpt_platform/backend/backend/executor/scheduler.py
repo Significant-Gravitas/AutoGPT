@@ -50,6 +50,7 @@ from backend.monitoring import (
     report_late_executions,
     send_due_briefings,
 )
+from backend.monitoring.instrumentation import SCHEDULER_JOBS
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -2247,6 +2248,13 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                # The one scheduler metric with an alert on it was never set.
+                # Only an accepted read may publish it: a read that was
+                # invalidated mid-query is stale by definition and must not
+                # overwrite a newer count another reader has already set.
+                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
+                    len(jobs)
+                )
         return jobs
 
     def _invalidate_jobs_cache(self) -> None:
