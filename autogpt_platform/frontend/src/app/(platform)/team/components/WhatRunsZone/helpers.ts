@@ -64,7 +64,7 @@ export function getFilterView(filter: WhatRunsFilter): FilterView {
     default:
       return {
         showGroups: true,
-        showAgents: true,
+        showAgents: false,
         includeEmptyGroups: true,
         scheduledOnly: false,
       };

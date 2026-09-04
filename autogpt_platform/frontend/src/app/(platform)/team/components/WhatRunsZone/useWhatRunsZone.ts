@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   getAdoptTargetKey,
+  getFilterView,
   getUnadoptedAgents,
   getVisibleGroups,
   pruneAdoptedTargetKeys,
@@ -45,11 +46,15 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     new Set(),
   );
 
+  const showAgents = getFilterView(filter).showAgents;
+
+  // Only the Unassigned filter renders the library, so the roster no longer
+  // pays for a full library page on first paint.
   const agentsQuery = useGetV2ListLibraryAgentsInfinite(
     { page: 1, page_size: AGENTS_PAGE_SIZE, is_hidden: false },
     {
       query: {
-        enabled,
+        enabled: enabled && showAgents,
         getNextPageParam: getPaginationNextPageNumber,
       },
     },
@@ -66,7 +71,6 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     adoptedTargetKeys,
   );
   const groups = getVisibleGroups(experts, schedules, filter);
-  const showAgents = filter === "all" || filter === "agents";
 
   async function adopt(agent: LibraryAgent, expert: Expert) {
     if (pendingLibraryAgentIDs.has(agent.id)) return;
@@ -112,7 +116,7 @@ export function useWhatRunsZone({ experts, schedules, enabled }: Args) {
     showAgents,
     unadoptedAgents,
     libraryAgentCount: libraryAgents.length,
-    isLoadingAgents: enabled && agentsQuery.isLoading,
+    isLoadingAgents: enabled && showAgents && agentsQuery.isLoading,
     isErrorAgents: agentsQuery.isError && !agentsQuery.data,
     hasMoreAgents: agentsQuery.hasNextPage === true,
     isLoadingMoreAgents: agentsQuery.isFetchingNextPage,

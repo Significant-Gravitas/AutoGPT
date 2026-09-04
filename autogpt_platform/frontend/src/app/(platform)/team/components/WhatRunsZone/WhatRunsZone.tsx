@@ -3,8 +3,7 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
-import { SECTION_INSET_CLASS } from "../../helpers";
+import { SECTION_LABEL_CLASS } from "../../helpers";
 import { ExpertWorkflowGroup } from "./components/ExpertWorkflowGroup";
 import { WhatRunsFilters } from "./components/WhatRunsFilters";
 import { YourAgentsList } from "./components/YourAgentsList";
@@ -50,12 +49,9 @@ export function WhatRunsZone({ experts, schedules }: Props) {
   const groupEmptyMessage = GROUP_EMPTY_MESSAGES[filter];
 
   return (
-    <section aria-label="What runs" className="!mt-10 flex flex-col gap-4">
-      <div className={cn("border-b border-zinc-100 pb-4", SECTION_INSET_CLASS)}>
-        <Text variant="h4">What runs</Text>
-      </div>
-
-      <div className={SECTION_INSET_CLASS}>
+    <section aria-label="What runs" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className={SECTION_LABEL_CLASS}>What runs</h2>
         <WhatRunsFilters value={filter} onChange={setFilter} />
       </div>
 
@@ -80,9 +76,9 @@ export function WhatRunsZone({ experts, schedules }: Props) {
 
         {showAgents ? (
           isLoadingAgents ? (
-            <Skeleton className="h-24 w-full rounded-2xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
           ) : isErrorAgents ? (
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200/80 bg-white px-4 py-3">
               <Text variant="small" className="text-zinc-500">
                 We could not load your workflows.
               </Text>

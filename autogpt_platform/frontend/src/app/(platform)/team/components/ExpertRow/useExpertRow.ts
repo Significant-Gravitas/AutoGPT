@@ -6,7 +6,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-export function useExpertTeamCard(expertId: string) {
+export function useExpertRow(expertId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isFireOpen, setIsFireOpen] = useState(false);

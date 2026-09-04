@@ -230,8 +230,15 @@ const scheduledMaria: Expert = {
   ],
 };
 
+/** The library of unassigned workflows now lives behind the Unassigned filter
+ *  instead of trailing every visit to the roster, so tests that assert on it
+ *  switch to that tab first. */
+async function showUnassigned() {
+  fireEvent.click(await screen.findByRole("button", { name: "Unassigned" }));
+}
+
 describe("TeamPage", () => {
-  test("renders the Autopilot card first", async () => {
+  test("renders the Autopilot row first", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
@@ -279,12 +286,12 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Marketing Strategist")).toBeDefined();
     expect(screen.getByText("2 workflows")).toBeDefined();
-    const card = screen.getByRole("link", { name: "View Maria" });
-    expect(within(card).queryByText("Content Calendar")).toBeNull();
-    expect(within(card).queryByText("SEO Audit")).toBeNull();
+    const row = screen.getByRole("link", { name: "View Maria" });
+    expect(within(row).queryByText("Content Calendar")).toBeNull();
+    expect(within(row).queryByText("SEO Audit")).toBeNull();
   });
 
-  test("links the card content to the expert page", async () => {
+  test("links the row content to the expert page", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
@@ -310,7 +317,7 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("shows a schedule count with the next run on the expert card", async () => {
+  test("shows a schedule count with the next run on the expert row", async () => {
     const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
     const mariaSchedule = makeSchedule({
       next_run_time: inTwoDays.toISOString(),
@@ -345,7 +352,7 @@ describe("TeamPage", () => {
     expect(screen.getByText(/1 needs setup/)).toBeDefined();
   });
 
-  test("shows weekly spend as a progress bar on the expert card", async () => {
+  test("shows weekly spend as a progress bar on the expert row", async () => {
     const budgetMaria: Expert = {
       ...hiredMaria,
       weekly_budget: 5000,
@@ -356,8 +363,20 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText("Spend this week")).toBeDefined();
     expect(screen.getByText("$12 / $50")).toBeDefined();
+    expect(
+      screen.getByRole("progressbar", { name: "Weekly spend" }),
+    ).toBeDefined();
+  });
+
+  test("leaves the spend figures off a row with no budget", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
+    render(<TeamPage />);
+
+    await screen.findByText("Maria");
+    expect(screen.queryByText("No budget")).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
   test("paused expert offers one-click resume", async () => {
@@ -383,7 +402,7 @@ describe("TeamPage", () => {
     await waitFor(() => expect(resumeSpy).toHaveBeenCalled());
   });
 
-  test("opens the current Soul document from the expert card", async () => {
+  test("opens the current Soul document from the expert row", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([hiredMaria]));
 
@@ -455,7 +474,7 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
   });
 
-  test("keeps nested card actions independent for keyboard users", async () => {
+  test("keeps nested row actions independent for keyboard users", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([hiredMaria]));
 
@@ -585,7 +604,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -627,7 +646,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -663,7 +682,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -699,7 +718,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -738,7 +757,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -777,7 +796,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -808,7 +827,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    fireEvent.pointerDown(screen.getByTestId("expert-card-actions"), {
+    fireEvent.pointerDown(screen.getByTestId("expert-row-actions"), {
       button: 0,
     });
     fireEvent.click(
@@ -1005,7 +1024,7 @@ describe("TeamPage", () => {
     expect((reopenedNameInput as HTMLInputElement).value).toBe("");
   });
 
-  test("moves an expert into a pod from the card menu", async () => {
+  test("moves an expert into a pod from the row menu", async () => {
     const user = userEvent.setup();
     const growthPod: ExpertPod = {
       id: "pod-growth",
@@ -1046,7 +1065,7 @@ describe("TeamPage", () => {
     expect(expertRequests).toBe(1);
   });
 
-  test("removes an expert from its pod from the card menu", async () => {
+  test("removes an expert from its pod from the row menu", async () => {
     const user = userEvent.setup();
     const growthPod: ExpertPod = {
       id: "pod-growth",
@@ -1068,11 +1087,10 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    // The trigger names the pod the expert is already in.
+    // The icon-only trigger names the pod the expert is already in.
     const trigger = screen.getByRole("button", {
       name: "Move to pod (currently Growth)",
     });
-    expect(trigger.textContent).toContain("Growth");
     await user.click(trigger);
     await user.click(
       await screen.findByRole("menuitem", { name: "Remove from pod" }),
@@ -1223,6 +1241,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1248,6 +1267,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1283,6 +1303,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1322,6 +1343,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1379,6 +1401,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1401,12 +1424,12 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByRole("region", { name: "Maria runs" });
-    await screen.findByRole("region", { name: "Your workflows" });
+    expect(screen.queryByRole("region", { name: "Your workflows" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Unassigned" }));
     expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
     expect(
-      screen.getByRole("region", { name: "Your workflows" }),
+      await screen.findByRole("region", { name: "Your workflows" }),
     ).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Members" }));
@@ -1549,6 +1572,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1578,6 +1602,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1621,6 +1646,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1651,6 +1677,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     expect(
       await screen.findByText(/could not load your workflows/i),
@@ -1689,6 +1716,7 @@ describe("TeamPage", () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1721,6 +1749,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1752,6 +1781,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",
@@ -1788,6 +1818,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await showUnassigned();
 
     const agents = await screen.findByRole("region", {
       name: "Your workflows",

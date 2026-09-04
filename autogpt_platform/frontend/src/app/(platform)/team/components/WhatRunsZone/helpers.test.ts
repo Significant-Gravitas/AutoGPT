@@ -60,10 +60,10 @@ function makeSchedule(
 }
 
 describe("getFilterView", () => {
-  it("shows both groups and agents for all", () => {
+  it("shows every group but leaves the library to its own filter for all", () => {
     expect(getFilterView("all")).toEqual({
       showGroups: true,
-      showAgents: true,
+      showAgents: false,
       includeEmptyGroups: true,
       scheduledOnly: false,
     });

@@ -33,10 +33,7 @@ export function YourAgentsList({
   onAdopt,
 }: Props) {
   return (
-    <section aria-label="Your workflows" className="!mt-8 flex flex-col gap-2">
-      <div className="mb-4 border-b border-zinc-100 pb-4">
-        <Text variant="h4">Your workflows</Text>
-      </div>
+    <section aria-label="Your workflows" className="flex flex-col gap-2">
       {agents.length === 0 ? (
         !hasMoreAgents ? (
           <Text variant="small" className="text-zinc-500">
@@ -46,7 +43,7 @@ export function YourAgentsList({
           </Text>
         ) : null
       ) : (
-        <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">
+        <div className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80 bg-white">
           {agents.map((agent) => {
             const adoptableExperts = getAdoptableExperts(
               agent,
@@ -84,7 +81,7 @@ export function YourAgentsList({
         </div>
       )}
       {isErrorLoadingMoreAgents ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200/80 px-3 py-2">
           <Text variant="small" className="text-zinc-500">
             We could not load more workflows.
           </Text>
