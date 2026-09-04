@@ -516,7 +516,7 @@ def response_from_outcome(
         sub_autopilot_session_id=inner_session_id,
         sub_autopilot_session_link=link,
         response=result.response_text,
-        tool_calls=[tc.model_dump() for tc in result.tool_calls],
+        sub_tool_call_count=len(result.tool_calls) or None,
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
     )
