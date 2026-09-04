@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,16 +104,36 @@ def write_synthetic_error(path: Path, reason: str) -> None:
     ElementTree.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
 
 
-def validate_path(path: Path, synthesize_invalid: bool) -> JUnitSummary:
+def validate_path(
+    path: Path, synthesize_invalid: bool, allowed_skips: set[str] | None = None
+) -> JUnitSummary:
     try:
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError("report is missing or empty")
         root = ElementTree.parse(path).getroot()
     except (OSError, ElementTree.ParseError, ValueError) as exc:
         if synthesize_invalid:
-            write_synthetic_error(path, str(exc))
+            try:
+                write_synthetic_error(path, str(exc))
+            except OSError as write_exc:
+                raise ValueError(
+                    f"{exc}; could not write synthetic error report: {write_exc}"
+                ) from write_exc
         raise ValueError(str(exc)) from exc
-    return summarize_junit(root)
+    summary = summarize_junit(root)
+    if allowed_skips is not None:
+        unexpected = [
+            f"{case.get('classname', '')}.{case.get('name', '')}"
+            for case in root.iter("testcase")
+            if case.find("skipped") is not None
+            and f"{case.get('classname', '')}.{case.get('name', '')}"
+            not in allowed_skips
+        ]
+        if unexpected:
+            raise ValueError(f"unapproved skipped test IDs: {', '.join(unexpected)}")
+        if summary.passed == 0:
+            raise ValueError("report contains no executed passing tests")
+    return summary
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -122,10 +143,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="replace missing, empty, or malformed reports with a one-error JUnit report",
     )
-    parser.add_argument(
+    skip_policy = parser.add_mutually_exclusive_group()
+    skip_policy.add_argument(
         "--require-no-skips",
         action="store_true",
         help="reject reports containing skipped test cases",
+    )
+    skip_policy.add_argument(
+        "--allow-skips-from",
+        type=Path,
+        help="reject skips not listed as exact classname.name IDs in this JSON file",
     )
     parser.add_argument("reports", nargs="+", type=Path)
     return parser.parse_args(argv)
@@ -134,11 +161,38 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     problems: list[str] = []
+    allowed_skips = None
+    if args.allow_skips_from:
+        try:
+            entries = json.loads(args.allow_skips_from.read_text(encoding="utf-8"))
+            if (
+                not isinstance(entries, list)
+                or any(
+                    not isinstance(entry, str)
+                    or "." not in entry
+                    or not entry.split(".", 1)[0].strip()
+                    or not entry.rsplit(".", 1)[-1].strip()
+                    for entry in entries
+                )
+                or len(set(entries)) != len(entries)
+            ):
+                raise ValueError(
+                    "skip allowlist must contain unique nonempty classname.name IDs"
+                )
+            allowed_skips = set(entries)
+        except (OSError, ValueError) as exc:
+            print(f"Invalid skip allowlist: {exc}", file=sys.stderr)
+            return 1
     for report in args.reports:
         try:
-            summary = validate_path(report, args.synthesize_invalid)
+            summary = validate_path(report, args.synthesize_invalid, allowed_skips)
         except ValueError as exc:
             problems.append(f"{report}: {exc}")
+            if args.allow_skips_from and "unapproved skipped test IDs" in str(exc):
+                problems.append(
+                    f"Review the skip policy in {args.allow_skips_from} before "
+                    "approving an intentional new skip; do not allowlist a regression."
+                )
             continue
         if args.require_no_skips and summary.skipped:
             problems.append(

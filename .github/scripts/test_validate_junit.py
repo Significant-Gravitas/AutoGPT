@@ -1,6 +1,8 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from xml.etree import ElementTree
 
 from validate_junit import main, summarize_junit
@@ -32,6 +34,31 @@ def report_xml(
 
 
 class ValidateJUnitTests(unittest.TestCase):
+    def test_failed_synthetic_write_returns_failure_without_losing_cause(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "missing.xml"
+            with (
+                patch(
+                    "validate_junit.write_synthetic_error",
+                    side_effect=OSError("read only"),
+                ),
+                patch("sys.stderr") as stderr,
+            ):
+                self.assertEqual(main(["--synthesize-invalid", str(report)]), 1)
+            output = "".join(call.args[0] for call in stderr.write.call_args_list)
+            self.assertIn("report is missing or empty", output)
+            self.assertIn("could not write synthetic error report: read only", output)
+
+    def test_skips_without_classname_cannot_match_fully_qualified_allowlist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "skipped.xml"
+            allowlist = Path(directory) / "allowed.json"
+            ElementTree.ElementTree(report_xml(skipped=1)).write(report)
+            allowlist.write_text(json.dumps(["backend.example.skipped-0"]))
+            self.assertEqual(
+                main(["--allow-skips-from", str(allowlist), str(report)]), 1
+            )
+
     def test_accepts_passing_report_with_accounted_skips(self):
         summary = summarize_junit(report_xml(skipped=2))
 
@@ -81,6 +108,61 @@ class ValidateJUnitTests(unittest.TestCase):
 
             self.assertEqual(main([str(report)]), 0)
             self.assertEqual(main(["--require-no-skips", str(report)]), 1)
+
+    def test_skip_allowlist_rejects_new_skips_and_accepts_existing_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "skipped.xml"
+            allowlist = Path(directory) / "allowed.json"
+            root = report_xml(skipped=1)
+            for case in root.iter("testcase"):
+                case.set("classname", "backend.example")
+            ElementTree.ElementTree(root).write(report)
+            allowlist.write_text(json.dumps(["backend.example.skipped-0"]))
+            args = ["--allow-skips-from", str(allowlist), str(report)]
+            self.assertEqual(main(args), 0)
+            allowlist.write_text(json.dumps(["backend.example.other"]))
+            with patch("sys.stderr") as stderr:
+                self.assertEqual(main(args), 1)
+            output = "".join(call.args[0] for call in stderr.write.call_args_list)
+            self.assertIn(str(allowlist), output)
+            self.assertIn("do not allowlist a regression", output)
+
+    def test_skip_allowlist_must_be_a_valid_list_of_exact_ids(self):
+        self._check_invalid_allowlists()
+
+    def test_allowlisted_all_skipped_report_still_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "skipped.xml"
+            allowlist = Path(directory) / "allowed.json"
+            report.write_text(
+                '<testsuite><testcase classname="backend.example" name="only"><skipped/></testcase></testsuite>'
+            )
+            allowlist.write_text(json.dumps(["backend.example.only"]))
+            self.assertEqual(
+                main(["--allow-skips-from", str(allowlist), str(report)]), 1
+            )
+
+    def _check_invalid_allowlists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "passed.xml"
+            allowlist = Path(directory) / "allowed.json"
+            ElementTree.ElementTree(report_xml()).write(report)
+            args = ["--allow-skips-from", str(allowlist), str(report)]
+            for content in (
+                "{",
+                "{}",
+                "[1]",
+                '[""]',
+                '["a", "a"]',
+                '[".skipped-0"]',
+                '["backend.example."]',
+                '["missing-separator"]',
+            ):
+                with self.subTest(content=content):
+                    allowlist.write_text(content)
+                    self.assertEqual(main(args), 1)
+            allowlist.unlink()
+            self.assertEqual(main(args), 1)
 
     def test_synthesizes_machine_readable_error_for_missing_report(self):
         with tempfile.TemporaryDirectory() as directory:

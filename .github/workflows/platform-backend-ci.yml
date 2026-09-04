@@ -9,6 +9,9 @@ on:
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
+      - ".github/scripts/backend_test_shard.py"
+      - ".github/scripts/test_backend_test_shard.py"
+      - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
@@ -19,6 +22,9 @@ on:
       - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
+      - ".github/scripts/backend_test_shard.py"
+      - ".github/scripts/test_backend_test_shard.py"
+      - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:
@@ -136,6 +142,7 @@ jobs:
         if: ${{ always() }}
         run: >-
           python ../../.github/scripts/validate_junit.py --synthesize-invalid
+          --require-no-skips
           junit-autogpt-libs.xml
 
       - name: Upload test report
@@ -545,49 +552,13 @@ jobs:
             pytest_args+=(-q)
           fi
 
-          case "$TEST_SHARD" in
-            data)
-              test_paths=(backend/data)
-              export E2E_REDIS_CLUSTER_RESTART=1
-              ;;
-            copilot)
-              test_paths=(backend/copilot)
-              ;;
-            util-executor)
-              test_paths=(backend/util backend/executor)
-              ;;
-            remainder)
-              test_paths=()
-              for path in backend/*/; do
-                case "$path" in
-                  backend/data/|backend/copilot/|backend/util/|backend/executor/)
-                    continue
-                    ;;
-                esac
-                test_paths+=("${path%/}")
-              done
-              test_paths+=(
-                scripts
-                test
-                ../../.github/scripts/test_validate_junit.py
-              )
-              ;;
-            *)
-              echo "Unknown backend test shard: $TEST_SHARD" >&2
-              exit 1
-              ;;
-          esac
-
-          if (( ${#test_paths[@]} == 0 )); then
-            echo "Backend test shard $TEST_SHARD selected no paths" >&2
-            exit 1
-          fi
-          poetry run pytest "${pytest_args[@]}" "${test_paths[@]}"
+          python ../../.github/scripts/backend_test_shard.py "$TEST_SHARD" -- "${pytest_args[@]}"
 
       - name: Validate test reports
         if: ${{ always() }}
         run: >-
           python ../../.github/scripts/validate_junit.py --synthesize-invalid
+          --allow-skips-from ../../.github/scripts/backend-allowed-skips.json
           junit-${{ matrix.test-shard }}.xml
 
       - name: Validate coverage reports
