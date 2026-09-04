@@ -41,6 +41,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
     isRevoking,
     isLoading,
     isError,
+    isGrantableLoading,
     isGrantableError,
     refetch,
   } = useExpertIntegrationsSection(expertId);
@@ -84,7 +85,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
               <TooltipContent side="bottom">
                 Couldn&apos;t load your services.
               </TooltipContent>
-            ) : grantable.length === 0 ? (
+            ) : grantable.length === 0 && !isGrantableLoading ? (
               <TooltipContent side="bottom">
                 {expertName} can already use everything in your account.
               </TooltipContent>

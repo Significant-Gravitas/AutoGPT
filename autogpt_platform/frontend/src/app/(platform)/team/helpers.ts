@@ -263,7 +263,9 @@ export function getAutopilotSummary({
 }: AutopilotSummaryArgs) {
   return {
     skillCount: getTeamSkills(experts).length,
-    scheduleCount: experts.flatMap(schedulesForExpert).length,
+    scheduleCount: new Set(
+      experts.flatMap(schedulesForExpert).map((schedule) => schedule.id),
+    ).size,
     workflowCount: experts.reduce(
       (total, expert) => total + expert.workflows.length,
       0,
@@ -334,6 +336,7 @@ export function filterExpertSchedules(
     }
     if (filter === "all") return true;
     const untilNext = nextRunMs(schedule) - now.getTime();
+    if (untilNext < 0) return false;
     if (filter === "today") return untilNext <= DAY_MS;
     if (filter === "week") return untilNext <= 7 * DAY_MS;
     return untilNext > 7 * DAY_MS;

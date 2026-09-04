@@ -25,4 +25,4 @@ export function setDesignTheme(theme: DesignTheme) {
 // stored value wins. Written as a static literal (no interpolation) so it is
 // never built from runtime values; the key, attribute and theme names must
 // match Key.DESIGN_THEME, DESIGN_THEME_ATTRIBUTE and DESIGN_THEMES above.
-export const designThemeBootScript = `(function(){try{var k="design-theme";var a="data-design";var ok=["default","linear"];var q=new URLSearchParams(location.search).get("design");if(q&&ok.indexOf(q)>=0){localStorage.setItem(k,q)}var t=localStorage.getItem(k);if(t&&ok.indexOf(t)>=0){document.documentElement.setAttribute(a,t)}}catch(e){}})();`;
+export const designThemeBootScript = `(function(){var a="data-design";var ok=["default","linear"];var q=new URLSearchParams(location.search).get("design");var t=q&&ok.indexOf(q)>=0?q:null;try{var k="design-theme";if(t){localStorage.setItem(k,t)}else{var s=localStorage.getItem(k);if(s&&ok.indexOf(s)>=0){t=s}}}catch(e){}if(t){document.documentElement.setAttribute(a,t)}})();`;

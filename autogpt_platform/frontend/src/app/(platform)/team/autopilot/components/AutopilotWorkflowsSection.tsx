@@ -50,7 +50,7 @@ export function AutopilotWorkflowsSection({ experts }: Props) {
                     {workflow.name ?? "Unnamed workflow"}
                   </div>
                   {workflow.description ? (
-                    <div className="line-clamp-1 text-[13px] text-zinc-500">
+                    <div className="line-clamp-1 text-xs text-zinc-500">
                       {workflow.description}
                     </div>
                   ) : null}

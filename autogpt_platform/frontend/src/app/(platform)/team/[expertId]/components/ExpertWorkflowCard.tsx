@@ -106,9 +106,9 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
           </span>
         </div>
         {libraryAgent ? (
-          <div className="pointer-events-auto relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
+          <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
             <WorkflowCredentialStack providers={credentialProviders} />
-            <span className="ml-auto">
+            <span className="pointer-events-auto ml-auto">
               <ExpertWorkflowRunButton
                 agent={libraryAgent}
                 isTriggerWorkflow={isTriggerWorkflow}
