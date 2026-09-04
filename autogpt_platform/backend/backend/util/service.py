@@ -28,25 +28,9 @@ from typing import (
 
 try:
     import httpx2 as httpx
+    import httpx2  # noqa: F401 — keep the bare module name in scope for pyright
 except ImportError:
     import httpx
-
-# Also keep `httpx2` as a module name in scope so type-checkers (pyright)
-# can resolve references like `httpx2.Limits(...)` without the runtime
-# cost of re-importing (Python's module cache makes this a no-op).
-import httpx2  # noqa: F401
-
-# `raise_for_status()` on a response object created by starlette's TestClient
-# raises the *real* httpx.HTTPStatusError, not httpx2's. Both libraries
-# ship a class with the same name but no inheritance relationship, so the
-# `except httpx.HTTPStatusError` clause below would silently fail to catch
-# starlette's exception when httpx2 is installed (which it is in production
-# and CI). Import the real httpx under a separate name purely so the
-# except clause can name both classes.
-try:
-    import httpx as _real_httpx
-except ImportError:
-    _real_httpx = httpx  # type: ignore[assignment]  # httpx2 is the only one available
 
 import uvicorn
 from fastapi import FastAPI, Request, responses
@@ -690,7 +674,7 @@ def get_service_client(
                 # Reset failure count on successful response
                 self._connection_failure_count = 0
                 return response.json()
-            except (httpx.HTTPStatusError, _real_httpx.HTTPStatusError) as e:
+            except httpx.HTTPStatusError as e:
                 status_code = e.response.status_code
 
                 # Try to parse the error response as RemoteCallError for mapped exceptions
