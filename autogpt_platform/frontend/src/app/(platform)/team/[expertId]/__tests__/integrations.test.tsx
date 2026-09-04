@@ -18,6 +18,11 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
+vi.mock("framer-motion", async (importActual) => {
+  const actual = await importActual<typeof import("framer-motion")>();
+  return { ...actual, useReducedMotion: () => true };
+});
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -101,21 +106,54 @@ beforeEach(() => {
   );
 });
 
+async function openIntegrationsTab() {
+  await userEvent.click(
+    await screen.findByRole("tab", { name: /integrations/i }),
+  );
+}
+
 describe("managing an expert's integrations", () => {
   it("lists what the expert can reach", async () => {
     server.use(getListExpertCredentialsMockHandler([linkedin]));
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Work LinkedIn")).toBeDefined();
     expect(within(section).getByText("LinkedIn")).toBeDefined();
+  });
+
+  it("titles the tab and filters integrations by search", async () => {
+    server.use(getListExpertCredentialsMockHandler([linkedin]));
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+
+    const section = await screen.findByTestId("expert-integrations-section");
+    expect(within(section).getByText("Maria's Integrations")).toBeDefined();
+    await within(section).findByText("Work LinkedIn");
+
+    await userEvent.type(
+      within(section).getByRole("searchbox", { name: "Search integrations" }),
+      "notion",
+    );
+    expect(within(section).getByText("No integrations match.")).toBeDefined();
+
+    await userEvent.clear(
+      within(section).getByRole("searchbox", { name: "Search integrations" }),
+    );
+    expect(within(section).getByText("Work LinkedIn")).toBeDefined();
   });
 
   it("explains the empty state instead of showing a bare list", async () => {
     server.use(getListExpertCredentialsMockHandler([]));
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
@@ -140,6 +178,8 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: "Remove Work LinkedIn" }),
     );
@@ -151,6 +191,20 @@ describe("managing an expert's integrations", () => {
     let granted: string[] = [];
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+          {
+            name: "linkedin",
+            description: "Professional network",
+            supported_auth_types: ["oauth2"],
+          },
+        ]),
+      ),
       http.post(
         "*/api/experts/expert-maria/credentials",
         async ({ request }) => {
@@ -163,14 +217,19 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      await screen.findByRole("button", { name: /Use existing/ }),
     );
 
-    expect(await screen.findByText("Team Notion")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Work LinkedIn" })).toBeNull();
+    const dialog = await screen.findByRole("dialog");
+    const list = within(dialog).getByRole("list", {
+      name: "Existing connections",
+    });
+    const useNotion = within(list).getByRole("button", { name: /Notion/ });
+    expect(within(list).queryByRole("button", { name: /LinkedIn/ })).toBeNull();
 
-    await userEvent.click(screen.getByText("Team Notion"));
+    await userEvent.click(useNotion);
     await waitFor(() => expect(granted).toEqual(["cred-notion"]));
   });
 
@@ -183,13 +242,10 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
-    );
-    expect(await screen.findByText("Nothing connected yet.")).toBeDefined();
+    await openIntegrationsTab();
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Connect a new service/ }),
+      await screen.findByRole("button", { name: /Add integration/ }),
     );
 
     expect(await screen.findByLabelText("Search services")).toBeDefined();
@@ -198,6 +254,135 @@ describe("managing an expert's integrations", () => {
         "Pick a service to connect. Maria will be able to use it on your behalf.",
       ),
     ).toBeDefined();
+  });
+
+  it("grants an existing credential from the Use existing dialog", async () => {
+    let granted: string[] = [];
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = body.credential_ids;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Use existing/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    const list = within(dialog).getByRole("list", {
+      name: "Existing connections",
+    });
+    expect(within(list).getByText("Team Notion")).toBeDefined();
+    expect(within(list).queryByText("Work LinkedIn")).toBeNull();
+    await userEvent.click(within(list).getByRole("button", { name: /Notion/ }));
+
+    await waitFor(() => expect(granted).toEqual(["cred-notion"]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("asks which credential to use when a provider has several", async () => {
+    let granted: string[] = [];
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "api_key",
+            title: "Team Notion",
+          },
+          {
+            id: "cred-notion-2",
+            provider: "notion",
+            type: "api_key",
+            title: "Personal Notion",
+          },
+        ]),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted = body.credential_ids;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Use existing/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("2 connections · choose one"),
+    ).toBeDefined();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /Notion/ }),
+    );
+
+    const choices = await within(dialog).findByRole("list", {
+      name: "Notion connections",
+    });
+    expect(within(choices).getAllByRole("listitem")).toHaveLength(2);
+    await userEvent.click(
+      within(choices).getByRole("button", {
+        name: "Let Maria use Personal Notion",
+      }),
+    );
+
+    await waitFor(() => expect(granted).toEqual(["cred-notion-2"]));
+  });
+
+  it("opens a separate dialog for each header button", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Use existing/ }),
+    );
+    let dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("list", { name: "Existing connections" }),
+    ).toBeDefined();
+    expect(within(dialog).queryByLabelText("Search services")).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Add integration/ }),
+    );
+    dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByLabelText("Search services"),
+    ).toBeDefined();
+    expect(await within(dialog).findByText("Notion")).toBeDefined();
+    expect(within(dialog).queryByText(/Let Maria use/)).toBeNull();
   });
 
   it("grants only the credential the dialog created", async () => {
@@ -253,20 +438,21 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Connect a new service/ }),
-    );
     await userEvent.click(await screen.findByText("Notion"));
 
+    expect(await screen.findByText("Connect AutoGPT to Notion")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: /API Key/ }));
     await userEvent.type(
       await screen.findByPlaceholderText("My Notion key"),
       "Team Notion",
     );
     await userEvent.type(screen.getByPlaceholderText("sk-..."), "secret-value");
-    await userEvent.click(screen.getByRole("button", { name: "Save API key" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
   });
@@ -285,14 +471,21 @@ describe("managing an expert's integrations", () => {
 
     render(<ExpertDetailPage />);
 
+    await openIntegrationsTab();
+
     await userEvent.click(
       await screen.findByRole("button", { name: /Add integration/ }),
     );
 
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText(/Let Maria use/)).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(
-      await screen.findByText("Couldn't load what Maria already has."),
-    ).toBeDefined();
-    expect(screen.queryByText("Team Notion")).toBeNull();
+      screen
+        .getByRole("button", { name: /Use existing/ })
+        .hasAttribute("disabled"),
+    ).toBe(true);
     expect(grantAttempts).toBe(0);
   });
 
@@ -309,6 +502,8 @@ describe("managing an expert's integrations", () => {
     );
 
     render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(await within(section).findByText("Sentry")).toBeDefined();

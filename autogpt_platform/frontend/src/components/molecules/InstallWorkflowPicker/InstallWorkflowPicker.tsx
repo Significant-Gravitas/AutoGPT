@@ -31,7 +31,6 @@ export function InstallWorkflowPicker({
   const {
     title,
     hiredExperts,
-    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,
@@ -181,23 +180,14 @@ export function InstallWorkflowPicker({
                             {workflowSubtitle(agent.description)}
                           </Text>
                         </div>
-                        {isLibraryAgentInstalled(agent) ? (
-                          <Text
-                            variant="small"
-                            className="shrink-0 !text-zinc-400"
-                          >
-                            Installed
-                          </Text>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="small"
-                            loading={pendingKey === agent.id}
-                            onClick={() => installLibraryAgent(agent)}
-                          >
-                            Install
-                          </Button>
-                        )}
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          loading={pendingKey === agent.id}
+                          onClick={() => installLibraryAgent(agent)}
+                        >
+                          Install
+                        </Button>
                       </div>
                     ))
                   : marketplaceResults.map((agent) => (

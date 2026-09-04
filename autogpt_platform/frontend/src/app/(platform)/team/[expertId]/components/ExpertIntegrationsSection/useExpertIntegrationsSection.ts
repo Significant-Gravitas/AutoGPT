@@ -15,8 +15,8 @@ import { useRef, useState } from "react";
 export function useExpertIntegrationsSection(expertId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [isAdding, setIsAdding] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isUsingExisting, setIsUsingExisting] = useState(false);
   // Whether the dialog we just closed actually created something. Closing
   // without a credential means the user backed out, and the picker they came
   // from should come back rather than the click going nowhere.
@@ -49,7 +49,6 @@ export function useExpertIntegrationsSection(expertId: string) {
   const { mutate: grant, isPending: isGranting } = useGrantExpertCredentials({
     mutation: {
       onSuccess: () => {
-        setIsAdding(false);
         invalidate();
       },
       onError: () =>
@@ -68,16 +67,15 @@ export function useExpertIntegrationsSection(expertId: string) {
     },
   });
 
-  function openAdd() {
-    setIsAdding(true);
+  function openUseExisting() {
+    setIsUsingExisting(true);
   }
 
-  function closeAdd() {
-    setIsAdding(false);
+  function closeUseExisting() {
+    setIsUsingExisting(false);
   }
 
   function openConnect() {
-    setIsAdding(false);
     didConnect.current = false;
     setIsConnecting(true);
   }
@@ -89,9 +87,13 @@ export function useExpertIntegrationsSection(expertId: string) {
     grant({ expertId, data: { credential_ids: [credential.id] } });
   }
 
+  function grantExistingCredential(credentialId: string) {
+    didConnect.current = true;
+    grant({ expertId, data: { credential_ids: [credentialId] } });
+  }
+
   function closeConnect() {
     setIsConnecting(false);
-    if (!didConnect.current) setIsAdding(true);
     didConnect.current = false;
   }
 
@@ -119,13 +121,14 @@ export function useExpertIntegrationsSection(expertId: string) {
     isGrantableLoading: connectedQuery.isLoading,
     isGrantableError: connectedQuery.isError,
     refetch,
-    isAdding,
-    openAdd,
-    closeAdd,
     isConnecting,
+    isUsingExisting,
+    openUseExisting,
+    closeUseExisting,
     openConnect,
     closeConnect,
     connectCredential,
+    grantExistingCredential,
     addIntegration,
     removeIntegration,
     isGranting,

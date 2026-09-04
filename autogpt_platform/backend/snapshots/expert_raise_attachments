@@ -27,6 +27,7 @@
     "weekly_spend": 0,
     "workflows": [
       {
+        "chain": [],
         "description": "Writes SEO-optimized blog posts",
         "graph_id": "graph-1",
         "id": "workflow-ref-1",

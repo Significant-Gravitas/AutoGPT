@@ -102,6 +102,13 @@ async def create_workflow_schedule(
     return True
 
 
+async def delete_workflow_schedule(
+    schedule_id: str, user_id: str, expert_id: str
+) -> None:
+    """Drop the schedule of a workflow being removed from an expert."""
+    await _delete_schedule_best_effort(schedule_id, user_id, expert_id)
+
+
 async def _delete_schedule_best_effort(
     schedule_id: str, user_id: str, expert_id: str
 ) -> None:

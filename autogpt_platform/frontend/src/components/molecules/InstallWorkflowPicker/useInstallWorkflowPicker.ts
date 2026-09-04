@@ -164,7 +164,8 @@ export function useInstallWorkflowPicker({
   }
 
   // Only the library source can tell: a marketplace row carries no listing
-  // version until its detail is fetched at click time.
+  // version until its detail is fetched at click time. Installed library
+  // agents are dropped from the list rather than shown greyed out.
   function isLibraryAgentInstalled(agent: LibraryAgent) {
     return (
       targetExpert?.workflows.some(
@@ -184,12 +185,13 @@ export function useInstallWorkflowPicker({
   return {
     title,
     hiredExperts,
-    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,
     setSearchQuery,
-    libraryResults: libraryResultsQuery.data ?? [],
+    libraryResults: (libraryResultsQuery.data ?? []).filter(
+      (agent) => !isLibraryAgentInstalled(agent),
+    ),
     marketplaceResults: marketplaceResultsQuery.data ?? [],
     isSearching: resultsQuery.isLoading,
     pendingKey,

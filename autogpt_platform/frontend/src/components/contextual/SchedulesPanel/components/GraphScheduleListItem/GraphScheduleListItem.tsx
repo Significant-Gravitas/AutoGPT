@@ -24,12 +24,15 @@ interface Props {
   /** Layout overrides for narrow containers (e.g. drawers) where the
    *  side-by-side sm layout would crush the text column. */
   className?: string;
+  /** Tint override for the leading icon tile, e.g. an expert's accent. */
+  iconClassName?: string;
 }
 
 export function GraphScheduleListItem({
   schedule,
   editAction,
   className,
+  iconClassName,
 }: Props) {
   const {
     nextRunLabel,
@@ -63,8 +66,17 @@ export function GraphScheduleListItem({
         className="flex min-w-0 flex-1 items-start gap-3 hover:opacity-80"
         data-testid="schedule-open-agent"
       >
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-emerald-50">
-          <Icon icon={Calendar03Icon} size={18} className="text-emerald-700" />
+        <div
+          className={cn(
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-emerald-50",
+            iconClassName,
+          )}
+        >
+          <Icon
+            icon={Calendar03Icon}
+            size={18}
+            className={iconClassName ? "text-inherit" : "text-emerald-700"}
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text

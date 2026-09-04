@@ -6,6 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
+from datetime import date
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -20,6 +21,8 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
+    ExpertActivity,
+    ExpertActivityDay,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
@@ -801,6 +804,52 @@ def test_list_expert_runs_unknown_expert_returns_404(
     assert response.status_code == 404
 
 
+def test_get_expert_activity_forwards_authenticated_user_and_serializes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    configured_snapshot: Snapshot,
+) -> None:
+    activity = ExpertActivity(
+        timezone="Europe/Madrid",
+        days=[
+            ExpertActivityDay(day=date(2026, 9, 2), sessions=0, runs=0),
+            ExpertActivityDay(day=date(2026, 9, 3), sessions=2, runs=1),
+        ],
+    )
+    mock_get = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert_activity",
+        new_callable=AsyncMock,
+        return_value=activity,
+    )
+
+    response = client.get("/experts/expert-1/activity")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["timezone"] == "Europe/Madrid"
+    assert [d["day"] for d in data["days"]] == ["2026-09-02", "2026-09-03"]
+    assert data["days"][1] == {"day": "2026-09-03", "sessions": 2, "runs": 1}
+    mock_get.assert_awaited_once_with(test_user_id, "expert-1")
+
+    configured_snapshot.assert_match(
+        f"{json.dumps(data, indent=2, sort_keys=True)}\n", "expert_activity"
+    )
+
+
+def test_get_expert_activity_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert_activity",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("nope"),
+    )
+
+    response = client.get("/experts/nope/activity")
+
+    assert response.status_code == 404
+
+
 # ─── Soul ──────────────────────────────────────────────────────────────
 
 
@@ -840,6 +889,43 @@ def test_update_expert_soul_returns_updated_expert(
     )
 
 
+def test_update_expert_skills_replaces_the_list(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    updated = _make_expert(name="Maria", skills=["Deep Research", "SEO"])
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        return_value=updated,
+    )
+
+    response = client.put(
+        "/experts/expert-1/skills",
+        json={"skills": [" Deep Research ", "SEO", "seo"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["skills"] == ["Deep Research", "SEO"]
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", ["Deep Research", "SEO"], marketplace_listing_ids=[]
+    )
+
+
+def test_update_expert_skills_unknown_skill_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=NotFoundError("Skill 'Nope' is not in your library"),
+    )
+
+    response = client.put("/experts/expert-1/skills", json={"skills": ["Nope"]})
+
+    assert response.status_code == 404
+
+
 def test_update_expert_soul_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -861,6 +947,63 @@ def test_update_expert_soul_not_found_returns_404(
 
     assert response.status_code == 404
     mock_update.assert_awaited_once()
+
+
+# ─── Avatar ────────────────────────────────────────────────────────────
+
+
+def test_update_expert_avatar_returns_updated_expert(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    updated = _make_expert(avatar_url="https://cdn.example.com/mara.png")
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+        return_value=updated,
+    )
+
+    response = client.patch(
+        "/experts/expert-1/avatar",
+        json={"avatar_url": "https://cdn.example.com/mara.png"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] == "https://cdn.example.com/mara.png"
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", "https://cdn.example.com/mara.png"
+    )
+
+
+def test_update_expert_avatar_rejects_unsafe_url(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+    )
+
+    response = client.patch(
+        "/experts/expert-1/avatar",
+        json={"avatar_url": "javascript:alert(1)"},
+    )
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+def test_update_expert_avatar_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_avatar",
+        new_callable=AsyncMock,
+        side_effect=experts_db.ExpertNotFoundError("expert-1"),
+    )
+
+    response = client.patch("/experts/expert-1/avatar", json={"avatar_url": None})
+
+    assert response.status_code == 404
 
 
 def test_update_expert_soul_validates_field_lengths() -> None:
@@ -954,6 +1097,36 @@ def test_install_workflow_duplicate_returns_same_row_id(
         library_agent_id=None,
     )
     assert mock_install.await_args_list == [expected, expected]
+
+
+def test_remove_workflow_returns_204(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_remove = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.remove_workflow",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.delete("/experts/expert-1/workflows/workflow-ref-1")
+
+    assert response.status_code == 204
+    mock_remove.assert_awaited_once_with(test_user_id, "expert-1", "workflow-ref-1")
+
+
+def test_remove_workflow_unknown_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.remove_workflow",
+        new_callable=AsyncMock,
+        side_effect=NotFoundError("Workflow #missing not found on expert"),
+    )
+
+    response = client.delete("/experts/expert-1/workflows/missing")
+
+    assert response.status_code == 404
 
 
 def test_install_workflow_unknown_expert_returns_404(

@@ -33,10 +33,7 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
 
   return (
     <section>
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-          Work
-        </div>
+      <div className="mb-2.5 flex items-center justify-end gap-2 empty:mb-0">
         {reviewCount > 0 ? (
           <button
             type="button"

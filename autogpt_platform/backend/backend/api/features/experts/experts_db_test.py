@@ -7,6 +7,7 @@ from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import prisma.enums
 import prisma.errors
@@ -1685,6 +1686,66 @@ async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_attaches_library_skills_and_keeps_existing(
+    server: SpinTestServer, test_user
+):
+    from backend.copilot.tools.skills import DEFAULT_SKILLS
+
+    default_slug = DEFAULT_SKILLS[0].name
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"skills": ["Marketplace Skill"]}
+    )
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["marketplace skill", default_slug.upper()]
+    )
+
+    assert updated.skills[0] == "Marketplace Skill"
+    assert updated.skills[1].lower() == default_slug.lower()
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["not-a-skill-anyone-has"]
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    from backend.copilot.tools.skills import ParsedSkill
+
+    listed = ParsedSkill(
+        name="Deep Research", description="Research anything", body=""
+    )
+    monkeypatch.setattr(experts_db, "read_user_skill_with_body", _none_skill)
+    monkeypatch.setattr(
+        experts_db, "list_user_skills", _listing_skills([listed])
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["deep research"]
+    )
+
+    assert updated.skills == ["Deep Research"]
+
+
+async def _none_skill(*_args, **_kwargs):
+    return None
+
+
+def _listing_skills(skills):
+    async def _list(*_args, **_kwargs):
+        return skills
+
+    return _list
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_other_user_cannot_update_expert_soul(
     server: SpinTestServer, test_user, other_user
 ):
@@ -1881,6 +1942,37 @@ async def test_seed_roster_exposes_two_voice_samples_per_template(
         template = seeded[entry["name"]]
         assert len(template.voice_samples) == 2
         assert template.voice_preferences == entry["voice_preferences"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_detaches_it_from_the_expert(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    await experts_db.remove_workflow(test_user.id, hired.expert.id, installed.id)
+
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == []
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_unknown_id_raises(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.remove_workflow(test_user.id, hired.expert.id, "missing")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3576,6 +3668,85 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
     assert [run.status for run in runs] == ["completed", "review"]
     assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar():
+    tz = "Pacific/Auckland"
+    today = datetime.now(ZoneInfo(tz)).date()
+    yesterday = today - timedelta(days=1)
+    seen: list[tuple] = []
+
+    async def fake_query(sql: str, *args, model):
+        seen.append((sql, args))
+        if '"ChatSession"' in sql:
+            return [model(day=today, count=2), model(day=yesterday, count=1)]
+        return [model(day=today, count=3)]
+
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=True)
+        ),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone=tz)),
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=fake_query),
+    ):
+        activity = await experts_db.get_expert_activity("owner-1", "expert-1")
+
+    assert activity.timezone == tz
+    assert len(activity.days) == 365
+    assert activity.days[-1].day == today
+    assert activity.days[0].day == today - timedelta(
+        days=experts_db.EXPERT_ACTIVITY_DAYS - 1
+    )
+    assert [d.day for d in activity.days] == sorted(d.day for d in activity.days)
+    assert (activity.days[-1].sessions, activity.days[-1].runs) == (2, 3)
+    assert (activity.days[-2].sessions, activity.days[-2].runs) == (1, 0)
+    assert all(d.sessions == 0 and d.runs == 0 for d in activity.days[:-2])
+
+    assert {'"ChatSession"' in sql for sql, _ in seen} == {True, False}
+    for sql, args in seen:
+        assert args[:3] == ("owner-1", "expert-1", tz)
+        assert args[3] == datetime.combine(
+            activity.days[0].day, datetime.min.time(), tzinfo=ZoneInfo(tz)
+        )
+        assert ('"isDeleted" = false' in sql) == ('"AgentGraphExecution"' in sql)
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_rejects_missing_or_foreign_expert():
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=False)
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=AsyncMock()) as query,
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db.get_expert_activity("owner-1", "foreign-expert")
+
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_expert_activity_counts_sessions_by_day(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id, name="Otto", role=None, voice_preferences=None
+    )
+    for _ in range(2):
+        await create_chat_session(owner.id, dry_run=False, expert_id=raised.expert.id)
+    await create_chat_session(owner.id, dry_run=False)
+
+    activity = await experts_db.get_expert_activity(owner.id, raised.expert.id)
+
+    assert activity.timezone == "UTC"
+    assert activity.days[-1].day == datetime.now(timezone.utc).date()
+    assert activity.days[-1].sessions == 2
+    assert sum(d.sessions for d in activity.days) == 2
+    assert sum(d.runs for d in activity.days) == 0
 
 
 @pytest.mark.asyncio
