@@ -84,6 +84,9 @@ export function useOAuthConnect({
         provider,
         scopes,
         credentialID,
+        // The list that produced the dead id is stale; refresh it now so a
+        // cancelled popup does not make every later click pay the retry too.
+        () => credentialsActions?.reload(),
       );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
@@ -177,11 +180,15 @@ function buildLoginParams(scopes?: string[], credentialID?: string) {
 
 /** The upgrade target comes from an in-memory list that can be stale — the
  *  very staleness this flow exists to survive — and the backend 404s an id it
- *  cannot find. Fall back to a fresh grant rather than leaving a dead button. */
+ *  cannot find. Fall back to a fresh grant rather than leaving a dead button.
+ *  Only that 404 retries: the endpoint also 404s a provider without OAuth
+ *  support, before it ever reads the upgrade target, and re-sending that
+ *  fails identically. */
 async function initiateLogin(
   provider: string,
   scopes?: string[],
   credentialID?: string,
+  onStaleCredential?: () => void,
 ) {
   try {
     return await getV1InitiateOauthFlow(
@@ -189,9 +196,23 @@ async function initiateLogin(
       buildLoginParams(scopes, credentialID),
     );
   } catch (error) {
-    if (!credentialID || (error as { status?: number })?.status !== 404) {
-      throw error;
-    }
+    if (!credentialID || !isMissingUpgradeTarget(error)) throw error;
+    onStaleCredential?.();
     return getV1InitiateOauthFlow(provider, buildLoginParams(scopes));
   }
+}
+
+/** Matches only `_prepare_scope_upgrade`'s "Credential to upgrade not found".
+ *  If the backend rewords it the retry stops happening and the original 404
+ *  surfaces — the behaviour before the retry existed. */
+function isMissingUpgradeTarget(error: unknown) {
+  const { status, response } = (error ?? {}) as {
+    status?: number;
+    response?: { detail?: unknown };
+  };
+  return (
+    status === 404 &&
+    typeof response?.detail === "string" &&
+    response.detail.toLowerCase().includes("upgrade")
+  );
 }

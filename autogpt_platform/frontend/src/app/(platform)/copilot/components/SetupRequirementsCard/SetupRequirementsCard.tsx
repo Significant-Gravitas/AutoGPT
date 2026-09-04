@@ -101,6 +101,7 @@ export function SetupRequirementsCard({
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -152,7 +153,7 @@ export function SetupRequirementsCard({
   // which the backend requires the user to have picked. A card with editable
   // inputs reports ready on the first typed character, so sending on readiness
   // would fire mid-word with a half-typed value.
-  const needsManualPick = inputsMode === "trigger";
+  const needsManualPick = isTriggerMode;
   const canAutoDismiss =
     needsCredentials &&
     alreadyConnected &&
@@ -256,7 +257,7 @@ export function SetupRequirementsCard({
   }
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(

@@ -35,6 +35,14 @@ export function ConnectorRow({ row }: Props) {
   );
 
   useEffect(() => {
+    // Cards stream in one commit at a time, so a row's schema can widen after
+    // it auto-selected: a selection that no longer satisfies it must go, or
+    // the row reads Connected while Proceed sends a credential missing the
+    // scopes the later card asked for.
+    if (row.selected && !savedCredential) {
+      row.select(undefined);
+      return;
+    }
     if (row.selected || !savedCredential) return;
     row.select({
       id: savedCredential.id,

@@ -109,7 +109,9 @@ export function toConnectorRows(
       }
       // One row answers every card that asked for this provider, so it must
       // request the union of their scopes — keeping only the first card's
-      // leaves the others permanently unsatisfiable.
+      // leaves the others permanently unsatisfiable. Scopes only: merging
+      // `credentials_types` would offer a method some cards cannot accept, and
+      // that needs a per-card row rather than a wider one.
       row.schema = withUnionedScopes(row.schema, schema);
       row.targets.push({ request, key });
       row.selected = row.selected ?? request.selected[key];
@@ -130,6 +132,8 @@ export function toConnectorRows(
   }));
 }
 
+/** Merges `incoming`'s scopes into `kept`, leaving every other schema field
+ *  as the first card set it. */
 function withUnionedScopes(
   kept: CredentialField[1],
   incoming: CredentialField[1],
