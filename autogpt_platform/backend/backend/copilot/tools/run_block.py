@@ -7,6 +7,7 @@ from typing import Any
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
 from .helpers import (
@@ -15,7 +16,13 @@ from .helpers import (
     execute_block,
     prepare_block_for_execution,
 )
-from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,29 @@ class RunBlockTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        # Only a credentialed execution is an integration action; schema
+        # lookups, dry runs and credential-less blocks leave no audit trail.
+        if (
+            not isinstance(result, BlockOutputResponse)
+            or not result.success
+            or result.is_dry_run
+            or not result.provider
+        ):
+            return None
+        return ActivityEventDraft(
+            category="INTEGRATION",
+            event_type="integration.action",
+            title=result.block_name,
+            provider=result.provider,
+            object_id=result.block_id,
+        )
 
     async def _execute(
         self,

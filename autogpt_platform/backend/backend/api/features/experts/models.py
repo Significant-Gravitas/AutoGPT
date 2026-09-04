@@ -22,6 +22,7 @@ EXTERNAL_ACTION_APPROVAL_RULE = "External actions require approval."
 PROTECTED_SOUL_RULES = (AI_DISCLOSURE_RULE, EXTERNAL_ACTION_APPROVAL_RULE)
 
 EXPERT_NAME_MAX_LENGTH = 100
+EXPERT_TAGLINE_MAX_LENGTH = 160
 EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
@@ -104,6 +105,19 @@ class ExpertIdentity(BaseModel):
     avatar_url: str | None
     role: str
     is_archived: bool
+
+
+class ExpertCredentialRef(BaseModel):
+    """One integration credential an expert is allowed to use.
+
+    ``title``/``type`` are read from the owner's live credential rather than
+    stored on the grant, so a renamed credential renames everywhere at once.
+    """
+
+    credential_id: str
+    provider: str
+    title: str
+    type: str
 
 
 class Expert(BaseModel):

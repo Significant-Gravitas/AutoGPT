@@ -22,12 +22,7 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.builder_context import resolve_session_permissions
-from backend.copilot.config import (
-    ChatConfig,
-    CopilotLlmAuthProvider,
-    CopilotLLMModel,
-    CopilotMode,
-)
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
@@ -49,8 +44,15 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_expert_kickoff_session,
     get_user_sessions,
+    update_session_llm_route,
     update_session_pinned,
     update_session_title,
+)
+from backend.copilot.offers import (
+    AIConnectionOffersResponse,
+    EntitlementUnavailable,
+    advanced_tier_entitled,
+    get_connection_offers,
 )
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
@@ -61,6 +63,10 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
     peek_pending_messages,
+)
+from backend.copilot.provider_tiers import (
+    ProviderTiersResponse,
+    describe_provider_tiers,
 )
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
@@ -126,28 +132,28 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.transports import (
+    ChatTransportsResponse,
+    DefaultChatRoute,
+    InvalidDefaultChatRoute,
+    get_chat_transports,
+    is_deployment_chat_available,
+    save_default_chat_route,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block, resolve_workspace_files
-from backend.integrations.codex.access import (
-    enforce_codex_access_http,
-    has_codex_access_for_discovery,
-)
-from backend.integrations.codex.auth_bundle import CodexAuthBundleError
-from backend.integrations.codex.credential_codec import bundle_from_credentials
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.codex.access import enforce_codex_access_http
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
-from backend.util.settings import BehaveAs, Settings
+from backend.util.settings import Settings
 
 settings = Settings()
 
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-credentials_manager = IntegrationCredentialsManager()
 
 
 async def _validate_and_get_session(
@@ -263,11 +269,6 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
-    mode: CopilotMode | None = Field(
-        default=None,
-        description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
-        "If None, uses the server default (extended_thinking).",
-    )
     model: CopilotLLMModel | None = Field(
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
@@ -369,18 +370,6 @@ class CreateSessionResponse(BaseModel):
     user_id: str | None
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
-
-
-class ChatTransportResponse(BaseModel):
-    auth_provider: CopilotLlmAuthProvider
-    credential_id: str | None
-    label: str
-    available: bool
-    default: bool
-
-
-class ChatTransportsResponse(BaseModel):
-    transports: list[ChatTransportResponse]
 
 
 class ActiveStreamInfo(BaseModel):
@@ -551,63 +540,6 @@ async def list_sessions(
     )
 
 
-def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
-    if credentials is None or credentials.type != "oauth2":
-        return False
-    try:
-        bundle_from_credentials(credentials)
-    except CodexAuthBundleError:
-        return False
-    return True
-
-
-def _is_deployment_chat_available() -> bool:
-    if settings.config.behave_as == BehaveAs.CLOUD:
-        return True
-    api_key, _ = config.main_client_credentials
-    return bool(config.test_mode or config.use_claude_code_subscription or api_key)
-
-
-async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
-    deployment_available = _is_deployment_chat_available()
-    transports = [
-        ChatTransportResponse(
-            auth_provider="platform",
-            credential_id=None,
-            label=(
-                "AutoGPT Platform"
-                if settings.config.behave_as == BehaveAs.CLOUD
-                else "Self-hosted chat"
-            ),
-            available=deployment_available,
-            default=deployment_available,
-        )
-    ]
-
-    codex_credentials = (
-        await credentials_manager.store.get_creds_by_provider(user_id, "codex")
-        if await has_codex_access_for_discovery(user_id)
-        else []
-    )
-    valid_codex_credentials = [
-        credentials
-        for credentials in codex_credentials
-        if _is_valid_codex_credentials(credentials)
-    ]
-    codex_is_default = not deployment_available and len(valid_codex_credentials) == 1
-    transports.extend(
-        ChatTransportResponse(
-            auth_provider="codex",
-            credential_id=credentials.id,
-            label="ChatGPT",
-            available=True,
-            default=codex_is_default,
-        )
-        for credentials in valid_codex_credentials
-    )
-    return transports
-
-
 @router.get(
     "/transports",
     dependencies=[Security(auth.requires_user)],
@@ -615,7 +547,100 @@ async def _get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
 async def list_chat_transports(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> ChatTransportsResponse:
-    return ChatTransportsResponse(transports=await _get_chat_transports(user_id))
+    """Every transport the user can chat over.
+
+    Exactly one carries ``default: true`` — the connection this user chose in
+    Settings, or the server's own pick when they haven't chosen one.
+    """
+    return ChatTransportsResponse(transports=await get_chat_transports(user_id))
+
+
+@router.get(
+    "/connections",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_chat_connections(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> AIConnectionOffersResponse:
+    """Every AI connection the user can chat over, described by the server.
+
+    Additive alongside ``GET /transports``, which keeps its shape. This
+    carries what a client would otherwise have to infer — provider family,
+    what backs a run, the quality tiers, and the limitations that apply —
+    so product and billing statements come from the side that enforces them.
+    """
+    return AIConnectionOffersResponse(offers=await get_connection_offers(user_id))
+
+
+@router.get(
+    "/model-tiers",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_provider_model_tiers(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ProviderTiersResponse:
+    """What each provider's quality tiers resolve to, whoever you are.
+
+    ``GET /connections`` answers "what can you pick", and deliberately omits
+    a connection nobody can select. That makes it the wrong source for the
+    surfaces that describe a provider *before* the user has one -- the
+    connect dialog, and the plan cards selling a plan they have not bought.
+    Those need "ChatGPT's Advanced tier is 5.6 Sol", which is a fact about
+    the catalog rather than about this user's entitlements.
+
+    User-scoped only because the engine is: which model a tier maps to
+    depends on the path a turn will run on. Says nothing about access.
+    """
+    return ProviderTiersResponse(providers=await describe_provider_tiers(user_id))
+
+
+class SetDefaultTransportRequest(BaseModel):
+    """The connection new chats should start on.
+
+    ``auth_provider: null`` clears the choice and hands the decision back to
+    the server. Sending ``codex`` requires naming the credential, so the
+    default keeps pointing at one account rather than "whichever ChatGPT".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    auth_provider: CopilotLlmAuthProvider | None = None
+    credential_id: str | None = Field(default=None, max_length=128)
+
+
+@router.put(
+    "/transports/default",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "The credential or user profile was not found"},
+    },
+)
+async def set_default_chat_transport(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    request: SetDefaultTransportRequest,
+) -> ChatTransportsResponse:
+    """Save the connection every new chat starts on.
+
+    Applies to chats nobody routed explicitly — a fresh session in the web
+    app, and every conversation that arrives without a request to read a route
+    from: bot links, schedules, briefings, dream passes. It does not touch a
+    conversation that already exists; sessions keep the route they were
+    created with.
+    """
+    try:
+        transports = await save_default_chat_route(
+            user_id,
+            DefaultChatRoute(
+                auth_provider=request.auth_provider,
+                credential_id=request.credential_id,
+            ),
+        )
+    except InvalidDefaultChatRoute as e:
+        raise HTTPException(
+            status_code=404 if e.detail == "codex_credential_not_found" else 422,
+            detail=e.detail,
+        ) from e
+    return ChatTransportsResponse(transports=transports)
 
 
 async def _resolve_new_session_llm_route(
@@ -634,14 +659,14 @@ async def _resolve_new_session_llm_route(
                 status_code=422,
                 detail="codex_builder_session_unsupported",
             )
-        if not _is_deployment_chat_available():
+        if not is_deployment_chat_available():
             raise HTTPException(
                 status_code=503,
                 detail="chat_transport_not_configured",
             )
         return "platform", None
 
-    transports = await _get_chat_transports(user_id)
+    transports = await get_chat_transports(user_id)
     if request is not None:
         route_was_explicit = bool(
             {"llm_auth_provider", "llm_credential_id"} & request.model_fields_set
@@ -885,6 +910,77 @@ async def disconnect_session_stream(
     await _validate_and_get_session(session_id, user_id)
     await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
+
+
+class ChangeSessionConnectionRequest(BaseModel):
+    """The connection the rest of this chat should run on."""
+
+    llm_auth_provider: CopilotLlmAuthProvider
+    llm_credential_id: str | None = Field(default=None, max_length=128)
+
+
+@router.put(
+    "/sessions/{session_id}/connection",
+    summary="Change the connection an existing chat runs on",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def change_session_connection_route(
+    session_id: str,
+    request: ChangeSessionConnectionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """Move a chat onto another connection, from the next turn onward.
+
+    A chat is latched to the connection it started on so that a turn cannot
+    silently change who pays for it halfway through. This is the deliberate
+    exception: when a provider stops accepting turns -- a spent quota, an
+    expired login -- the alternative to switching is the chat simply ending.
+
+    It never happens on its own. The caller is a button the user pressed, and
+    the run continues on the connection they picked rather than on whichever
+    one happens to work.
+
+    History is not rewritten. Turns already stamped keep the connection they
+    ran on, so a chat that hit a limit and carried on elsewhere reads as
+    exactly that.
+    """
+    auth_provider = request.llm_auth_provider
+    credential_id = request.llm_credential_id
+
+    if auth_provider == "platform" and credential_id is not None:
+        raise HTTPException(status_code=422, detail="codex_credential_not_allowed")
+    if auth_provider == "codex" and credential_id is None:
+        raise HTTPException(status_code=422, detail="codex_credential_required")
+
+    transports = await get_chat_transports(user_id)
+    target = next(
+        (
+            transport
+            for transport in transports
+            if transport.auth_provider == auth_provider
+            and transport.credential_id == credential_id
+            and transport.available
+        ),
+        None,
+    )
+    if target is None:
+        # Same shapes the session-creation path uses, so a client that already
+        # handles them does not need a second vocabulary for the same refusals.
+        if auth_provider == "codex":
+            raise HTTPException(status_code=404, detail="codex_credential_not_found")
+        raise HTTPException(status_code=503, detail="chat_transport_not_configured")
+
+    changed = await update_session_llm_route(
+        session_id, user_id, auth_provider, credential_id
+    )
+    if not changed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
 
 
 @router.patch(
@@ -1445,6 +1541,23 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
+    # The Advanced tier is a paid capability, and it was only enforced where
+    # the picker decides what to grey out. A client that skips the picker and
+    # posts model="advanced" was served it, on our credits. Checked first,
+    # before the session is touched or the message stored: a turn we are going
+    # to refuse should leave nothing behind.
+    if request.model == "advanced":
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            # Not knowing is not permission. The picker stays generous when
+            # the lookup is down; spending does not.
+            raise HTTPException(
+                status_code=503, detail="advanced_tier_unavailable"
+            ) from None
+        if not entitled:
+            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
+
     import time
 
     stream_start_time = time.perf_counter()
@@ -1641,7 +1754,6 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             organization_id=turn_org_id,
             team_id=turn_team_id,
-            mode=request.mode,
             model=request.model,
             llm_auth_provider=session.metadata.llm_auth_provider,
             llm_credential_id=session.metadata.llm_credential_id,
@@ -1668,7 +1780,6 @@ async def stream_chat_post(
                 is_user_message=request.is_user_message,
                 context=request.context,
                 file_ids=sanitized_file_ids,
-                mode=request.mode,
                 model=request.model,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,

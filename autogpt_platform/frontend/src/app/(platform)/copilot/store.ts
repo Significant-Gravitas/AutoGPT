@@ -16,6 +16,24 @@ export interface DeleteTarget {
  * or from `FileUIPart` attachments; see `getMessageArtifacts` in
  * `ChatMessagesContainer/helpers.ts`.
  */
+/** The expert an ``ExpertChangeCard`` opens in the panel — a hire/raise
+ *  preview or the teammate it became. Not a file: no fetch, copy or
+ *  download; the panel renders the charter straight from this. */
+export interface ExpertArtifact {
+  id: string | null;
+  kind: "hire" | "raise" | "update" | null;
+  name: string;
+  role: string | null;
+  color: string | null;
+  tagline: string | null;
+  about: string | null;
+  boundaries: string | null;
+  voicePreferences: string | null;
+  weeklyBudget: number | null;
+  avatarUrl: string | null;
+  applied: boolean;
+}
+
 export interface ArtifactRef {
   /** Workspace file ID (matches the backend `WorkspaceFile.id`). */
   id: string;
@@ -36,6 +54,8 @@ export interface ArtifactRef {
   origin: "agent" | "user-upload";
   /** Size in bytes if known — used by `classifyArtifact` for size gating. */
   sizeBytes?: number;
+  /** Set when the ref is an expert rather than a workspace file. */
+  expert?: ExpertArtifact;
 }
 
 interface ArtifactPanelState {
@@ -56,9 +76,6 @@ export const MIN_ARTIFACT_PANEL_WIDTH = 400;
 /** Space kept for the chat + rail when sizing a side panel (drag clamp and viewport clamp). */
 export const PANEL_RESERVED_WIDTH = 440;
 
-/** Autopilot response mode. */
-export type CopilotMode = "extended_thinking" | "fast";
-
 /** Per-request model tier. 'standard' = current default; 'advanced' = highest-capability. */
 export type CopilotLlmModel = "standard" | "advanced";
 
@@ -66,8 +83,9 @@ export type CopilotLlmAuthSelection =
   | { authProvider: "platform"; credentialId: null }
   | { authProvider: "codex"; credentialId: string };
 
-/** Context panel tab. */
-export type ContextPanelTab = "progress" | "files" | "artifacts";
+/** Context panel tab: "files" is the inline workspace-files card, "artifacts"
+ *  the docked artifacts library. */
+export type ContextPanelTab = "files" | "artifacts";
 
 const isClient = typeof window !== "undefined";
 
@@ -79,7 +97,9 @@ function getPersistedOpen(): boolean {
 function getPersistedTab(): ContextPanelTab {
   if (!isClient) return "files";
   const saved = storage.get(Key.COPILOT_CONTEXT_PANEL_TAB);
-  return saved === "progress" || saved === "artifacts" ? saved : "files";
+  // Anything else (including a "progress" tab persisted by the retired
+  // sidebar) falls back to the files card.
+  return saved === "artifacts" ? saved : "files";
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -187,7 +207,6 @@ interface CopilotUIState {
   clearArtifactPreview: () => void;
   resetArtifactPanel: () => void;
   goBackArtifact: () => void;
-  setActiveTab: (tab: ContextPanelTab) => void;
   toggleContextPanel: () => void;
   /** Opens the panel on `tab`, or closes it if that tab is already showing. */
   toggleContextPanelTab: (tab: ContextPanelTab) => void;
@@ -195,8 +214,6 @@ interface CopilotUIState {
    *  can never restore the previous chat's artifact. */
   clearLastArtifact: () => void;
   openContextPanelForFiles: () => void;
-  openContextPanelForProgress: () => void;
-  autoOpenArtifact: (ref: ArtifactRef) => void;
   showFilesTab: () => void;
 
   // Card-based auto-open: ArtifactCard registers itself on mount, the store
@@ -206,19 +223,16 @@ interface CopilotUIState {
   markUserClosedForAutoOpen: () => void;
   resetAutoOpenState: () => void;
 
-  /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
-  copilotChatMode: CopilotMode;
-  setCopilotChatMode: (mode: CopilotMode) => void;
-  copilotModePinned: boolean;
-  applyServerModeChange: (mode: CopilotMode) => void;
-  clearCopilotModePin: () => void;
-
   /** Model tier: 'standard' (default) or 'advanced' (highest-capability). */
   copilotLlmModel: CopilotLlmModel;
   setCopilotLlmModel: (model: CopilotLlmModel) => void;
 
-  /** Authentication route locked into the next session when it is created. */
-  copilotLlmAuth: CopilotLlmAuthSelection;
+  /**
+   * Authentication route locked into the next session when it is created.
+   * `null` until something chooses — the user via the picker, or the default
+   * they set in Settings, which the server marks on the transport list.
+   */
+  copilotLlmAuth: CopilotLlmAuthSelection | null;
   setCopilotLlmAuth: (selection: CopilotLlmAuthSelection) => void;
 
   /** Developer dry-run mode: sessions created with dry_run=true. */
@@ -405,19 +419,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         },
       };
     }),
-  setActiveTab: (tab) =>
-    set((state) => {
-      if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, tab);
-      return {
-        // Selecting a tab returns to the tabs view (drops any open preview).
-        artifactPanel: {
-          ...state.artifactPanel,
-          activeTab: tab,
-          activeArtifact: null,
-          history: [],
-        },
-      };
-    }),
   toggleContextPanel: () =>
     set((state) => {
       const nextOpen = !state.artifactPanel.isOpen;
@@ -482,40 +483,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
       },
     }));
   },
-  openContextPanelForProgress: () => {
-    if (_autoOpenUserClosed) return;
-    if (isClient) {
-      storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-      storage.set(Key.COPILOT_CONTEXT_PANEL_TAB, "progress");
-    }
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeTab: "progress",
-        activeArtifact: null,
-        history: [],
-      },
-    }));
-  },
 
-  // Auto-open path for sessions that already have generated files: surfaces the
-  // last generated file directly in the Artifact panel. Respects the user's
-  // explicit close, mirroring openContextPanelForFiles' guard.
-  autoOpenArtifact: (ref) => {
-    if (_autoOpenUserClosed) return;
-    if (isClient) storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
-    set((state) => ({
-      artifactPanel: {
-        ...state.artifactPanel,
-        isOpen: true,
-        activeArtifact: ref,
-        history: [],
-      },
-    }));
-  },
-  // Explicit user action (Artifact panel folder button): always opens the
-  // Context panel on the Files tab, dropping any open artifact preview.
+  // Explicit user action (the artifact panel's files button): drops the open
+  // preview and hands the region to the floating files card.
   showFilesTab: () => {
     if (isClient) {
       storage.set(Key.COPILOT_CONTEXT_PANEL_OPEN, "true");
@@ -560,22 +530,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     _autoOpenUserClosed = false;
   },
 
-  copilotChatMode: (() => {
-    const saved = isClient ? storage.get(Key.COPILOT_MODE) : null;
-    return saved === "fast" ? "fast" : "extended_thinking";
-  })(),
-  setCopilotChatMode: (mode) => {
-    storage.set(Key.COPILOT_MODE, mode);
-    set({ copilotChatMode: mode });
-  },
-  copilotModePinned: false,
-  applyServerModeChange: (mode) => {
-    set({ copilotChatMode: mode, copilotModePinned: true });
-  },
-  clearCopilotModePin: () => {
-    set({ copilotModePinned: false });
-  },
-
   copilotLlmModel: (() => {
     const saved = isClient ? storage.get(Key.COPILOT_MODEL) : null;
     return saved === "advanced" ? "advanced" : "standard";
@@ -585,7 +539,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     set({ copilotLlmModel: model });
   },
 
-  copilotLlmAuth: { authProvider: "platform", credentialId: null },
+  copilotLlmAuth: null,
   setCopilotLlmAuth: (selection) => {
     set({ copilotLlmAuth: selection });
   },
@@ -615,6 +569,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
+    // Retired key — still cleaned so a user who set it before the control
+    // was removed does not keep a dead entry forever.
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_MODEL);
     set({
@@ -631,9 +587,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
         activeTab: "files",
         lastArtifact: null,
       },
-      copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
-      copilotLlmAuth: { authProvider: "platform", credentialId: null },
+      copilotLlmAuth: null,
       isDryRun: false,
     });
     if (isClient) {

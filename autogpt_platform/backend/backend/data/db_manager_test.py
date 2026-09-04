@@ -4,6 +4,8 @@ from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
 def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "delete_chat_session")
     assert hasattr(DatabaseManagerAsyncClient, "set_turn_duration")
+    assert hasattr(DatabaseManager, "update_chat_session_llm_route")
+    assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
 
 
 def test_bot_analytics_methods_registered() -> None:

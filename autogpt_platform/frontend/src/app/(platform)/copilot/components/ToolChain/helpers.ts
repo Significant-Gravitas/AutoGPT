@@ -83,7 +83,6 @@ const ACTION_RESPONSE_TYPES = new Set([
   "need_login",
   "trigger_config_required",
   "suggested_goal",
-  "expert_change_proposed",
 ]);
 
 function actionLabel(output: unknown): string | null {
@@ -109,7 +108,6 @@ function actionLabel(output: unknown): string | null {
       : "Review this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
-  if (data.type === "expert_change_proposed") return "Approve the new expert";
   return typeof data.message === "string" && data.message.trim()
     ? data.message.trim()
     : "Action required";
@@ -138,7 +136,31 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   return undefined;
 }
 
+// The compaction row owns its own progress bar and payoff frame — folding
+// it into a chain would bury both behind a collapsed "summarized context".
+export const COMPACTION_PART_TYPE = "tool-context_compaction";
+
+// Hiring, raising or updating an expert is the user's call, not a step the
+// model worked through — the card renders as its own message part so the
+// approval never sits inside a chain that collapses on top of it.
+export const EXPERT_CHANGE_TOOLS = new Set([
+  "hire_expert",
+  "raise_expert",
+  "update_expert",
+  "confirm_expert_change",
+]);
+
+export function isExpertChangePart(part: MessagePart): boolean {
+  return (
+    part.type.startsWith("tool-") &&
+    EXPERT_CHANGE_TOOLS.has(part.type.slice("tool-".length))
+  );
+}
+
 export function isChainPart(part: MessagePart): boolean {
+  if (part.type === COMPACTION_PART_TYPE || isExpertChangePart(part)) {
+    return false;
+  }
   return part.type === "reasoning" || part.type.startsWith("tool-");
 }
 
@@ -167,6 +189,11 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
   }
   if (part.type === "reasoning") {
     const isStreaming = "state" in part && part.state === "streaming";
+    // A settled reasoning part with nothing in it is a "Thought it through"
+    // row over an empty panel — the model never actually wrote any.
+    const hasText =
+      "text" in part && typeof part.text === "string" && !!part.text.trim();
+    if (!isStreaming && !hasText) return null;
     return {
       key: `reasoning-${index}`,
       category: "reasoning",
@@ -304,12 +331,14 @@ export function getChainHeading(
 
 export type ChainSegment =
   | { kind: "chain"; parts: MessagePart[]; index: number }
+  // Back-to-back expert changes (one per hire/raise call) render as one
+  // group so a whole new team pages instead of stacking down the message.
+  | { kind: "experts"; parts: MessagePart[]; index: number }
   | { kind: "part"; part: MessagePart; index: number };
 
 export function buildChainSegments(
   parts: MessagePart[],
   isChainable: (part: MessagePart) => boolean = isChainPart,
-  isStreaming = false,
 ): ChainSegment[] {
   const segments: ChainSegment[] = [];
   let chain: Extract<ChainSegment, { kind: "chain" }> | null = null;
@@ -327,6 +356,13 @@ export function buildChainSegments(
 
   parts.forEach((part, index) => {
     if (part.type === "step-start") return;
+    if (isExpertChangePart(part)) {
+      chain = null;
+      const last = segments[segments.length - 1];
+      if (last?.kind === "experts") last.parts.push(part);
+      else segments.push({ kind: "experts", parts: [part], index });
+      return;
+    }
     if (isChainable(part)) {
       if (!chain) {
         chain = { kind: "chain", parts: [], index };
@@ -335,16 +371,12 @@ export function buildChainSegments(
       chain.parts.push(part);
       return;
     }
-    // Fold short progress narration into the surrounding chain.  While
-    // streaming, fold optimistically so the text lands inside the chain
-    // from the first token; once settled, keep it only when another tool
-    // call follows, so the turn's final answer (even a short one) always
-    // renders as regular message text.
-    if (
-      chain &&
-      narrationText(part) !== null &&
-      (isStreaming || hasChainableAhead(index + 1))
-    ) {
+    // Fold short progress narration into the surrounding chain, but only
+    // once a later tool call proves it was narration and not the answer.
+    // Folding optimistically while streaming made every trailing answer
+    // render inside the chain and then jump out to regular message text —
+    // either when it outgrew NARRATION_MAX_CHARS or when the stream ended.
+    if (chain && narrationText(part) !== null && hasChainableAhead(index + 1)) {
       chain.parts.push(part);
       return;
     }

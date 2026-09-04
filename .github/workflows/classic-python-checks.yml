@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master, dev, ci-test* ]
     paths:
-      - '.github/workflows/classic-python-checks-ci.yml'
+      - '.github/workflows/classic-python-checks.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/direct_benchmark/**'
@@ -15,7 +15,7 @@ on:
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
-      - '.github/workflows/classic-python-checks-ci.yml'
+      - '.github/workflows/classic-python-checks.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/direct_benchmark/**'

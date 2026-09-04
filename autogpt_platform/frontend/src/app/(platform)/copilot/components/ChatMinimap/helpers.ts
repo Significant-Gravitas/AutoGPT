@@ -9,23 +9,22 @@ export interface MinimapEntry {
 const TITLE_CHARS = 60;
 const BODY_CHARS = 220;
 
-/** One tick per message, no exceptions — the rail mirrors the transcript, so
- *  a tool-only turn still gets its mark and falls back to a role label. */
+/** One tick per user message. The rail is a way back to what *you* asked —
+ *  ticking every assistant turn as well doubled the marks without adding a
+ *  distinct destination, since a reply sits directly under its question. */
 export function toMinimapEntries(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): MinimapEntry[] {
-  return messages.map((message) => {
-    const [title, body] = splitPreview(messageText(message));
-    return {
-      id: message.id,
-      title: title || roleFallback(message.role),
-      body,
-    };
-  });
-}
-
-function roleFallback(role: string): string {
-  return role === "user" ? "Your message" : "Autopilot worked on this";
+  return messages
+    .filter((message) => message.role === "user")
+    .map((message) => {
+      const [title, body] = splitPreview(messageText(message));
+      return {
+        id: message.id,
+        title: title || "Your message",
+        body,
+      };
+    });
 }
 
 function messageText(
@@ -53,7 +52,7 @@ function truncate(value: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max).trimEnd()}…` : clean;
 }
 
-const RESTING_SCALE = 0.4;
+const RESTING_SCALE = 0.6;
 const FALLOFF_PER_STEP = 0.2;
 
 /** Ticks rest shrunk and swell toward the cursor, tapering one step at a
@@ -68,6 +67,6 @@ export function tickScale(index: number, hovered: number | null): number {
 
 export function tickColor(distance: number | null): string {
   if (distance === 0) return "bg-zinc-800";
-  if (distance === 1) return "bg-zinc-400";
-  return "bg-zinc-300";
+  if (distance === 1) return "bg-zinc-500";
+  return "bg-zinc-400";
 }

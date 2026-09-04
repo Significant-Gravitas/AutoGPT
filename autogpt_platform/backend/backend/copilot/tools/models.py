@@ -127,6 +127,7 @@ class ResponseType(str, Enum):
     EXPERT_SOUL_UPDATED = "expert_soul_updated"
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
+    TEAM_ROSTER = "team_roster"
 
 
 # Base response model
@@ -557,6 +558,7 @@ class ExpertChangePreview(BaseModel):
     kind: ExpertChangeKind
     name: str
     role: str = ""
+    tagline: str = ""
     about: str = ""
     boundaries: str = ""
     voice_preferences: str = ""
@@ -567,13 +569,37 @@ class ExpertChangePreview(BaseModel):
 
 
 class ExpertSummary(BaseModel):
-    """Identity of an expert created by ``confirm_expert_change``."""
+    """The expert ``confirm_expert_change`` created — same charter fields as
+    the preview, so the card can show the whole thing after the fact."""
 
     id: str
     name: str
     role: str
+    tagline: str | None = None
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
     avatar_url: str | None = None
     color: str = ""
+
+
+class TeamExpertInfo(BaseModel):
+    """One roster row returned by ``list_team``."""
+
+    id: str
+    name: str
+    role: str
+    color: str = ""
+    avatar_url: str | None = None
+    is_paused: bool = False
+
+
+class TeamRosterResponse(ToolResponseBase):
+    """The user's current expert roster, straight from the DB."""
+
+    type: ResponseType = ResponseType.TEAM_ROSTER
+    experts: list[TeamExpertInfo] = Field(default_factory=list)
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):
@@ -606,6 +632,7 @@ class ClarifyingQuestion(BaseModel):
     question: str
     keyword: str
     example: str | None = None
+    options: list[str] = Field(default_factory=list)
 
 
 class AgentPreviewResponse(ToolResponseBase):

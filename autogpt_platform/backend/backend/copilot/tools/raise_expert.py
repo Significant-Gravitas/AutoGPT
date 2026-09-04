@@ -7,6 +7,7 @@ charter — what the expert owns, what good looks like, and where they stop —
 before the user is ever asked to approve.
 """
 
+import logging
 import uuid
 from typing import Any
 
@@ -15,10 +16,13 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
+    EXPERT_TAGLINE_MAX_LENGTH,
     WEEKLY_BUDGET_MAX_CREDITS,
+    Expert,
     ExpertSoulFieldsPatch,
 )
 from backend.copilot.model import ChatSession
+from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
@@ -58,11 +62,15 @@ COLOR_TOKENS = [
 ]
 
 
+logger = logging.getLogger(__name__)
+
+
 class _RaiseParams(BaseModel):
     """Non-Soul raise fields, validated with the same bounds as the API."""
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
 
@@ -83,13 +91,15 @@ class RaiseExpertTool(BaseTool):
         return (
             "Propose a brand-new expert when no roster template fits. Give "
             "them a personal first name (the role field carries the job "
-            "title) and an accent color, then write their charter: what they "
-            "own, what good looks like, and where they stop (always fill "
-            "boundaries — an expert without them oversteps). Never writes: "
-            "returns the proposed expert plus a one-time confirmation_id. "
-            "Read the FULL charter back — name, role, color, what they own, "
-            "where they stop, voice, weekly budget — and only after the user "
-            "approves, call confirm_expert_change with that id."
+            "title), a one-line tagline and an accent color, then write "
+            "their charter: what they own, what good looks like, and where "
+            "they stop (always fill boundaries — an expert without them "
+            "oversteps). This tool never writes; it returns the proposed "
+            "expert plus a one-time confirmation_id. "
+            "The user sees the whole charter on a card with Approve and "
+            "Decline buttons, so never repeat it in text — one short line "
+            "at most, then wait. Only after the user approves, call "
+            "confirm_expert_change with that id."
         )
 
     @property
@@ -108,6 +118,15 @@ class RaiseExpertTool(BaseTool):
                 "role": {
                     "type": "string",
                     "description": "Short title for what they own.",
+                },
+                "tagline": {
+                    "type": "string",
+                    "description": (
+                        "One line, third person, what they do for the user "
+                        "— e.g. 'Finds your leads and their decision-makers.' "
+                        "Under 120 characters. This is what the user reads "
+                        "on their card; the charter is for the expert."
+                    ),
                 },
                 "color": {
                     "type": "string",
@@ -140,7 +159,7 @@ class RaiseExpertTool(BaseTool):
                     "description": "Weekly credit cap (100 = $1); omit for default.",
                 },
             },
-            "required": ["name", "about", "boundaries"],
+            "required": ["name", "tagline", "about", "boundaries"],
         }
 
     async def _execute(
@@ -150,6 +169,7 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        tagline: str = "",
         color: str = "",
         about: str = "",
         boundaries: str = "",
@@ -179,6 +199,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
             )
@@ -200,6 +221,28 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        try:
+            duplicate = await _active_expert_named(user_id, params.name)
+        except _RosterUnavailable as e:
+            # Nothing downstream enforces name uniqueness, so a roster read we
+            # could not perform must not pass for "no duplicate".
+            logger.warning(f"raise_expert duplicate-name check failed: {e}")
+            return ErrorResponse(
+                message="Could not check the team roster right now. Try again.",
+                session_id=session_id,
+            )
+        if duplicate:
+            return ErrorResponse(
+                message=(
+                    f"An active expert named {duplicate.name} already exists "
+                    f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
+                    "do not raise them again. Delegate work to them with "
+                    "delegate_to_expert, or change their charter with "
+                    "update_expert. Only propose a differently-named expert "
+                    "if the user truly wants a second, separate one."
+                ),
+                session_id=session_id,
+            )
         if error := await capacity_error(user_id, session_id, "raise"):
             return error
 
@@ -207,6 +250,7 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            tagline=params.tagline,
             color=params.color,
             about=soul.identity or "",
             boundaries=soul.boundaries,
@@ -226,16 +270,41 @@ class RaiseExpertTool(BaseTool):
         )
         return ExpertChangeProposedResponse(
             message=(
-                "Nothing created yet. Read the full charter back to the "
-                "user — name, role, color, what this expert owns, where "
-                "they stop, voice and weekly budget — and only after they "
-                "explicitly approve, call confirm_expert_change with this "
-                "confirmation_id."
+                "Nothing created yet. The user is looking at this charter on "
+                "a card with Approve and Decline buttons — do not repeat any "
+                "of it in text. Reply with one short line at most and wait. "
+                "Only after they explicitly approve, call "
+                "confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,
         )
+
+
+class _RosterUnavailable(Exception):
+    """The roster could not be read — distinct from "nobody has this name"."""
+
+
+async def _active_expert_named(user_id: str, name: str) -> Expert | None:
+    """The active expert already carrying *name*, or None.
+
+    Only the read is treated as recoverable: a bug in the matching below is
+    not a roster outage and propagates instead of being retried forever.
+    """
+    try:
+        experts = await experts_db().list_experts(user_id, with_metrics=False)
+    except Exception as e:
+        raise _RosterUnavailable(str(e)) from e
+    wanted = name.strip().casefold()
+    return next(
+        (
+            expert
+            for expert in experts
+            if not expert.is_archived and expert.name.strip().casefold() == wanted
+        ),
+        None,
+    )
 
 
 def _validation_detail(error: ValidationError) -> str:

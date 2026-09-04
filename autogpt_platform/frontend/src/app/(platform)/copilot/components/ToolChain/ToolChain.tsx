@@ -45,15 +45,20 @@ const COLLAPSED_WINDOW = 2;
 interface Props {
   parts: MessagePart[];
   isStreaming: boolean;
+  /** Public share viewer: the chain renders as the owner saw it, but setup
+   *  cards and the Proceed draft are the owner's work — a reader gets no
+   *  Connect prompt and no write into the composer store. */
+  readOnly?: boolean;
 }
 
-export function ToolChain({ parts, isStreaming }: Props) {
+export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
 
   const pendingQuestions = useContext(PendingQuestionsContext);
-  const { setInitialPrompt, sentMessageCount } = useCopilotUIStore();
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
   // Ids drafted by the last Proceed, plus the send count at that moment.
   // Proceed only fills the composer, so the cards' onSent callbacks fire
   // when the user actually sends — not when the draft is written.
@@ -127,10 +132,10 @@ export function ToolChain({ parts, isStreaming }: Props) {
   // screen. A manual toggle overrides either direction and sticks.
   const open = manualExpanded ?? isStreaming;
   const windowMode = isStreaming && !expanded && !hasRequiredAction;
-  // Action-required cards (credential setup etc.) can never leave the
-  // screen: collapsing the chain hides the other rows but keeps the
-  // action rows visible, and the streaming window is disabled for them.
-  const actionOnly = !open && hasRequiredAction;
+  // Action-required cards (credential setup etc.) stay on screen by default:
+  // a chain that has collapsed on its own still shows its action rows. An
+  // explicit collapse from the user closes them like any other row.
+  const actionOnly = !open && hasRequiredAction && manualExpanded !== false;
   const panelOpen = open || actionOnly;
   // Rows stay mounted while closed so the 0fr collapse can animate — but
   // only the streaming window's rows. Mounting the full list the moment the
@@ -220,7 +225,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={!panelOpen ? ("" as unknown as boolean) : undefined}
+                inert={!panelOpen || undefined}
                 className="min-h-0 overflow-hidden"
               >
                 <div
@@ -317,8 +322,9 @@ export function ToolChain({ parts, isStreaming }: Props) {
         )}
 
         {/* Lifted rows render off-screen: their cards must stay mounted so
-            the ChainActionCard below keeps its registrations. */}
-        {liftedRows.length > 0 && (
+            the ChainActionCard below keeps its registrations. A read-only
+            transcript has no card to feed, so they stay unmounted. */}
+        {!readOnly && liftedRows.length > 0 && (
           <div className="hidden">
             <ChainActionsContext.Provider value={chainActions}>
               {liftedRows.map((row) => (
@@ -331,7 +337,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
         {/* Lifted out of the rows: connecting, filling inputs and answering
             questions are the user's own work, so every card's asks merge into
             one card under the chain that stays put when it collapses. */}
-        {hasCardWork && (
+        {!readOnly && hasCardWork && (
           <ChainActionCard
             connectors={connectorRequests}
             mcp={mcpRequests}
@@ -344,7 +350,7 @@ export function ToolChain({ parts, isStreaming }: Props) {
 
         {/* Cards with nothing to connect, fill in or answer (confirm-only)
             still need somewhere to send from. */}
-        {pendingActions.length > 0 && !hasCardWork && (
+        {!readOnly && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-sm text-zinc-600">
               <Icon icon={SentIcon} size={16} className="text-zinc-400" />

@@ -5,7 +5,6 @@ import {
   MessageActions,
 } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useMessageFeedback } from "../useMessageFeedback";
 import { FeedbackModal } from "./FeedbackModal";
@@ -20,6 +19,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  className?: string;
 }
 
 function extractTextFromParts(
@@ -32,7 +32,11 @@ function extractTextFromParts(
     .trim();
 }
 
-export function AssistantMessageActions({ message, sessionID }: Props) {
+export function AssistantMessageActions({
+  message,
+  sessionID,
+  className,
+}: Props) {
   const {
     feedback,
     showFeedbackModal,
@@ -44,18 +48,10 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
   } = useMessageFeedback({ sessionID, messageID: message.id });
 
   const text = extractTextFromParts(message.parts);
-  // The old UI reveals the actions on hover; the new UI keeps them visible.
-  const isNewToolUI = useGetFlag(Flag.NEW_TOOL_UI);
 
   return (
     <>
-      <MessageActions
-        className={cn(
-          "mt-1",
-          !isNewToolUI &&
-            "opacity-30 transition-opacity group-hover:opacity-100",
-        )}
-      >
+      <MessageActions className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}

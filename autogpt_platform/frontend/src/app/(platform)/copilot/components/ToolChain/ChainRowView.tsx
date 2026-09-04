@@ -76,6 +76,11 @@ export function ChainRowView({ row, isLast }: Props) {
   const isReasoning = row.category === "reasoning";
   const artifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
 
+  // What the row needs from the user is only known once the output lands, so
+  // a live row mounts closed and flips here — the user can still collapse it.
+  useEffect(() => {
+    if (row.requiresAction) setOpen(true);
+  }, [row.requiresAction]);
   // Browser steps carry the page screenshots the artifact panel shows —
   // auto-expand them while the panel is open so the steps are visible
   // from the start.
@@ -102,20 +107,23 @@ export function ChainRowView({ row, isLast }: Props) {
       : null,
     isSubTool && typeof output?.status === "string" ? output.status : null,
   );
+  // "unknown" means the poll died, not that the teammate finished — the row
+  // only has a running label and a done label, and claiming a result landed
+  // is the worse of the two guesses. It also keeps this row consistent with
+  // the card below it, whose poll caps on its own mount clock.
   const stillWorking =
     isSubTool &&
     row.state === "done" &&
-    ["running", "queued"].includes(effectiveStatus?.toLowerCase() ?? "");
+    ["running", "queued", "unknown"].includes(
+      effectiveStatus?.toLowerCase() ?? "",
+    );
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
       ((row.output !== undefined && row.output !== "") || liveSubSession);
-  // Action-required cards (credential setup, review, login) must stay on
-  // screen until resolved — the row cannot be collapsed.
-  const forcedOpen = row.requiresAction === true && hasContent;
-  const showContent = liveReasoning || forcedOpen || (open && hasContent);
+  const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
       text={
@@ -153,7 +161,7 @@ export function ChainRowView({ row, isLast }: Props) {
         )}
       </div>
       <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-3")}>
-        {hasContent && !forcedOpen ? (
+        {hasContent ? (
           <button
             type="button"
             onClick={() => setOpen(!open)}
@@ -183,7 +191,7 @@ export function ChainRowView({ row, isLast }: Props) {
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={!showContent ? ("" as unknown as boolean) : undefined}
+            inert={!showContent || undefined}
             className="min-h-0 overflow-hidden"
           >
             <div
