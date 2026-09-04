@@ -1669,6 +1669,19 @@ class TestLLMRequestTimeout:
             )
         assert bool(self._alerts(records)) is alerts
 
+    def test_a_bare_timeout_still_names_its_cause(self, monkeypatch):
+        """``str(asyncio.TimeoutError())`` is "", and ``error`` is the only field
+        in the alert that says what went wrong."""
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", 100)
+        with self._captured_logs() as records:
+            llm._log_timeout_outcome(
+                elapsed=99.0,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                execution_context=None,
+                error=asyncio.TimeoutError(),
+            )
+        assert self._alerts(records)[0].json_fields["error"] == "TimeoutError()"
+
     @pytest.mark.asyncio
     async def test_real_cutoff_alerts_once_with_searchable_ids(self, monkeypatch):
         """End-to-end through the seam: a provider that never answers, cut off by

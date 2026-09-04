@@ -129,3 +129,50 @@ def test_the_episode_counter_tracks_the_warnings():
         saturation.evaluate_saturation(now=61.0)
         saturation.evaluate_saturation(now=62.0)
     assert saturation.saturation_episodes_counter._value.get() == before + 1
+
+
+def test_the_first_tracked_call_starts_one_daemon_ticker(monkeypatch):
+    """Every other test stubs `_ticker`, so this is the only place the thread the
+    module rests on is really started."""
+    monkeypatch.setattr(saturation, "_ticker", None)
+    monkeypatch.setattr(saturation, "_TICK_SECONDS", 0.01)
+    ticked = threading.Event()
+
+    def _evaluate(now=None):
+        # Park the daemon on its next sleep; the loop has no other exit.
+        saturation._TICK_SECONDS = 3600
+        ticked.set()
+        return 0
+
+    monkeypatch.setattr(saturation, "evaluate_saturation", _evaluate)
+
+    with saturation.track_llm_call(graph_exec_id="run-0", provider="openai"):
+        ticker = saturation._ticker
+        with saturation.track_llm_call(graph_exec_id="run-1", provider="openai"):
+            assert saturation._ticker is ticker, "one ticker per process, not per call"
+
+    assert ticker is not None, "the first tracked call must start the ticker"
+    assert ticker.daemon, "a non-daemon ticker would hold the process open at exit"
+    assert ticked.wait(timeout=5), "the ticker never re-evaluated"
+
+
+def test_the_ticker_keeps_ticking_after_a_failed_evaluation(monkeypatch):
+    """A metrics thread that dies on one bad evaluation stops reporting for the
+    life of the pod, silently."""
+    monkeypatch.setattr(saturation, "_TICK_SECONDS", 0)
+    calls: list[int] = []
+
+    def _evaluate(now=None):
+        calls.append(len(calls))
+        if len(calls) == 1:
+            raise RuntimeError("evaluation blew up")
+        if len(calls) == 3:
+            raise SystemExit  # BaseException: the only way out of `while True`
+        return 0
+
+    monkeypatch.setattr(saturation, "evaluate_saturation", _evaluate)
+    with _warnings() as records, pytest.raises(SystemExit):
+        saturation._tick_forever()
+
+    assert len(calls) == 3, "one failed evaluation must not stop the timer"
+    assert [r.levelno for r in records] == [logging.ERROR], "the failure must be logged"

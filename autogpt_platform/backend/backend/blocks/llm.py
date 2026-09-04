@@ -246,12 +246,13 @@ async def llm_call(
     compress_prompt_to_fit: bool = True,
     execution_context: "ExecutionContext | None" = None,
 ) -> LLMResponse:
-    """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
+    """Block-side LLM entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely.
 
-    Every LLM path in the codebase funnels through here, so this is where a
-    timed-out call is classified for spend alerting (#14292) — callers that
-    never reach the block retry loop are covered too.
+    Every block path funnels through here, so this is where a timed-out call is
+    classified for spend alerting (#14292), including callers that never reach
+    the block retry loop. Copilot and dream call the provider layer directly and
+    raise no spend alert; they carry no execution context to attribute one to.
     """
     started = time.monotonic()
     with track_llm_call(
@@ -953,7 +954,9 @@ def _log_timeout_outcome(
                 "configured_timeout_seconds": budget,
                 "provider": llm_model.metadata.provider,
                 "model": llm_model.value,
-                "error": str(error),
+                # A bare asyncio.TimeoutError stringifies to "", which would
+                # land in Sentry as error:"" — the one field naming the cause.
+                "error": str(error) or repr(error),
                 "user_id": ctx.user_id if ctx else None,
                 "graph_id": ctx.graph_id if ctx else None,
                 "graph_exec_id": ctx.graph_exec_id if ctx else None,
