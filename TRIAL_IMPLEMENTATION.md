@@ -186,6 +186,41 @@ expiry, and monetary amounts are unchanged. Actual resource IDs are recorded abo
 The test clock/customers/subscriptions
 still exist for follow-up validation. No live Stripe configuration was changed.
 
+## Hosted Checkout and fulfillment follow-up
+
+- Verified the worktree's configured Stripe key is test-only and reaches AutoGPT.
+  A temporary guarded harness uses the real checkout/confirmation code and the
+  disposable database, injecting only the trial offer and test price selection.
+- Test customer `cus_VCUA4PuWBWfp1O` maps only to local test user
+  `d19b832a-a954-575a-84c9-9c6e3d420384`, enrollment
+  `1b705787-0bd4-4553-84f9-2246ff872f3f`. No real platform user was created.
+- Retrying reused the original open Checkout. Explicitly expiring that owned test
+  session and retrying produced a new session while preserving the accepted
+  offer, NO_TIER, no verified card, and unconsumed eligibility. Latest session:
+  `cs_test_a11vpp7nbCpXOVEpcKEYixQng4VUVWG3dQIqTCN4zCinyvuWc4FSLCgUH2`.
+  The old test session is expired and cannot be completed.
+- Hosted page interaction remains unverified. Cua's automatic isolated-profile
+  discovery found no eligible browser. Auto-review rejected using the existing
+  Chrome PID for isolated preparation due to authenticated-profile exposure risk.
+  That request was not retried or bypassed. User approval was requested for native
+  controls in the new empty browser window without debugging or other-tab access.
+- New guards respect the platform-payment flag, require matching completed
+  card-only Checkout before consuming/granting a trial, preserve consumption when
+  a card is removed after completion, and reject a mismatched Stripe price or
+  quantity before first conversion. Stale earlier-attempt events do not rewrite
+  current enrollment state. Unfinished own checkouts are distinguished from prior
+  subscription history. Focused backend suite now **418 passed**; whole-backend
+  format and type checks also passed.
+- Billing auth-isolation PR #14226 is still open at
+  `5de13ac07cd3f9759a2ab02d3b0fe79f965f6056` (BLOCKED). General payment/invoice
+  components need that account-switching protection validated before launch.
+- Fresh origin/dev is `a242bc9392a8a062cce48a7913b57a833b3b909b`. It includes
+  shared async Stripe calls/timeouts (#14324), Redis 8.1 (#14334), and DataFast
+  onboarding/billing instrumentation (#14186/#14187); integration is next.
+- Still audit notification replay after later paid renewals: a durable first
+  conversion invoice identity is needed so monthly invoices cannot re-trigger a
+  trial-converted notice after the current Redis dedupe TTL expires.
+
 ## Outstanding launch choices
 
 The final offer amounts/duration/price and launch cutoff remain unset pending

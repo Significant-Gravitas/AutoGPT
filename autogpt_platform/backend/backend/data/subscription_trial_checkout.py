@@ -26,7 +26,9 @@ from backend.data.subscription_trial_config import (
     TrialOffer,
     get_trial_offer,
 )
-from backend.data.user import get_user_by_id
+from backend.data.subscription_trial_eligibility import (
+    verify_trial_eligibility as _verify_eligibility,
+)
 
 
 async def confirm_trial_checkout(user_id: str) -> None:
@@ -116,28 +118,15 @@ async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
     )
 
 
-async def _verify_eligibility(
-    user_id: str, customer_id: str, offer: TrialOffer
-) -> None:
-    user = await get_user_by_id(user_id)
-    subscriptions = await stripe.Subscription.list_async(
-        customer=customer_id, status="all", limit=1
-    )
-    if not offer.is_eligible(
-        created_at=user.created_at,
-        current_tier=user.subscription_tier.value,
-        has_subscription_history=bool(subscriptions.data),
-    ):
-        raise TrialUnavailable("This account is not eligible for a trial")
-
-
 async def _resume_checkout(trial: TrialState) -> str:
     session = await _find_checkout(trial)
     if session is None or session.status == "open":
         await expire_other_subscription_checkouts(
             trial.customer_id, session.id if session else None
         )
-        await _verify_eligibility(trial.user_id, trial.customer_id, trial.offer)
+        await _verify_eligibility(
+            trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
+        )
     if session is None:
         session = await stripe.checkout.Session.create_async(
             **trial_checkout_params(trial),
@@ -148,7 +137,7 @@ async def _resume_checkout(trial: TrialState) -> str:
             data={"stripeCheckoutSessionId": session.id},
         )
     if session.status == "expired":
-        return await _replace_expired_checkout(trial)
+        return await _replace_expired_checkout(trial, session)
     if session.status != "open" or not session.url:
         raise TrialUnavailable(
             "Trial checkout is complete. Refresh your billing status"
@@ -175,8 +164,12 @@ async def _find_checkout(trial: TrialState) -> stripe.checkout.Session | None:
     return None
 
 
-async def _replace_expired_checkout(trial: TrialState) -> str:
-    await _verify_eligibility(trial.user_id, trial.customer_id, trial.offer)
+async def _replace_expired_checkout(
+    trial: TrialState, session: stripe.checkout.Session
+) -> str:
+    await _verify_eligibility(
+        trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
+    )
     await SubscriptionTrial.prisma().update_many(
         where={
             "id": trial.id,
@@ -187,6 +180,10 @@ async def _replace_expired_checkout(trial: TrialState) -> str:
         data={
             "checkoutAttempt": {"increment": 1},
             "stripeCheckoutSessionId": None,
+            "stripeSubscriptionId": None,
+            "startedAt": None,
+            "endsAt": None,
+            "cardVerifiedAt": None,
         },
     )
     current = await get_subscription_trial(trial.user_id)

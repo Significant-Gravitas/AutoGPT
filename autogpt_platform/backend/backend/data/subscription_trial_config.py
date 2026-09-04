@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ class AcceptedTrialOffer(TrialOffer):
 
 async def get_trial_offer(user_id: str) -> TrialOffer | None:
     try:
+        if not await is_feature_enabled(
+            Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
+        ):
+            return None
         raw = await get_feature_flag_value(
             Flag.CARD_REQUIRED_TRIAL_OFFER, user_id, None
         )

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -116,4 +117,45 @@ def test_no_trial_entitlement_without_verified_card(status):
         trial_end=now + timedelta(days=7),
         card_verified=False,
         now=now,
+    )
+
+
+@pytest.mark.asyncio
+async def test_platform_payment_disabled_hides_trial_offer():
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=False)
+    ), patch.object(
+        trials,
+        "get_feature_flag_value",
+        AsyncMock(
+            side_effect=lambda flag, *args, **kwargs: (
+                offer_data() if flag == trials.Flag.CARD_REQUIRED_TRIAL_OFFER else False
+            )
+        ),
+    ):
+        assert await trials.get_trial_offer("user-1") is None
+
+
+@pytest.mark.asyncio
+async def test_invalid_remote_offer_fails_closed():
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ), patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value={"duration_days": "7"})
+    ):
+        assert await trials.get_trial_offer("user-1") is None
+
+
+@pytest.mark.asyncio
+async def test_payment_enabled_and_valid_offer_is_available():
+    with patch.object(
+        trials, "is_feature_enabled", AsyncMock(return_value=True)
+    ) as enabled, patch.object(
+        trials, "get_feature_flag_value", AsyncMock(return_value=offer_data())
+    ):
+        assert await trials.get_trial_offer(
+            "user-1"
+        ) == trials.TrialOffer.model_validate(offer_data())
+    enabled.assert_awaited_once_with(
+        trials.Flag.ENABLE_PLATFORM_PAYMENT, "user-1", default=False
     )

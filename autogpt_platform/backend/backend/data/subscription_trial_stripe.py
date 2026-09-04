@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.subscription_trial import TrialState, get_subscription_trial
+from backend.data.subscription_trial_config import AcceptedTrialOffer
 
 
 class Card(BaseModel):
@@ -29,6 +30,20 @@ class Invoice(BaseModel):
     billing_reason: str | None = None
 
 
+class SubscriptionPrice(BaseModel):
+    id: str
+
+
+class SubscriptionItem(BaseModel):
+    price: SubscriptionPrice
+    quantity: int | None = None
+
+
+class SubscriptionItems(BaseModel):
+    data: list[SubscriptionItem]
+    has_more: bool = False
+
+
 class SubscriptionSnapshot(BaseModel):
     id: str
     customer: str
@@ -40,6 +55,16 @@ class SubscriptionSnapshot(BaseModel):
     default_payment_method: PaymentMethod | None = None
     pending_setup_intent: str | dict | None = None
     latest_invoice: Invoice | None = None
+    items: SubscriptionItems | None = None
+
+    def has_accepted_price(self, offer: AcceptedTrialOffer) -> bool:
+        return bool(
+            self.items
+            and not self.items.has_more
+            and len(self.items.data) == 1
+            and self.items.data[0].price.id == offer.price_id
+            and self.items.data[0].quantity == 1
+        )
 
     def has_verified_card(self, now: datetime) -> bool:
         method = self.default_payment_method
@@ -83,11 +108,25 @@ async def _reconcile_locked(
         or snapshot.metadata.get("user_id") != trial.user_id
     ):
         raise ValueError("Stripe trial ownership does not match the enrollment")
+    if snapshot.metadata.get("trial_checkout_attempt") != str(trial.checkout_attempt):
+        user = await tx.user.find_unique_or_raise(where={"id": trial.user_id})
+        return dict(raw), user.subscriptionTier
     if trial.subscription_id and trial.subscription_id != snapshot.id:
         raise ValueError("A different subscription already consumed this trial")
+    if trial.converted_at is None and not snapshot.has_accepted_price(trial.offer):
+        raise ValueError(
+            "Stripe items do not match the accepted trial price and quantity"
+        )
     now = datetime.now(UTC)
-    tier = trial_subscription_tier(trial, snapshot, now)
-    await _save_snapshot(trial, snapshot, tier, now, tx)
+    checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(
+        trial, snapshot.id, tx
+    )
+    tier = (
+        trial_subscription_tier(trial, snapshot, now)
+        if checkout_complete
+        else SubscriptionTier.NO_TIER
+    )
+    await _save_snapshot(trial, snapshot, tier, now, tx, checkout_complete)
     if trial.converted_at:
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
@@ -105,6 +144,53 @@ async def _reconcile_locked(
         data={"subscriptionTier": tier},
     )
     return dict(raw), tier
+
+
+async def _completed_card_checkout(
+    trial: TrialState, subscription_id: str, tx: Prisma
+) -> bool:
+    if trial.checkout_session_id:
+        session = await stripe.checkout.Session.retrieve_async(
+            trial.checkout_session_id
+        )
+        return _checkout_proves_card_collection(trial, subscription_id, session)
+    sessions = await stripe.checkout.Session.list_async(
+        customer=trial.customer_id, limit=100
+    )
+    async for session in sessions.auto_paging_iter():
+        if (session.metadata or {}).get("trial_enrollment_id") != trial.id:
+            continue
+        if (session.metadata or {}).get("trial_checkout_attempt") != str(
+            trial.checkout_attempt
+        ):
+            continue
+        complete = _checkout_proves_card_collection(trial, subscription_id, session)
+        await tx.subscriptiontrial.update(
+            where={"id": trial.id}, data={"stripeCheckoutSessionId": session.id}
+        )
+        return complete
+    return False
+
+
+def _checkout_proves_card_collection(
+    trial: TrialState, subscription_id: str, session: stripe.checkout.Session
+) -> bool:
+    if session.status != "complete":
+        return False
+    metadata = session.metadata or {}
+    if (
+        session.mode != "subscription"
+        or session.customer != trial.customer_id
+        or session.subscription != subscription_id
+        or metadata.get("user_id") != trial.user_id
+        or metadata.get("trial_enrollment_id") != trial.id
+        or metadata.get("trial_checkout_attempt") != str(trial.checkout_attempt)
+        or metadata.get("trial_offer_version") != trial.offer.version
+        or session.payment_method_collection != "always"
+        or session.payment_method_types != ["card"]
+    ):
+        raise ValueError("Checkout does not prove this enrollment's card collection")
+    return True
 
 
 def trial_subscription_tier(
@@ -136,12 +222,15 @@ async def _save_snapshot(
     tier: SubscriptionTier,
     now: datetime,
     tx: Prisma,
+    checkout_complete: bool,
 ) -> None:
     verified_at = (
-        (trial.card_verified_at or now) if snapshot.has_verified_card(now) else None
+        (trial.card_verified_at or now)
+        if checkout_complete and snapshot.has_verified_card(now)
+        else None
     )
     consumed_at = trial.consumed_at
-    if verified_at is not None:
+    if checkout_complete:
         consumed_at = consumed_at or now
     converted_at = trial.converted_at
     if tier.value == trial.offer.tier:
@@ -150,7 +239,13 @@ async def _save_snapshot(
         where={"userId": trial.user_id},
         data={
             "stripeSubscriptionId": snapshot.id,
-            "status": snapshot.status,
+            "status": (
+                "checkout_pending"
+                if not checkout_complete
+                and snapshot.status
+                in ("trialing", "incomplete", "canceled", "incomplete_expired")
+                else snapshot.status
+            ),
             "cardVerifiedAt": verified_at,
             "startedAt": _timestamp(snapshot.trial_start),
             "endsAt": _timestamp(snapshot.trial_end),
