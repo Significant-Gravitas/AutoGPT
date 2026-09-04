@@ -49,7 +49,7 @@ from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
     strip_anthropic_vendor_prefix,
 )
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import GOOGLE_BASE_URL, OPENROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -93,6 +93,7 @@ ProviderLiteral = Literal[
     "llama_api",
     "aiml_api",
     "v0",
+    "google",
 ]
 
 ExecutionMode = Literal["sync", "batch", "flex"]
@@ -404,6 +405,23 @@ async def _dispatch_sync(
         return await _call_openai_compat(
             base_url="https://api.v0.dev/v1",
             model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
+        )
+
+    if provider == "google":
+        # Accept both canonical Google IDs (e.g. "gemini-2.5-flash")
+        # and provider-prefixed IDs (e.g. "google/gemini-2.5-flash").
+        return await _call_openai_compat(
+            base_url=GOOGLE_BASE_URL,
+            model=model.removeprefix("google/"),
             api_key=api_key,
             messages=messages,
             max_tokens=max_tokens,
