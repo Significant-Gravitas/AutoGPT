@@ -342,13 +342,15 @@ class TestRunSubSession:
         mock_queue["enqueue_turn"].assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_a_legacy_sub_passes_the_origin_guard_and_is_still_refused(
+    async def test_resume_accepts_legacy_sub_without_origin(
         self, monkeypatch, mock_queue, mock_waiter
     ):
-        """A sub started before ``origin`` shipped reads back as ``None``, so
-        it passes the origin guard rather than failing it — but every sub is
-        single-use now, so it is refused for that reason instead. Pinned
-        because the two refusals are easy to confuse when reading a report.
+        """A sub started before ``origin`` shipped reads back as ``None``.
+
+        Every parent that stored a sub session id and re-feeds it holds one of
+        those, so refusing an unknown origin here would break live sub-sessions
+        to close a hole they never opened — the staffing guard is where an
+        unknown origin fails closed instead.
         """
         legacy_sub = _session("alice", "other-session", origin=None)
         legacy_sub.messages = []
@@ -368,10 +370,8 @@ class TestRunSubSession:
             wait_for_result=0,
         )
 
-        assert isinstance(result, ErrorResponse)
-        assert "One sub per unit of work" in result.message
-        assert "was started by a person" not in result.message
-        mock_waiter.assert_not_awaited()
+        assert not isinstance(result, ErrorResponse)
+        assert mock_waiter.await_args.kwargs["session_id"] == "other-session"
 
     @pytest.mark.asyncio
     async def test_forwards_parent_permissions_to_queue(
@@ -1042,55 +1042,3 @@ class TestActorParameter:
         result = apply_delegated_expert(response, expert)
         assert result.message == response.message
         assert "Sub-AutoPilot" not in (result.message or "")
-
-
-class TestRunSubSessionSingleUse:
-    """Every sub is single-use: a reused one accumulates the context
-    delegation exists to avoid, whoever is driving the turn."""
-
-    @pytest.mark.asyncio
-    async def test_resuming_an_owned_sub_is_refused(
-        self, mock_queue, mock_waiter, mock_model
-    ):
-        await RunSubSessionTool()._execute(
-            user_id="alice", session=_session("alice"), prompt="first"
-        )
-        sub_id = mock_model["created"][0].session_id
-
-        r = await RunSubSessionTool()._execute(
-            user_id="alice",
-            session=_session("alice"),
-            prompt="second",
-            sub_autopilot_session_id=sub_id,
-        )
-        assert isinstance(r, ErrorResponse)
-        assert "One sub per unit of work" in r.message
-        assert "get_sub_session_result" in r.message
-        assert len(mock_model["created"]) == 1, "refused, not silently re-created"
-
-    @pytest.mark.asyncio
-    async def test_a_fresh_sub_is_unaffected(self, mock_queue, mock_waiter, mock_model):
-        r = await RunSubSessionTool()._execute(
-            user_id="alice", session=_session("alice"), prompt="do the thing"
-        )
-        assert not isinstance(r, ErrorResponse)
-        assert len(mock_model["created"]) == 1
-
-    @pytest.mark.asyncio
-    async def test_the_ownership_guard_still_runs_first(
-        self, monkeypatch, mock_queue, mock_waiter
-    ):
-        """The refusal sits after the ownership, origin and route guards, so
-        those keep describing production rather than becoming unreachable."""
-        monkeypatch.setattr(
-            "backend.copilot.tools.run_sub_session.get_chat_session",
-            AsyncMock(return_value=None),
-        )
-        r = await RunSubSessionTool()._execute(
-            user_id="alice",
-            session=_session("alice"),
-            prompt="carry on",
-            sub_autopilot_session_id="someone-elses",
-        )
-        assert isinstance(r, ErrorResponse)
-        assert "is not a session you own" in r.message

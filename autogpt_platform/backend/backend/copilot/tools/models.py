@@ -417,9 +417,9 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-AutoPilot conversation. Open it at "
-            "``sub_autopilot_session_link`` to see what it did; it cannot be "
-            "resumed."
+            "The session_id of the sub-AutoPilot conversation. Pass it back "
+            "as ``sub_autopilot_session_id`` to ask a follow-up without the "
+            "sub re-reading what it already has."
         ),
     )
     sub_autopilot_session_link: str | None = Field(

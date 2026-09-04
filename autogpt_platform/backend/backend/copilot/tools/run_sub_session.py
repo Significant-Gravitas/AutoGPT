@@ -99,8 +99,9 @@ class RunSubSessionTool(BaseTool):
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Always leave empty — a sub cannot be continued. Each "
-                        "call starts a fresh one."
+                        "Continue a prior sub — cheaper than a fresh one when "
+                        "the follow-up builds on what it already read. Empty "
+                        "= new."
                     ),
                     "default": "",
                 },
@@ -194,23 +195,7 @@ class RunSubSessionTool(BaseTool):
                     message="codex_session_route_mismatch",
                     session_id=session.session_id,
                 )
-            # Last, so the ownership, origin and route guards above stay
-            # reachable: a reused sub accumulates the context delegation
-            # exists to avoid, whoever is driving the turn.
-            logger.info(
-                f"[sub-session] refused resumption of {sub_session_param[:12]} "
-                f"for session={session.session_id[:12]} — subs are single-use"
-            )
-            return ErrorResponse(
-                message=(
-                    "One sub per unit of work: leave sub_autopilot_session_id "
-                    "empty and put what the next sub needs into the prompt. A "
-                    "finished sub's summary is already in your context — "
-                    "restate the parts it needs. To poll a sub that is still "
-                    "running, use get_sub_session_result."
-                ),
-                session_id=session.session_id,
-            )
+            inner_session_id = sub_session_param
         else:
             new_session = await create_chat_session(
                 user_id,
