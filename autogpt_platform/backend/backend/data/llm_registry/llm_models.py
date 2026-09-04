@@ -196,6 +196,13 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    # Google direct models (native Google API, not via OpenRouter)
+    GEMINI_2_5_PRO_DIRECT = "gemini-2.5-pro"
+    GEMINI_2_5_FLASH_DIRECT = "gemini-2.5-flash"
+    GEMINI_2_5_FLASH_LITE_DIRECT = "gemini-2.5-flash-lite"
+    GEMINI_3_FLASH_PREVIEW_DIRECT = "gemini-3-flash-preview"
+    GEMINI_3_1_PRO_PREVIEW_DIRECT = "gemini-3.1-pro-preview"
+    GEMINI_3_1_FLASH_LITE_DIRECT = "gemini-3.1-flash-lite"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
