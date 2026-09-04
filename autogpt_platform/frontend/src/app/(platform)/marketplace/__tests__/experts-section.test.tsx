@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MainMarkeplacePage } from "../components/MainMarketplacePage/MainMarketplacePage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
+const hireExpertsFlag = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -37,7 +38,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
+      flag === "hire-experts"
+        ? hireExpertsFlag.enabled
+        : actual.useGetFlag(flag as never),
   };
 });
 
@@ -71,6 +74,7 @@ const hiredMaria: Expert = {
 
 describe("Marketplace ExpertsSection", () => {
   beforeEach(() => {
+    hireExpertsFlag.enabled = true;
     mockUseAuth.mockReturnValue({
       user: { id: "user-1" },
       isLoggedIn: true,
@@ -100,8 +104,32 @@ describe("Marketplace ExpertsSection", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  test("stays hidden and fetches nothing for signed-out visitors", async () => {
+  test("shows the expert cards to signed-out visitors without account links", async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+    hireExpertsFlag.enabled = false;
+    let rosterRequested = false;
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler(() => {
+        rosterRequested = true;
+        return [];
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findByText("Meet the AI Experts")).toBeDefined();
+    const card = await screen.findByRole("link", { name: /Maria/ });
+    expect(card.getAttribute("href")).toBe(
+      "/marketplace/experts/template-maria",
+    );
+    expect(screen.queryByText(/raise your own expert/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: "View your team" })).toBeNull();
+    expect(rosterRequested).toBe(false);
+  });
+
+  test("stays hidden and fetches nothing for signed-in users outside the beta", async () => {
+    hireExpertsFlag.enabled = false;
     let templatesRequested = false;
     server.use(
       getListExpertTemplatesMockHandler(() => {
