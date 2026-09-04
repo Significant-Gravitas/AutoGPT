@@ -197,6 +197,10 @@ class CoPilotExecutionEntry(BaseModel):
     context: dict[str, str] | None = None
     """Optional context for the message (e.g., {url: str, content: str})"""
 
+    voice: bool = False
+    """Voice turn: someone is waiting on speech, so the reply opens with a
+    spoken acknowledgement before any tool call."""
+
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
@@ -247,6 +251,7 @@ async def enqueue_copilot_turn(
     turn_id: str,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -280,6 +285,7 @@ async def enqueue_copilot_turn(
         message=message,
         is_user_message=is_user_message,
         context=context,
+        voice=voice,
         file_ids=file_ids,
         organization_id=organization_id,
         team_id=team_id,
@@ -308,6 +314,7 @@ async def schedule_turn(
     tool_name: str = "chat",
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -373,6 +380,7 @@ async def schedule_turn(
             tool_name=tool_name,
             is_user_message=is_user_message,
             context=context,
+            voice=voice,
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
@@ -395,6 +403,7 @@ async def dispatch_turn(
     tool_name: str = "chat",
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -447,6 +456,7 @@ async def dispatch_turn(
             turn_id=turn_id,
             is_user_message=is_user_message,
             context=context,
+            voice=voice,
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
@@ -481,6 +491,7 @@ async def schedule_chat_turn(
     message_already_persisted: bool = False,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -550,6 +561,7 @@ async def schedule_chat_turn(
             message=message,
             is_user_message=is_user_message,
             context=context,
+            voice=voice,
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,

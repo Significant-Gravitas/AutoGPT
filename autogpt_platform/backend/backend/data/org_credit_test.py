@@ -243,4 +243,3 @@ class TestOrgCreditModelTopUp:
 
         assert result == 500
         mock_prisma.query_raw.assert_called_once()
-

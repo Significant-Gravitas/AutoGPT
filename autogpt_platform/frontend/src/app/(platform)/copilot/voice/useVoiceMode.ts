@@ -14,7 +14,7 @@ import {
   type VoiceEvent,
   type VoiceState,
 } from "./micStateMachine";
-import { takeVoiceStart } from "./pendingVoiceStart";
+import { setVoiceTurnActive, takeVoiceStart } from "./pendingVoiceStart";
 import { createReplyTextReader } from "./replyText";
 import { synthesizeSpeech, transcribeUtterance } from "./speechApi";
 import { LATER_CHUNK_MIN_CHARS, takeSpeakableChunks } from "./speechChunker";
@@ -154,6 +154,7 @@ export function useVoiceMode({
     }
 
     vadRef.current = session;
+    setVoiceTurnActive(true);
     turnIndex.current = 0;
     trackVoiceMode("voice_mode_started", {
       entry: inputs.current.sessionId ? "existing_chat" : "new_chat",
@@ -172,6 +173,7 @@ export function useVoiceMode({
       );
     }
     activation.current += 1;
+    setVoiceTurnActive(false);
     setStarting(false);
     clearTimers();
     playerRef.current?.stop();
@@ -349,6 +351,9 @@ export function useVoiceMode({
   }
 
   function teardown() {
+    // Unmount without deactivate — navigating away mid-session. Leaving this
+    // set would mark later text turns as voice turns.
+    setVoiceTurnActive(false);
     clearTimers();
     playerRef.current?.destroy();
     void vadRef.current?.destroy();

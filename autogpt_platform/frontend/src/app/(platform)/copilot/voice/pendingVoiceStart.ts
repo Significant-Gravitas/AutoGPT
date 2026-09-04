@@ -19,3 +19,18 @@ export function takeVoiceStart(): boolean {
   requested = false;
   return wanted;
 }
+
+/**
+ * True while voice mode is listening or speaking. Read by the chat
+ * transport, which sits outside this feature and has no other way to know
+ * the reply will be spoken.
+ */
+let voiceTurnActive = false;
+
+export function setVoiceTurnActive(active: boolean) {
+  voiceTurnActive = active;
+}
+
+export function isVoiceTurn(): boolean {
+  return voiceTurnActive;
+}

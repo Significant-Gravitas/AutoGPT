@@ -52,12 +52,18 @@ vi.mock("@/services/copilot/voice-mode-analytics", () => ({
     tracked.push([event, props]),
 }));
 
-import { requestVoiceStart, takeVoiceStart } from "../pendingVoiceStart";
+import {
+  isVoiceTurn,
+  requestVoiceStart,
+  setVoiceTurnActive,
+  takeVoiceStart,
+} from "../pendingVoiceStart";
 import { useVoiceMode } from "../useVoiceMode";
 
 describe("useVoiceMode", () => {
   beforeEach(() => {
     tracked.length = 0;
+    setVoiceTurnActive(false);
     takeVoiceStart();
     spoken.length = 0;
     sessions.length = 0;
@@ -354,6 +360,17 @@ describe("useVoiceMode", () => {
 
     const dropped = tracked.find(([e]) => e === "voice_turn_dropped");
     expect(dropped?.[1]?.reason).toBe("filler_or_empty");
+  });
+
+  it("marks turns as voice turns only while voice mode is on", async () => {
+    // The transport reads this to ask the reply to speak before it works.
+    expect(isVoiceTurn()).toBe(false);
+    const view = render({});
+    await enable(view);
+    expect(isVoiceTurn()).toBe(true);
+
+    await act(async () => view.result.current.stop());
+    expect(isVoiceTurn()).toBe(false);
   });
 
   it("shuts itself down when the flag goes off", async () => {

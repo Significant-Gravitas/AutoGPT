@@ -450,6 +450,20 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 """
 
 
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: the reply's first token is a median 13.9 s
+# away, and longer when it opens with a tool call, so the model has to say
+# something before it starts working. Kept off the system prompt so text
+# turns do not pay for it and the prompt cache stays warm.
+VOICE_TURN_PREFIX = (
+    "<voice_turn>\n"
+    "This is being spoken aloud and the user is waiting in silence. "
+    "Open with one short sentence acknowledging what they asked, before "
+    "any tool call or extended reasoning. Then answer normally.\n"
+    "</voice_turn>\n\n"
+)
+
+
 # Environment-specific supplement templates
 def _build_storage_supplement(
     working_dir: str,

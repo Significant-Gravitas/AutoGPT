@@ -26739,6 +26739,12 @@
             ],
             "title": "Context"
           },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
+          },
           "file_ids": {
             "anyOf": [
               {
