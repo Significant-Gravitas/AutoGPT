@@ -98,11 +98,9 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    # `parameters` has no request context, so one wording
-                    # has to cover both flag states.
                     "description": (
-                        "Continue a prior sub; empty = new. Refused when one "
-                        "sub per unit of work is in force."
+                        "Always leave empty — a sub cannot be continued. Each "
+                        "call starts a fresh one."
                     ),
                     "default": "",
                 },

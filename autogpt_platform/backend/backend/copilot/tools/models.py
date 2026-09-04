@@ -418,8 +418,8 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description=(
             "The session_id of the sub-AutoPilot conversation. Open it at "
-            "``sub_autopilot_session_link`` to see what it did; resuming it "
-            "is refused when one sub per unit of work is in force."
+            "``sub_autopilot_session_link`` to see what it did; it cannot be "
+            "resumed."
         ),
     )
     sub_autopilot_session_link: str | None = Field(
