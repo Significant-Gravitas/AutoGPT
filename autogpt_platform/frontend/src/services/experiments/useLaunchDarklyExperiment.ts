@@ -6,7 +6,8 @@ import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 import { useReportAssignment } from "./useReportAssignment";
 
-const LD_READY_TIMEOUT_MS = 5000;
+// `waitForInitialization` takes seconds, not milliseconds.
+const LD_READY_TIMEOUT_SECONDS = 5;
 
 /**
  * Run an experiment whose arms are a LaunchDarkly string flag.
@@ -33,7 +34,7 @@ export function useLaunchDarklyExperiment(flagKey: string) {
     if (!client) return;
     let active = true;
     client
-      .waitForInitialization(LD_READY_TIMEOUT_MS)
+      .waitForInitialization(LD_READY_TIMEOUT_SECONDS)
       .catch(() => undefined)
       .finally(() => {
         if (active) setIsClientReady(true);

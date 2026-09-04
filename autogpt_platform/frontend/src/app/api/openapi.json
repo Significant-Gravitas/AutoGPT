@@ -6041,6 +6041,72 @@
         }
       }
     },
+    "/api/experiments/assignments": {
+      "get": {
+        "tags": ["experiments"],
+        "summary": "List experiment assignments",
+        "operationId": "getExperimentsList experiment assignments",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExperimentAssignment"
+                  },
+                  "type": "array",
+                  "title": "Response Getexperimentslist Experiment Assignments"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["experiments"],
+        "summary": "Record experiment assignment",
+        "operationId": "postExperimentsRecord experiment assignment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/experts": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -19384,6 +19450,21 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "ExperimentAssignment": {
+        "properties": {
+          "experiment_key": { "type": "string", "title": "Experiment Key" },
+          "variant": { "type": "string", "title": "Variant" },
+          "source": { "type": "string", "title": "Source" },
+          "assigned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Assigned At"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant", "source", "assigned_at"],
+        "title": "ExperimentAssignment"
+      },
       "Expert": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -24918,6 +24999,31 @@
         "required": ["ready"],
         "title": "RecommendedProvidersResponse",
         "description": "Recommendations for the \"Connect your tools\" panel.\n\n``ready`` is false while the background job is still running — the\nclient keeps polling. Once true, ``providers`` is the final answer,\nempty included (\"nothing worth recommending\" is a real result)."
+      },
+      "RecordAssignmentRequest": {
+        "properties": {
+          "experiment_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Key"
+          },
+          "variant": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Variant"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["posthog", "launchdarkly", "backend"],
+            "title": "Source",
+            "default": "posthog"
+          }
+        },
+        "type": "object",
+        "required": ["experiment_key", "variant"],
+        "title": "RecordAssignmentRequest"
       },
       "RefundRequest": {
         "properties": {

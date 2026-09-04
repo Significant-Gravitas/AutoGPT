@@ -395,7 +395,7 @@ app.include_router(
 app.include_router(
     backend.api.features.experiments.router,
     prefix="/api/experiments",
-    tags=["v2", "experiments"],
+    tags=["experiments"],
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
