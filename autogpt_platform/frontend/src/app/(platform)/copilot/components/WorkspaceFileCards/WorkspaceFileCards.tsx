@@ -69,7 +69,7 @@ function OpenWorkspaceFileCards({ sessionId }: { sessionId: string }) {
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 12, scale: 0.98 }}
       transition={CARD_TRANSITION}
-      className="absolute right-8 top-18 z-30 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3"
+      className="absolute right-8 top-3 z-30 flex w-80 max-w-[calc(100%-2rem)] flex-col gap-3"
     >
       {!showFilesCard && !hasActivity && (
         <div className="rounded-3xl bg-white/90 px-4 py-3 backdrop-blur smooth-shadow-ring-sm">

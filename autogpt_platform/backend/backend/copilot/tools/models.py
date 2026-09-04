@@ -563,6 +563,7 @@ class ExpertChangePreview(BaseModel):
     kind: ExpertChangeKind
     name: str
     role: str = ""
+    tagline: str = ""
     about: str = ""
     boundaries: str = ""
     voice_preferences: str = ""
@@ -573,11 +574,17 @@ class ExpertChangePreview(BaseModel):
 
 
 class ExpertSummary(BaseModel):
-    """Identity of an expert created by ``confirm_expert_change``."""
+    """The expert ``confirm_expert_change`` created — same charter fields as
+    the preview, so the card can show the whole thing after the fact."""
 
     id: str
     name: str
     role: str
+    tagline: str | None = None
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
     avatar_url: str | None = None
     color: str = ""
 
