@@ -29,6 +29,8 @@ import { useConnectedProvidersStore } from "@/app/(platform)/copilot/connectedPr
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import { ToolChain } from "../ToolChain";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import type { PendingQuestions } from "../../QuestionDock/helpers";
 
 // CredentialsProvider only fetches for a signed-in user; the shared setup
 // signs everyone out.
@@ -249,6 +251,28 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     await waitFor(() => expect(savedCredentials).toHaveLength(1));
     expect(onSend).not.toHaveBeenCalled();
     await screen.findByRole("button", { name: "Proceed" });
+  });
+
+  it("gives a Proceed to a card whose rows an earlier card already satisfied", async () => {
+    // connect_integration returns a card whether or not the user is already
+    // connected, so this lands whenever the assistant offers a provider they
+    // have. There is no sign-in to trigger the send and nothing to click.
+    savedCredentials = [oauthCredential("cred-existing", [REQUIRED_SCOPE])];
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: SESSION_ID, providers: ["github"] });
+
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[setupRequirementsPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("gives a trigger card a Proceed when a sibling already connected its provider", async () => {
@@ -553,6 +577,61 @@ describe("copilot Connect card, one tool needing several providers", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
   });
 
+  it("does not send when the user starts typing an input", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[partWithInputs()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox"), "h");
+
+    // An input counts as complete on any non-empty value, so readiness alone
+    // would fire the turn mid-word with `{"url":"h"}`.
+    await waitFor(() =>
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("h"),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+    await screen.findByRole("button", { name: "Proceed" });
+  });
+
+  it("does not send when the user starts typing a clarifying answer", async () => {
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [{ question: "Which region?", keyword: "region" }],
+    };
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <PendingQuestionsContext.Provider value={pending}>
+            <ToolChain
+              parts={[setupRequirementsPart(), questionPart(pending.questions)]}
+              isStreaming={false}
+            />
+          </PendingQuestionsContext.Provider>
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await completeConnectFlow();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox"), "W");
+
+    // Answers are complete on the first character too, and the dock's own
+    // "add answers" review step would never run.
+    await waitFor(() =>
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("W"),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("offers one Proceed when a card also collects inputs", async () => {
     const onSend = vi.fn();
     render(
@@ -755,4 +834,14 @@ async function connectRemainingProvider(index = 0) {
   await user.click(buttons[index]);
   await user.click(await screen.findByText("OAuth"));
   await user.click(await screen.findByRole("button", { name: "Continue" }));
+}
+
+function questionPart(questions: PendingQuestions["questions"]): MessagePart {
+  return {
+    type: "tool-ask_question",
+    toolCallId: "call-ask_question",
+    state: "output-available",
+    input: {},
+    output: { type: "agent_builder_clarification_needed", questions },
+  } as unknown as MessagePart;
 }

@@ -129,11 +129,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // One tool can need several accounts. The turn goes out once, when every
   // card in the chain is satisfied — otherwise connecting the first provider
   // sends while the rest of the rows are still visibly unconnected.
+  const justConnectedHere = pendingActions.some((entry) => entry.justConnected);
   const canAutoSend =
-    !readOnly &&
-    allActionsReady &&
-    !needsManualProceed &&
-    pendingActions.some((entry) => entry.justConnected);
+    !readOnly && allActionsReady && !needsManualProceed && justConnectedHere;
+  // Nothing to sign in to and nothing to fill in: without a button this card
+  // has no way forward at all.
+  const offerProceed =
+    !readOnly && allActionsReady && !justConnectedHere && hasCardWork;
 
   useEffect(
     function sendOnceEveryCardIsSatisfied() {
@@ -373,7 +375,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
-            manualProceed={needsManualProceed}
+            manualProceed={needsManualProceed || offerProceed}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />

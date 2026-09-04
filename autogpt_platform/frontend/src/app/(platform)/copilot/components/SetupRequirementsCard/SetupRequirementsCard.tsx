@@ -147,9 +147,11 @@ export function SetupRequirementsCard({
   const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
   const hasUserActionableInputs = isEditMode && needsInputs;
+  // Neither auto path may send these; the chain gives them a Proceed instead.
   // A trigger card's message carries the account its webhook registers under,
-  // which the backend requires the user to have picked — so neither auto path
-  // may send it, and the chain gives it a Proceed instead.
+  // which the backend requires the user to have picked. A card with editable
+  // inputs reports ready on the first typed character, so sending on readiness
+  // would fire mid-word with a half-typed value.
   const needsManualPick = inputsMode === "trigger";
   const canAutoDismiss =
     needsCredentials &&
@@ -205,7 +207,7 @@ export function SetupRequirementsCard({
     chainActions.register({
       id: actionId,
       ready: canRun,
-      manualProceed: needsManualPick,
+      manualProceed: needsManualPick || hasUserActionableInputs,
       justConnected,
       buildMessage: () => buildProceedMessage(),
       onSent: markSent,
