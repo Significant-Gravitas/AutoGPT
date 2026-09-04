@@ -139,7 +139,7 @@ class TestSdkDelegationSupplement:
         building guide nor the shared tool notes. Delegating lookups is the
         point; delegating the build is a regression, so it is pinned."""
         rules = prompting._sdk_delegation_rules()
-        assert "Build and validate the graph yourself" in rules
+        assert "Build and validate agents yourself" in rules
         assert "build and validate graphs" not in rules
 
     def test_only_the_sdk_engine_appends_it(self):

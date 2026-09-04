@@ -686,21 +686,28 @@ def _sdk_delegation_rules() -> str:
     ``_SDK_BUILTIN_ALWAYS`` allows ``Task`` too, so a CLI rename disables the
     wording rather than the tool.
 
-    Two things here are measured and should not be changed without
-    re-measuring. The prohibition has to **lead**: a version carrying it as a
-    later, permission-framed bullet delegated 9 times in 25 against this one's
-    25. And it covers **lookups only** — a sub-agent never receives this
-    system prompt, so it has neither the building guide nor the shared tool
-    notes, and telling it to build graphs hands that work to the one executor
-    without the instructions for it.
+    Three things here are measured; do not change them without re-measuring.
+
+    The prohibition **leads**: carrying it as a later, permission-framed bullet
+    scored 9/25 against this one's 25/25.
+
+    The list is **concrete**. Appending the principle behind it — "delegate any
+    self-contained lookup whose reading is long and whose answer is short" —
+    as one further sentence dropped it to 3/25, and leading with that principle
+    instead of the list scored 0/25. Naming the work leaves nothing to judge;
+    stating the principle invites the model to decide whether this lookup
+    qualifies, and it decides not to. Widen by naming more work, never by
+    generalising.
+
+    It excludes **building agents**: a sub-agent never receives this system
+    prompt, so it has neither the building guide nor the shared tool notes.
     """
     return """
 
-### Delegating lookups
-Do not search blocks or read block schemas in this conversation — one schema
-can be 8,000 tokens and stays in your context for the rest of the session.
-Send each lookup to `Agent`, telling it what you need to know, and continue
-from what it reports. Build and validate the graph yourself.
+### Delegating research
+Do not search blocks, read schemas, fetch docs or web pages, or read long
+files, logs or command output in this conversation. Send each such question to
+`Agent` and use what it reports. Build and validate agents yourself.
 """
 
 
