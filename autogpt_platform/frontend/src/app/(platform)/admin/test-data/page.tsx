@@ -157,7 +157,6 @@ function TestDataDashboard() {
 }
 
 export default async function TestDataDashboardPage() {
-  "use server";
   // The backend route only exists on local stacks, so the page 404s elsewhere
   // instead of rendering a button that can only ever return 403/404.
   if (!isTestDataSurfaceEnabled()) notFound();

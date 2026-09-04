@@ -77,7 +77,10 @@ export function GenerateTestDataButton() {
             </Alert>
 
             {result && (
-              <Alert variant={result.success ? "default" : "error"}>
+              <Alert
+                role="status"
+                variant={result.success ? "default" : "error"}
+              >
                 <Text variant="small-medium">{result.message}</Text>
                 {result.details && (
                   <ul className="mt-2 list-inside list-disc">
