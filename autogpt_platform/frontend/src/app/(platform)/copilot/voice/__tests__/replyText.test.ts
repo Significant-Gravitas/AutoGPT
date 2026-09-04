@@ -40,9 +40,21 @@ describe("createReplyTextReader", () => {
     expect(reader.flush()).toBe("  ");
   });
 
-  it("starts over when the message is replaced", () => {
+  it("never re-emits text it has already given out", () => {
+    // The stream end swaps the streamed text for the server's copy. Emitting
+    // again there is what read the whole reply aloud a second time.
+    const reader = createReplyTextReader();
+    expect(reader.read("Here is the answer. ")).toBe("Here is the answer. ");
+    expect(reader.read("Here is the answer.  ")).toBe("");
+    expect(reader.read("Here is the answer. Rewritten by the server. ")).toBe(
+      "",
+    );
+  });
+
+  it("starts the next reply from scratch once reset", () => {
     const reader = createReplyTextReader();
     reader.read("First reply. ");
+    reader.reset();
     expect(reader.read("A different reply. ")).toBe("A different reply. ");
   });
 });

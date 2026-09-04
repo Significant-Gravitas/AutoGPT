@@ -74,6 +74,7 @@ async def synthesize_speech(
         voice=resolved_voice,
         input=cleaned,
         response_format="mp3",
+        instructions=config.voice_tts_instructions,
     )
     audio = await response.aread()
 

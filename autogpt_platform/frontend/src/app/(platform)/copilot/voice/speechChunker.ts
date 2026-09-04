@@ -6,7 +6,13 @@
  * reply begins.
  */
 
-export const MAX_CHUNK_CHARS = 200;
+export const MAX_CHUNK_CHARS = 400;
+
+/**
+ * Every chunk is its own synthesis, so prosody restarts at each seam. Only
+ * the first one has to be short — that is the one the wait is measured on.
+ */
+export const LATER_CHUNK_MIN_CHARS = 200;
 
 interface Result {
   chunks: string[];
@@ -16,13 +22,18 @@ interface Result {
 
 /**
  * @param flush - the reply is complete, so emit the trailing partial sentence.
+ * @param minChars - hold a chunk back until it is at least this long.
  */
-export function takeSpeakableChunks(buffer: string, flush = false): Result {
+export function takeSpeakableChunks(
+  buffer: string,
+  flush = false,
+  minChars = 0,
+): Result {
   const chunks: string[] = [];
   let rest = buffer;
 
   for (;;) {
-    const end = findChunkEnd(rest, flush);
+    const end = findChunkEnd(rest, flush, minChars);
     if (end === null) break;
     const chunk = rest.slice(0, end).trim();
     rest = rest.slice(end).trimStart();
@@ -38,10 +49,15 @@ export function takeSpeakableChunks(buffer: string, flush = false): Result {
   return { chunks, rest };
 }
 
-function findChunkEnd(text: string, atEnd: boolean): number | null {
+function findChunkEnd(
+  text: string,
+  atEnd: boolean,
+  minChars: number,
+): number | null {
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === "\n") return i + 1;
-    if (isSentenceEnd(text, i, atEnd)) return i + 1;
+    const longEnough = i + 1 >= minChars;
+    if (longEnough && text[i] === "\n") return i + 1;
+    if (longEnough && isSentenceEnd(text, i, atEnd)) return i + 1;
     // Nothing has ended a sentence in a whole chunk's worth of text — a long
     // list or a code-free wall of prose. Break on the last word boundary so
     // the split is not mid-word.

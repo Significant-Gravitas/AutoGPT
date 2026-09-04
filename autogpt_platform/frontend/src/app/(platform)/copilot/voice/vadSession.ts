@@ -1,15 +1,16 @@
 /**
  * Silero VAD in the browser, wrapped so the rest of voice mode never imports
  * onnxruntime.
- *
- * Thresholds are the spike's: at 500 ms of redemption the VAD split single
- * utterances into several segments, and the pre-roll keeps the first phoneme.
  */
 
 const VAD_OPTIONS = {
   positiveSpeechThreshold: 0.6,
   negativeSpeechThreshold: 0.45,
-  redemptionMs: 700,
+  // How long a pause may last before the turn is taken as finished. 700 ms
+  // cut people off mid-thought; the model's own latency dwarfs the extra
+  // wait, so erring long is nearly free.
+  redemptionMs: 1400,
+  // Keeps the first phoneme, which the threshold crossing would otherwise eat.
   preSpeechPadMs: 250,
   minSpeechMs: 400,
 };

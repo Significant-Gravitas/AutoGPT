@@ -15,7 +15,13 @@ export function createReplyTextReader() {
 
   /** @param full - the reply so far, in whole. */
   function read(full: string): string {
-    if (!full.startsWith(seen)) reset();
+    // The stream end swaps the streamed text for the server's copy, which can
+    // differ in whitespace. Re-anchor silently: re-emitting would speak the
+    // whole reply a second time. New turns reset the reader explicitly.
+    if (!full.startsWith(seen)) {
+      seen = full;
+      return "";
+    }
     buffer += full.slice(seen.length);
     seen = full;
 

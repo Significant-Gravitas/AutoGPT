@@ -32,8 +32,8 @@ describe("startVadSession", () => {
     expect(captured).toMatchObject({
       model: "v5",
       positiveSpeechThreshold: 0.6,
-      // 500 ms split single utterances into several segments in the spike.
-      redemptionMs: 700,
+      // Long enough that a pause mid-thought does not end the turn.
+      redemptionMs: 1400,
       preSpeechPadMs: 250,
       minSpeechMs: 400,
     });

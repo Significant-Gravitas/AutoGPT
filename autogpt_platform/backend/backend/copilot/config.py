@@ -1352,8 +1352,16 @@ class ChatConfig(BaseSettings):
         description="OpenAI speech model used for voice-mode replies.",
     )
     voice_tts_voice: str = Field(
-        default="alloy",
+        default="echo",
         description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
+    )
+    voice_tts_instructions: str = Field(
+        default=(
+            "Speak like a colleague talking to you at a desk: natural pace, "
+            "even rhythm, no newsreader delivery. Do not slow down for emphasis."
+        ),
+        description="Delivery instruction for the speech model. gpt-4o-mini-tts "
+        "takes its pacing from this rather than from ``speed``.",
     )
     voice_tts_usd_per_1k_chars: float = Field(
         default=0.02,

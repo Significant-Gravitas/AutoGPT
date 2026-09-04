@@ -20,7 +20,7 @@ import {
 import { takeVoiceStart } from "./pendingVoiceStart";
 import { createReplyTextReader } from "./replyText";
 import { synthesizeSpeech, transcribeUtterance } from "./speechApi";
-import { takeSpeakableChunks } from "./speechChunker";
+import { LATER_CHUNK_MIN_CHARS, takeSpeakableChunks } from "./speechChunker";
 import { createSpeechPlayer, type SpeechPlayer } from "./speechPlayer";
 import { stripMarkdownForSpeech } from "./stripMarkdownForSpeech";
 import { isRejectableTranscript } from "./transcriptFilters";
@@ -219,6 +219,7 @@ export function useVoiceMode({
   }
 
   function consumeReply() {
+    if (replyDone.current) return;
     const last = messages[messages.length - 1];
     if (last?.role !== "assistant") return;
 
@@ -227,7 +228,13 @@ export function useVoiceMode({
       .join("");
     chunkBuffer.current += reader.current.read(full);
 
-    const { chunks, rest } = takeSpeakableChunks(chunkBuffer.current);
+    // Only the first chunk races the clock; later ones read better long.
+    const minChars = spokeThisTurn.current ? LATER_CHUNK_MIN_CHARS : 0;
+    const { chunks, rest } = takeSpeakableChunks(
+      chunkBuffer.current,
+      false,
+      minChars,
+    );
     chunkBuffer.current = rest;
     chunks.forEach(speak);
   }
