@@ -17,6 +17,7 @@ import anthropic
 import httpx
 import pytest
 
+from backend.util.clients import GOOGLE_BASE_URL
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ProviderResponse,
@@ -727,6 +728,182 @@ class TestAIMLAPI:
         # AI/ML expects branded headers on the client construction.
         ctor_kwargs = constructor.call_args.kwargs
         assert ctor_kwargs["default_headers"]["X-Project"] == "AutoGPT"
+
+
+# ---------------------------------------------------------------------------
+# Google Gemini
+# ---------------------------------------------------------------------------
+
+
+class TestGoogle:
+    @pytest.mark.asyncio
+    async def test_uses_google_openai_compatible_endpoint(self):
+        """Google provider must use the Gemini OpenAI-compatible endpoint
+        and strip the ``google/`` prefix from the model slug."""
+        fake_response = _fake_openai_chat_response("hi", prompt=5, completion=3)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            result = await call_provider(
+                provider="google",
+                model="google/gemini-2.5-flash",
+                api_key="AIza-test-key",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        assert result.content == "hi"
+
+        # Client must point at the Google Gemini endpoint with the Google API key.
+        ctor_kwargs = constructor.call_args.kwargs
+        assert ctor_kwargs["base_url"] == GOOGLE_BASE_URL
+        assert ctor_kwargs["api_key"] == "AIza-test-key"
+
+        # Model slug must be stripped of the "google/" prefix —
+        # Google's API expects "gemini-2.5-flash", not "google/gemini-2.5-flash".
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["model"] == "gemini-2.5-flash"
+        assert kwargs["max_tokens"] == 100
+
+        # Google direct must not send OpenRouter-specific extras.
+        assert "extra_body" not in kwargs
+        assert kwargs.get("extra_headers", {}) == {}
+
+    @pytest.mark.asyncio
+    async def test_passes_tools_to_google_endpoint(self):
+        """Google's OpenAI-compatible API supports function calling;
+        tools must be forwarded so Gemini can act as an Agent LLM."""
+        fake_response = _fake_openai_chat_response("ok", prompt=5, completion=3)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            await call_provider(
+                provider="google",
+                model="google/gemini-2.5-pro",
+                api_key="AIza-test-key",
+                messages=[_msg("user", "what is the weather?")],
+                max_tokens=200,
+                tools=tools,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["model"] == "gemini-2.5-pro"
+        assert kwargs["tools"] == tools
+
+    @pytest.mark.asyncio
+    async def test_force_json_output_sends_response_format(self):
+        """Google's OpenAI-compatible API supports JSON mode;
+        force_json_output must result in a response_format being sent."""
+        fake_response = _fake_openai_chat_response("{}", prompt=5, completion=1)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            await call_provider(
+                provider="google",
+                model="google/gemini-2.5-flash",
+                api_key="AIza-test-key",
+                messages=[_msg("user", "return json")],
+                max_tokens=100,
+                force_json_output=True,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["model"] == "gemini-2.5-flash"
+        # _call_openai_compat sets response_format when force_json_output is True
+        assert "response_format" in kwargs
+
+    @pytest.mark.asyncio
+    async def test_model_without_google_prefix_is_unchanged(self):
+        """A model ID that already lacks the ``google/`` prefix must
+        pass through unchanged — ``removeprefix`` is a no-op."""
+        fake_response = _fake_openai_chat_response("ok", prompt=5, completion=3)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            await call_provider(
+                provider="google",
+                model="gemini-2.5-flash",
+                api_key="AIza-test-key",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        kwargs = async_create.call_args.kwargs
+        assert kwargs["model"] == "gemini-2.5-flash"
 
 
 # ---------------------------------------------------------------------------

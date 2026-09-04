@@ -225,6 +225,14 @@ v0_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+google_credentials = APIKeyCredentials(
+    id="b5e7f2b1-4c6a-5903-bf3c-0a9456789abc",
+    provider="google",
+    api_key=SecretStr(settings.secrets.google_api_key),
+    title="Use Credits for Google Gemini",
+    expires_at=None,
+)
+
 webshare_proxy_credentials = UserPasswordCredentials(
     id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
     provider="webshare_proxy",
@@ -408,6 +416,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(llama_api_credentials)
         if settings.secrets.v0_api_key:
             all_credentials.append(v0_credentials)
+        if settings.secrets.google_api_key:
+            all_credentials.append(google_credentials)
         if (
             settings.secrets.webshare_proxy_username
             and settings.secrets.webshare_proxy_password
