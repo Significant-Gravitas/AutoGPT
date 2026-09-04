@@ -509,6 +509,69 @@ class TestRenameThread:
 
 class TestThreadHistory:
     @pytest.mark.asyncio
+    async def test_thread_started_from_a_post_includes_that_post_first(self):
+        # Toran turns Nick's channel post into a thread and @mentions the bot.
+        # Nick's post is the thread's starter message: it lives in the parent
+        # channel, not in thread.history(), so it must be fetched separately.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+
+        starter = MagicMock(spec=discord.Message)
+        starter.content = "docs should link to platform sign up"
+        starter.mentions = []
+        starter.role_mentions = []
+        starter.author = MagicMock(bot=False, id=2000, display_name="Nick")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.id = 555
+        channel.starter_message = None
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock(return_value=starter)
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> make this happen please", [bot])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        channel.parent.fetch_message.assert_awaited_once_with(555)
+        assert [entry.username for entry in history] == ["Nick"]
+        assert history[0].text == "docs should link to platform sign up"
+
+    async def test_thread_without_origin_message_has_no_starter_entry(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+        channel = MagicMock(spec=discord.Thread)
+        channel.id = 555
+        channel.starter_message = None
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "gone")
+        )
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> hi", [bot])
+        message.channel = channel
+
+        assert await adapter._thread_history(message) == ()
+
+    async def test_cached_starter_is_used_and_bot_authored_starter_is_skipped(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+        starter = MagicMock(spec=discord.Message)
+        starter.content = "old bot output"
+        starter.mentions = []
+        starter.role_mentions = []
+        starter.author = MagicMock(bot=True, id=1000, display_name="AutoGPT")
+        channel = MagicMock(spec=discord.Thread)
+        channel.starter_message = starter
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock()
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> hi", [bot])
+        message.channel = channel
+
+        assert await adapter._thread_history(message) == ()
+        channel.parent.fetch_message.assert_not_awaited()
+
     async def test_fetches_user_thread_history_chronological(self):
         # Discord returns history newest-first; the adapter reverses it back to
         # chronological order, dropping its own outputs.

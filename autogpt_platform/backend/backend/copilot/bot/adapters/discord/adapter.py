@@ -760,7 +760,7 @@ class DiscordAdapter(SocketAdapter):
         if not isinstance(message.channel, discord.Thread):
             return ()
         try:
-            return await self._budgeted_history(
+            history = await self._budgeted_history(
                 message.channel.history(
                     limit=THREAD_HISTORY_LIMIT,
                     before=message,
@@ -770,7 +770,42 @@ class DiscordAdapter(SocketAdapter):
             )
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
-            return ()
+            history = ()
+        starter = await self._thread_starter_entry(message.channel)
+        return (starter, *history) if starter else history
+
+    async def _thread_starter_entry(
+        self, thread: discord.Thread
+    ) -> Optional[MessageHistoryEntry]:
+        """The message a thread was opened from, as its oldest history entry.
+
+        A thread created from a channel post shares that post's id, but the
+        post itself lives in the parent channel and never appears in
+        ``thread.history()``. Without it the bot sees a thread whose first
+        line is "make this happen" and has no idea what "this" is. Threads
+        opened without an origin message have no starter and return None.
+        Kept outside the character budget so it is never truncated away.
+        """
+        starter = thread.starter_message
+        if not isinstance(starter, discord.Message):
+            parent = thread.parent
+            if not isinstance(parent, discord.abc.Messageable):
+                return None
+            try:
+                starter = await parent.fetch_message(thread.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return None
+        bot_user_id = self._client.user.id if self._client.user else None
+        if bot_user_id is not None and starter.author.id == bot_user_id:
+            return None
+        text = self._strip_mentions(starter)
+        if not text:
+            return None
+        return MessageHistoryEntry(
+            username=starter.author.display_name,
+            user_id=str(starter.author.id),
+            text=text,
+        )
 
     async def _budgeted_history(
         self, history, char_budget: int
