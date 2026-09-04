@@ -13,7 +13,7 @@ This guide will help you setup the server and builder for the project.
 
 ## Prerequisites
 
-The recommended release appliance's only product prerequisite is an installed,
+The single-container appliance's only product prerequisite is an installed,
 running Docker CLI and daemon. Select a local Docker endpoint using Linux
 containers on `amd64` or `arm64`. The Unix bootstrap also uses Bash, curl, and
 `sha256sum` or `shasum`. Docker Compose, Git, Node.js, and NPM are not required
@@ -27,18 +27,20 @@ docker -v
 docker info
 ```
 
-## Quick Setup with Auto Setup Script
-If you're self-hosting AutoGPT locally, the release installer pulls and starts
-the published single-container appliance. Install and start Docker first, and
-select a local Docker daemon using Linux containers on `amd64` or `arm64`.
-The installer does not install Docker or build AutoGPT from source.
+## Quick Setup with the Appliance Installer
 
-The public appliance installer is coming with the next release. Its hosted
-shell endpoint still serves the legacy Compose installer, and the appliance
-image tags are not yet public. This first release supports Linux and macOS;
-Windows users should use the manual setup guide.
-Use the [manual setup](#manual-setup) below until the
-[installer release gates](installer.md#maintainer-release-gates) pass.
+The release installer pulls and starts the published single-container
+appliance: one Docker container, one loopback port, no source checkout. It
+needs a running Docker daemon with Linux containers on `amd64` or `arm64`; it
+does not install Docker or build AutoGPT from source. See
+[the installer reference](installer.md) for details.
+
+The hosted installer is not live yet: `setup.agpt.co/install.sh` still serves
+the Compose installer, and the appliance image tags are not public until the
+[release gates](installer.md#maintainer-release-gates) pass. This first release
+supports Linux and macOS. Until then, and on Windows, use the
+[from-source setup](#manual-setup) below, which is also the path that supports
+a fully offline install with a local LLM.
 
 
 ## Manual Setup

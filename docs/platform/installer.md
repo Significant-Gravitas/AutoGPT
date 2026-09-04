@@ -181,11 +181,14 @@ announce the installation commands until every external gate below passes:
   health, verify the loopback endpoint, rerun to prove exact-contract
   idempotency, and confirm no mutable tag was used to create the container.
 
-## Legacy setup scripts
+## Installing from source (Compose)
 
-For a prebuilt, experimental alternative intended for small self-hosted
-installations, see [Run AutoGPT in one Docker container](single-container.md).
-That image is separate from the development-oriented installer described here.
+The scripts below are the other supported path: they clone the repository and
+start every service with Docker Compose. Use them on Windows, for development,
+or for a fully offline install with a local LLM. The appliance described above
+is the image documented in
+[Run AutoGPT in one Docker container](single-container.md); these scripts do
+not use it.
 
 ### Manual Installation
 
