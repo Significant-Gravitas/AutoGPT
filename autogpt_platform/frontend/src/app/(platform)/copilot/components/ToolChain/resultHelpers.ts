@@ -1,3 +1,5 @@
+export { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
+
 export function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "string") {
     try {
@@ -20,15 +22,6 @@ export function safeHostname(url: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function integrationIconSrc(provider: string): string | null {
-  const slug = provider
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-  return slug ? `/integrations/${slug}.png` : null;
 }
 
 // Every backend tool response carries these envelope fields; cards read the

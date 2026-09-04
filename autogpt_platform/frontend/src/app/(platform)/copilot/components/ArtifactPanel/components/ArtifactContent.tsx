@@ -9,6 +9,7 @@ import type { ArtifactClassification } from "../helpers";
 import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
+import { ExpertArtifactContent } from "./ExpertArtifactContent";
 import {
   FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
@@ -309,6 +310,9 @@ function ArtifactRenderer({
 }
 
 export function ArtifactContent(props: Props) {
+  if (props.artifact.expert) {
+    return <ExpertArtifactContent expert={props.artifact.expert} />;
+  }
   return (
     <Suspense fallback={<ArtifactSkeleton />}>
       <ArtifactContentLoader {...props} />

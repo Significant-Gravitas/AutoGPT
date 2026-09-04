@@ -17,6 +17,7 @@ import { normalizeOnboardingProfile } from "./helpers";
 import {
   NO_PAYWALL_STEPS,
   PAYWALL_FIRST_STEPS,
+  SELF_HOST_STEPS,
   Step,
   useOnboardingWizardStore,
 } from "./store";
@@ -119,9 +120,18 @@ export function useOnboardingPage() {
 
   const isPaymentEnabled =
     (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
-  const steps = isPaymentEnabled ? PAYWALL_FIRST_STEPS : NO_PAYWALL_STEPS;
+  // A self-host install has no paywall and no model until someone gives it
+  // one, so it leads with the connection instead. Payments and self-host are
+  // mutually exclusive in practice; the check is ordered anyway so a
+  // deployment that somehow had both still only inserts one first step.
+  const isSelfHostConnectEnabled = !isPaymentEnabled && environment.isLocal();
+  const steps = isPaymentEnabled
+    ? PAYWALL_FIRST_STEPS
+    : isSelfHostConnectEnabled
+      ? SELF_HOST_STEPS
+      : NO_PAYWALL_STEPS;
   const preparingStep: Step = steps.preparing;
-  const totalSteps = isPaymentEnabled ? 4 : 3;
+  const totalSteps = isPaymentEnabled || isSelfHostConnectEnabled ? 4 : 3;
 
   // Wait for auth too — without !isUserLoading, LD can resolve while
   // isLoggedIn is transiently false, the tier query stays disabled
@@ -268,6 +278,7 @@ export function useOnboardingPage() {
     isLoading: isOnboardingStateLoading || !isReady,
     handlePreparingComplete,
     isPaymentEnabled,
+    isSelfHostConnectEnabled,
     isBrainDumpEnabled,
     steps,
     preparingStep,

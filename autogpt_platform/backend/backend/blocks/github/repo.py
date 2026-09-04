@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from typing import Literal, Optional
+
 from typing_extensions import TypedDict
 
 from backend.blocks._base import (
@@ -8,8 +11,9 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
+from backend.util.request import Requests
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -26,6 +30,12 @@ class GithubListTagsBlock(Block):
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of tags to fetch",
+            default=100,
+            ge=1,
+            le=1000,
         )
 
     class Output(BlockSchemaOutput):
@@ -82,12 +92,11 @@ class GithubListTagsBlock(Block):
 
     @staticmethod
     async def list_tags(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, repo_url: str, limit: int
     ) -> list[Output.TagItem]:
         api = get_api(credentials)
         tags_url = repo_url + "/tags"
-        response = await api.get(tags_url)
-        data = response.json()
+        data = await get_paginated(api, tags_url, limit=limit)
         repo_path = github_repo_path(repo_url)
         tags: list[GithubListTagsBlock.Output.TagItem] = [
             {
@@ -108,6 +117,7 @@ class GithubListTagsBlock(Block):
         tags = await self.list_tags(
             credentials,
             input_data.repo_url,
+            input_data.limit,
         )
         yield "tags", tags
         for tag in tags:
@@ -122,7 +132,33 @@ class GithubListDiscussionsBlock(Block):
             placeholder="https://github.com/owner/repo",
         )
         num_discussions: int = SchemaField(
-            description="Number of discussions to fetch", default=5
+            title="Limit",
+            description="Maximum number of discussions to fetch",
+            default=5,
+        )
+        category: str = SchemaField(
+            description="Only include discussions in the category with this name",
+            default="",
+        )
+        answered: Literal["all", "answered", "unanswered"] = SchemaField(
+            description="Only include discussions that are (un)answered",
+            default="all",
+            advanced=True,
+        )
+        state: Literal["all", "open", "closed"] = SchemaField(
+            description="Only include discussions in this state",
+            default="all",
+            advanced=True,
+        )
+        order_by: Literal["created", "updated"] = SchemaField(
+            description="What to sort the discussions by",
+            default="updated",
+            advanced=True,
+        )
+        direction: Literal["asc", "desc"] = SchemaField(
+            description="Sort direction",
+            default="desc",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -183,35 +219,107 @@ class GithubListDiscussionsBlock(Block):
 
     @staticmethod
     async def list_discussions(
-        credentials: GithubCredentials, repo_url: str, num_discussions: int
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.DiscussionItem]:
         api = get_api(credentials)
         # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
-        repo_path = github_repo_path(repo_url)
+        repo_path = github_repo_path(input_data.repo_url)
         owner, repo = repo_path.split("/")
         query = """
-        query($owner: String!, $repo: String!, $num: Int!) {
+        query(
+            $owner: String!, $repo: String!, $num: Int!, $after: String,
+            $categoryId: ID, $answered: Boolean,
+            $states: [DiscussionState!], $orderBy: DiscussionOrder
+        ) {
             repository(owner: $owner, name: $repo) {
-                discussions(first: $num) {
+                discussions(
+                    first: $num, after: $after, categoryId: $categoryId,
+                    answered: $answered, states: $states, orderBy: $orderBy
+                ) {
                     nodes {
                         title
                         url
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
                     }
                 }
             }
         }
         """
-        variables = {"owner": owner, "repo": repo, "num": num_discussions}
+        limit = input_data.num_discussions
+        variables = {
+            "owner": owner,
+            "repo": repo,
+            "num": min(limit, 100),
+            "after": None,
+            "categoryId": (
+                await GithubListDiscussionsBlock._get_category_id(
+                    api, owner, repo, input_data.category
+                )
+                if input_data.category
+                else None
+            ),
+            "answered": {"all": None, "answered": True, "unanswered": False}[
+                input_data.answered
+            ],
+            "states": (
+                [input_data.state.upper()] if input_data.state != "all" else None
+            ),
+            "orderBy": {
+                "field": {"created": "CREATED_AT", "updated": "UPDATED_AT"}[
+                    input_data.order_by
+                ],
+                "direction": input_data.direction.upper(),
+            },
+        }
+
+        discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = []
+        while len(discussions) < limit:
+            response = await api.post(
+                "https://api.github.com/graphql",
+                json={"query": query, "variables": variables},
+            )
+            data = response.json()["data"]["repository"]["discussions"]
+            discussions.extend(
+                {"title": discussion["title"], "url": discussion["url"]}
+                for discussion in data["nodes"]
+            )
+            if not data["pageInfo"]["hasNextPage"]:
+                break
+            variables["after"] = data["pageInfo"]["endCursor"]
+        return discussions[:limit]
+
+    @staticmethod
+    async def _get_category_id(
+        api: Requests, owner: str, repo: str, category_name: str
+    ) -> str:
+        query = """
+        query($owner: String!, $repo: String!) {
+            repository(owner: $owner, name: $repo) {
+                discussionCategories(first: 100) {
+                    nodes {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
         response = await api.post(
             "https://api.github.com/graphql",
-            json={"query": query, "variables": variables},
+            json={"query": query, "variables": {"owner": owner, "repo": repo}},
         )
-        data = response.json()
-        discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
-            {"title": discussion["title"], "url": discussion["url"]}
-            for discussion in data["data"]["repository"]["discussions"]["nodes"]
+        categories = response.json()["data"]["repository"]["discussionCategories"][
+            "nodes"
         ]
-        return discussions
+        for category in categories:
+            if category["name"].lower() == category_name.lower():
+                return category["id"]
+        raise ValueError(
+            f"Discussion category '{category_name}' does not exist in {owner}/{repo}"
+        )
 
     async def run(
         self,
@@ -220,11 +328,7 @@ class GithubListDiscussionsBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        discussions = await self.list_discussions(
-            credentials,
-            input_data.repo_url,
-            input_data.num_discussions,
-        )
+        discussions = await self.list_discussions(credentials, input_data)
         yield "discussions", discussions
         for discussion in discussions:
             yield "discussion", discussion
@@ -237,24 +341,54 @@ class GithubListReleasesBlock(Block):
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
+        release_type: Literal["all", "stable", "prerelease", "draft"] = SchemaField(
+            description="Only include releases of this type",
+            default="all",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of releases to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        published_after: str = SchemaField(
+            description="Only include releases published after the given "
+            "ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
+        published_before: str = SchemaField(
+            description="Only include releases published before the given "
+            "ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         class ReleaseItem(TypedDict):
             name: str
+            tag_name: str
             url: str
+            published_at: str
+            prerelease: bool
+            draft: bool
 
         release: ReleaseItem = SchemaField(
             title="Release",
-            description="Releases with their name and file tree browser URL",
+            description="Releases with their name, tag, URL, publish date, and type",
         )
         releases: list[ReleaseItem] = SchemaField(
-            description="List of releases with their name and file tree browser URL"
+            description="List of releases with their name, tag, URL, publish date, "
+            "and type"
         )
 
     def __init__(self):
         super().__init__(
             id="3460367a-6ba7-4645-8ce6-47b05d040b92",
-            description="This block lists all releases for a specified GitHub repository.",
+            description="This block lists releases for a specified GitHub repository, "
+            "optionally filtered by type and date range.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubListReleasesBlock.Input,
             output_schema=GithubListReleasesBlock.Output,
@@ -269,7 +403,11 @@ class GithubListReleasesBlock(Block):
                     [
                         {
                             "name": "v1.0.0",
+                            "tag_name": "v1.0.0",
                             "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                            "published_at": "2026-01-01T00:00:00Z",
+                            "prerelease": False,
+                            "draft": False,
                         }
                     ],
                 ),
@@ -277,7 +415,11 @@ class GithubListReleasesBlock(Block):
                     "release",
                     {
                         "name": "v1.0.0",
+                        "tag_name": "v1.0.0",
                         "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                        "published_at": "2026-01-01T00:00:00Z",
+                        "prerelease": False,
+                        "draft": False,
                     },
                 ),
             ],
@@ -285,7 +427,11 @@ class GithubListReleasesBlock(Block):
                 "list_releases": lambda *args, **kwargs: [
                     {
                         "name": "v1.0.0",
+                        "tag_name": "v1.0.0",
                         "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                        "published_at": "2026-01-01T00:00:00Z",
+                        "prerelease": False,
+                        "draft": False,
                     }
                 ]
             },
@@ -293,14 +439,58 @@ class GithubListReleasesBlock(Block):
 
     @staticmethod
     async def list_releases(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.ReleaseItem]:
         api = get_api(credentials)
-        releases_url = repo_url + "/releases"
-        response = await api.get(releases_url)
-        data = response.json()
+        releases_url = input_data.repo_url + "/releases"
+
+        # The releases endpoint has no filter params, so we filter client-side
+        published_after = _parse_timestamp(input_data.published_after)
+        published_before = _parse_timestamp(input_data.published_before)
+
+        def keep(release: dict) -> bool:
+            if input_data.release_type == "stable" and (
+                release["prerelease"] or release["draft"]
+            ):
+                return False
+            if input_data.release_type == "prerelease" and not release["prerelease"]:
+                return False
+            if input_data.release_type == "draft" and not release["draft"]:
+                return False
+            if published_after or published_before:
+                # Drafts have no publish date; use their creation date instead
+                published = _parse_timestamp(
+                    release.get("published_at") or release["created_at"]
+                )
+                if published is None:
+                    return False
+                if published_after and published < published_after:
+                    return False
+                if published_before and published > published_before:
+                    return False
+            return True
+
+        is_filtered = (
+            input_data.release_type != "all"
+            or published_after is not None
+            or published_before is not None
+        )
+        data = await get_paginated(
+            api,
+            releases_url,
+            limit=input_data.limit,
+            keep=keep if is_filtered else None,
+        )
         releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
-            {"name": release["name"], "url": release["html_url"]} for release in data
+            {
+                "name": release["name"] or release["tag_name"],
+                "tag_name": release["tag_name"],
+                "url": release["html_url"],
+                "published_at": release.get("published_at") or "",
+                "prerelease": release["prerelease"],
+                "draft": release["draft"],
+            }
+            for release in data
         ]
         return releases
 
@@ -311,10 +501,7 @@ class GithubListReleasesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        releases = await self.list_releases(
-            credentials,
-            input_data.repo_url,
-        )
+        releases = await self.list_releases(credentials, input_data)
         yield "releases", releases
         for release in releases:
             yield "release", release
@@ -430,6 +617,12 @@ class GithubListStargazersBlock(Block):
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
+        limit: int = SchemaField(
+            description="Maximum number of stargazers to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
 
     class Output(BlockSchemaOutput):
         class StargazerItem(TypedDict):
@@ -489,12 +682,11 @@ class GithubListStargazersBlock(Block):
 
     @staticmethod
     async def list_stargazers(
-        credentials: GithubCredentials, repo_url: str
+        credentials: GithubCredentials, repo_url: str, limit: int
     ) -> list[Output.StargazerItem]:
         api = get_api(credentials)
         stargazers_url = repo_url + "/stargazers"
-        response = await api.get(stargazers_url)
-        data = response.json()
+        data = await get_paginated(api, stargazers_url, limit=limit)
         stargazers: list[GithubListStargazersBlock.Output.StargazerItem] = [
             {
                 "username": stargazer["login"],
@@ -514,6 +706,7 @@ class GithubListStargazersBlock(Block):
         stargazers = await self.list_stargazers(
             credentials,
             input_data.repo_url,
+            input_data.limit,
         )
         yield "stargazers", stargazers
         for stargazer in stargazers:
@@ -745,3 +938,12 @@ class GithubStarRepositoryBlock(Block):
             yield "status", status
         except Exception as e:
             yield "error", str(e)
+
+
+def _parse_timestamp(timestamp: str) -> Optional[datetime]:
+    if not timestamp:
+        return None
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed

@@ -155,11 +155,7 @@ export function RecentChatItem({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction
-            showOnHover
-            aria-label="Chat actions"
-            className="border border-zinc-200 bg-white"
-          >
+          <SidebarMenuAction showOnHover aria-label="Chat actions">
             <Icon
               icon={MoreHorizontalIcon}
               className="text-sidebar-foreground/90"

@@ -404,7 +404,10 @@ class OrgCreditModel(UserCreditBase):
         organization_id: str | None = None,
         **kwargs,
     ):
-        await top_up_org_credits(self._org_id, amount, user_id=user_id)
+        # Org-level billing has no payment path yet. Until top_up_intent and
+        # fulfill_checkout exist, no caller may add to the org balance here;
+        # promotional grants go through grant_credits explicitly.
+        raise NotImplementedError("Org-level Stripe top-up not yet implemented")
 
     async def grant_credits(
         self,

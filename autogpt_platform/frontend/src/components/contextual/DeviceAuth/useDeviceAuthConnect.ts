@@ -4,14 +4,14 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  getGetV1ListCredentialsQueryKey,
   postV1InitiateDeviceCodeOauthFlow,
   postV1PollDeviceCodeOauthFlowForCompletion,
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
-import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import type { CredentialsProviderName } from "@/lib/autogpt-server-api/types";
+import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 interface Args {
   provider: string;
@@ -85,10 +85,8 @@ export function useDeviceAuthConnect({ provider, onSuccess }: Args) {
           setPhase("done");
           stopPolling();
           toast({ title: "Connected via device auth", variant: "success" });
-          await queryClient.invalidateQueries({
-            queryKey: getGetV1ListCredentialsQueryKey(),
-          });
-          // Seed the credentials store directly. Invalidating the query key
+          await invalidateConnectionQueries(queryClient);
+          // Seed the credentials store directly. Invalidating the query keys
           // does not reach it — it is separate state filled by loadCredentials
           // — so without this the caller selects an id the store has never
           // seen, and `useCredentialsInput` reports the brand-new credential

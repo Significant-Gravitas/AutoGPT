@@ -233,10 +233,11 @@ describe("useExpertKickoff", () => {
     renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
 
     await waitFor(() => expect(createCount).toBe(1));
+    // The route is omitted, not defaulted client-side: an unmade choice
+    // stays unmade so the server applies the account's own default.
     expect(createBody).toEqual({
       expert_id: EXPERT_ID,
       expert_kickoff: true,
-      llm_auth_provider: "platform",
     });
 
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));

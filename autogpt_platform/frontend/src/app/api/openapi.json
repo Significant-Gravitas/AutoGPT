@@ -3699,6 +3699,30 @@
         }
       }
     },
+    "/api/chat/connections": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Chat Connections",
+        "description": "Every AI connection the user can chat over, described by the server.\n\nAdditive alongside ``GET /transports``, which keeps its shape. This\ncarries what a client would otherwise have to infer — provider family,\nwhat backs a run, the quality tiers, and the limitations that apply —\nso product and billing statements come from the side that enforces them.",
+        "operationId": "getV2ListChatConnections",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIConnectionOffersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/health": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -3719,6 +3743,30 @@
             }
           }
         }
+      }
+    },
+    "/api/chat/model-tiers": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Provider Model Tiers",
+        "description": "What each provider's quality tiers resolve to, whoever you are.\n\n``GET /connections`` answers \"what can you pick\", and deliberately omits\na connection nobody can select. That makes it the wrong source for the\nsurfaces that describe a provider *before* the user has one -- the\nconnect dialog, and the plan cards selling a plan they have not bought.\nThose need \"ChatGPT's Advanced tier is 5.6 Sol\", which is a fact about\nthe catalog rather than about this user's entitlements.\n\nUser-scoped only because the engine is: which model a tier maps to\ndepends on the path a turn will run on. Says nothing about access.",
+        "operationId": "getV2ListProviderModelTiers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTiersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/chat/schema/tool-responses": {
@@ -4081,6 +4129,59 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/connection": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Change the connection an existing chat runs on",
+        "description": "Move a chat onto another connection, from the next turn onward.\n\nA chat is latched to the connection it started on so that a turn cannot\nsilently change who pays for it halfway through. This is the deliberate\nexception: when a provider stops accepting turns -- a spent quota, an\nexpired login -- the alternative to switching is the chat simply ending.\n\nIt never happens on its own. The caller is a button the user pressed, and\nthe run continues on the connection they picked rather than on whichever\none happens to work.\n\nHistory is not rewritten. Turns already stamped keep the connection they\nran on, so a chat that hit a limit and carried on elsewhere reads as\nexactly that.",
+        "operationId": "putV2Change the connection an existing chat runs on",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeSessionConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Putv2Change The Connection An Existing Chat Runs On"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4554,6 +4655,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Chat Transports",
+        "description": "Every transport the user can chat over.\n\nExactly one carries ``default: true`` — the connection this user chose in\nSettings, or the server's own pick when they haven't chosen one.",
         "operationId": "getV2ListChatTransports",
         "responses": {
           "200": {
@@ -4568,6 +4670,51 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/transports/default": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Set Default Chat Transport",
+        "description": "Save the connection every new chat starts on.\n\nApplies to chats nobody routed explicitly — a fresh session in the web\napp, and every conversation that arrives without a request to read a route\nfrom: bot links, schedules, briefings, dream passes. It does not touch a\nconversation that already exists; sessions keep the route they were\ncreated with.",
+        "operationId": "putV2SetDefaultChatTransport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultTransportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTransportsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "The credential or user profile was not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -5377,7 +5524,8 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
+          },
+          "429": { "description": "Rate limit exceeded" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       },
@@ -6089,7 +6237,7 @@
     },
     "/api/experts/templates": {
       "get": {
-        "tags": ["v2", "experts", "experts", "private"],
+        "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
         "operationId": "list_expert_templates",
         "responses": {
@@ -6104,12 +6252,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/experts/{expert_id}": {
@@ -6161,6 +6305,154 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/credentials": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Credentials",
+        "description": "The integrations this expert is allowed to use.",
+        "operationId": "list_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response List Expert Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Grant Expert Credentials",
+        "operationId": "grant_expert_credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCredentialsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Grant Expert Credentials"
+                }
+              }
+            }
+          },
+          "400": { "description": "Unknown credential" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/credentials/{credential_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Revoke Expert Credential",
+        "operationId": "revoke_expert_credential",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "credential_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Credential Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExpertCredentialRef"
+                  },
+                  "title": "Response Revoke Expert Credential"
+                }
               }
             }
           },
@@ -6428,7 +6720,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert not found" },
+          "404": { "description": "Expert or workflow not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -13488,7 +13780,6 @@
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
         "operationId": "getV2Get agent by version",
-        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -13505,9 +13796,6 @@
                 "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -14822,6 +15110,69 @@
   },
   "components": {
     "schemas": {
+      "AIConnectionOffer": {
+        "properties": {
+          "offer_id": { "type": "string", "title": "Offer Id" },
+          "provider_family": { "type": "string", "title": "Provider Family" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "auth_method": { "type": "string", "title": "Auth Method" },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "backed_by_label": { "type": "string", "title": "Backed By Label" },
+          "description": { "type": "string", "title": "Description" },
+          "state": { "type": "string", "title": "State" },
+          "selectable": { "type": "boolean", "title": "Selectable" },
+          "is_default": { "type": "boolean", "title": "Is Default" },
+          "tiers": {
+            "items": { "$ref": "#/components/schemas/ConnectionTier" },
+            "type": "array",
+            "title": "Tiers"
+          },
+          "limitations": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Limitations"
+          },
+          "lock_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lock Reason"
+          },
+          "unlock_href": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unlock Href"
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer_id",
+          "provider_family",
+          "display_name",
+          "auth_method",
+          "credential_id",
+          "backed_by_label",
+          "description",
+          "state",
+          "selectable",
+          "is_default",
+          "tiers",
+          "limitations"
+        ],
+        "title": "AIConnectionOffer"
+      },
+      "AIConnectionOffersResponse": {
+        "properties": {
+          "offers": {
+            "items": { "$ref": "#/components/schemas/AIConnectionOffer" },
+            "type": "array",
+            "title": "Offers"
+          }
+        },
+        "type": "object",
+        "required": ["offers"],
+        "title": "AIConnectionOffersResponse"
+      },
       "APIKeyCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -16715,6 +17066,26 @@
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
+      "ChangeSessionConnectionRequest": {
+        "properties": {
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex"],
+            "title": "Llm Auth Provider"
+          },
+          "llm_credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Llm Credential Id"
+          }
+        },
+        "type": "object",
+        "required": ["llm_auth_provider"],
+        "title": "ChangeSessionConnectionRequest",
+        "description": "The connection the rest of this chat should run on."
+      },
       "ChangelogEntry": {
         "properties": {
           "version": { "type": "string", "title": "Version" },
@@ -17204,6 +17575,29 @@
         "type": "object",
         "required": ["success", "platform", "platform_user_id"],
         "title": "ConfirmUserLinkResponse"
+      },
+      "ConnectionTier": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["standard", "advanced"],
+            "title": "Tier"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "selectable": { "type": "boolean", "title": "Selectable" },
+          "display_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Model"
+          },
+          "lock_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Lock Reason"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "label", "selectable"],
+        "title": "ConnectionTier",
+        "description": "One quality level on a connection.\n\n``display_model`` is the model this tier resolves to, run through the\nsame router the turn will use — LaunchDarkly cell, then registry, then\nconfig — so it cannot drift from what actually answers.\n\nOn a ChatGPT connection it is the model the catalog pins for that cell,\nread straight from the registry -- no lease, no call to the account.\nWhat a lease would add is confirmation that this particular account still\nadvertises it; the router checks that when the turn runs and falls back\nif not, so the name here is the routed model rather than a guarantee.\n``None`` only when the catalog pins nothing for the cell."
       },
       "ContentType": {
         "type": "string",
@@ -19093,6 +19487,18 @@
         ],
         "title": "Expert"
       },
+      "ExpertCredentialRef": {
+        "properties": {
+          "credential_id": { "type": "string", "title": "Credential Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": { "type": "string", "title": "Title" },
+          "type": { "type": "string", "title": "Type" }
+        },
+        "type": "object",
+        "required": ["credential_id", "provider", "title", "type"],
+        "title": "ExpertCredentialRef",
+        "description": "One integration credential an expert is allowed to use.\n\n``title``/``type`` are read from the owner's live credential rather than\nstored on the grant, so a renamed credential renames everywhere at once."
+      },
       "ExpertDetachPreview": {
         "properties": {
           "schedule_names": {
@@ -19602,6 +20008,20 @@
         "type": "object",
         "title": "GlobalSearchResponse",
         "description": "Top-N hits bucketed by item type.\n\nFor a non-empty query this contains hybrid-search results.\nFor an empty query this contains the most-recently-updated items\nper bucket (cached per-user with a short TTL)."
+      },
+      "GrantCredentialsRequest": {
+        "properties": {
+          "credential_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Credential Ids"
+          }
+        },
+        "type": "object",
+        "required": ["credential_ids"],
+        "title": "GrantCredentialsRequest"
       },
       "Graph": {
         "properties": {
@@ -20758,7 +21178,8 @@
             "type": "array",
             "title": "Agents"
           },
-          "week": { "$ref": "#/components/schemas/HomeWeekSummary" }
+          "week": { "$ref": "#/components/schemas/HomeWeekSummary" },
+          "recent_work": { "$ref": "#/components/schemas/HomeRecentWork" }
         },
         "type": "object",
         "required": [
@@ -20787,6 +21208,89 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeRecentWork": {
+        "properties": {
+          "groups": {
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkGroup" },
+            "type": "array",
+            "title": "Groups"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "HomeRecentWork"
+      },
+      "HomeRecentWorkGroup": {
+        "properties": {
+          "actor": { "$ref": "#/components/schemas/HomeWorkActor" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "session_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Title"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
+          },
+          "latest_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Latest At"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkItem" },
+            "type": "array",
+            "title": "Items"
+          },
+          "more_count": {
+            "type": "integer",
+            "title": "More Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": ["actor", "latest_at", "items"],
+        "title": "HomeRecentWorkGroup"
+      },
+      "HomeRecentWorkItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "category": {
+            "type": "string",
+            "enum": ["file", "integration", "schedule"],
+            "title": "Category"
+          },
+          "event_type": { "type": "string", "title": "Event Type" },
+          "title": { "type": "string", "title": "Title" },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "file_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "File Id"
+          },
+          "mime_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mime Type"
+          }
+        },
+        "type": "object",
+        "required": ["id", "category", "event_type", "title", "occurred_at"],
+        "title": "HomeRecentWorkItem"
       },
       "HomeTeamSummary": {
         "properties": {
@@ -20867,6 +21371,25 @@
           "daily"
         ],
         "title": "HomeWeekSummary"
+      },
+      "HomeWorkActor": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["expert", "autopilot", "agent"],
+            "title": "Kind"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "expert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["kind", "name"],
+        "title": "HomeWorkActor"
       },
       "HostScopedCredentials": {
         "properties": {
@@ -20966,13 +21489,17 @@
       "InstallWorkflowRequest": {
         "properties": {
           "store_listing_version_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Store Listing Version Id"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
           }
         },
         "type": "object",
-        "required": ["store_listing_version_id"],
-        "title": "InstallWorkflowRequest"
+        "title": "InstallWorkflowRequest",
+        "description": "One workflow source: a marketplace listing, or the caller's own agent."
       },
       "IntroCardResponse": {
         "properties": {
@@ -21294,11 +21821,6 @@
               { "$ref": "#/components/schemas/MarketplaceListing" },
               { "type": "null" }
             ]
-          },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id",
-            "description": "ID of the approved marketplace listing version whose graph snapshot exactly matches this agent's graph_id and graph_version. Install flows can use it directly to install this exact version."
           }
         },
         "type": "object",
@@ -23999,6 +24521,50 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "ProviderTier": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["standard", "advanced"],
+            "title": "Tier"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "display_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Model"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "label"],
+        "title": "ProviderTier",
+        "description": "A tier and the model it resolves to, with no claim about access.\n\nDeliberately not ``ConnectionTier``: that type carries ``selectable`` and\n``lock_reason``, which are answers about a user. This one is a statement\nabout the catalog and is true whether or not anyone can pick it."
+      },
+      "ProviderTiers": {
+        "properties": {
+          "provider_family": { "type": "string", "title": "Provider Family" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "tiers": {
+            "items": { "$ref": "#/components/schemas/ProviderTier" },
+            "type": "array",
+            "title": "Tiers"
+          }
+        },
+        "type": "object",
+        "required": ["provider_family", "display_name", "tiers"],
+        "title": "ProviderTiers"
+      },
+      "ProviderTiersResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/ProviderTiers" },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": ["providers"],
+        "title": "ProviderTiersResponse"
+      },
       "PushSubscribeRequest": {
         "properties": {
           "endpoint": {
@@ -25118,6 +25684,28 @@
         "title": "SetActiveGraphVersionResponse",
         "description": "Response for activating an existing graph version.\n\nCarries any webhook presets that were left pinned to their old version\nbecause the newly activated version's trigger block is incompatible and\nneeds to be reconfigured."
       },
+      "SetDefaultTransportRequest": {
+        "properties": {
+          "auth_provider": {
+            "anyOf": [
+              { "type": "string", "enum": ["platform", "codex"] },
+              { "type": "null" }
+            ],
+            "title": "Auth Provider"
+          },
+          "credential_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Credential Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SetDefaultTransportRequest",
+        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. Sending ``codex`` requires naming the credential, so the\ndefault keeps pointing at one account rather than \"whichever ChatGPT\"."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -26099,14 +26687,6 @@
               { "type": "null" }
             ],
             "title": "File Ids"
-          },
-          "mode": {
-            "anyOf": [
-              { "type": "string", "enum": ["fast", "extended_thinking"] },
-              { "type": "null" }
-            ],
-            "title": "Mode",
-            "description": "Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. If None, uses the server default (extended_thinking)."
           },
           "model": {
             "anyOf": [
