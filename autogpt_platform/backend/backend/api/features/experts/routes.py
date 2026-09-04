@@ -35,6 +35,12 @@ router = APIRouter(
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
 
+# Templates are marketplace content: the expert page shows them to signed-out
+# visitors, so they live on a router without the session requirement. It must
+# be mounted before ``router`` so ``/templates`` isn't swallowed by
+# ``/{expert_id}``.
+public_router = APIRouter(prefix="/experts", tags=["experts"])
+
 
 class HireRequest(BaseModel):
     template_id: str
@@ -117,7 +123,7 @@ class CreateRaisedExpertRequest(BaseModel):
         return value.strip() or None
 
 
-@router.get("/templates", operation_id="list_expert_templates")
+@public_router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
 

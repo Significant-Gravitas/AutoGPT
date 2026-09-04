@@ -33,10 +33,11 @@ from backend.api.features.experts.models import (
     RaiseAttachmentFailure,
     RaiseResult,
 )
-from backend.api.features.experts.routes import router
+from backend.api.features.experts.routes import public_router, router
 from backend.util.exceptions import NotFoundError
 
 app = fastapi.FastAPI()
+app.include_router(public_router)
 app.include_router(router)
 
 client = fastapi.testclient.TestClient(app)
