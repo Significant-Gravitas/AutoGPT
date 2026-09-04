@@ -1,16 +1,11 @@
+import type { ClarifyingQuestion } from "@/app/api/__generated__/models/clarifyingQuestion";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { ToolUIPart } from "ai";
-
-interface ClarifyingQuestionPayload {
-  question: string;
-  keyword: string;
-  example?: string;
-}
 
 export interface AskQuestionOutput {
   type: string;
   message: string;
-  questions: ClarifyingQuestionPayload[];
+  questions: ClarifyingQuestion[];
   session_id?: string;
 }
 

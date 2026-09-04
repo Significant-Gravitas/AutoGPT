@@ -8,6 +8,7 @@ import {
   getChainHeading,
   isChainPart,
   isLiftedSetupRow,
+  markSupersededSubSessionRows,
   toChainRow,
   type ChainRow,
 } from "../helpers";
@@ -98,6 +99,39 @@ describe("buildChainSegments", () => {
   ])("routes legacy %s cards through ToolChain", (toolName) => {
     expect(isChainableToolPart(toolPart(toolName))).toBe(true);
   });
+
+  it("splits the chain around an expert approval", () => {
+    const parts = [
+      toolPart("web_search"),
+      toolPart("raise_expert", {}, { type: "expert_change_proposed" }),
+      toolPart("web_fetch"),
+    ];
+
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+      { kind: "experts", parts: [parts[1]], index: 1 },
+      { kind: "chain", parts: [parts[2]], index: 2 },
+    ]);
+  });
+
+  it("groups back-to-back expert changes into one segment", () => {
+    const raise = (id: string): MessagePart =>
+      ({ ...toolPart("raise_expert"), toolCallId: id }) as MessagePart;
+    const parts = [
+      raise("a"),
+      { type: "step-start" } as MessagePart,
+      raise("b"),
+      toolPart("confirm_expert_change"),
+      textPart("All three are ready for your OK."),
+      raise("c"),
+    ];
+
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
+      { kind: "experts", parts: [parts[0], parts[2], parts[3]], index: 0 },
+      { kind: "part", part: parts[4], index: 4 },
+      { kind: "experts", parts: [parts[5]], index: 5 },
+    ]);
+  });
 });
 
 describe("toChainRow", () => {
@@ -141,6 +175,21 @@ describe("toChainRow", () => {
       2,
     );
     expect(settled).toMatchObject({ text: "Thought", state: "done" });
+  });
+
+  it("drops a settled reasoning part that has no text", () => {
+    expect(
+      toChainRow(
+        { type: "reasoning", text: "", state: "done" } as MessagePart,
+        0,
+      ),
+    ).toBeNull();
+    expect(
+      toChainRow(
+        { type: "reasoning", text: "", state: "streaming" } as MessagePart,
+        0,
+      ),
+    ).toMatchObject({ text: "Thinking…" });
   });
 
   it("marks failed tool calls with their error detail", () => {
@@ -247,6 +296,16 @@ describe("isChainPart", () => {
     );
     expect(isChainPart(toolPart("web_search"))).toBe(true);
     expect(isChainPart(textPart("Hello"))).toBe(false);
+  });
+
+  it.each([
+    "hire_expert",
+    "raise_expert",
+    "update_expert",
+    "confirm_expert_change",
+  ])("keeps %s out of the chain so its card stands on its own", (toolName) => {
+    expect(isChainPart(toolPart(toolName))).toBe(false);
+    expect(isChainableToolPart(toolPart(toolName))).toBe(false);
   });
 });
 
@@ -393,18 +452,23 @@ describe("getChainHeading", () => {
 });
 
 describe("buildChainSegments edge cases", () => {
-  it("folds trailing narration optimistically while streaming", () => {
+  // Trailing text is the answer until a tool call proves otherwise. Folding
+  // it in optimistically meant it rendered as a chain row and then jumped
+  // out to message text when the text outgrew the narration cap or the
+  // turn settled.
+  it("keeps trailing narration out of the chain while streaming", () => {
     const parts = [toolPart("web_search"), textPart("Wrapping up.")];
 
-    expect(buildChainSegments(parts, isChainPart, true)).toEqual([
-      { kind: "chain", parts, index: 0 },
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
+      { kind: "chain", parts: [parts[0]], index: 0 },
+      { kind: "part", part: parts[1], index: 1 },
     ]);
   });
 
   it("keeps trailing narration out of a settled chain", () => {
     const parts = [toolPart("web_search"), textPart("Here you go.")];
 
-    expect(buildChainSegments(parts, isChainPart, false)).toEqual([
+    expect(buildChainSegments(parts, isChainPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
     ]);
@@ -449,5 +513,70 @@ describe("buildChainSegments edge cases", () => {
       { kind: "part", part: parts[0], index: 0 },
       { kind: "chain", parts: [parts[1]], index: 1 },
     ]);
+  });
+});
+
+describe("markSupersededSubSessionRows", () => {
+  function subRow(key: string, tool: string, subSessionId: string): ChainRow {
+    return {
+      key,
+      category: "agent",
+      text: tool,
+      state: "done",
+      tool,
+      output: { status: "running", sub_session_id: subSessionId },
+    };
+  }
+
+  it("keeps the card only on the last row per sub-session", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it("keeps the answer of a run a re-delegation reuses the session for", () => {
+    // Re-delegation deliberately reuses the sub-session, so keying on the id
+    // alone would drop the first run's response from the transcript.
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "get_sub_session_result", "sub-1"),
+      subRow("c", "delegate_to_expert", "sub-1"),
+      subRow("d", "get_sub_session_result", "sub-1"),
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.map((r) => r.supersededSubSession === true)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it("leaves unrelated sessions and tools untouched", () => {
+    const rows = [
+      subRow("a", "delegate_to_expert", "sub-1"),
+      subRow("b", "delegate_to_expert", "sub-2"),
+      {
+        key: "c",
+        category: "web",
+        text: "Searched",
+        state: "done",
+        tool: "web_search",
+        output: { sub_session_id: "sub-1" },
+      } as ChainRow,
+    ];
+
+    const marked = markSupersededSubSessionRows(rows);
+    expect(marked.every((r) => !r.supersededSubSession)).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ describe("getSkillUploadError", () => {
   });
 
   test("reports the exact length when description is too long", () => {
+    expect(MAX_SKILL_DESCRIPTION_CHARS).toBe(1024);
     const desc = "x".repeat(MAX_SKILL_DESCRIPTION_CHARS + 1);
     const err = getSkillUploadError(md(`name: ok_skill\ndescription: ${desc}`));
     expect(err).toContain(
@@ -31,6 +32,25 @@ describe("getSkillUploadError", () => {
     expect(
       getSkillUploadError(md(`name: ok_skill\ndescription: ${desc}`)),
     ).toBeNull();
+  });
+
+  test("counts non-BMP characters the same way as the backend", () => {
+    const desc = `${"x".repeat(MAX_SKILL_DESCRIPTION_CHARS - 1)}😀`;
+
+    expect(desc.length).toBe(MAX_SKILL_DESCRIPTION_CHARS + 1);
+    expect(
+      getSkillUploadError(md(`name: ok_skill\ndescription: ${desc}`)),
+    ).toBeNull();
+  });
+
+  test("reports an over-limit Unicode code-point count", () => {
+    const desc = `${"x".repeat(MAX_SKILL_DESCRIPTION_CHARS)}😀`;
+    const err = getSkillUploadError(md(`name: ok_skill\ndescription: ${desc}`));
+
+    expect(err).toContain(
+      `${MAX_SKILL_DESCRIPTION_CHARS + 1}/${MAX_SKILL_DESCRIPTION_CHARS}`,
+    );
+    expect(err).toContain("trim at least 1");
   });
 
   test("strips surrounding quotes before measuring", () => {
@@ -48,6 +68,15 @@ describe("getSkillUploadError", () => {
     const line = `description: ${JSON.stringify(desc)}`;
     expect(desc.length).toBe(MAX_SKILL_DESCRIPTION_CHARS);
     expect(getSkillUploadError(md(`name: ok_skill\n${line}`))).toBeNull();
+  });
+
+  test("does not false-reject YAML-only escapes it cannot decode", () => {
+    const escapedEmoji = "\\U0001F600".repeat(103);
+
+    expect(escapedEmoji.length).toBe(1030);
+    expect(
+      getSkillUploadError(md(`name: ok_skill\ndescription: "${escapedEmoji}"`)),
+    ).toBeNull();
   });
 
   test("does not false-reject a block-scalar description it cannot measure", () => {

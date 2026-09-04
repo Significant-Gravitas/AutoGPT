@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import os
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -114,6 +115,66 @@ class AccountRegistrationTest(unittest.TestCase):
         )
 
 
+class EnvironmentPolicyTest(unittest.TestCase):
+    def test_rejects_required_email_verification(self) -> None:
+        result = self._configure(AUTH_REQUIRE_EMAIL_VERIFICATION="true")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "email verification is not supported by the single-container distribution",
+            result.stderr,
+        )
+
+    def test_defaults_to_local_behavior(self) -> None:
+        result = self._configure()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "local")
+
+    def test_preserves_cloud_behavior_override(self) -> None:
+        result = self._configure(BEHAVE_AS="cloud")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "cloud")
+
+    def _configure(self, **overrides: str) -> subprocess.CompletedProcess[str]:
+        environment = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "AUTOGPT_ASSET_DIR": str(ASSET_DIR),
+            "AUTOGPT_BACKEND_DIR": str(ASSET_DIR.parent / "backend"),
+            "AUTOGPT_PYTHON": sys.executable,
+            "AUTOGPT_PUBLIC_URL": "http://localhost:3000",
+            "AUTH_ALLOW_NEW_ACCOUNTS": "false",
+            "POSTGRES_PASSWORD": "test-postgres",
+            "RABBITMQ_DEFAULT_USER": "test-rabbitmq",
+            "RABBITMQ_DEFAULT_PASS": "test-rabbitmq",
+            "REDIS_PASSWORD": "test-redis",
+            "BETTER_AUTH_SECRET": "test-better-auth",
+            "ENCRYPTION_KEY": "test-encryption",
+            "UNSUBSCRIBE_SECRET_KEY": "test-unsubscribe",
+            "GRAPHITI_FALKORDB_PASSWORD": "test-falkordb",
+            "VAPID_PRIVATE_KEY": "test-vapid-private",
+            "VAPID_PUBLIC_KEY": "test-vapid-public",
+        }
+        environment.update(overrides)
+        return subprocess.run(
+            [
+                "bash",
+                "-Eeuo",
+                "pipefail",
+                "-c",
+                'source "$1"; write_nginx_public_url_config() { :; }; '
+                'configure_environment; printf "%s\\n" "$BEHAVE_AS"',
+                "bash",
+                str(ENTRYPOINT_PATH),
+            ],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            env=environment,
+        )
+
+
 class PublicOriginConfigurationTest(unittest.TestCase):
     def test_backend_cors_uses_the_validated_public_origin(self) -> None:
         result = subprocess.run(
@@ -123,7 +184,7 @@ class PublicOriginConfigurationTest(unittest.TestCase):
                 "pipefail",
                 "-c",
                 'source "$1"; AUTOGPT_PUBLIC_URL="$2"; '
-                'configure_backend_cors_origin; '
+                "configure_backend_cors_origin; "
                 'printf "%s\\n" "$BACKEND_CORS_ALLOW_ORIGINS"',
                 "bash",
                 str(ENTRYPOINT_PATH),

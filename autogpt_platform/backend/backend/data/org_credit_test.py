@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.data.org_credit import (
+    OrgCreditModel,
     assign_seat,
     get_org_credits,
     get_org_transaction_history,
@@ -221,3 +222,25 @@ class TestSeatManagement:
         assert where["userId"] == "user-1"
         # Verify status set to INACTIVE
         assert call_kwargs["data"]["status"] == "INACTIVE"
+
+
+class TestOrgCreditModelTopUp:
+    @pytest.mark.asyncio
+    async def test_top_up_credits_refuses_without_payment_path(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(return_value=[{"balance": 500}])
+
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
+            await OrgCreditModel("org-1").top_up_credits("user-1", 500)
+
+        mock_prisma.query_raw.assert_not_called()
+        mock_prisma.orgcredittransaction.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_grant_credits_still_writes_the_ledger(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(return_value=[{"balance": 500}])
+
+        result = await OrgCreditModel("org-1").grant_credits("user-1", 500, "promo")
+
+        assert result == 500
+        mock_prisma.query_raw.assert_called_once()
+

@@ -504,13 +504,12 @@ class ChatConfig(BaseSettings):
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
     claude_agent_cross_user_prompt_cache: bool = Field(
-        default=True,
-        description="Enable cross-user prompt caching via SystemPromptPreset. "
-        "The Claude Code default prompt becomes a cacheable prefix shared "
-        "across all users, and our custom prompt is appended after it. "
+        default=False,
+        description="Include the Claude Code default prompt as a cacheable prefix "
+        "shared across all users, with our custom prompt appended after it. "
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
-        "from the prefix. Set to False to fall back to passing the system "
-        "prompt as a raw string.",
+        "from the prefix. Set to True to opt in. When False, our system prompt "
+        "is passed as a raw string and replaces the Claude Code default prompt.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",
