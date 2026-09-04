@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.data.tally as tally_module
 from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,
@@ -646,3 +647,41 @@ async def test_fetch_tally_page_uses_provided_client():
     assert "form123" in call_url
     assert "page=1" in call_url
     assert result == {"submissions": [], "questions": []}
+
+
+@pytest.mark.asyncio
+async def test_refresh_cache_incremental_passes_last_fetch_as_str():
+    existing_index = {"old@example.com": {"responses": [], "submitted_at": "x"}}
+    values = {
+        tally_module._LAST_FETCH_KEY.format(
+            form_id="form123"
+        ): b"2026-09-01T00:00:00+00:00",
+        tally_module._EMAIL_INDEX_KEY.format(form_id="form123"): json.dumps(
+            existing_index
+        ),
+        tally_module._QUESTIONS_KEY.format(form_id="form123"): json.dumps(
+            SAMPLE_QUESTIONS
+        ),
+    }
+    redis = MagicMock()
+    redis.get = AsyncMock(side_effect=lambda key: values.get(key))
+    redis.setex = AsyncMock()
+
+    with (
+        patch("backend.data.tally.Settings"),
+        patch("backend.data.tally._make_tally_client", return_value=MagicMock()),
+        patch(
+            "backend.data.tally.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.data.tally._fetch_all_submissions",
+            new_callable=AsyncMock,
+            return_value=(SAMPLE_QUESTIONS, SAMPLE_SUBMISSIONS),
+        ) as fetch,
+    ):
+        email_index, questions = await _refresh_cache("form123")
+
+    assert fetch.await_args.kwargs["start_date"] == "2026-09-01T00:00:00+00:00"
+    assert "old@example.com" in email_index
+    assert questions == SAMPLE_QUESTIONS

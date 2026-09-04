@@ -685,3 +685,44 @@ class TestStreamEntries:
         assert stream_registry._stream_entries(None) == []
         assert stream_registry._stream_entries([]) == []
         assert stream_registry._stream_entries([("s", None)]) == [("s", [])]
+
+
+class _StreamFakeRedis(_FakeRedis):
+    """_FakeRedis plus the stream read get_active_session makes."""
+
+    def __init__(self, meta: dict[str, str], newest):
+        super().__init__(meta)
+        self._newest = newest
+        self.xrevrange = AsyncMock(return_value=newest)
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_reads_last_id_from_the_turn_stream():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1", "user_id": "user-1"},
+        newest=[(b"7-0", {b"data": b"{}"})],
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        session, last_id = await stream_registry.get_active_session(
+            "sess-1", user_id="user-1"
+        )
+
+    assert session is not None
+    assert session.turn_id == "turn-1"
+    assert last_id == "7-0"
+    fake_redis.xrevrange.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_falls_back_when_the_stream_is_empty():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1"}, newest=None
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        _session, last_id = await stream_registry.get_active_session("sess-1")
+
+    assert last_id == "0-0"
