@@ -7,18 +7,28 @@
  */
 
 export function createReplyTextReader() {
+  let messageId = "";
   let seen = "";
   let buffer = "";
   let insideFence = false;
 
   return { read, flush, reset };
 
-  /** @param full - the reply so far, in whole. */
-  function read(full: string): string {
-    // The stream end swaps the streamed text for the server's copy, which can
-    // differ in whitespace. Re-anchor silently: re-emitting would speak the
-    // whole reply a second time. New turns reset the reader explicitly.
-    if (!full.startsWith(seen)) {
+  /**
+   * @param id - the assistant message the text belongs to. A tool round
+   *   starts a new message, and its text is new output, not a rewrite.
+   * @param full - that message's text so far, in whole.
+   */
+  function read(id: string, full: string): string {
+    if (id !== messageId) {
+      messageId = id;
+      seen = "";
+      buffer = "";
+      insideFence = false;
+    } else if (!full.startsWith(seen)) {
+      // Same message, different text: the stream end swapped the streamed
+      // copy for the server's, which differs in whitespace. Re-anchor
+      // silently — emitting again would read the whole reply twice.
       seen = full;
       return "";
     }
@@ -49,6 +59,7 @@ export function createReplyTextReader() {
   }
 
   function reset() {
+    messageId = "";
     seen = "";
     buffer = "";
     insideFence = false;

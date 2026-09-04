@@ -27,8 +27,12 @@ import { startVadSession, type VadSession } from "./vadSession";
 export const SILENCE_TIMEOUT_MS = 8_000;
 /** A session that never completes a turn — a noisy room — closes anyway. */
 const MAX_SESSION_MS = 5 * 60 * 1000;
-/** A reply that produces no speakable text still has to give the mic back. */
-const REPLY_WATCHDOG_MS = 45_000;
+/**
+ * Nothing at all from the turn for this long — no text, no tool activity —
+ * and the mic goes back. Reset on every sign of life: a tool chain routinely
+ * runs longer than this, and giving up mid-turn strands the reply unspoken.
+ */
+const REPLY_SILENCE_MS = 90_000;
 
 interface Args {
   enabled: boolean;
@@ -62,6 +66,7 @@ export function useVoiceMode({
   const lastPhrase = useRef<string | null>(null);
   const replyDone = useRef(false);
   const spokeThisTurn = useRef(false);
+  const lastMessageId = useRef("");
   const turnIndex = useRef(0);
   /** Speech end, for the two latencies the funnel measures. */
   const utteranceEndedAt = useRef(0);
@@ -244,13 +249,30 @@ export function useVoiceMode({
 
   function consumeReply() {
     if (replyDone.current) return;
+    // Any activity at all — a tool part, a status, more text — proves the
+    // turn is alive, so the mic is not owed back yet.
+    armReplyWatchdog();
+
     const last = messages[messages.length - 1];
     if (last?.role !== "assistant") return;
+
+    // A message after a tool round is a fresh passage: its first sentence
+    // races the clock again rather than waiting behind the prosody minimum.
+    if (last.id !== lastMessageId.current) {
+      lastMessageId.current = last.id;
+      spokeThisTurn.current = false;
+      // Whatever the previous message left unspoken — typically the sentence
+      // said before a tool call — is still owed, but must not run into the
+      // next message's first words.
+      if (chunkBuffer.current && !chunkBuffer.current.endsWith("\n")) {
+        chunkBuffer.current += "\n";
+      }
+    }
 
     const full = last.parts
       .map((part) => (part.type === "text" ? part.text : ""))
       .join("");
-    chunkBuffer.current += reader.current.read(full);
+    chunkBuffer.current += reader.current.read(last.id, full);
 
     // Only the first chunk races the clock; later ones read better long.
     const minChars = spokeThisTurn.current ? LATER_CHUNK_MIN_CHARS : 0;
@@ -285,11 +307,16 @@ export function useVoiceMode({
   function startTurn() {
     replyDone.current = false;
     spokeThisTurn.current = false;
+    lastMessageId.current = "";
     chunkBuffer.current = "";
     reader.current.reset();
     clearTimer("session");
     dispatch({ type: "TRANSCRIPT_SENT" });
-    setTimer("reply", REPLY_WATCHDOG_MS, () => {
+    armReplyWatchdog();
+  }
+
+  function armReplyWatchdog() {
+    setTimer("reply", REPLY_SILENCE_MS, () => {
       replyDone.current = true;
       if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
     });

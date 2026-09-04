@@ -373,6 +373,59 @@ describe("useVoiceMode", () => {
     expect(isVoiceTurn()).toBe(false);
   });
 
+  it("speaks the answer that follows a tool round", async () => {
+    // Tool rounds start a new assistant message. Treating that as a rewrite
+    // of the first left the real answer silent.
+    const view = render({});
+    await enable(view);
+    await speak();
+
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Let me check that.", "a1"),
+        isStreaming: true,
+      });
+    });
+    // Trailing space because a live stream keeps going; a terminator at the
+    // very end of the buffer is deliberately held back.
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Here is what I found. ", "a2"),
+        isStreaming: true,
+      });
+    });
+
+    // The pre-tool line and the answer both get said, in order, and are not
+    // run together into one utterance.
+    expect(spoken.slice(-2)).toEqual([
+      "Let me check that.",
+      "Here is what I found.",
+    ]);
+  });
+
+  it("does not give the mic back while a long tool chain is still running", async () => {
+    vi.useFakeTimers();
+    const view = render({});
+    await enable(view);
+    await speak();
+
+    // A tool chain that outlasts the old 45s watchdog, showing signs of life.
+    for (let i = 0; i < 4; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      await act(async () => {
+        view.rerender({
+          messages: assistant(`Working... ${i}`, "a1"),
+          isStreaming: true,
+        });
+      });
+    }
+
+    expect(view.result.current.state).not.toBe("listening");
+    vi.useRealTimers();
+  });
+
   it("shuts itself down when the flag goes off", async () => {
     const view = render({});
     await enable(view);
@@ -430,10 +483,10 @@ async function reply(view: ReturnType<typeof render>, text: string) {
   });
 }
 
-function assistant(text: string): UIMessage[] {
+function assistant(text: string, id = "a1"): UIMessage[] {
   return [
     {
-      id: "a1",
+      id,
       role: "assistant",
       parts: [{ type: "text", text }],
     } as UIMessage,
