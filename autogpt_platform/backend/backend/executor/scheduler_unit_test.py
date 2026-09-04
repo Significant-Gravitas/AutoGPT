@@ -1118,7 +1118,11 @@ async def test_execute_graph_quietly_skips_paywalled_user(caplog):
         await _execute_graph(**args.model_dump(mode="json"))
 
     mock_db.increment_onboarding_runs.assert_not_awaited()
-    assert "Skipping scheduled run for graph #graph-1" in caplog.text
+    assert any(
+        record.levelno == logging.INFO
+        and "Skipping scheduled run for graph #graph-1" in record.getMessage()
+        for record in caplog.records
+    )
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
