@@ -5,11 +5,13 @@ import {
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 
+/** Templates are public, so the section can show them to anyone; only the
+ *  hired roster (for the "Hired" state) needs a session. */
 export function useExpertsSection() {
   const { isLoggedIn } = useAuth();
 
   const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
+    query: { select: (x) => x.data as Expert[] },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: isLoggedIn },
@@ -26,7 +28,7 @@ export function useExpertsSection() {
     isLoggedIn,
     templates: templatesQuery.data ?? [],
     hiredTemplateIds,
-    isLoading: isLoggedIn && templatesQuery.isLoading,
+    isLoading: templatesQuery.isLoading,
     isError: templatesQuery.isError,
   };
 }
