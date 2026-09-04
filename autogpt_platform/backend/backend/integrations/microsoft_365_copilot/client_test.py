@@ -132,3 +132,41 @@ async def test_stream_chat_normalizes_idle_timeout() -> None:
             pass
 
     assert "private detail" not in str(raised.value)
+
+
+async def _refusal_chunks() -> AsyncIterator[bytes]:
+    yield b'data: {"id":"conversation","messages":[{"id":"answer","text":"I"}]}\n\n'
+    yield (
+        b'data: {"id":"conversation","state":"disengagedForRai",'
+        b'"messages":[{"id":"answer","text":""}]}\n\n'
+    )
+
+
+async def _rewrite_chunks() -> AsyncIterator[bytes]:
+    yield b'data: {"id":"conversation","messages":[{"id":"answer","text":"Hello world"}]}\n\n'
+    # Graph rewrote already-streamed prose to add a citation marker.
+    yield b'data: {"id":"conversation","messages":[{"id":"answer","text":"Hello [1] world"}]}\n\n'
+    yield b'data: {"id":"conversation","messages":[{"id":"answer","text":"Hello [1] world!"}]}\n\n'
+
+
+@pytest.mark.asyncio
+async def test_stream_parser_raises_on_responsible_ai_refusal() -> None:
+    from backend.integrations.microsoft_365_copilot.client import (
+        Microsoft365CopilotDeclined,
+        iter_copilot_text_deltas,
+    )
+
+    with pytest.raises(Microsoft365CopilotDeclined):
+        async for _ in iter_copilot_text_deltas(_refusal_chunks()):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stream_parser_keeps_streaming_after_a_snapshot_rewrite() -> None:
+    from backend.integrations.microsoft_365_copilot.client import (
+        iter_copilot_text_deltas,
+    )
+
+    deltas = [delta async for delta in iter_copilot_text_deltas(_rewrite_chunks())]
+
+    assert deltas == ["Hello world", "!"]

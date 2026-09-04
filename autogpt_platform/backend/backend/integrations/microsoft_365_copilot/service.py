@@ -35,7 +35,11 @@ from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
-from .client import Microsoft365CopilotClient, Microsoft365CopilotError
+from .client import (
+    Microsoft365CopilotClient,
+    Microsoft365CopilotDeclined,
+    Microsoft365CopilotError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +226,11 @@ async def stream_chat_completion_microsoft_365(
             yield StreamFinishStep()
         yield StreamError(
             errorText=str(error),
-            code="microsoft_365_copilot_request_failed",
+            code=(
+                "microsoft_365_copilot_declined"
+                if isinstance(error, Microsoft365CopilotDeclined)
+                else "microsoft_365_copilot_request_failed"
+            ),
         )
         if stream_started:
             yield StreamFinish()

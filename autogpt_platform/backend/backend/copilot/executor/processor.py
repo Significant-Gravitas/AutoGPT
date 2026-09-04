@@ -610,13 +610,19 @@ class CoPilotProcessor:
                         raise ValueError("invalid Microsoft 365 Copilot credential")
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as error:
                     if credential_lease is not None:
                         await credential_lease.release()
                         credential_lease = None
-                    raise RuntimeError(
+                    # Only a missing or unusable credential is "not found";
+                    # a refresh failure or lock contention on a valid account
+                    # keeps its own cause so it is not reported as missing.
+                    code = (
                         "microsoft_365_copilot_credential_not_found"
-                    ) from None
+                        if isinstance(error, ValueError)
+                        else "microsoft_365_copilot_credential_unavailable"
+                    )
+                    raise RuntimeError(code) from error
                 stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
                 log.info("Using Microsoft 365 Copilot Chat API transport")
             else:

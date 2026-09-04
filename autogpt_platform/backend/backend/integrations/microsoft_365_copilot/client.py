@@ -1,10 +1,13 @@
 import asyncio
 import codecs
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/beta"
 
@@ -13,6 +16,16 @@ class Microsoft365CopilotError(RuntimeError):
     def __init__(self, message: str, *, status: int | None = None):
         super().__init__(message)
         self.status = status
+
+
+class Microsoft365CopilotDeclined(Microsoft365CopilotError):
+    """Copilot refused the request under its Responsible AI policy."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Microsoft 365 Copilot declined this request under its "
+            "Responsible AI policy; rephrase and try again"
+        )
 
 
 def build_chat_request(
@@ -91,6 +104,11 @@ async def iter_copilot_text_deltas(
     emitted_text = ""
 
     async for conversation in _iter_sse_json(chunks):
+        # Responsible AI refusals arrive as ordinary 200 snapshots with the
+        # conversation flagged; without this they would end as an empty or
+        # partial "successful" answer.
+        if conversation.get("state") == "disengagedForRai":
+            raise Microsoft365CopilotDeclined()
         messages = conversation.get("messages")
         if not isinstance(messages, list) or not messages:
             continue
@@ -117,7 +135,20 @@ async def iter_copilot_text_deltas(
             continue
 
         text = selected.get("text")
-        if not isinstance(text, str) or not text.startswith(emitted_text):
+        if not isinstance(text, str):
+            continue
+        if not text.startswith(emitted_text):
+            # Graph occasionally rewrites already-streamed prose (citation
+            # markers, entity tags). A streamed delta cannot un-emit text, so
+            # resync to the new snapshot and keep streaming from there
+            # instead of dropping every later delta.
+            logger.warning(
+                "Microsoft 365 Copilot rewrote streamed text; resyncing "
+                "(%d emitted, %d in snapshot)",
+                len(emitted_text),
+                len(text),
+            )
+            emitted_text = text
             continue
         delta = text[len(emitted_text) :]
         if delta:

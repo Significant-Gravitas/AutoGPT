@@ -406,3 +406,45 @@ async def test_platform_is_not_saveable_where_it_is_unavailable(
 
     assert error.value.detail == "chat_transport_not_configured"
     transports.set_user_default_chat_route.assert_not_awaited()
+
+
+# ─── Microsoft 365 Copilot cannot run tools ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unattended_callers_never_route_to_microsoft() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    # The saved default still shows for chats the user opens themselves...
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "microsoft_365_copilot",
+        "cred-microsoft",
+    )
+    # ...but a schedule, briefing or bot turn stays on a route that runs tools.
+    assert await transports.resolve_default_chat_route(USER_ID) == (
+        "platform",
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_expired_microsoft_token_without_refresh_is_not_listed() -> None:
+    dead = _microsoft_credentials()
+    dead.access_token_expires_at = 1
+    dead.refresh_token = None
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [dead] if provider == "microsoft_365_copilot" else []
+        )
+    )
+
+    assert not [
+        transport
+        for transport in await get_chat_transports(USER_ID)
+        if transport.auth_provider == "microsoft_365_copilot"
+    ]

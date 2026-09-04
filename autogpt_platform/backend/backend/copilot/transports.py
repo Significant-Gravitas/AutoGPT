@@ -12,6 +12,7 @@ this contract is the one the UI will keep.
 """
 
 import logging
+import time
 from typing import Optional, get_args
 
 from pydantic import BaseModel
@@ -139,6 +140,12 @@ async def resolve_default_chat_route(
 
     default = next((transport for transport in transports if transport.default), None)
     if default is None:
+        return "platform", None
+    if default.auth_provider == "microsoft_365_copilot":
+        # Copilot Chat returns prose and never runs AutoGPT tools, so a
+        # schedule, briefing or bot turn routed there would silently do
+        # nothing. Unattended callers stay on the platform route; the saved
+        # default still applies to chats the user opens themselves.
         return "platform", None
     return default.auth_provider, default.credential_id
 
@@ -297,4 +304,13 @@ def _is_valid_microsoft_365_copilot_credentials(
         and set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES).issubset(
             credentials.scopes
         )
+        and _microsoft_365_copilot_token_usable(credentials)
     )
+
+
+def _microsoft_365_copilot_token_usable(credentials: OAuth2Credentials) -> bool:
+    """An expired access token with no refresh token can never chat again."""
+    expires_at = credentials.access_token_expires_at
+    if expires_at is None or expires_at > int(time.time()):
+        return True
+    return credentials.refresh_token is not None
