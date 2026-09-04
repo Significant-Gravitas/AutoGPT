@@ -38,8 +38,10 @@ export function ConnectorRow({ row }: Props) {
     // Cards stream in one commit at a time, so a row's schema can widen after
     // it auto-selected: a selection that no longer satisfies it must go, or
     // the row reads Connected while Proceed sends a credential missing the
-    // scopes the later card asked for.
-    if (row.selected && !savedCredential) {
+    // scopes the later card asked for. `null` is the provider context's
+    // "still loading" sentinel, where every lookup misses — clearing then
+    // would drop a good selection on every mount.
+    if (allProviders && row.selected && !savedCredential) {
       row.select(undefined);
       return;
     }

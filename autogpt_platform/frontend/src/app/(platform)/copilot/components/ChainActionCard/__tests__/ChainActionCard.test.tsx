@@ -202,6 +202,34 @@ describe("ChainActionCard", () => {
       expect(screen.queryByText("Connect")).toBeNull();
     });
 
+    it("keeps a selection while the providers context is still loading", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+
+      render(
+        // `null` is the provider context's "still loading" sentinel, so every
+        // credential lookup misses — clearing then drops a good selection.
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      await screen.findByText("GitHub");
+      expect(request.onChange).not.toHaveBeenCalled();
+    });
+
     it("auto-selects a saved credential from the providers context", async () => {
       const request = connectorRequest();
       const providers = {
