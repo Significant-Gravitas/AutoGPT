@@ -8,7 +8,8 @@
 --   for pricing questions ("what does a free trial with a card on
 --   file cost us per user per month?") and margin questions.
 --
---   - tasks_human        human-started agent runs + human chat turns
+--   - tasks_human        human-started agent runs + human chat turns (a run
+--                        the copilot started is counted once, via its turn)
 --   - tasks_automated    schedule / webhook runs + scheduled follow-up turns
 --   - platform_cost_usd  our provider cost (PlatformCostLog), split into
 --                        agent / copilot / background (dream passes)
@@ -61,7 +62,7 @@ WITH runs AS (
                                                                          AS agent_runs_human,
     COUNT(*) FILTER (WHERE ge."triggerSource" IN ('schedule', 'webhook'))
                                                                          AS agent_runs_automated,
-    COUNT(DISTINCT ge."createdAt"::date)                                 AS run_days
+    COUNT(*) FILTER (WHERE ge."triggerSource" = 'copilot')               AS agent_runs_copilot
   FROM platform."AgentGraphExecution" ge
   WHERE ge."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
     AND ge."isDeleted" = FALSE
@@ -80,13 +81,33 @@ turns AS (
                        AND COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation')
                                                                          AS expert_turns,
     COUNT(*) FILTER (WHERE COALESCE(s."metadata"::jsonb->>'origin', 'interactive') = 'automation')
-                                                                         AS scheduled_turns,
-    COUNT(DISTINCT m."createdAt"::date)                                  AS turn_days
+                                                                         AS scheduled_turns
   FROM platform."ChatMessage" m
   JOIN platform."ChatSession" s ON s."id" = m."sessionId"
   WHERE m."role" = 'user'
     AND m."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
     AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+  GROUP BY 1, 2
+),
+-- Distinct calendar days with a run or a turn, across both surfaces, so a
+-- user who runs agents on Monday and chats on Tuesday has two active days.
+activity_days AS (
+  SELECT user_id, DATE_TRUNC('month', day)::date AS month, COUNT(DISTINCT day) AS active_days
+  FROM (
+    SELECT ge."userId" AS user_id, ge."createdAt"::date AS day
+    FROM platform."AgentGraphExecution" ge
+    WHERE ge."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
+      AND ge."isDeleted" = FALSE
+      AND ge."parentGraphExecutionId" IS NULL
+      AND COALESCE(ge."stats"::jsonb->>'is_dry_run', 'false') <> 'true'
+    UNION
+    SELECT s."userId", m."createdAt"::date
+    FROM platform."ChatMessage" m
+    JOIN platform."ChatSession" s ON s."id" = m."sessionId"
+    WHERE m."role" = 'user'
+      AND m."createdAt" > DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months'
+      AND COALESCE(s."metadata"::jsonb->>'kind', 'normal') <> 'dream'
+  ) d
   GROUP BY 1, 2
 ),
 costs AS (
@@ -132,13 +153,13 @@ assembled AS (
     u."email"                                                            AS email,
     u."subscriptionTier"::text                                           AS subscription_tier,
     k.month,
-    COALESCE(r.agent_runs_human, 0) + COALESCE(t.autopilot_turns, 0) + COALESCE(t.expert_turns, 0)
-                                                                         AS tasks_human,
+    COALESCE(r.agent_runs_human, 0) - COALESCE(r.agent_runs_copilot, 0)
+      + COALESCE(t.autopilot_turns, 0) + COALESCE(t.expert_turns, 0)     AS tasks_human,
     COALESCE(r.agent_runs_automated, 0) + COALESCE(t.scheduled_turns, 0) AS tasks_automated,
     COALESCE(r.agent_runs, 0)                                            AS agent_runs,
     COALESCE(t.autopilot_turns, 0)                                       AS autopilot_turns,
     COALESCE(t.expert_turns, 0)                                          AS expert_turns,
-    GREATEST(COALESCE(r.run_days, 0), COALESCE(t.turn_days, 0))          AS active_days,
+    COALESCE(ad.active_days, 0)                                          AS active_days,
     COALESCE(c.platform_cost_usd, 0)                                     AS platform_cost_usd,
     COALESCE(c.agent_cost_usd, 0)                                        AS agent_cost_usd,
     COALESCE(c.copilot_cost_usd, 0)                                      AS copilot_cost_usd,
@@ -148,6 +169,7 @@ assembled AS (
   FROM keys k
   LEFT JOIN platform."User" u ON u."id" = k.user_id
   LEFT JOIN runs    r  ON r.user_id  = k.user_id AND r.month  = k.month
+  LEFT JOIN activity_days ad ON ad.user_id = k.user_id AND ad.month = k.month
   LEFT JOIN turns   t  ON t.user_id  = k.user_id AND t.month  = k.month
   LEFT JOIN costs   c  ON c.user_id  = k.user_id AND c.month  = k.month
   LEFT JOIN credits cr ON cr.user_id = k.user_id AND cr.month = k.month
