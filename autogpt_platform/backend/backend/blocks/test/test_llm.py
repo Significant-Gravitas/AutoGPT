@@ -14,6 +14,7 @@ import backend.blocks.llm as llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
+from backend.util.llm import saturation
 from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS
 from backend.util.settings import Config
 
@@ -1804,6 +1805,49 @@ class TestLLMRequestTimeout:
 
         assert "response" in outputs, "the success path did not actually run"
         assert not self._alerts(records)
+
+    @pytest.mark.asyncio
+    async def test_the_seam_registers_the_call_for_saturation(self):
+        """Wiring guard: the saturation warning is only as good as this. Read
+        from the real registry while the provider call is in flight."""
+        seen: dict = {}
+
+        async def observe(**kwargs):
+            seen["runs"] = [c.graph_exec_id for c in saturation._in_flight.values()]
+            seen["providers"] = [c.provider for c in saturation._in_flight.values()]
+            response = MagicMock()
+            response.output_text = '{"key": "value"}'
+            response.output = []
+            response.usage = MagicMock(input_tokens=1, output_tokens=1)
+            return response
+
+        ctx = ExecutionContext(
+            user_id="u-1",
+            graph_id="g-1",
+            graph_exec_id="ge-1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+        )
+        with patch("openai.AsyncOpenAI") as mock_openai:
+            mock_client = AsyncMock()
+            mock_openai.return_value = mock_client
+            mock_client.responses.create = AsyncMock(side_effect=observe)
+            block = llm.AIStructuredResponseGeneratorBlock()
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Hello",
+                expected_format={"key": "value"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+                force_json_output=True,
+            )
+            async for _ in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS, execution_context=ctx
+            ):
+                pass
+
+        assert seen["runs"] == ["ge-1"], "the seam did not register the in-flight call"
+        assert seen["providers"] == ["openai"]
+        assert not saturation._in_flight, "the call must be released on the way out"
 
     @pytest.mark.asyncio
     async def test_structured_block_does_not_retry_on_timeout(self, monkeypatch):

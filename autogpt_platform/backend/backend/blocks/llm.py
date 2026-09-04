@@ -49,6 +49,7 @@ from backend.util import json
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
 from backend.util.llm.providers import timeout_error
+from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.settings import Settings
@@ -253,6 +254,40 @@ async def llm_call(
     never reach the block retry loop are covered too.
     """
     started = time.monotonic()
+    with track_llm_call(
+        graph_exec_id=execution_context.graph_exec_id if execution_context else None,
+        provider=llm_model.metadata.provider,
+        now=started,
+    ):
+        return await _bounded_llm_call(
+            credentials=credentials,
+            llm_model=llm_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            force_json_output=force_json_output,
+            tools=tools,
+            ollama_host=ollama_host,
+            parallel_tool_calls=parallel_tool_calls,
+            compress_prompt_to_fit=compress_prompt_to_fit,
+            execution_context=execution_context,
+            started=started,
+        )
+
+
+async def _bounded_llm_call(
+    *,
+    credentials: APIKeyCredentials,
+    llm_model: LLMModel,
+    prompt: list[dict],
+    max_tokens: int | None,
+    force_json_output: bool,
+    tools: list[dict] | None,
+    ollama_host: str,
+    parallel_tool_calls,
+    compress_prompt_to_fit: bool,
+    execution_context: "ExecutionContext | None",
+    started: float,
+) -> LLMResponse:
     try:
         return await asyncio.wait_for(
             _llm_call(
