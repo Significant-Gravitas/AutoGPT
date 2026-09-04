@@ -97,6 +97,9 @@ class TestDiscoverTools:
         assert data["tools"][1]["name"] == "add_numbers"
         assert data["server_name"] == "test-server"
         assert data["protocol_version"] == "2025-03-26"
+        # The session DELETE is the point of the `finally`; without this the
+        # block could be deleted with the whole suite still green.
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_with_auth_token(self, client):
@@ -211,6 +214,9 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Failed to connect" in response.json()["detail"]
+        # The raising path matters more than the success one: a server that
+        # times out mid-handshake is exactly when a leaked session lingers.
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auth_required(self, client):
@@ -640,29 +646,39 @@ class TestStoreToken:
                 },
             )
 
+        # `get_creds_by_provider` promises no ordering, so the survivor is
+        # picked by an explicit key rather than by position in the response.
+        survivor, superseded = sorted(old_creds, key=lambda cred: cred.id)[::-1]
+
         assert response.status_code == 200
-        assert response.json()["id"] == old_creds[-1].id
+        assert response.json()["id"] == survivor.id
         assert response.json()["mcp_auth_scheme"] == "basic"
         mock_cm.create.assert_not_awaited()
         mock_cm.update.assert_awaited_once()
         assert mock_cm.update.await_args is not None
         updated = mock_cm.update.await_args.args[1]
-        assert updated.id == old_creds[-1].id
+        assert updated.id == survivor.id
         assert updated.access_token.get_secret_value() == "Basic encoded-value"
         # A static pasted credential carries no OAuth scopes.
         assert updated.scopes == []
-        mock_cm.delete.assert_awaited_once_with("test-user-id", old_creds[0].id)
+        mock_cm.delete.assert_awaited_once_with("test-user-id", superseded.id)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_replaces_an_oauth_credential_instead_of_converting_it(
         self, client
     ):
-        """An OAuth row is replaced, never rewritten in place.
+        """An OAuth row is neither rewritten in place nor deleted.
 
         Rewriting one would keep its id and ``type="oauth2"`` while discarding
         the refresh token and the client registration behind it, so a saved
-        graph would silently start running on a pasted static secret and the
-        refresh token would never reach the provider's revocation endpoint.
+        graph would silently start running on a pasted static secret.
+
+        Deleting it is no better: neither ``creds_manager.delete`` nor
+        ``delete_acquired`` calls ``handler.revoke_tokens`` -- that lives in
+        ``DELETE /credentials`` -- so the row would go while a live refresh
+        token stayed at the provider with nothing left to revoke it with, and
+        every saved graph node bound to its id would break.  The manual
+        credential wins in ``auto_lookup_mcp_credential`` instead.
         """
         oauth_cred = OAuth2Credentials(
             provider="mcp",
@@ -698,7 +714,7 @@ class TestStoreToken:
         assert created.id != oauth_cred.id
         assert created.refresh_token is None
         assert created.scopes == []
-        mock_cm.delete.assert_awaited_once_with("test-user-id", oauth_cred.id)
+        mock_cm.delete.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_clears_stale_expiry_on_rotation(self, client):

@@ -243,16 +243,12 @@ class RunMCPToolTool(BaseTool):
         # treated as "unknown, optimistically connected" — the next
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
-            connected = creds is not None
-            # Credentialed clients are constructed above so malformed legacy
-            # rows take the reconnect path instead of escaping.  Checked rather
-            # than asserted: `python -O` strips asserts, and a None client here
-            # would raise AttributeError inside the surrounding
-            # `except Exception` and report the user "optimistically connected"
-            # on a credential nothing ever probed.
-            if client is None:
-                connected = False
-            elif creds is not None:
+            # `client` is non-None exactly when `creds` is (it is built from
+            # `creds` a few lines up and header construction cannot fail), so
+            # one condition covers both: every stored credential is probed
+            # before we claim "Connected", and an unstored one never is.
+            connected = client is not None
+            if client is not None and creds is not None:
                 probe_client = client
                 try:
                     try:
@@ -353,6 +349,14 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+
+        finally:
+            # Same invariant as the probe above and as the block/discovery
+            # paths: an initialized session is a row the server holds until
+            # its timeout sweep, and this is the highest-traffic MCP path in
+            # the product.  `close` is best-effort, bounded, and a no-op when
+            # `initialize` never got far enough to receive a session id.
+            await client.close()
 
     async def _discover_tools(
         self,

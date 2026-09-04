@@ -1,17 +1,22 @@
 export type MCPAuthScheme = "bearer" | "basic";
 
 const AUTHORIZATION_HEADER_PREFIX = /^authorization\s*:\s*/i;
-const SUPPORTED_SCHEME_PREFIX = /^(bearer|basic)\s+(\S+)$/i;
+const SUPPORTED_SCHEME_PREFIX = /^(bearer|basic)\s+(\S[\s\S]*)$/i;
 
 /**
  * Match an explicit `Basic`/`Bearer` prefix, mirroring
  * `normalize_mcp_authorization` in `backend/blocks/mcp/client.py`.
  *
- * RFC 7235 credentials are a single token68/base64 run with no internal
- * whitespace, so a value whose remainder still contains a space is a bare
- * multi-word credential that merely starts with "basic"/"bearer" — not a
- * scheme-prefixed one. Both ends have to agree on that, or a value this
- * function rewrites gets read back with the other meaning.
+ * The remainder is everything after the first run of whitespace — the same
+ * split the backend does with `value.split(None, 1)`. This previously required
+ * a single `\S+` run on the theory that RFC 7235 credentials are one token68,
+ * and the two ends disagreed as a result: `Bearer orgid api-key` was a
+ * scheme-prefixed value to the backend and a bare credential here, so this
+ * function rewrote it to `Bearer Bearer orgid api-key`. A multi-word remainder
+ * is not a valid Basic credential, but `validateMCPAuthCredential` is what
+ * rejects that — the split itself has to agree across the boundary.
+ *
+ * `mcp_auth_cases.json` is the shared table both test suites assert against.
  */
 function matchSchemePrefix(
   candidate: string,
@@ -20,7 +25,7 @@ function matchSchemePrefix(
   if (!match) return null;
   return {
     scheme: match[1].toLowerCase() as MCPAuthScheme,
-    credential: match[2],
+    credential: match[2].trim(),
   };
 }
 

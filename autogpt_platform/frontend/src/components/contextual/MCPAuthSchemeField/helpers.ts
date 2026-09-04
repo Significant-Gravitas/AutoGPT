@@ -17,3 +17,15 @@ export function mcpAuthTokenHint(scheme: MCPAuthScheme): string {
     ? 'Paste the Base64 of user:password — the value after "Basic" — or the complete Authorization header.'
     : "Paste the token itself. AutoGPT sends it using Bearer authentication.";
 }
+
+/**
+ * Placeholder for the credential input.
+ *
+ * Under a Basic hint that says "paste the Base64 of user:password", a fixed
+ * "Paste API token" restates the mistake the hint exists to prevent.
+ */
+export function mcpAuthTokenPlaceholder(scheme: MCPAuthScheme): string {
+  return scheme === "basic"
+    ? "Paste Base64 of user:password"
+    : "Paste API token";
+}

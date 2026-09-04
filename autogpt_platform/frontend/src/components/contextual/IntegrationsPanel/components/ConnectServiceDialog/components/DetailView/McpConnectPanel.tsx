@@ -19,6 +19,7 @@ import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/M
 import {
   mcpAuthTokenHint,
   mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
 import {
@@ -26,6 +27,7 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
@@ -237,7 +239,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
             id="mcp-auth-token"
             label={mcpAuthTokenLabel(authScheme)}
             type="password"
-            placeholder="Paste API token"
+            placeholder={mcpAuthTokenPlaceholder(authScheme)}
             value={token}
             onChange={(e) => {
               const nextToken = e.target.value;
@@ -333,8 +335,4 @@ function isValidHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-function normalizeMcpUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
 }

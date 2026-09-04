@@ -18565,6 +18565,7 @@
             "anyOf": [
               {
                 "type": "string",
+                "maxLength": 8192,
                 "minLength": 1,
                 "format": "password",
                 "writeOnly": true
@@ -22371,6 +22372,7 @@
           },
           "token": {
             "type": "string",
+            "maxLength": 8192,
             "minLength": 1,
             "format": "password",
             "title": "Token",

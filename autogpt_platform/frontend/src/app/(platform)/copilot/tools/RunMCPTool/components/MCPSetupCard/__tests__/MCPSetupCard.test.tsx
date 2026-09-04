@@ -93,6 +93,11 @@ function makeSetupOutput(
   };
 }
 
+// The placeholder tracks the selected scheme: "Paste API token" under Bearer,
+// and the Base64 wording under Basic, so it stops restating the mistake the
+// hint below it exists to prevent. These queries match either.
+const manualTokenPlaceholder = /paste (api token|base64 of user:password)/i;
+
 describe("MCPSetupCard", () => {
   // Storing a manual credential probes the server first, so the default is an
   // accepting server; the tests that care override it.
@@ -189,7 +194,7 @@ describe("MCPSetupCard", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
     expect(screen.getByText(/does not support OAuth/)).toBeDefined();
   });
@@ -220,16 +225,20 @@ describe("MCPSetupCard", () => {
       screen.getAllByRole("button", { name: /connect example\.com/i })[0],
     );
     await waitFor(() => {
-      expect(screen.getAllByPlaceholderText("Paste API token")).toHaveLength(1);
+      expect(
+        screen.getAllByPlaceholderText(manualTokenPlaceholder),
+      ).toHaveLength(1);
     });
     fireEvent.click(
       screen.getAllByRole("button", { name: /connect example\.com/i })[1],
     );
     await waitFor(() => {
-      expect(screen.getAllByPlaceholderText("Paste API token")).toHaveLength(2);
+      expect(
+        screen.getAllByPlaceholderText(manualTokenPlaceholder),
+      ).toHaveLength(2);
     });
 
-    const inputs = screen.getAllByPlaceholderText("Paste API token");
+    const inputs = screen.getAllByPlaceholderText(manualTokenPlaceholder);
     expect(inputs[0].id).toBeTruthy();
     expect(inputs[1].id).toBeTruthy();
     expect(inputs[0].id).not.toBe(inputs[1].id);
@@ -257,7 +266,7 @@ describe("MCPSetupCard", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     // Mock the token store endpoint
@@ -274,7 +283,7 @@ describe("MCPSetupCard", () => {
     } as never);
 
     // Enter token and submit
-    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "my-secret-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
@@ -316,7 +325,7 @@ describe("MCPSetupCard", () => {
       screen.getByRole("button", { name: /connect example\.com/i }),
     );
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     fireEvent.change(
@@ -376,7 +385,7 @@ describe("MCPSetupCard", () => {
       (screen.getByLabelText(/authentication type/i) as HTMLSelectElement)
         .value,
     ).toBe("basic");
-    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "new-encoded-value" },
     });
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
@@ -415,7 +424,7 @@ describe("MCPSetupCard", () => {
     // After 400, the not-connected branch must render: error banner + manual
     // token input. The Connected/Reconnect banner must be gone.
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
     expect(screen.getByText(/does not support OAuth/)).toBeDefined();
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
@@ -446,7 +455,7 @@ describe("MCPSetupCard", () => {
     fireEvent.click(reconnectBtn);
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
     expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
   });
@@ -487,7 +496,7 @@ describe("MCPSetupCard", () => {
       headers: new Headers(),
     });
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
   });
 
@@ -542,7 +551,7 @@ describe("MCPSetupCard", () => {
       ).toBeDefined();
     });
     // Manual-token input must NOT appear — that's the 400-only branch.
-    expect(screen.queryByPlaceholderText("Paste API token")).toBeNull();
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
   });
 
   it("submits manual token via Enter key", async () => {
@@ -564,7 +573,7 @@ describe("MCPSetupCard", () => {
       screen.getByRole("button", { name: /connect example\.com/i }),
     );
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -579,7 +588,7 @@ describe("MCPSetupCard", () => {
       headers: new Headers(),
     } as never);
 
-    const input = screen.getByPlaceholderText("Paste API token");
+    const input = screen.getByPlaceholderText(manualTokenPlaceholder);
     fireEvent.change(input, { target: { value: "my-token" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -611,10 +620,10 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
     fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
-    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "wrong-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
@@ -641,13 +650,13 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
     fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     fireEvent.change(screen.getByLabelText(/authentication type/i), {
       target: { value: "basic" },
     });
-    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "pk-lf-abc:sk-lf-xyz" },
     });
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
@@ -679,7 +688,7 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
     fireEvent.click(screen.getByRole("button", { name: /reconnect/i }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     // Token endpoint rejects with non-2xx → catch fires → forceDisconnected stays on.
@@ -689,7 +698,7 @@ describe("MCPSetupCard", () => {
       headers: new Headers(),
     } as never);
 
-    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "bad-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));

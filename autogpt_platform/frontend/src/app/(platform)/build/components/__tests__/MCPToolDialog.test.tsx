@@ -282,6 +282,47 @@ describe("MCPToolDialog credential binding", () => {
     expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
+  it("keeps the typed credential while the path of the same server is edited", async () => {
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValueOnce(
+      apiResponse(401, { detail: "Authentication required" }),
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      apiResponse(400, { detail: "OAuth not supported" }),
+    );
+
+    render(<MCPToolDialog open onClose={() => {}} onConfirm={() => {}} />);
+
+    const urlInput = screen.getByLabelText("Server URL");
+    fireEvent.change(urlInput, {
+      target: { value: "https://private.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discover Tools" }));
+
+    const tokenInput = await screen.findByLabelText("API token");
+    fireEvent.change(tokenInput, { target: { value: "secret-token" } });
+
+    // Appending the `/mcp` suffix one character at a time. The reset guard
+    // compared trimmed URLs, so every one of these keystrokes cleared the
+    // credential and collapsed the panel, forcing another discover → 401 →
+    // OAuth-probe round trip to get back to where the user already was.
+    for (const url of [
+      "https://private.example.com/",
+      "https://private.example.com/m",
+      "https://private.example.com/mc",
+      PRIVATE_SERVER_URL,
+    ]) {
+      fireEvent.change(urlInput, { target: { value: url } });
+    }
+
+    expect((screen.getByLabelText("API token") as HTMLInputElement).value).toBe(
+      "secret-token",
+    );
+  });
+
   it("does not reuse a credential after changing to a public server", async () => {
     const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"

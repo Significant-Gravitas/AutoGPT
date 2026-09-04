@@ -1,5 +1,7 @@
 """Focused tests for MCP manual authentication schemes."""
 
+import json
+import pathlib
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -61,8 +63,48 @@ def test_normalize_mcp_authorization_rejects_invalid_values(value: str) -> None:
         normalize_mcp_authorization(value)
 
 
-def test_normalize_mcp_authorization_preserves_bare_credential_with_spaces() -> None:
-    assert normalize_mcp_authorization("orgid api-key") == "Bearer orgid api-key"
+_AUTH_CASES = json.loads(
+    (pathlib.Path(__file__).parent / "mcp_auth_cases.json").read_text()
+)
+
+
+@pytest.mark.parametrize(
+    "case", _AUTH_CASES["accepted"], ids=lambda case: repr(case["input"])
+)
+def test_shared_auth_cases_are_normalized_as_the_frontend_reads_them(
+    case: dict,
+) -> None:
+    """The cross-boundary contract, asserted from the same file the TS suite reads.
+
+    ``frontend/src/lib/mcp-auth.test.ts`` asserts the scheme each of these
+    inputs carries; this asserts what the backend then stores and sends.  The
+    two implementations disagreed on whether the remainder after a scheme word
+    may contain whitespace, so ``Bearer orgid api-key`` was scheme-prefixed
+    here and bare there — and the frontend rewrote it to
+    ``Bearer Bearer orgid api-key``.  A table only one side reads cannot catch
+    that; the point of this test is that the file is shared.
+    """
+    assert normalize_mcp_authorization(case["input"]) == case["canonical"]
+
+
+@pytest.mark.parametrize(
+    "case", _AUTH_CASES["rejectedByBackend"], ids=lambda case: repr(case["input"])
+)
+def test_shared_auth_cases_that_must_be_rejected(case: dict) -> None:
+    with pytest.raises(ValueError):
+        normalize_mcp_authorization(case["input"])
+
+
+def test_a_trailing_newline_does_not_make_a_credential_invalid() -> None:
+    """A token copied out of a terminal keeps its newline.
+
+    The control-character scan used to run before ``.strip()``, so such a token
+    was rejected as "must be a single line" — while an *interior* control
+    character, the header-injection case, still has to be refused.
+    """
+    assert normalize_mcp_authorization("sk-abc\n") == "Bearer sk-abc"
+    with pytest.raises(ValueError, match="single line"):
+        normalize_mcp_authorization("sk-abc\nX-Evil: 1")
 
 
 @pytest.mark.parametrize(

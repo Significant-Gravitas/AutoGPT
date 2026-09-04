@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { detectMCPAuthScheme, type MCPAuthScheme } from "@/lib/mcp-auth";
 
@@ -8,8 +8,13 @@ import { detectMCPAuthScheme, type MCPAuthScheme } from "@/lib/mcp-auth";
  * `storedScheme` is the scheme the server already has for this credential, so
  * reconnecting an existing Basic credential does not silently downgrade it to
  * Bearer. It is only applied while the user has neither chosen a scheme nor
- * typed a credential — `locked` (previously named `touched`, which stopped
- * being true once paste-detection started setting it too) records that.
+ * typed a credential; `locked` records that either has happened.
+ *
+ * The returned callbacks are stable across renders and read `storedScheme`
+ * through a ref, so a caller that memoizes them (`MCPToolDialog` holds `reset`
+ * and `applyDiscoveredTools` in `useCallback`) cannot pin the first render's
+ * stored scheme — which was the pre-connection default, defeating Basic
+ * seeding for every credential discovered afterwards.
  */
 export function useMCPAuthScheme(
   storedScheme: MCPAuthScheme,
@@ -17,30 +22,33 @@ export function useMCPAuthScheme(
 ) {
   const [scheme, setScheme] = useState<MCPAuthScheme>(storedScheme);
   const [locked, setLocked] = useState(false);
+  const storedSchemeRef = useRef(storedScheme);
+  storedSchemeRef.current = storedScheme;
 
   useEffect(() => {
     if (!locked && !credential.trim()) setScheme(storedScheme);
   }, [locked, storedScheme, credential]);
 
-  return {
-    scheme,
-    /** The user picked a scheme; stop syncing from the stored one. */
-    selectScheme(next: MCPAuthScheme) {
-      setScheme(next);
+  /** The user picked a scheme; stop syncing from the stored one. */
+  const selectScheme = useCallback((next: MCPAuthScheme) => {
+    setScheme(next);
+    setLocked(true);
+  }, []);
+
+  /** A pasted value carried an explicit scheme; honour and lock it. */
+  const detectSchemeFrom = useCallback((value: string) => {
+    const detected = detectMCPAuthScheme(value);
+    if (detected) {
+      setScheme(detected);
       setLocked(true);
-    },
-    /** A pasted value carried an explicit scheme; honour and lock it. */
-    detectSchemeFrom(value: string) {
-      const detected = detectMCPAuthScheme(value);
-      if (detected) {
-        setScheme(detected);
-        setLocked(true);
-      }
-    },
-    /** Back to following the stored scheme, e.g. after switching servers. */
-    resetScheme() {
-      setScheme(storedScheme);
-      setLocked(false);
-    },
-  };
+    }
+  }, []);
+
+  /** Back to following the stored scheme, e.g. after switching servers. */
+  const resetScheme = useCallback(() => {
+    setScheme(storedSchemeRef.current);
+    setLocked(false);
+  }, []);
+
+  return { scheme, selectScheme, detectSchemeFrom, resetScheme };
 }

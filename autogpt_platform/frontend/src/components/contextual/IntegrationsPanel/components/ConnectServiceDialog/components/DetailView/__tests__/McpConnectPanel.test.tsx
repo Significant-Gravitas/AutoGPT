@@ -41,6 +41,11 @@ function makeApiError(status: number, detail = "boom"): Error {
   return err;
 }
 
+// The placeholder tracks the selected scheme: "Paste API token" under Bearer,
+// and the Base64 wording under Basic, so it stops restating the mistake the
+// hint below it exists to prevent. These queries match either.
+const manualTokenPlaceholder = /paste (api token|base64 of user:password)/i;
+
 describe("McpConnectPanel", () => {
   // Saving a manual credential probes the server first, so the default is an
   // accepting server; the tests that care override it.
@@ -102,7 +107,7 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
     expect(
       screen.getByText(/server doesn't support oauth sign-in/i),
@@ -144,7 +149,7 @@ describe("McpConnectPanel", () => {
       expect(screen.getByText(/bad code/i)).toBeDefined();
     });
 
-    expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
   });
 
   it("submits a bearer token then calls onSuccess", async () => {
@@ -166,7 +171,7 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -175,7 +180,7 @@ describe("McpConnectPanel", () => {
       headers: new Headers(),
     } as never);
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "secret-bearer-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -219,7 +224,7 @@ describe("McpConnectPanel", () => {
       target: { value: "basic" },
     });
     expect(screen.getByText("Basic authentication token")).toBeDefined();
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "  cGstbGYtYWJjZA==  " },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -267,7 +272,7 @@ describe("McpConnectPanel", () => {
       (screen.getByLabelText("Authentication type") as HTMLSelectElement).value,
     ).toBe("basic");
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "new-encoded-value" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -316,7 +321,7 @@ describe("McpConnectPanel", () => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "cGstbGYtYWJjZA==" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -350,7 +355,7 @@ describe("McpConnectPanel", () => {
     fireEvent.change(screen.getByLabelText("Authentication type"), {
       target: { value: "basic" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "pk-lf-abc:sk-lf-xyz" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -389,7 +394,7 @@ describe("McpConnectPanel", () => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "wrong-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -425,7 +430,7 @@ describe("McpConnectPanel", () => {
     fireEvent.change(screen.getByLabelText("Authentication type"), {
       target: { value: "basic" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "user pass" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));
@@ -453,16 +458,16 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "stale-token" },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /try oauth/i }));
 
-    expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
     expect(screen.getByRole("button", { name: /connect/i })).toBeDefined();
   });
 
@@ -498,7 +503,7 @@ describe("McpConnectPanel", () => {
     fireEvent.change(screen.getByLabelText("Authentication type"), {
       target: { value: "basic" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "credential-for-server-a" },
     });
 
@@ -507,7 +512,7 @@ describe("McpConnectPanel", () => {
     });
 
     expect(screen.queryByLabelText("Authentication type")).toBeNull();
-    expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
@@ -518,7 +523,7 @@ describe("McpConnectPanel", () => {
       (screen.getByLabelText("Authentication type") as HTMLSelectElement).value,
     ).toBe("bearer");
     expect(
-      (screen.getByPlaceholderText(/paste api token/i) as HTMLInputElement)
+      (screen.getByPlaceholderText(manualTokenPlaceholder) as HTMLInputElement)
         .value,
     ).toBe("");
     expect(
@@ -550,7 +555,7 @@ describe("McpConnectPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
     vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
@@ -559,7 +564,7 @@ describe("McpConnectPanel", () => {
       headers: new Headers(),
     } as never);
 
-    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "wrong-token" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save token/i }));

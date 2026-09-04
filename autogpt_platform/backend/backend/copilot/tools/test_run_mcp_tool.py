@@ -1355,3 +1355,39 @@ async def test_lookup_tool_schema_returns_none_on_any_failure():
     schema = await tool._lookup_tool_schema(mock_client, "notion-update-page")
 
     assert schema is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_discovery_path_closes_its_session_too():
+    """The non-probe path is the high-traffic one, and it had no `finally`.
+
+    ``surface_connect_card`` got its ``close`` first; every ordinary copilot
+    tool call went through the client below and left an initialized session for
+    the server to time out on its own.
+    """
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(return_value=None)
+            mock_client.list_tools = AsyncMock(return_value=[])
+            mock_client.close = AsyncMock(return_value=None)
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                )
+
+            mock_client.close.assert_awaited_once()

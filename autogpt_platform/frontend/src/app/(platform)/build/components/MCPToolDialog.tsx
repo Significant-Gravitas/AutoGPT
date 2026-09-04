@@ -42,6 +42,7 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { mcpServerIdentity } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -175,7 +176,7 @@ export function MCPToolDialog({
     setSelectedTool(null);
     setCredentials(null);
     setCredentialServerUrl(null);
-  }, []);
+  }, [resetScheme]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -197,7 +198,7 @@ export function MCPToolDialog({
       resetScheme();
       setStep("tool");
     },
-    [],
+    [resetScheme],
   );
 
   const discoverTools = useCallback(
@@ -471,10 +472,14 @@ export function MCPToolDialog({
                 onChange={(e) => {
                   const nextUrl = e.target.value;
                   // Only a real change of server identity discards work in
-                  // progress. Clearing on every keystroke meant fixing one
-                  // character of the path threw away the typed credential and
-                  // forced a full discover → 401 → OAuth-probe round trip.
-                  const serverChanged = serverUrl.trim() !== nextUrl.trim();
+                  // progress. Comparing the trimmed URLs made this true on
+                  // every keystroke, so fixing one character of the path threw
+                  // away the typed credential and forced a full discover → 401
+                  // → OAuth-probe round trip — the exact flow this dialog is
+                  // here to support. A credential is issued by a host, so the
+                  // host is what has to change before it stops applying.
+                  const serverChanged =
+                    mcpServerIdentity(serverUrl) !== mcpServerIdentity(nextUrl);
                   setServerUrl(nextUrl);
                   if (!serverChanged) return;
 
@@ -499,7 +504,7 @@ export function MCPToolDialog({
             {authRequired && !showManualToken && (
               <button
                 onClick={() => setShowManualToken(true)}
-                className="text-xs text-gray-500 underline hover:text-gray-700"
+                className="text-xs text-gray-500 underline hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 or enter an API credential manually
               </button>
@@ -545,7 +550,7 @@ export function MCPToolDialog({
               <p
                 role="alert"
                 aria-live="polite"
-                className="text-sm text-red-700"
+                className="text-sm text-red-700 dark:text-red-400"
               >
                 {error}
               </p>

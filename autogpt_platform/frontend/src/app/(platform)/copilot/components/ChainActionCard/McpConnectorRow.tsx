@@ -7,9 +7,13 @@ import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/M
 import {
   mcpAuthTokenHint,
   mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
-import { prepareMCPAuthCredential } from "@/lib/mcp-auth";
+import {
+  prepareMCPAuthCredential,
+  validateMCPAuthCredential,
+} from "@/lib/mcp-auth";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useId, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
@@ -27,7 +31,9 @@ function hostOf(serverUrl: string): string | null {
  *  MCPSetupCard drives via the request callbacks. */
 export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
   const hintId = useId();
+  const errorId = useId();
   const [token, setToken] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
   const {
     scheme: authScheme,
     selectScheme,
@@ -42,6 +48,13 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
     .toLowerCase();
 
   function submitCredential() {
+    // The other manual-credential surfaces validate before storing; without it
+    // an unencoded `user:password` reached the server and came back as a raw
+    // 422, instead of the message that names the Base64 step.
+    const message = validateMCPAuthCredential(token, authScheme);
+    setValidationError(message);
+    if (message) return;
+
     const credential = prepareMCPAuthCredential(token, authScheme);
     if (credential) request.onUseToken(credential);
   }
@@ -97,20 +110,23 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             labelClassName="text-xs font-medium text-zinc-700"
             selectClassName="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100"
           />
-          <p className="text-xs text-zinc-500">
+          <p id={hintId} className="text-xs text-zinc-500">
             {mcpAuthTokenHint(authScheme)}
           </p>
           <div className="flex gap-2">
             <input
               type="password"
-              aria-describedby={hintId}
+              aria-describedby={
+                validationError ? `${hintId} ${errorId}` : hintId
+              }
               aria-label={`${mcpAuthTokenLabel(authScheme)} for ${request.service}`}
-              placeholder="Paste API token"
+              placeholder={mcpAuthTokenPlaceholder(authScheme)}
               value={token}
               onChange={(e) => {
                 const nextToken = e.target.value;
                 setToken(nextToken);
                 detectSchemeFrom(nextToken);
+                setValidationError(null);
               }}
               onKeyDown={(e) =>
                 e.key === "Enter" &&
@@ -129,6 +145,16 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
               Use Token
             </Button>
           </div>
+          {validationError && (
+            <p
+              id={errorId}
+              role="alert"
+              aria-live="polite"
+              className="text-xs text-red-700"
+            >
+              {validationError}
+            </p>
+          )}
         </div>
       )}
     </div>

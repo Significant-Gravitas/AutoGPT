@@ -9,6 +9,7 @@ Handles both JSON and SSE (text/event-stream) response formats per the MCP spec.
 Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -17,6 +18,10 @@ from typing import Any
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
+
+# The session DELETE is cleanup, not work the caller is waiting on a result
+# from; it must never dominate the request it follows.
+_CLOSE_TIMEOUT_SECONDS = 5
 
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
@@ -39,10 +44,14 @@ def normalize_mcp_authorization(value: str) -> str:
     ``helpers.mcp_authorization_header`` instead, which reads the scheme from
     metadata and never inspects the secret.
     """
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise ValueError("Authentication credential must be a single line.")
-
+    # Strip first: a token copied out of a terminal or a docs page routinely
+    # carries a trailing newline, and rejecting that as "not a single line"
+    # fails a credential that is perfectly good.  An *interior* control
+    # character is the header-injection case and still has to be refused, so
+    # the scan runs on the stripped value rather than being dropped.
     candidate = value.strip()
+    if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
+        raise ValueError("Authentication credential must be a single line.")
     if not candidate:
         raise ValueError("Authentication credential must not be blank.")
 
@@ -367,8 +376,18 @@ class MCPClient:
             return
         try:
             headers = self._build_headers()
-            requests = Requests(raise_for_status=False, extra_headers=headers)
-            await requests.delete(self.server_url)
+            # Bounded on both axes.  `Requests` only installs a tenacity `stop`
+            # condition when `retry_max_attempts` is set, so the default would
+            # retry a 429/5xx forever with exponential backoff — a best-effort
+            # cleanup outliving the operation it cleans up after.
+            requests = Requests(
+                raise_for_status=False,
+                extra_headers=headers,
+                retry_max_attempts=1,
+            )
+            await asyncio.wait_for(
+                requests.delete(self.server_url), timeout=_CLOSE_TIMEOUT_SECONDS
+            )
         except Exception:
             pass
         finally:

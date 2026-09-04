@@ -159,22 +159,34 @@ async def auto_lookup_mcp_credential(
         mcp_creds = await mgr.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
+
         # Collect all matching credentials and pick the best one.
-        # Primary sort: latest access_token_expires_at (tokens with expiry
-        # are preferred over non-expiring ones).  Secondary sort: last in
-        # iteration order, which corresponds to the most recently created
-        # row — this acts as a tiebreaker when multiple bearer tokens have
-        # no expiry (e.g. after a failed old-credential cleanup).
+        #
+        # Primary sort: a manually pasted credential outranks an OAuth row.
+        # A manual credential only exists because the user explicitly pasted
+        # one for this server, and it never carries an expiry — ranking by
+        # `access_token_expires_at or 0` alone made it lose to *any* surviving
+        # OAuth row, so a stale grant kept being sent while all three UIs
+        # reported "Connected" from a probe of the credential the user had
+        # just entered.
+        #
+        # Secondary sort: latest access_token_expires_at (tokens with expiry
+        # are preferred over non-expiring ones).  Tertiary: last in iteration
+        # order, a tiebreaker when several rows compare equal (e.g. after a
+        # failed old-credential cleanup).
+        def rank(cred: OAuth2Credentials) -> tuple[int, float]:
+            return (
+                1 if is_manual_mcp_credential(cred) else 0,
+                cred.access_token_expires_at or 0,
+            )
+
         best: OAuth2Credentials | None = None
         for cred in mcp_creds:
             if (
                 isinstance(cred, OAuth2Credentials)
                 and (cred.metadata or {}).get("mcp_server_url") == server_url
             ):
-                if best is None or (
-                    (cred.access_token_expires_at or 0)
-                    >= (best.access_token_expires_at or 0)
-                ):
+                if best is None or rank(cred) >= rank(best):
                     best = cred
         # Manually entered MCP credentials are represented as OAuth2Credentials
         # for compatibility with the existing credential plumbing, but they have

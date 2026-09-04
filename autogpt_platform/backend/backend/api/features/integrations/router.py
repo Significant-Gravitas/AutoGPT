@@ -3,7 +3,7 @@ import logging
 import secrets
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -222,6 +222,11 @@ async def _start_codex_login(
     )
 
 
+# One source of truth for the scheme vocabulary: the response field's type and
+# the runtime check in `to_meta_response` used to list the pair separately.
+MCPAuthScheme = Literal["basic", "bearer"]
+
+
 class CredentialsMetaResponse(BaseModel):
     id: str
     provider: str
@@ -233,7 +238,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
-    mcp_auth_scheme: Literal["basic", "bearer"] | None = Field(
+    mcp_auth_scheme: MCPAuthScheme | None = Field(
         default=None,
         description="Manual authorization scheme for MCP credentials",
     )
@@ -276,7 +281,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
     mcp_auth_scheme = None
     if _is_mcp_credential(cred):
         stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
-        if stored_scheme in ("basic", "bearer"):
+        if stored_scheme in get_args(MCPAuthScheme):
             mcp_auth_scheme = stored_scheme
 
     return CredentialsMetaResponse(

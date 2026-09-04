@@ -92,6 +92,12 @@ describe("MCP block creation", () => {
     );
     const metadata = mocks.updateNodeData.mock.calls[0]?.[1]?.metadata;
     expect(metadata).toEqual({ customized_name: "Example MCP: Lookup Item" });
+    // Removing the flag changes the credentials toggle's rendered state, not
+    // execution: `_validate_node_input_credentials` treats a field as optional
+    // when `node.credentials_optional` is set *or* the field is not required,
+    // and the MCP block declares `credentials` with `default={}` — so it is
+    // never in `get_required_fields()`. Existing saved nodes behave exactly as
+    // they did before.
     expect(metadata?.credentials_optional).toBeUndefined();
   });
 });

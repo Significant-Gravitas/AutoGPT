@@ -13,6 +13,7 @@ import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/M
 import {
   mcpAuthTokenHint,
   mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
 import {
@@ -21,6 +22,7 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useContext, useEffect, useId, useRef, useState } from "react";
@@ -28,12 +30,6 @@ import { useCopilotChatActions } from "../../../../components/CopilotChatActions
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
 
-function normalizeMcpUrl(url: string): string {
-  // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
-  // for ``https://mcp.sentry.dev/mcp`` matches a card emitted with the
-  // same URL whether or not the trailing slash is present.
-  return url.trim().replace(/\/+$/, "");
-}
 interface Props {
   output: SetupRequirementsResponse;
   /**
@@ -466,7 +462,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 id={manualTokenInputId}
                 aria-describedby={manualTokenHintId}
                 type="password"
-                placeholder="Paste API token"
+                placeholder={mcpAuthTokenPlaceholder(manualAuthScheme)}
                 value={manualToken}
                 onChange={(e) => {
                   const nextToken = e.target.value;

@@ -188,3 +188,50 @@ async def test_expiring_credential_is_refreshed():
     manager.refresh_if_needed.assert_awaited_once()
     assert result is not None
     assert result.access_token.get_secret_value() == "refreshed-token"
+
+
+@pytest.mark.asyncio
+async def test_a_manual_credential_outranks_a_surviving_oauth_row():
+    """Ranking by expiry alone pinned execution to a stale OAuth grant.
+
+    A manual credential never has an ``access_token_expires_at``, so
+    ``cred.access_token_expires_at or 0`` made it lose to *any* OAuth row for
+    the same server.  Storing a manual credential leaves the OAuth row in place
+    (deleting it there would orphan the refresh token at the provider), and the
+    supersede loop swallows delete failures, so this is reachable rather than
+    theoretical: the user pastes a working credential, all three UIs probe it
+    and report "Connected", and every execution still goes out on the old token.
+    """
+    oauth = _mcp_credential(
+        access_token=SecretStr("oauth-token"),
+        access_token_expires_at=2_000_000_000,
+        refresh_token=SecretStr("refresh"),
+        metadata={
+            "mcp_server_url": "https://mcp.example.com/mcp",
+            "mcp_token_url": "https://mcp.example.com/token",
+            "mcp_client_id": "client-abc",
+        },
+    )
+    manual = _mcp_credential(
+        access_token=SecretStr("Basic encoded-value"),
+        metadata={
+            "mcp_server_url": "https://mcp.example.com/mcp",
+            "mcp_auth_scheme": "basic",
+        },
+    )
+
+    with patch(
+        "backend.blocks.mcp.helpers.IntegrationCredentialsManager"
+    ) as manager_cls:
+        manager = manager_cls.return_value
+        manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth, manual])
+        manager.refresh_if_needed = AsyncMock()
+
+        result = await auto_lookup_mcp_credential(
+            "test-user-id", "https://mcp.example.com/mcp"
+        )
+
+    assert result is not None
+    assert result.id == manual.id
+    # And a manual credential is never put through the OAuth refresh path.
+    manager.refresh_if_needed.assert_not_awaited()
