@@ -182,6 +182,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="If authentication is enabled or not",
     )
+    autopilot_bot_discord_members_intent: bool = Field(
+        default=False,
+        description="Request Discord's privileged Server Members intent so the "
+        "CoPilot bot can resolve @DisplayName against every member of a "
+        "server. Enable the same intent in the Discord developer portal "
+        "first; Discord refuses the connection otherwise. Off, the bot can "
+        "still ping roles, the message author, anyone mentioned in the "
+        "message, and members in its cache.",
+    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(

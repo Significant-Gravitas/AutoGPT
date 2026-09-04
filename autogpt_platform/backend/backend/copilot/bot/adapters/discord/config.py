@@ -11,6 +11,10 @@ def get_client_id() -> str:
     return Settings().secrets.autopilot_bot_discord_client_id
 
 
+def members_intent_enabled() -> bool:
+    return Settings().config.autopilot_bot_discord_members_intent
+
+
 def get_invite_permissions() -> str:
     return (
         Settings().secrets.autopilot_bot_discord_permissions

@@ -38,11 +38,34 @@ def _mention(user_id: int, display_name: str) -> MagicMock:
     return user
 
 
-def _message(content: str, mentions: list[MagicMock]) -> MagicMock:
+def _message(
+    content: str,
+    mentions: list[MagicMock],
+    guild: MagicMock | None = None,
+    author: MagicMock | None = None,
+) -> MagicMock:
     msg = MagicMock()
     msg.content = content
     msg.mentions = mentions
+    msg.role_mentions = []
+    msg.guild = guild
+    msg.author = author or _mention(5000, "Asker")
     return msg
+
+
+def _role(role_id: int, name: str) -> MagicMock:
+    role = MagicMock()
+    role.id = role_id
+    role.name = name
+    return role
+
+
+def _guild_with(members: list[MagicMock], roles: list[MagicMock]) -> MagicMock:
+    guild = MagicMock()
+    guild.id = 777
+    guild.members = members
+    guild.roles = [_role(777, "@everyone"), *roles]
+    return guild
 
 
 class _AsyncHistory:
@@ -657,6 +680,26 @@ class TestResolveMentions:
         )
         assert allowed.everyone is False
 
+    def test_resolves_role_to_role_markup_and_pings_the_role(self):
+        rendered, allowed = _resolve_mentions(
+            "Paging @Platform and @Sue",
+            (("Platform", "role:42"), ("Sue", "12345")),
+        )
+        assert rendered == "Paging <@&42> and <@12345>"
+        assert isinstance(allowed.roles, list)
+        assert [getattr(r, "id", None) for r in allowed.roles] == [42]
+        assert isinstance(allowed.users, list)
+        assert [getattr(u, "id", None) for u in allowed.users] == [12345]
+        assert allowed.everyone is False
+
+    def test_everyone_stays_plain_when_not_allowlisted(self):
+        rendered, allowed = _resolve_mentions(
+            "Heads up @everyone", (("Platform", "role:42"),)
+        )
+        assert rendered == "Heads up @everyone"
+        assert allowed.everyone is False
+        assert allowed.roles is False
+
     def test_resolves_standalone_mention_alongside_email_in_same_message(self):
         rendered, _ = _resolve_mentions(
             "@Sue, can you check sue@Sue.com?",
@@ -677,12 +720,38 @@ class TestCollectMentionableUsers:
             ],
         )
         result = adapter._collect_mentionable_users(msg)
-        assert result == (("Sue", "2000"),)
+        assert result == (("Asker", "5000"), ("Sue", "2000"))
 
-    def test_returns_empty_when_only_bot_mentioned(self):
+    def test_dm_lists_only_author_when_only_bot_mentioned(self):
         adapter, _ = _bare_adapter(bot_id=1000)
         msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoGPT")])
-        assert adapter._collect_mentionable_users(msg) == ()
+        assert adapter._collect_mentionable_users(msg) == (("Asker", "5000"),)
+
+    def test_guild_members_and_roles_are_pingable_but_everyone_is_not(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bently = _mention(3000, "Bently")
+        bently.name = "bentlybro"
+        bently.bot = False
+        bot_member = _mention(1000, "AutoGPT")
+        bot_member.bot = True
+        guild = _guild_with([bently, bot_member], [_role(42, "Platform")])
+        msg = _message("<@1000> who is on call?", mentions=[], guild=guild)
+
+        result = adapter._collect_mentionable_users(msg)
+
+        assert ("Bently", "3000") in result
+        assert ("bentlybro", "3000") in result
+        assert ("Platform", "role:42") in result
+        assert not any(name == "@everyone" for name, _ in result)
+        assert not any(token == "1000" for _, token in result)
+
+    def test_role_mentions_in_the_inbound_message_become_readable(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message(
+            "<@1000> ask <@&42> please", mentions=[_mention(1000, "AutoGPT")]
+        )
+        msg.role_mentions = [_role(42, "Platform")]
+        assert adapter._strip_mentions(msg) == "ask @Platform please"
 
 
 def _bare_adapter_with_api() -> tuple[DiscordAdapter, MagicMock, MagicMock]:

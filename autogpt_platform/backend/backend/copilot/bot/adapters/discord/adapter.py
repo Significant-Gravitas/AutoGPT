@@ -70,11 +70,20 @@ REFERENCED_MESSAGE_CONTEXT = 15
 # channel name in the proactive-post resolver (see ``looks_like_channel_id``).
 _SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
+# Marks a role in the shared ``(name, id)`` mention allowlist; users carry a
+# bare snowflake. Kept on the id so the platform-neutral resolver needs no
+# knowledge of Discord's two mention markups.
+ROLE_ID_PREFIX = "role:"
+
 
 class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
+        # Privileged: lets @DisplayName resolve against the whole server
+        # instead of only members already in the cache. Opt-in because Discord
+        # rejects the login unless the portal grants it too.
+        intents.members = config.members_intent_enabled()
         # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
         # role, and user pings the LLM might produce. Client-level default
         # applies to every send() + reply() below.
@@ -349,10 +358,13 @@ class DiscordAdapter(SocketAdapter):
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
+        rendered, allowed = _resolve_mentions(
+            text, _guild_mentionables(getattr(channel, "guild", None))
+        )
         first: Optional[discord.Message] = None
-        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
+        for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
-                msg = await channel.send(chunk, tts=False)
+                msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
             except discord.HTTPException:
                 if first is None:
                     raise
@@ -659,17 +671,26 @@ class DiscordAdapter(SocketAdapter):
             replacement = "" if user.id == bot_id else f"@{user.display_name}"
             for token in raw_tokens:
                 text = text.replace(token, replacement)
+        for role in getattr(message, "role_mentions", None) or ():
+            text = text.replace(f"<@&{role.id}>", f"@{role.name}")
         return text.strip()
 
     def _collect_mentionable_users(
         self, message: discord.Message
     ) -> tuple[tuple[str, str], ...]:
-        """Users from the inbound message the bot may ping back this turn."""
+        """Who the bot may ping back this turn: every member and role of the
+        server the message came from, plus the author and anyone mentioned.
+
+        ``@everyone`` and ``@here`` are never on the list, so a stray one in
+        model output stays plain text and ``AllowedMentions`` keeps them off
+        regardless. In a DM there is no server, so only the author and the
+        people mentioned in the message qualify.
+        """
         bot_id = self._client.user.id if self._client.user else None
-        return tuple(
-            (user.display_name, str(user.id))
-            for user in message.mentions
-            if user.id != bot_id
+        return _guild_mentionables(
+            message.guild,
+            [message.author, *message.mentions],
+            exclude_id=bot_id,
         )
 
     async def _thread_history(
@@ -827,20 +848,65 @@ def _resolve_mentions(
     shared in ``text.resolve_mentions``; here we only supply Discord's mention
     token and turn the pinged IDs into Discord's ping-safety object.
     """
-    rendered, pinged = resolve_mentions(
-        text, mentionable_users, lambda _name, uid: f"<@{uid}>"
-    )
-    pinged_ids: list[int] = []
-    for uid in pinged:
+    rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    user_ids: list[int] = []
+    role_ids: list[int] = []
+    for token_id in pinged:
+        is_role = token_id.startswith(ROLE_ID_PREFIX)
         try:
-            pinged_ids.append(int(uid))
+            numeric = int(token_id.removeprefix(ROLE_ID_PREFIX))
         except ValueError:
             continue
-    if not pinged_ids:
+        (role_ids if is_role else user_ids).append(numeric)
+    if not user_ids and not role_ids:
         return rendered, discord.AllowedMentions.none()
     return rendered, discord.AllowedMentions(
         everyone=False,
-        users=[discord.Object(id=uid) for uid in pinged_ids],
-        roles=False,
+        users=[discord.Object(id=uid) for uid in user_ids] or False,
+        roles=[discord.Object(id=rid) for rid in role_ids] or False,
         replied_user=False,
     )
+
+
+def _mention_token(_name: str, token_id: str) -> str:
+    if token_id.startswith(ROLE_ID_PREFIX):
+        return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
+    return f"<@{token_id}>"
+
+
+def _guild_mentionables(
+    guild: Optional[discord.Guild],
+    extra_users: Optional[list] = None,
+    exclude_id: Optional[int] = None,
+) -> tuple[tuple[str, str], ...]:
+    """Build the ``(name, id)`` allowlist for ``guild``: every cached member by
+    display name and username, and every role except the default
+    ``@everyone`` role, whose id is the guild id. Role ids carry
+    ``ROLE_ID_PREFIX`` so the resolver can emit role markup and the ping
+    object can list them as roles. ``extra_users`` are always included even
+    if the member cache has not seen them."""
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(name: Optional[str], token_id: str) -> None:
+        if not name or (name, token_id) in seen:
+            return
+        seen.add((name, token_id))
+        pairs.append((name, token_id))
+
+    for user in extra_users or ():
+        if user is None or user.id == exclude_id:
+            continue
+        add(getattr(user, "display_name", None), str(user.id))
+    if guild is None:
+        return tuple(pairs)
+    for member in guild.members:
+        if member.id == exclude_id or getattr(member, "bot", False):
+            continue
+        add(member.display_name, str(member.id))
+        add(getattr(member, "name", None), str(member.id))
+    for role in guild.roles:
+        if role.id == guild.id or role.name in ("@everyone", "here"):
+            continue
+        add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+    return tuple(pairs)
