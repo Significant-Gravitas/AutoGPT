@@ -53,7 +53,7 @@ export function ConnectorRow({ row }: Props) {
       title: savedCredential.title ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
-  }, [savedCredential?.id, row.selected]);
+  }, [savedCredential?.id, row.selected, allProviders]);
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">

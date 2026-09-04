@@ -230,6 +230,53 @@ describe("ChainActionCard", () => {
       expect(request.onChange).not.toHaveBeenCalled();
     });
 
+    it("clears the selection once loading reveals no matching credential", async () => {
+      const selected = {
+        id: "saved-1",
+        provider: "github",
+        type: "api_key" as const,
+      };
+      const request = connectorRequest({ selected: { credentials: selected } });
+      const loadedWithNoMatch = {
+        github: { savedCredentials: [] },
+      } as unknown as CredentialsProvidersContextType;
+
+      const { rerender } = render(
+        <CredentialsProvidersContext.Provider value={null}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+      expect(request.onChange).not.toHaveBeenCalled();
+
+      rerender(
+        <CredentialsProvidersContext.Provider value={loadedWithNoMatch}>
+          <ChainActionCard
+            connectors={[request]}
+            mcp={[]}
+            inputs={[]}
+            questions={[]}
+            manualProceed={false}
+            isReady
+            onProceed={vi.fn()}
+          />
+        </CredentialsProvidersContext.Provider>,
+      );
+
+      // Neither the credential nor the selection changed across this
+      // transition, so only `allProviders` can re-run the effect.
+      await waitFor(() =>
+        expect(request.onChange).toHaveBeenCalledWith("credentials", undefined),
+      );
+    });
+
     it("auto-selects a saved credential from the providers context", async () => {
       const request = connectorRequest();
       const providers = {
