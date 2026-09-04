@@ -629,6 +629,9 @@ class TestAutocompactPctSonnet5Scaling:
 # CLI binaries bundled with claude-agent-sdk 0.1.64 (2.1.116) and 0.2.146
 # (2.1.248): the window is reduced by a max-output reserve capped at 20K, and
 # the trigger is the lower of the percentage override and a 13K summary buffer.
+# The shipped 2.1.259 was not re-disassembled; its request shape was captured
+# and diffed against 2.1.248 (identical), and an unvetted lock float fails
+# ``_KNOWN_GOOD_BUNDLED_CLI_VERSIONS`` in ``sdk_compat_test.py``.
 _CLI_MAX_OUTPUT_RESERVE = 20_000
 _CLI_SUMMARY_BUFFER = 13_000
 
@@ -647,9 +650,9 @@ class TestContextWindowPin:
     ``CLAUDE_CODE_AUTO_COMPACT_WINDOW`` is the highest-precedence input to the
     CLI's window resolution, so it preempts the model table, the native-1M
     capability flags and the server-side experiment branches that newer CLIs
-    consult.  ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` still holds the model window
-    itself at 200K, which is what makes the default a real cap rather than a
-    ceiling the model can outgrow.
+    consult.  At or below the default window ``CLAUDE_CODE_DISABLE_1M_CONTEXT``
+    also holds the model window itself at 200K, which is what makes the default
+    a real cap rather than a ceiling the model can outgrow.
     """
 
     def test_auto_compact_window_pinned_to_config(self):
@@ -661,7 +664,7 @@ class TestContextWindowPin:
 
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
 
-    def test_disable_1m_context_set_in_all_modes(self):
+    def test_disable_1m_context_set_at_default_window(self):
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
@@ -669,6 +672,16 @@ class TestContextWindowPin:
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
         assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+
+    def test_context_window_rejects_out_of_range(self):
+        """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
+        a typo'd env var and the CLI's own clamps."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=99_999)
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=1_000_001)
 
     def test_raising_the_window_drops_the_1m_kill_switch(self):
         """Above 200K the kill-switch would clamp the model window back down
@@ -680,6 +693,18 @@ class TestContextWindowPin:
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
         assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "1000000"
+        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
+
+    def test_kill_switch_drops_at_the_first_window_above_the_default(self):
+        """200,001 is the boundary: one token past the default, the switch that
+        would clamp the model window back to 200K has to come off."""
+        cfg = _make_config(use_openrouter=False, claude_agent_context_window=200_001)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-5")
+
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200001"
         assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
 
     @pytest.mark.parametrize(

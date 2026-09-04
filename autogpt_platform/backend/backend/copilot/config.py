@@ -441,7 +441,9 @@ class ChatConfig(BaseSettings):
         le=1_000_000,
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="The context window the SDK subprocess is held to, in "
-        "tokens — the single place that decides it, for every model. Sets "
+        "tokens — the single place that decides it, for every model. The "
+        "backend's own estimate-based compressor derives its target from the "
+        "model catalog instead; see ``_compaction_target_tokens``. Sets "
         "``CLAUDE_CODE_AUTO_COMPACT_WINDOW``, which is the highest-precedence "
         "input to the CLI's window resolution, so the compaction trigger stops "
         "depending on which model table, beta, or server-side experiment the "
@@ -453,8 +455,11 @@ class ChatConfig(BaseSettings):
         "drops ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` (which would otherwise cap "
         "the model window at 200K and silently swallow the raise) — and only "
         "pays off where the route actually serves 1M: direct Anthropic on a "
-        "native-1M model, or a ``[1m]``-suffixed slug. OpenRouter routes stay "
-        "at the provider's own ceiling regardless.",
+        "native-1M model, or a ``[1m]``-suffixed slug. Raising it on a route "
+        "whose provider serves less is actively harmful, not merely useless: "
+        "the trigger moves past the real window and compaction stops firing "
+        "(at 1M on Moonshot the trigger lands at 967K against Kimi's "
+        "262,144).",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,

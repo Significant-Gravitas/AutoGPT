@@ -1421,7 +1421,7 @@ def _compaction_target_tokens(model: str) -> int:
     if window is None:
         return DEFAULT_TOKEN_THRESHOLD
     pct = config.claude_agent_autocompact_pct_override
-    cli_buffer = 13_000  # E88 in the bundled CLI
+    cli_buffer = 13_000  # the CLI's own summary buffer
     if pct > 0 and not _is_moonshot_model(model):
         cli_threshold = min(window * pct // 100, window - cli_buffer)
     else:
