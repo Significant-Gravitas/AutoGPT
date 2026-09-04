@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 import fastapi
 
 from backend.data.redis_client import get_redis_async
+from backend.monitoring.instrumentation import record_rate_limit_hit
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ async def enforce_global_search_rate_limit(user_id: str) -> None:
         return
 
     if count > GLOBAL_SEARCH_MAX_REQUESTS:
+        record_rate_limit_hit("/api/search", user_id)
         raise fastapi.HTTPException(
             status_code=429,
             detail=(

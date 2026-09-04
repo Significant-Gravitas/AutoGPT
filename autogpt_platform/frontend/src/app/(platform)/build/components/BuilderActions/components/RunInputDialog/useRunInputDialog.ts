@@ -15,8 +15,12 @@ import type { CredentialField } from "@/components/contextual/CredentialsInput/c
 
 export const useRunInputDialog = ({
   setIsOpen,
+  graphID,
+  graphVersion,
 }: {
   setIsOpen: (isOpen: boolean) => void;
+  graphID?: string;
+  graphVersion?: number | null;
 }) => {
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
@@ -157,8 +161,10 @@ export const useRunInputDialog = ({
     useNodeStore.getState().cleanNodesStatuses();
 
     await executeGraph({
-      graphId: flowID ?? "",
-      graphVersion: flowVersion || null,
+      // Prefer the freshly-saved version handed in by the caller; the URL's
+      // flowVersion is updated asynchronously and may still be stale here.
+      graphId: graphID ?? flowID ?? "",
+      graphVersion: graphVersion ?? flowVersion ?? null,
       data: {
         inputs: inputValues,
         credentials_inputs: validCredentials,

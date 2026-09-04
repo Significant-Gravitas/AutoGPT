@@ -2,10 +2,11 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { BookOpenIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import sparklesImg from "./assets/sparkles.png";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { BookOpen01Icon, PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agentName: string;
@@ -50,7 +51,7 @@ export function AgentSavedCard({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <BookOpenIcon size={14} weight="regular" />
+            <Icon icon={BookOpen01Icon} size={14} />
             Open in library
           </Button>
           <Button
@@ -61,7 +62,7 @@ export function AgentSavedCard({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <PencilSimpleIcon size={14} weight="regular" />
+            <Icon icon={PencilIcon} size={14} />
             Open in builder
           </Button>
         </div>

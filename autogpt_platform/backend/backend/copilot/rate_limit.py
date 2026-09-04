@@ -66,6 +66,7 @@ from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
+from backend.util.exceptions import UserPaywalledError
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 
 logger = logging.getLogger(__name__)
@@ -465,25 +466,6 @@ class RateLimitUnavailable(Exception):
     blast the LLM during a Redis outage and exceed their daily/weekly USD
     allowance by hundreds of dollars.
     """
-
-
-class UserPaywalledError(Exception):
-    """User has no entitlement to run a paywalled feature (NO_TIER tier
-    + ``ENABLE_PLATFORM_PAYMENT`` on).
-
-    Raised by ``add_graph_execution`` and other deep enqueue paths so
-    that *every* execution entry point (HTTP route, scheduled cron,
-    webhook trigger, external API, internal copilot tool) gets the same
-    gate without each one having to remember a route-level dependency.
-    Routes wrap this into HTTP 402; background tasks log and abandon
-    the run.
-    """
-
-    def __init__(
-        self,
-        message: str = "A subscription is required to run this feature.",
-    ) -> None:
-        super().__init__(message)
 
 
 async def get_usage_status(

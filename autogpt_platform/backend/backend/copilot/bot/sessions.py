@@ -15,6 +15,12 @@ def session_cache_key(platform: str, target_id: str) -> str:
     return f"copilot-bot:session:{platform}:{target_id}"
 
 
+async def get_session(platform: str, target_id: str) -> str | None:
+    redis = await get_redis_async()
+    cached = await redis.get(session_cache_key(platform, target_id))
+    return cached.decode() if isinstance(cached, bytes) else cached
+
+
 async def set_session(platform: str, target_id: str, session_id: str) -> None:
     redis = await get_redis_async()
     await redis.set(session_cache_key(platform, target_id), session_id, ex=SESSION_TTL)

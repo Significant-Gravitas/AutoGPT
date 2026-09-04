@@ -2,8 +2,9 @@ import { cn } from "@/lib/utils";
 import React from "react";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/__legacy__/ui/button";
-import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { useGraphMenuSearchBarComponent } from "./useGraphMenuSearchBarComponent";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface GraphMenuSearchBarProps {
   className?: string;
@@ -30,7 +31,8 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
       )}
     >
       <div className="flex h-6 w-6 items-center justify-center">
-        <MagnifyingGlassIcon
+        <Icon
+          icon={Search01Icon}
           className="h-6 w-6 text-zinc-700"
           strokeWidth={2}
         />
@@ -55,7 +57,11 @@ export const GraphMenuSearchBar: React.FC<GraphMenuSearchBarProps> = ({
           onClick={handleClear}
           className="p-0 hover:bg-transparent"
         >
-          <XIcon className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+          <Icon
+            icon={Cancel01Icon}
+            className="h-6 w-6 text-zinc-700"
+            strokeWidth={2}
+          />
         </Button>
       )}
     </div>

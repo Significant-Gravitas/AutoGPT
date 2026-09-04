@@ -16,6 +16,8 @@ from backend.util.settings import Config
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
+MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
+
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
 
@@ -119,6 +121,7 @@ async def store_media_file(
     execution_context: "ExecutionContext",
     *,
     return_format: MediaReturnFormat,
+    organization_id: str | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, a workspace:// reference, or a local path
@@ -164,7 +167,6 @@ async def store_media_file(
     base_path.mkdir(parents=True, exist_ok=True)
 
     # Security fix: Add disk space limits to prevent DoS
-    MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
     MAX_TOTAL_DISK_USAGE = 1024 * 1024 * 1024  # 1GB total per execution directory
 
     # Check total disk usage in base_path

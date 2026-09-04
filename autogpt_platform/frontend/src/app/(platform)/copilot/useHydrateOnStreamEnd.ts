@@ -120,6 +120,15 @@ interface Args {
    * resend.
    */
   hasActiveStream: boolean;
+  /**
+   * True while the post-finish probe (`handleFinish` in `useCopilotStream`)
+   * is still deciding whether the backend is starting a continuation turn.
+   * Applying the force-hydrate in that window swaps every message id (AI-SDK
+   * uuid → DB `-seq-N`), remounting the whole list and replaying the entrance
+   * animation — the visible mid-conversation flash — only for the resume to
+   * immediately take over. Hold the replace until the probe settles.
+   */
+  isFinishProbing: boolean;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -160,6 +169,7 @@ export function useHydrateOnStreamEnd({
   hydratedMessages,
   isReconnectScheduled,
   hasActiveStream,
+  isFinishProbing,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
@@ -217,11 +227,27 @@ export function useHydrateOnStreamEnd({
       });
     }
 
+    // Hold ALL message replacement while the post-finish probe decides
+    // whether a continuation turn is starting — replacing now would swap
+    // every message id and remount the list mid-conversation. This gate is
+    // deliberately wider than the `hasActiveStream` one below (which only
+    // holds the force-hydrate): it also holds the length-gated top-up. The
+    // interrupted toast above is NOT held — an interrupted turn must surface
+    // immediately, not after the probe loop finishes.
+    if (isFinishProbing) return;
+
     if (needsForceHydrateRef.current) {
       if (isStaleForceHydrateSnapshot) {
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
+      // The fresh session data shows the backend still has a live stream
+      // (continuation turn dispatching, or a resume about to start). The
+      // resume effect in `useCopilotStream` reconnects while the backend
+      // reports an active stream, and a merely-stale flag clears on the next
+      // session refetch — either way this effect re-fires and the replace
+      // lands once the backend goes idle, so no timeout fallback is needed.
+      if (hasActiveStream) return;
       setMessages((prev) =>
         preservePromotedUserBubbles(prev, retainOlderHistory(prev, finalized)),
       );
@@ -238,5 +264,6 @@ export function useHydrateOnStreamEnd({
     status,
     isReconnectScheduled,
     hasActiveStream,
+    isFinishProbing,
   ]);
 }

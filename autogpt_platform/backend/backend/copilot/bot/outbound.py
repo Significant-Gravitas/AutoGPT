@@ -15,7 +15,6 @@ thread creation); this module never imports ``discord``.
 """
 
 import logging
-import re
 from typing import Literal, Optional
 
 from pydantic import BaseModel
@@ -24,11 +23,6 @@ from backend.copilot.bot.adapters.base import ChannelInfo, PlatformAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 
 logger = logging.getLogger(__name__)
-
-# Discord snowflakes are 17-19 digits today; allow a little slack so the ID
-# path stays robust as the epoch advances rather than silently treating a
-# valid ID as a channel name.
-_SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
 
 class DeliveryResult(BaseModel):
@@ -40,7 +34,7 @@ class DeliveryResult(BaseModel):
     """
 
     ok: bool
-    kind: Literal["message", "thread"]
+    kind: Literal["message", "thread", "dm"]
     channel_id: Optional[str] = None
     ref_id: Optional[str] = None
     url: Optional[str] = None
@@ -92,6 +86,37 @@ async def deliver_message(
     )
 
 
+async def deliver_dm(
+    adapter: PlatformAdapter,
+    api: BotBackend,
+    platform: str,
+    user_id: str,
+    content: str,
+) -> DeliveryResult:
+    """Send ``content`` to ``user_id``'s own DM with the bot.
+
+    Authorization is the DM link itself: the target is always the calling
+    user's linked platform account, never a caller-supplied recipient — so a
+    user can only ever DM themself.
+    """
+    if not content or not content.strip():
+        return DeliveryResult(ok=False, kind="dm", error="empty_content")
+    platform_user_id = await api.get_dm_user_id(platform, user_id)
+    if platform_user_id is None:
+        return DeliveryResult(ok=False, kind="dm", error="no_dm_link")
+    channel_id = await adapter.open_dm_channel(platform_user_id)
+    if channel_id is None:
+        return DeliveryResult(ok=False, kind="dm", error="dm_unavailable")
+    ref = await adapter.post_channel_message(channel_id, content)
+    if ref is None:
+        return DeliveryResult(
+            ok=False, kind="dm", channel_id=channel_id, error="send_failed"
+        )
+    return DeliveryResult(
+        ok=True, kind="dm", channel_id=channel_id, ref_id=ref.id, url=ref.url
+    )
+
+
 async def create_thread(
     adapter: PlatformAdapter,
     api: BotBackend,
@@ -138,7 +163,7 @@ async def _resolve_target(
     if not ref:
         return None, "channel_not_found"
 
-    if _SNOWFLAKE.match(ref):
+    if adapter.looks_like_channel_id(ref):
         guild_id = await adapter.get_channel_server_id(ref)
         if guild_id is None:
             return None, "channel_not_found"

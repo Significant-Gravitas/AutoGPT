@@ -161,6 +161,16 @@ class AgentValidator:
                 continue
 
             required_inputs = block.get("inputSchema", {}).get("required", [])
+            # AgentExecutorBlock / MCPToolBlock carry their real input
+            # requirements in the node's dynamic schema (the sub-agent's /
+            # MCP tool's), not the static block schema — a required dynamic
+            # argument must not slip through validation.
+            dynamic_required = _dynamic_required_inputs(node)
+            if dynamic_required:
+                required_inputs = [
+                    *required_inputs,
+                    *[r for r in dynamic_required if r not in required_inputs],
+                ]
             input_defaults = node.get("input_default", {})
             node_id = node.get("id")
 
@@ -390,71 +400,15 @@ class AgentValidator:
 
             # Handle nested source names (with _#_ notation)
             if DICT_SPLIT in source_name:
-                parent, child = source_name.split(DICT_SPLIT, 1)
-
-                parent_schema = output_props.get(parent)
-                if not parent_schema:
+                detail = _check_nested_chain(output_props, source_name)
+                if detail:
                     self.add_error(
-                        f"Invalid source output field '{source_name}' "
-                        f"in link '{link_id}' from node '{source_id}' "
-                        f"(block '{block_name}' - {block_id}): Parent "
-                        f"property '{parent}' does not exist in the "
-                        f"block's output schema."
+                        f"Invalid nested source output field "
+                        f"'{source_name}' in link '{link_id}' from "
+                        f"node '{source_id}' (block "
+                        f"'{block_name}' - {block_id}): {detail}"
                     )
                     valid = False
-                    continue
-
-                # Check if additionalProperties is allowed either directly
-                # or via anyOf
-                allows_additional_properties = parent_schema.get(
-                    "additionalProperties", False
-                )
-                if not allows_additional_properties and "anyOf" in parent_schema:
-                    any_of_schemas = parent_schema.get("anyOf", [])
-                    if isinstance(any_of_schemas, list):
-                        for schema_option in any_of_schemas:
-                            if isinstance(schema_option, dict) and schema_option.get(
-                                "additionalProperties"
-                            ):
-                                allows_additional_properties = True
-                                break
-                            # Also allow when items have
-                            # additionalProperties (array of objects)
-                            if (
-                                isinstance(schema_option, dict)
-                                and "items" in schema_option
-                            ):
-                                items_schema = schema_option.get("items")
-                                if isinstance(items_schema, dict) and items_schema.get(
-                                    "additionalProperties"
-                                ):
-                                    allows_additional_properties = True
-                                    break
-
-                # Only require child in properties when
-                # additionalProperties is not allowed
-                if not allows_additional_properties:
-                    if not (
-                        isinstance(parent_schema, dict)
-                        and "properties" in parent_schema
-                        and isinstance(parent_schema["properties"], dict)
-                        and child in parent_schema["properties"]
-                    ):
-                        available_props = (
-                            list(parent_schema.get("properties", {}).keys())
-                            if isinstance(parent_schema, dict)
-                            else []
-                        )
-                        self.add_error(
-                            f"Invalid nested source output field "
-                            f"'{source_name}' in link '{link_id}' from "
-                            f"node '{source_id}' (block "
-                            f"'{block_name}' - {block_id}): Child "
-                            f"property '{child}' does not exist in "
-                            f"parent '{parent}' output schema. "
-                            f"Available properties: {available_props}"
-                        )
-                        valid = False
             else:
                 # Check simple (non-nested) source name
                 if source_name not in output_props:
@@ -509,9 +463,14 @@ class AgentValidator:
 
         def get_input_props(node: dict[str, Any]) -> dict[str, Any]:
             block_id = node.get("block_id", "")
-            if block_id == AGENT_EXECUTOR_BLOCK_ID:
+            if block_id in (AGENT_EXECUTOR_BLOCK_ID, MCP_TOOL_BLOCK_ID):
                 input_default = node.get("input_default", {})
-                dynamic_input_schema = input_default.get("input_schema", {})
+                dynamic_input_schema_field = (
+                    "input_schema"
+                    if block_id == AGENT_EXECUTOR_BLOCK_ID
+                    else "tool_input_schema"  # MCPToolBlock
+                )
+                dynamic_input_schema = input_default.get(dynamic_input_schema_field, {})
                 if not isinstance(dynamic_input_schema, dict):
                     dynamic_input_schema = {}
                 dynamic_props = dynamic_input_schema.get("properties", {})
@@ -528,54 +487,13 @@ class AgentValidator:
             block_name: str,
             block_id: str,
         ) -> bool:
-            parent, child = field_name.split(DICT_SPLIT, 1)
-            parent_schema = input_props.get(parent)
-            if not parent_schema:
+            detail = _check_nested_chain(input_props, field_name)
+            if detail:
                 self.add_error(
-                    f"{context}: Parent property '{parent}' does not "
-                    f"exist in block '{block_name}' ({block_id}) input "
-                    f"schema."
+                    f"{context}: {detail} "
+                    f"(block '{block_name}' - {block_id} input schema)"
                 )
                 return False
-
-            allows_additional = parent_schema.get("additionalProperties", False)
-            # Only anyOf is checked here because Pydantic's JSON schema
-            # emits optional/union fields via anyOf. allOf and oneOf are
-            # not currently used by any block's dict-typed inputs, so
-            # false positives from them are not a concern in practice.
-            if not allows_additional and "anyOf" in parent_schema:
-                for schema_option in parent_schema.get("anyOf", []):
-                    if not isinstance(schema_option, dict):
-                        continue
-                    if schema_option.get("additionalProperties"):
-                        allows_additional = True
-                        break
-                    items_schema = schema_option.get("items")
-                    if isinstance(items_schema, dict) and items_schema.get(
-                        "additionalProperties"
-                    ):
-                        allows_additional = True
-                        break
-
-            if not allows_additional:
-                if not (
-                    isinstance(parent_schema, dict)
-                    and "properties" in parent_schema
-                    and isinstance(parent_schema["properties"], dict)
-                    and child in parent_schema["properties"]
-                ):
-                    available = (
-                        list(parent_schema.get("properties", {}).keys())
-                        if isinstance(parent_schema, dict)
-                        else []
-                    )
-                    self.add_error(
-                        f"{context}: Child property '{child}' does not "
-                        f"exist in parent '{parent}' of block "
-                        f"'{block_name}' ({block_id}) input schema. "
-                        f"Available properties: {available}"
-                    )
-                    return False
             return True
 
         for link in agent.get("links", []):
@@ -1221,3 +1139,153 @@ class AgentValidator:
 
             logger.warning(f"Agent validation failed: {error_message}")
             return False, error_message
+
+
+def _check_nested_chain(props: dict[str, Any], field_name: str) -> str | None:
+    """Walk a ``_#_`` chain through declared schema levels.
+
+    Returns an error detail string, or None when the chain is valid or can
+    only be resolved at runtime. Levels that declare ``properties`` are
+    verified strictly; levels that allow additional properties, or are
+    untyped (``Any`` / object without declared properties), accept any
+    remaining chain — the executor's dynamic field delivery resolves those
+    at run time. Scalar/array levels reject further nesting.
+    """
+    parts = field_name.split(DICT_SPLIT)
+    schema = props.get(parts[0])
+    if schema is None:
+        return (
+            f"Parent property '{parts[0]}' does not exist. "
+            f"Available properties: {list(props)}"
+        )
+
+    path = parts[0]
+    for child in parts[1:]:
+        if not isinstance(schema, dict):
+            return None
+        if _allows_additional_properties(schema):
+            return None
+        resolved = _resolve_optional_union(schema)
+        if resolved is not None:
+            schema = resolved
+        declared = schema.get("properties")
+        if isinstance(declared, dict) and declared:
+            if child not in declared:
+                return (
+                    f"Child property '{child}' does not exist in parent "
+                    f"'{path}'. Available properties: {list(declared)}"
+                )
+            schema = declared[child]
+            path = f"{path}{DICT_SPLIT}{child}"
+            continue
+        if _is_scalar_schema(schema):
+            return (
+                f"Parent '{path}' has type '{_schema_display_type(schema)}' "
+                f"and has no extractable sub-fields"
+            )
+        # Untyped / Any / object without declared shape: cannot be verified
+        # statically, resolved dynamically at run time.
+        return None
+    return None
+
+
+def _allows_additional_properties(schema: dict[str, Any]) -> bool:
+    """True when *schema* accepts arbitrary keys (directly or via anyOf).
+
+    Only anyOf is checked because Pydantic's JSON schema emits optional /
+    union fields via anyOf; allOf and oneOf are not used by any block's
+    dict-typed fields.
+    """
+    if schema.get("additionalProperties"):
+        return True
+    for option in schema.get("anyOf", []):
+        if not isinstance(option, dict):
+            continue
+        if option.get("additionalProperties"):
+            return True
+        items = option.get("items")
+        if isinstance(items, dict) and items.get("additionalProperties"):
+            return True
+    return False
+
+
+def _is_scalar_schema(schema: dict[str, Any]) -> bool:
+    """True when *schema* is a concrete non-object type (no sub-fields)."""
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str) and schema_type in (
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "array",
+    ):
+        return True
+    if "anyOf" in schema:
+        options = [
+            option
+            for option in schema["anyOf"]
+            if isinstance(option, dict) and option.get("type") != "null"
+        ]
+        return bool(options) and all(_is_scalar_schema(o) for o in options)
+    return False
+
+
+def _resolve_optional_union(schema: dict[str, Any]) -> dict[str, Any] | None:
+    """Pick the single non-null branch of an optional-union schema.
+
+    Pydantic emits ``Optional[X]`` as ``anyOf: [X, {type: null}]``. Descending
+    into the X branch keeps declared object properties strictly validated
+    instead of the whole level being treated as untyped (which would accept
+    nonexistent children). Multi-branch unions keep the permissive fallback —
+    they cannot be verified statically.
+    """
+    options = [
+        o
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and o.get("type") != "null"
+    ]
+    if len(options) == 1:
+        return options[0]
+    return None
+
+
+def _dynamic_required_inputs(node: dict[str, Any]) -> list[str]:
+    """Required argument names from a node's dynamic input schema.
+
+    AgentExecutorBlock nodes carry the sub-agent's input schema in
+    ``input_default["input_schema"]``; MCPToolBlock nodes carry the MCP
+    tool's schema in ``input_default["tool_input_schema"]``. Their static
+    block schemas say nothing about these per-node requirements.
+    """
+    block_id = node.get("block_id", "")
+    if block_id not in (AGENT_EXECUTOR_BLOCK_ID, MCP_TOOL_BLOCK_ID):
+        return []
+    schema_field = (
+        "input_schema" if block_id == AGENT_EXECUTOR_BLOCK_ID else "tool_input_schema"
+    )
+    schema = node.get("input_default", {}).get(schema_field, {})
+    if not isinstance(schema, dict):
+        return []
+    required = schema.get("required")
+    if not isinstance(required, list):
+        return []
+    return [name for name in required if isinstance(name, str)]
+
+
+def _schema_display_type(schema: dict[str, Any]) -> str:
+    """Human-readable type label for error messages.
+
+    anyOf schemas have no direct ``type`` key — render the union of their
+    branch types (e.g. ``string | null``) instead of the literal ``None``.
+    """
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str):
+        return schema_type
+    options = [
+        o["type"]
+        for o in schema.get("anyOf", [])
+        if isinstance(o, dict) and isinstance(o.get("type"), str)
+    ]
+    if options:
+        return " | ".join(options)
+    return "unknown"

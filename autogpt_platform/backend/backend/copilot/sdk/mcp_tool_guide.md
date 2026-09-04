@@ -4,8 +4,17 @@
 
 `run_mcp_tool` follows a two-step pattern:
 
-1. **Discover** — call with only `server_url` to list available tools on the server.
-2. **Execute** — call again with `server_url`, `tool_name`, and `tool_arguments` to run a tool.
+1. **Discover** — call with only `server_url` to list available tools on the
+   server. The response contains each tool's name, description, and a compact
+   `params` summary (argument names, required ones marked `*`) — full input
+   schemas are omitted to save context.
+2. **Execute** — call again with `server_url`, `tool_name`, and
+   `tool_arguments` built from the description and `params` summary. If the
+   tool name or arguments are wrong, the error response includes a bounded
+   schema hint for that tool (very large schemas are reduced to their
+   top-level structure and marked truncated) or the list of valid tool
+   names — fix the call from that. Never re-run discovery just to see a
+   schema.
 
 ### Known hosted MCP servers
 

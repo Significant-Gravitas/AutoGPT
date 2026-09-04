@@ -36,6 +36,7 @@ function createMockReturnValue(
     isExecutingGraph: false,
     isTerminatingGraph: false,
     isSaving: false,
+    runTarget: null,
     ...overrides,
   };
 }

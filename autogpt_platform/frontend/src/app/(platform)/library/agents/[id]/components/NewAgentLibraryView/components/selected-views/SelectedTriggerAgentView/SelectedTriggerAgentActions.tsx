@@ -3,13 +3,14 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import {
-  ArrowSquareOutIcon,
-  PencilSimpleIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRemoveTriggerAgent } from "../../../hooks/useRemoveTriggerAgent";
+import {
+  Delete02Icon,
+  LinkSquare01Icon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   parentAgent: LibraryAgent;
@@ -36,11 +37,7 @@ export function SelectedTriggerAgentActions({
           aria-label="View in library"
         >
           <Button variant="icon" size="icon" aria-label="View in library">
-            <ArrowSquareOutIcon
-              weight="bold"
-              size={18}
-              className="text-zinc-700"
-            />
+            <Icon icon={LinkSquare01Icon} size={18} className="text-zinc-700" />
           </Button>
         </Link>
         <Link
@@ -48,11 +45,7 @@ export function SelectedTriggerAgentActions({
           aria-label="Open in builder"
         >
           <Button variant="icon" size="icon" aria-label="Open in builder">
-            <PencilSimpleIcon
-              weight="bold"
-              size={18}
-              className="text-zinc-700"
-            />
+            <Icon icon={PencilIcon} size={18} className="text-zinc-700" />
           </Button>
         </Link>
         <Button
@@ -65,7 +58,7 @@ export function SelectedTriggerAgentActions({
           {isDeleting ? (
             <LoadingSpinner size="small" />
           ) : (
-            <TrashIcon weight="bold" size={18} />
+            <Icon icon={Delete02Icon} size={18} />
           )}
         </Button>
       </div>

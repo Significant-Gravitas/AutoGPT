@@ -6,7 +6,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useId, useMemo, useState } from "react";
+import { ChainActionsContext } from "../ToolChain/chainActions";
 import {
   useAreAllConnected,
   useConnectedProvidersStore,
@@ -66,11 +67,14 @@ export function SetupRequirementsCard({
   onComplete,
 }: Props) {
   const { onSend } = useCopilotChatActions();
+  const chainActions = useContext(ChainActionsContext);
+  const actionId = useId();
 
   const [inputCredentials, setInputCredentials] = useState<
     Record<string, CredentialsMetaInput | undefined>
   >({});
   const [hasSent, setHasSent] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
@@ -145,6 +149,16 @@ export function SetupRequirementsCard({
   const hasUserActionableInputs = isEditMode && needsInputs;
   const canAutoDismiss =
     needsCredentials && alreadyConnected && !hasUserActionableInputs;
+  // Inside a chain this card renders no Proceed of its own — the chain only
+  // renders one for inputs/questions — so a completed sign-in is the sole "go"
+  // signal; without this the chain stalls after the user connects. It must be
+  // the sign-in and not merely a satisfied credential: every card in the chat
+  // history re-mounts on load with its credential already in place.
+  const canAutoProceed =
+    Boolean(chainActions) &&
+    justConnected &&
+    isAllCredsComplete &&
+    !hasUserActionableInputs;
 
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
@@ -160,7 +174,7 @@ export function SetupRequirementsCard({
   // (cleanup cancels the first microtask, but the claim is still held, so
   // the second effect run can't re-claim and the send never fires).
   useEffect(() => {
-    if (!canAutoDismiss || hasSent) return;
+    if ((!canAutoDismiss && !canAutoProceed) || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
     const claimed = useConnectedProvidersStore
       .getState()
@@ -171,11 +185,7 @@ export function SetupRequirementsCard({
     }
     handleRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
-  }, [canAutoDismiss, hasSent]);
-
-  if (hasSent || canAutoDismiss) {
-    return <ContentMessage>Connected. Continuing…</ContentMessage>;
-  }
+  }, [canAutoDismiss, canAutoProceed, hasSent]);
 
   const canRun = checkCanRun(
     needsCredentials,
@@ -183,7 +193,75 @@ export function SetupRequirementsCard({
     isAllInputsDone,
   );
 
-  function handleRun() {
+  // Inside a tool chain the card's own Proceed is replaced by the chain's
+  // single Proceed step — register readiness + message with the chain.
+  useEffect(() => {
+    if (!chainActions || hasSent || canAutoDismiss || canAutoProceed) return;
+    if (!needsCredentials && !needsInputs) return;
+    chainActions.register({
+      id: actionId,
+      ready: canRun,
+      buildMessage: () => buildProceedMessage(),
+      onSent: markSent,
+      connectors: needsCredentials
+        ? {
+            id: actionId,
+            fields: credentialFields,
+            selected: inputCredentials,
+            onChange: handleCredentialChange,
+            onConnected: () => setJustConnected(true),
+          }
+        : undefined,
+      inputs:
+        isEditMode && needsInputs
+          ? {
+              id: actionId,
+              title: output.setup_info.agent_name,
+              schema: inputSchema,
+              values: inputValues,
+              onChange: (values) =>
+                setInputValues((prev) => ({ ...prev, ...values })),
+              hasAdvanced: hasAdvancedFields,
+              showAdvanced,
+              onToggleAdvanced: () => setShowAdvanced((v) => !v),
+            }
+          : undefined,
+    });
+    return () => chainActions.unregister(actionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- buildProceedMessage/markSent capture latest state each registration
+  }, [
+    chainActions,
+    hasSent,
+    canAutoDismiss,
+    canAutoProceed,
+    canRun,
+    actionId,
+    needsCredentials,
+    needsInputs,
+    inputCredentials,
+    inputValues,
+    inputsMode,
+    showAdvanced,
+  ]);
+
+  if (hasSent || canAutoDismiss || canAutoProceed) {
+    return <ContentMessage>Connected. Continuing…</ContentMessage>;
+  }
+
+  function buildProceedMessage() {
+    return inputsMode === "trigger"
+      ? buildTriggerSetupMessage(inputCredentials)
+      : isEditMode
+        ? buildRunMessage(
+            needsCredentials,
+            needsInputs,
+            inputValues,
+            retryInstruction,
+          )
+        : buildPreviewRunMessage(needsCredentials);
+  }
+
+  function markSent() {
     setHasSent(true);
     if (sessionID && requestedProviders.length > 0) {
       useConnectedProvidersStore
@@ -191,26 +269,22 @@ export function SetupRequirementsCard({
         .markConnected({ sessionID, providers: requestedProviders });
     }
     onComplete?.();
-    const message =
-      inputsMode === "trigger"
-        ? buildTriggerSetupMessage(inputCredentials)
-        : isEditMode
-          ? buildRunMessage(
-              needsCredentials,
-              needsInputs,
-              inputValues,
-              retryInstruction,
-            )
-          : buildPreviewRunMessage(needsCredentials);
-    onSend(message);
     if (isEditMode) setInputValues({});
+  }
+
+  function handleRun() {
+    const message = buildProceedMessage();
+    markSent();
+    onSend(message);
   }
 
   return (
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
 
-      {needsCredentials && (
+      {/* Inside a chain the connectors are lifted out and rendered as a card
+          below it; standalone the card keeps the full credentials picker. */}
+      {needsCredentials && !chainActions && (
         <div className="rounded-2xl border bg-background p-3">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             {credentialsLabel ??
@@ -228,7 +302,9 @@ export function SetupRequirementsCard({
         </div>
       )}
 
-      {isEditMode && (inputSchema || hasAdvancedFields) && (
+      {/* Same lift-out as the connectors: inside a chain the inputs form
+          renders in the card below it, not inside the accordion. */}
+      {isEditMode && !chainActions && (inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             Inputs
@@ -289,7 +365,7 @@ export function SetupRequirementsCard({
         </div>
       )}
 
-      {(needsCredentials || needsInputs) && (
+      {(needsCredentials || needsInputs) && !chainActions && (
         <Button
           variant="primary"
           size="small"

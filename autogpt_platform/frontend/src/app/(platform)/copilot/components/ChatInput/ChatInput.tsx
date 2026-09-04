@@ -1,13 +1,11 @@
 import {
-  PromptInputBody,
   PromptInputButton,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { InputGroup } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import {
   Tooltip,
   TooltipContent,
@@ -15,22 +13,50 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ArrowUpIcon } from "@phosphor-icons/react";
-import { ChangeEvent, useEffect, useState } from "react";
-import { AttachmentMenu } from "./components/AttachmentMenu";
-import { BlockCaret } from "./components/BlockCaret";
+import {
+  ChangeEvent,
+  ClipboardEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useState,
+} from "react";
+import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import {
+  type Attachment,
+  type WorkspaceAttachment,
+  partitionAttachments,
+  workspaceItemToAttachment,
+} from "../../helpers/workspaceAttachments";
+import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
-import { ModelToggleButton } from "./components/ModelToggleButton";
-import { ModeToggleButton } from "./components/ModeToggleButton";
+import { MentionDropdown } from "./components/MentionDropdown";
+import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
+import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
+import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
+import {
+  CARD_ICON_BUTTON_CLASS,
+  CARD_SEND_BUTTON_CLASS,
+  getFilesFromClipboard,
+} from "./helpers";
 import { useChatInput } from "./useChatInput";
+import { useChatMentions } from "./useChatMentions";
+import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
+import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  onSend: (message: string, files?: File[]) => void | Promise<void>;
+  onSend: (
+    message: string,
+    files?: File[],
+    workspaceFiles?: WorkspaceAttachment[],
+  ) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
@@ -46,6 +72,15 @@ interface Props {
   onDroppedFilesConsumed?: () => void;
   /** When true, the dry-run toggle is disabled (session is active and immutable). */
   hasSession?: boolean;
+  /** Session id for the dev-only token badge in the composer footer. */
+  sessionId?: string | null;
+  /** When true, the submit button is hidden until there is something to send. */
+  hideSubmitWhenEmpty?: boolean;
+  /** Recipient picker chip rendered before the mode chips (new-task state). */
+  recipientPicker?: ReactNode;
+  /** Card composer: the text always keeps its own row above the controls,
+   *  instead of sharing a single pill row until it wraps. Empty state only. */
+  stacked?: boolean;
 }
 
 export function ChatInput({
@@ -61,49 +96,22 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
   hasSession = false,
+  sessionId = null,
+  hideSubmitWhenEmpty = false,
+  recipientPicker,
+  stacked = false,
 }: Props) {
-  const {
-    copilotChatMode,
-    setCopilotChatMode,
-    copilotLlmModel,
-    setCopilotLlmModel,
-    isDryRun,
-    setIsDryRun,
-  } = useCopilotUIStore();
-  const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
-  const showDryRunToggle = showModeToggle;
-  const [files, setFiles] = useState<File[]>([]);
-
-  function handleToggleMode() {
-    const next =
-      copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
-    setCopilotChatMode(next);
-    toast({
-      title:
-        next === "fast"
-          ? "Switched to Fast mode"
-          : "Switched to Extended Thinking mode",
-      description:
-        next === "fast"
-          ? "Optimized for speed — ideal for simpler tasks."
-          : "Responses may take longer.",
-    });
-  }
-
-  function handleToggleModel() {
-    const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
-    setCopilotLlmModel(next);
-    toast({
-      title:
-        next === "advanced"
-          ? "Switched to Advanced model"
-          : "Switched to Balanced model",
-      description:
-        next === "advanced"
-          ? "Using the highest-capability model."
-          : "Using the balanced default model.",
-    });
-  }
+  const { isDryRun, setIsDryRun } = useCopilotUIStore();
+  // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
+  // Fast/Thinking control it was created for is gone. Renaming it means an
+  // LaunchDarkly change, so it is left until the combined picker restructures
+  // these controls anyway. Splitting it now would need two new flags and would
+  // hide both survivors until someone created them.
+  const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   function handleToggleDryRun() {
     const next = !isDryRun;
@@ -119,12 +127,15 @@ export function ChatInput({
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
     if (droppedFiles && droppedFiles.length > 0) {
-      setFiles((prev) => [...prev, ...droppedFiles]);
+      setAttachments((prev) => [
+        ...prev,
+        ...droppedFiles.map((file) => ({ kind: "local" as const, file })),
+      ]);
       onDroppedFilesConsumed?.();
     }
   }, [droppedFiles, onDroppedFilesConsumed]);
 
-  const hasFiles = files.length > 0;
+  const hasAttachments = attachments.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
@@ -139,13 +150,33 @@ export function ChatInput({
     handleChange: baseHandleChange,
   } = useChatInput({
     onSend: async (message: string) => {
-      await onSend(message, hasFiles ? files : undefined);
-      // Only clear files after successful send (onSend throws on failure)
-      setFiles([]);
+      const { localFiles, workspaceFiles } = partitionAttachments(attachments);
+      // Chips clear eagerly for the same reason the text does (see
+      // useChatInput.handleSend); a failed send restores them unless the
+      // user already attached new ones in the meantime.
+      const sent = attachments;
+      setAttachments([]);
+      try {
+        await onSend(
+          message,
+          localFiles.length > 0 ? localFiles : undefined,
+          workspaceFiles.length > 0 ? workspaceFiles : undefined,
+        );
+      } catch (error) {
+        setAttachments((prev) => (prev.length > 0 ? prev : sent));
+        throw error;
+      }
     },
     disabled: isTextareaDisabled,
-    canSendEmpty: hasFiles,
+    canSendEmpty: hasAttachments,
     inputId,
+  });
+
+  const mentions = useChatMentions({
+    enabled: showWorkspaceFiles && !isBusy,
+    value,
+    setValue,
+    addWorkspaceFile: handleWorkspaceFileSelected,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -155,7 +186,7 @@ export function ChatInput({
     isTranscribing,
     elapsedTime,
     toggleRecording,
-    handleKeyDown,
+    handleKeyDown: voiceHandleKeyDown,
     showMicButton,
     isInputDisabled,
     audioStream,
@@ -167,9 +198,27 @@ export function ChatInput({
     isStreaming,
   });
 
+  const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
+    isTranscribing,
+  });
+
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
     if (isRecording) return;
     baseHandleChange(e);
+    mentions.detect(e.currentTarget);
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentions.onKeyDown(e)) return;
+    voiceHandleKeyDown(e);
+  }
+
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    if (isBusy) return;
+    const files = getFilesFromClipboard(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesSelected(files);
   }
 
   const resolvedPlaceholder = isRecording
@@ -178,101 +227,170 @@ export function ChatInput({
       ? "Transcribing..."
       : placeholder;
 
+  // Narrows to string, so the render site needn't re-test sessionId.
+  const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const canSend =
     !disabled &&
-    (!!value.trim() || hasFiles) &&
+    (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;
 
-  function handleFilesSelected(newFiles: File[]) {
-    setFiles((prev) => [...prev, ...newFiles]);
+  function handleClearGuidedPrompt() {
+    // Only discard untouched guided prompts — never a draft the user typed
+    // or edited themselves.
+    if (isGuidedPrompt(value)) setValue("");
   }
 
-  function handleRemoveFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  function handleFilesSelected(newFiles: File[]) {
+    setAttachments((prev) => [
+      ...prev,
+      ...newFiles.map((file) => ({ kind: "local" as const, file })),
+    ]);
+  }
+
+  function handleWorkspaceFileSelected(item: WorkspaceFileItem) {
+    setAttachments((prev) => {
+      if (prev.some((a) => a.kind === "workspace" && a.fileId === item.id)) {
+        return prev;
+      }
+      return [...prev, workspaceItemToAttachment(item)];
+    });
+  }
+
+  function handleWorkspaceFilesConfirmed(items: WorkspaceFileItem[]) {
+    items.forEach(handleWorkspaceFileSelected);
+  }
+
+  function handleRemoveAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
+      {mentions.isOpen && (
+        <MentionDropdown
+          files={mentions.files}
+          isLoading={mentions.isLoading}
+          isError={mentions.isError}
+          highlightedIndex={mentions.highlightedIndex}
+          highlightedRef={mentions.highlightedRef}
+          onSelect={mentions.accept}
+          onHighlight={mentions.setHighlightedIndex}
+        />
+      )}
+      {/* GPT-style composer: a single pill row — plus on the left, textarea
+          in the middle, quiet toggles + mic + send on the right. items-end
+          keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "overflow-hidden has-[[data-slot=input-group-control]:focus-visible]:border-neutral-200 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          // Card composer: a hairline ring and a shallow drop instead of the
+          // pill's deep shadow, so it reads as a surface the text sits on.
+          stacked &&
+            "gap-3 !rounded-3xl border-transparent px-3.5 pb-3.5 pt-3 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-transparent",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
         <FileChips
-          files={files}
-          onRemove={handleRemoveFile}
+          attachments={attachments}
+          onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
+          stacked={stacked}
         />
-        <PromptInputBody className="relative block w-full">
-          <PromptInputTextarea
-            id={inputId}
-            aria-label="Chat message input"
-            value={value}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            disabled={isInputDisabled}
-            placeholder={resolvedPlaceholder}
-            className="caret-transparent placeholder:indent-3"
-          />
-          <BlockCaret textareaId={inputId} />
-          {isRecording && !value && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <RecordingIndicator
-                elapsedTime={elapsedTime}
-                audioStream={audioStream}
-              />
-            </div>
+        <div
+          className={cn(
+            "flex w-full flex-wrap",
+            stacked ? "items-center" : "items-end",
           )}
-        </PromptInputBody>
-
-        <span id={`${inputId}-hint`} className="sr-only">
-          Press Enter to send, Shift+Enter for new line, Space to record voice
-        </span>
-
-        <PromptInputFooter>
-          <PromptInputTools>
-            <AttachmentMenu
+        >
+          <InputGroupAddon
+            align="inline-start"
+            className={cn(
+              "order-none gap-1 py-1 pl-1.5",
+              stacked && "gap-1.5 p-0",
+            )}
+          >
+            <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
+              onUseWorkspaceFile={() => setIsPickerOpen(true)}
+              onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              className={
+                stacked
+                  ? cn(
+                      CARD_ICON_BUTTON_CLASS,
+                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                    )
+                  : undefined
+              }
             />
-            {/* Mode and model are per-message settings sent with each stream request,
-                so they can be freely changed between turns in an existing session.
-                Hide only while actively streaming (too late to change for that turn). */}
-            {showModeToggle && !isStreaming && (
-              <ModeToggleButton
-                mode={copilotChatMode}
-                onToggle={handleToggleMode}
-              />
+            {recipientPicker}
+          </InputGroupAddon>
+          {/* Must be a real flex item: `order`/`w-full` are ignored on a
+              `display: contents` box, which is what PromptInputBody was. */}
+          <div
+            className={cn(
+              "relative",
+              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
-            {showModeToggle && !isStreaming && (
-              <ModelToggleButton
-                model={copilotLlmModel}
-                onToggle={handleToggleModel}
-              />
+          >
+            <PromptInputTextarea
+              id={inputId}
+              aria-label="Chat message input"
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onBlur={mentions.close}
+              disabled={isInputDisabled}
+              placeholder={resolvedPlaceholder}
+              onMultilineChange={setIsMultiline}
+              className={stacked ? "px-0.5 py-1" : undefined}
+            />
+            {isRecording && !value && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <RecordingIndicator
+                  elapsedTime={elapsedTime}
+                  audioStream={audioStream}
+                />
+              </div>
             )}
-            {/* DryRun button only on new chats: once a session exists its
-                dry_run flag is locked and should be read from session metadata
-                (sessionDryRun in useCopilotPage), not toggled here. The banner
-                in CopilotPage.tsx reflects the actual session state. */}
-            {showDryRunToggle && !hasSession && (
+          </div>
+          <InputGroupAddon
+            align="inline-end"
+            className={cn(
+              "order-none ml-auto gap-1 py-1 pr-1.5",
+              stacked && "gap-1.5 p-0",
+            )}
+          >
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. The card
+                composer leaves this to the page's top-right control. */}
+            {!stacked && (!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
+            {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
               />
             )}
-          </PromptInputTools>
-
-          <div className="flex items-center gap-4">
+            {devtoolSessionId && (
+              <TokenDevtoolBadge sessionId={devtoolSessionId} />
+            )}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
-                onClick={toggleRecording}
+                highlight={isMicGlowing}
+                className={stacked ? CARD_ICON_BUTTON_CLASS : undefined}
+                onClick={() => {
+                  dismissGlow();
+                  toggleRecording();
+                }}
               />
             )}
             {isStreaming && canSend && onEnqueue && (
@@ -296,7 +414,7 @@ export function ChatInput({
                 }}
                 className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
               >
-                <ArrowUpIcon className="size-4" weight="bold" />
+                <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
             )}
             {isStreaming ? (
@@ -306,12 +424,26 @@ export function ChatInput({
                 </TooltipTrigger>
                 <TooltipContent side="top">Stop</TooltipContent>
               </Tooltip>
-            ) : (
-              <PromptInputSubmit disabled={!canSend} />
+            ) : hideSubmitWhenEmpty && !canSend ? null : (
+              <PromptInputSubmit
+                disabled={!canSend}
+                className={stacked ? CARD_SEND_BUTTON_CLASS : undefined}
+              />
             )}
-          </div>
-        </PromptInputFooter>
+          </InputGroupAddon>
+        </div>
+
+        <span id={`${inputId}-hint`} className="sr-only">
+          Press Enter to send, Shift+Enter for new line, Space to record voice
+        </span>
       </InputGroup>
+      {showWorkspaceFiles && (
+        <WorkspaceFilePicker
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          onConfirm={handleWorkspaceFilesConfirmed}
+        />
+      )}
     </form>
   );
 }

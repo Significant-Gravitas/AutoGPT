@@ -1,10 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   icon: React.ReactNode;
@@ -39,7 +40,11 @@ export function ToolAccordion({
 
   return (
     <div
-      className={cn("mt-2 w-full rounded-lg bg-stone-50 px-3 py-2", className)}
+      className={cn(
+        "mt-2 w-full rounded-xl border border-zinc-200/70 bg-white px-3 py-2 shadow-sm",
+        "duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both",
+        className,
+      )}
     >
       <button
         type="button"
@@ -66,12 +71,12 @@ export function ToolAccordion({
             )}
           </div>
         </div>
-        <CaretDownIcon
+        <Icon
+          icon={ArrowDown01Icon}
           className={cn(
             "h-4 w-4 shrink-0 text-slate-500 transition-transform",
             isExpanded && "rotate-180",
           )}
-          weight="bold"
         />
       </button>
 

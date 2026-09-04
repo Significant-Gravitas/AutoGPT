@@ -60,6 +60,18 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
+_MAIN_RESULT_DESCRIPTION = (
+    "The main result from the code execution (the script's final "
+    "expression). Its `json` sub-field is ONLY populated when the "
+    "result is a dict/object/map — bare lists, strings, and "
+    "numbers land in `text` as a string instead. To pass "
+    "structured data downstream via `main_result_#_json_#_<key>` "
+    "links, end the script with a key-value structure in the "
+    "script's language (e.g. `{'items': my_list}` in Python, "
+    "`({items: myList})` in JavaScript)."
+)
+
+
 class MainCodeExecutionResult(BaseModel):
     """
     *Pydantic model mirroring `e2b_code_interpreter.Result`*
@@ -242,10 +254,12 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         variables: dict[str, Any] = SchemaField(
             title="Variables (Python/JS only)",
             description=(
-                "Variables defined here can be used directly in your Python or "
-                "JavaScript code. Values wired in from other blocks keep their "
-                "type; default values set on this node come in as strings, so parse "
-                "them in your code if you need a number or other type."
+                "Variables defined here can be used directly in your code. "
+                "Each key (`variables_#_{name}`) is injected directly as a local "
+                "variable with the same name (`{name}`) in your code. "
+                "Values wired in from other blocks keep their type; default values set "
+                "on this node come in as strings, so parse them in your code "
+                "if you need a number or other type."
             ),
             default_factory=dict,
             advanced=False,
@@ -288,7 +302,8 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
 
     class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
-            title="Main Result", description="The main result from the code execution"
+            title="Main Result",
+            description=_MAIN_RESULT_DESCRIPTION,
         )
         results: list[CodeExecutionResult] = SchemaField(
             description="List of results from the code execution"
@@ -532,7 +547,8 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
 
     class Output(BlockSchemaOutput):
         main_result: MainCodeExecutionResult = SchemaField(
-            title="Main Result", description="The main result from the code execution"
+            title="Main Result",
+            description=_MAIN_RESULT_DESCRIPTION,
         )
         results: list[CodeExecutionResult] = SchemaField(
             description="List of results from the code execution"

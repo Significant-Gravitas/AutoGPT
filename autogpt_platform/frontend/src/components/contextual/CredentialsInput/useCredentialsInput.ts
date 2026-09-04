@@ -12,6 +12,7 @@ import {
   OAUTH_ERROR_POPUP_BLOCKED,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
+  preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -53,11 +54,15 @@ export function useCredentialsInput({
   ] = useState(false);
   const [isHostScopedCredentialsModalOpen, setHostScopedCredentialsModalOpen] =
     useState(false);
+  const [isDeviceAuthModalOpen, setDeviceAuthModalOpen] = useState(false);
   const [isCredentialTypeSelectorOpen, setCredentialTypeSelectorOpen] =
     useState(false);
   const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
   const [oAuthPopupBlocked, setOAuthPopupBlocked] = useState(false);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
+  const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
+    string | null
+  >(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -67,48 +72,85 @@ export function useCredentialsInput({
   >(null);
 
   const api = useBackendAPI();
-  const credentials = useCredentials(schema, siblingInputs);
+  const credentials = useCredentials(
+    schema,
+    siblingInputs,
+    selectedCredential?.provider,
+  );
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const oauthFlowIdRef = useRef(0);
+  const preOpenedWindowRef = useRef<Window | null>(null);
   const [isDeletingCredential, setIsDeletingCredential] = useState(false);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      // Invalidate any in-flight flow so its continuation bails instead of
+      // adopting the window, and close a window pre-opened by a flow that
+      // never reached openOAuthPopup (its abort isn't registered yet).
+      oauthFlowIdRef.current += 1;
       oauthAbortRef.current?.();
+      if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+        preOpenedWindowRef.current.close();
+      }
+      preOpenedWindowRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (onLoaded) {
-      onLoaded(Boolean(credentials && credentials.isLoading === false));
+      onLoaded(Boolean(credentials));
     }
   }, [credentials, onLoaded]);
 
-  // Unselect credential if not available in the loaded credential list.
-  // Skip when no credentials have been loaded yet (empty list could mean
-  // the provider data hasn't finished loading, not that the credential is invalid).
   useEffect(() => {
     if (readOnly) return;
-    if (!credentials || !("savedCredentials" in credentials)) return;
+    if (!credentials) return;
     const availableCreds = credentials.savedCredentials;
-    if (availableCreds.length === 0) return;
     if (
       selectedCredential &&
-      !availableCreds.some((c) => c.id === selectedCredential.id)
+      selectedCredential.provider !== credentials.provider
     ) {
       onSelectCredential(undefined);
-      // Reset auto-selection flag so it can run again after unsetting invalid credential
       hasAttemptedAutoSelect.current = false;
+      return;
     }
-  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
+
+    if (!selectedCredential) return;
+    const stillUsable = availableCreds.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+    if (stillUsable) return;
+
+    const stillExists = credentials.allProviderCredentials.some(
+      (credential) => credential.id === selectedCredential.id,
+    );
+
+    const isDeletingSelected =
+      isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
+    if (!stillExists && !isDeletingSelected) {
+      setRemovedCredentialTitle(
+        selectedCredential.title || credentials.providerName,
+      );
+    }
+    onSelectCredential(undefined);
+    hasAttemptedAutoSelect.current = false;
+  }, [
+    credentialToDelete?.id,
+    credentials,
+    isDeletingCredential,
+    onSelectCredential,
+    readOnly,
+    selectedCredential,
+  ]);
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
       if (readOnly) return;
-      if (!credentials || !("savedCredentials" in credentials)) return;
+      if (!credentials) return;
       if (selectedCredential?.id) return;
 
       const savedCreds = credentials.savedCredentials;
@@ -126,7 +168,7 @@ export function useCredentialsInput({
         id: cred.id,
         type: cred.type,
         provider: credentials.provider,
-        title: (cred as any).title,
+        title: cred.title,
       });
     },
     [
@@ -138,11 +180,7 @@ export function useCredentialsInput({
     ],
   );
 
-  if (
-    !credentials ||
-    credentials.isLoading ||
-    !("savedCredentials" in credentials)
-  ) {
+  if (!credentials) {
     return {
       isLoading: true,
     };
@@ -153,6 +191,7 @@ export function useCredentialsInput({
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
@@ -170,11 +209,37 @@ export function useCredentialsInput({
     upgradeableCredentials,
   );
 
+  function handleCredentialChange(newValue?: CredentialsMetaInput) {
+    setRemovedCredentialTitle(null);
+    onSelectCredential(newValue);
+  }
+
   async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
 
-    // Abort any previous OAuth flow
+    // Abort any previous OAuth flow, and close the window of one that was
+    // still initiating (its abort wasn't registered yet, so the abort above
+    // can't reach it).
     oauthAbortRef.current?.();
+    if (preOpenedWindowRef.current && !preOpenedWindowRef.current.closed) {
+      preOpenedWindowRef.current.close();
+    }
+    preOpenedWindowRef.current = null;
+
+    // Generation marker — lets this flow's continuation detect that it was
+    // superseded (new flow, or unmount) while awaiting the login URL.
+    // Re-entrancy contract: SUPERSEDE — the newest call wins because it may
+    // target a different credential (add account vs scope upgrade).
+    // Deliberately different from useOAuthConnect.connect, which BLOCKS
+    // re-entry (single flow target). Reconcile the two explicitly if this
+    // lifecycle is ever extracted into a shared hook.
+    const flowId = ++oauthFlowIdRef.current;
+
+    // Open the sign-in window synchronously, before the first await — iOS
+    // Safari discards the tap's user-gesture context at any async break and
+    // then blocks every window.open(), including the new-tab fallback.
+    const preOpenedWindow = preOpenOAuthPopup();
+    preOpenedWindowRef.current = preOpenedWindow;
 
     // MCP uses dynamic OAuth discovery per server URL
     const isMCP = provider === "mcp" && !!discriminatorValue;
@@ -182,6 +247,7 @@ export function useCredentialsInput({
     try {
       let login_url: string;
       let state_token: string;
+      let cancel_url: string | null | undefined;
 
       if (isMCP) {
         const mcpLoginResponse = await postV2InitiateOauthLoginForAnMcpServer({
@@ -190,33 +256,46 @@ export function useCredentialsInput({
         if (mcpLoginResponse.status !== 200) throw mcpLoginResponse.data;
         ({ login_url, state_token } = mcpLoginResponse.data);
       } else {
-        ({ login_url, state_token } = await api.oAuthLogin(
+        ({ login_url, state_token, cancel_url } = await api.oAuthLogin(
           provider,
           schema.credentials_scopes,
           credentialID,
         ));
       }
 
+      // A newer flow (or an unmount) superseded this one while the login
+      // URL was being fetched — the superseding path already closed the
+      // pre-opened window; don't adopt it or touch state.
+      if (flowId !== oauthFlowIdRef.current) return;
+
       setOAuth2FlowInProgress(true);
       setOAuthPopupBlocked(false);
 
-      const { promise, cleanup, popupBlocked } = openOAuthPopup(login_url, {
-        stateToken: state_token,
-        // Always enable BroadcastChannel + localStorage listeners — they are
-        // the only path that works when the popup is blocked and we fall back
-        // to a new tab (window.opener can be severed by cross-origin COOP).
-        useCrossOriginListeners: true,
-        acceptMessageTypes: isMCP
-          ? ["mcp_oauth_result"]
-          : ["oauth_popup_result"],
-      });
+      const { promise, cleanup, popupBlocked, fallbackBlocked } =
+        openOAuthPopup(login_url, {
+          stateToken: state_token,
+          cancelUrl: cancel_url,
+          preOpenedWindow,
+          timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          // Always enable BroadcastChannel + localStorage listeners — they are
+          // the only path that works when the popup is blocked and we fall back
+          // to a new tab (window.opener can be severed by cross-origin COOP).
+          useCrossOriginListeners: true,
+          acceptMessageTypes: isMCP
+            ? ["mcp_oauth_result"]
+            : ["oauth_popup_result"],
+        });
+      // Ownership transferred — the helper closes the window on abort now.
+      preOpenedWindowRef.current = null;
 
       // The blank popup window was rejected by the browser — the helper has
       // already fallen back to opening the login URL in a new tab, but that
       // tab is easy to miss. Track the state so the waiting modal can
       // change its copy and direct the user to the right place, and emit a
       // toast in case they've already dismissed the modal.
-      if (popupBlocked) {
+      // Skip when the fallback was blocked too — the promise has already
+      // rejected and the error below carries the correct retry message.
+      if (popupBlocked && !fallbackBlocked) {
         setOAuthPopupBlocked(true);
         toast({
           title: "Popup blocked",
@@ -252,13 +331,25 @@ export function useCredentialsInput({
         }
       }
 
-      onSelectCredential({
+      handleCredentialChange({
         id: credentialResult.id,
         type: "oauth2",
         title: credentialResult.title,
         provider,
       });
     } catch (error) {
+      // Close the dangling about:blank window only while this flow still
+      // owns it — i.e. the error occurred before openOAuthPopup adopted the
+      // window. After handoff the ref is nulled and the helper closes the
+      // window itself on abort, so it's no longer ours to close.
+      if (preOpenedWindowRef.current === preOpenedWindow) {
+        preOpenedWindowRef.current = null;
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+          preOpenedWindow.close();
+        }
+      }
+      // A superseded flow must not surface its errors over the newer flow.
+      if (flowId !== oauthFlowIdRef.current) return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -271,8 +362,13 @@ export function useCredentialsInput({
         setOAuthError(`OAuth error: ${message}`);
       }
     } finally {
-      setOAuth2FlowInProgress(false);
-      oauthAbortRef.current = null;
+      // A superseded flow must not tear down the newer flow's state —
+      // nulling oauthAbortRef here would orphan the newer popup's abort
+      // handler, and resetting the in-progress flag would close its UI.
+      if (flowId === oauthFlowIdRef.current) {
+        setOAuth2FlowInProgress(false);
+        oauthAbortRef.current = null;
+      }
     }
   }
 
@@ -290,6 +386,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     ) > 1;
 
   const supportedTypes = getSupportedTypes(
@@ -297,6 +394,7 @@ export function useCredentialsInput({
     supportsApiKey,
     supportsUserPassword,
     supportsHostScoped,
+    supportsDeviceCode,
   );
 
   function handleActionButtonClick() {
@@ -306,6 +404,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     );
     switch (target) {
       case "type_selector":
@@ -313,6 +412,9 @@ export function useCredentialsInput({
         break;
       case "oauth":
         handleOAuthLogin();
+        break;
+      case "device_code":
+        setDeviceAuthModalOpen(true);
         break;
       case "api_key":
         setAPICredentialsModalOpen(true);
@@ -329,11 +431,11 @@ export function useCredentialsInput({
   function handleCredentialSelect(credentialId: string) {
     const selectedCreds = savedCredentials.find((c) => c.id === credentialId);
     if (selectedCreds) {
-      onSelectCredential({
+      handleCredentialChange({
         id: selectedCreds.id,
         type: selectedCreds.type,
         provider: provider,
-        title: (selectedCreds as any).title,
+        title: selectedCreds.title,
       });
     }
   }
@@ -356,6 +458,10 @@ export function useCredentialsInput({
       return;
 
     setIsDeletingCredential(true);
+    const isDeletingSelected = credentialToDelete.id === selectedCredential?.id;
+    if (isDeletingSelected) {
+      setRemovedCredentialTitle(null);
+    }
     try {
       const state = await processCredentialDeletion(
         credentialToDelete,
@@ -365,7 +471,7 @@ export function useCredentialsInput({
       );
 
       if (state.shouldUnselectCurrent) {
-        onSelectCredential(undefined);
+        handleCredentialChange(undefined);
       }
       setDeleteWarningMessage(state.warningMessage);
       setCredentialToDelete(state.credentialToDelete);
@@ -388,6 +494,7 @@ export function useCredentialsInput({
     providerName,
     supportsApiKey,
     supportsOAuth2,
+    supportsDeviceCode,
     supportsUserPassword,
     supportsHostScoped,
     hasMultipleCredentialTypes,
@@ -397,10 +504,12 @@ export function useCredentialsInput({
     systemCredentials,
     allCredentials: savedCredentials,
     selectedCredential,
+    removedCredentialTitle,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isDeviceAuthModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
     oAuthPopupBlocked,
@@ -414,10 +523,13 @@ export function useCredentialsInput({
       supportsUserPassword,
       supportsHostScoped,
       userCredentials.length > 0,
+      provider,
+      supportsDeviceCode,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setDeviceAuthModalOpen,
     setCredentialTypeSelectorOpen,
     setCredentialToDelete,
     handleActionButtonClick,
@@ -427,7 +539,7 @@ export function useCredentialsInput({
     handleOAuthLogin,
     handleScopeUpgrade,
     userUpgradeableCredentials,
-    onSelectCredential,
+    handleCredentialChange,
     schema,
     siblingInputs,
   };

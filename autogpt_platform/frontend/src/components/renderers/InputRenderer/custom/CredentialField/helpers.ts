@@ -2,15 +2,15 @@ import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credenti
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
 import {
-  GoogleLogoIcon,
-  KeyholeIcon,
-  NotionLogoIcon,
-  DiscordLogoIcon,
-  MediumLogoIcon,
-  GithubLogoIcon,
-  TwitterLogoIcon,
-  Icon,
-} from "@phosphor-icons/react";
+  DiscordIcon,
+  GithubIcon,
+  GoogleIcon,
+  LockKeyIcon,
+  MediumIcon,
+  Notion01Icon,
+  TwitterIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
@@ -66,6 +66,7 @@ export function toDisplayName(provider: string): string {
     d_id: "D-ID",
     e2b: "E2B",
     llama_api: "Llama API",
+    codex: "OpenAI",
     open_router: "Open Router",
     smtp: "SMTP",
     revid: "Rev.ID",
@@ -82,7 +83,7 @@ export function toDisplayName(provider: string): string {
     .join(" ");
 }
 
-export function isCredentialFieldSchema(schema: any): boolean {
+export function isCredentialFieldSchema(schema: unknown): boolean {
   return (
     typeof schema === "object" &&
     schema !== null &&
@@ -90,64 +91,67 @@ export function isCredentialFieldSchema(schema: any): boolean {
   );
 }
 
-export const providerIcons: Partial<Record<string, Icon>> = {
-  aiml_api: KeyholeIcon,
-  anthropic: KeyholeIcon,
-  apollo: KeyholeIcon,
-  e2b: KeyholeIcon,
-  github: GithubLogoIcon,
-  google: GoogleLogoIcon,
-  groq: KeyholeIcon,
-  http: KeyholeIcon,
-  notion: NotionLogoIcon,
-  nvidia: KeyholeIcon,
-  discord: DiscordLogoIcon,
-  d_id: KeyholeIcon,
-  google_maps: GoogleLogoIcon,
-  jina: KeyholeIcon,
-  ideogram: KeyholeIcon,
-  linear: KeyholeIcon,
-  medium: MediumLogoIcon,
-  mem0: KeyholeIcon,
-  ollama: KeyholeIcon,
-  openai: KeyholeIcon,
-  openweathermap: KeyholeIcon,
-  open_router: KeyholeIcon,
-  llama_api: KeyholeIcon,
-  pinecone: KeyholeIcon,
-  enrichlayer: KeyholeIcon,
-  slant3d: KeyholeIcon,
-  screenshotone: KeyholeIcon,
-  smtp: KeyholeIcon,
-  replicate: KeyholeIcon,
-  reddit: KeyholeIcon,
-  fal: KeyholeIcon,
-  revid: KeyholeIcon,
-  twitter: TwitterLogoIcon,
-  unreal_speech: KeyholeIcon,
-  exa: KeyholeIcon,
-  hubspot: KeyholeIcon,
-  smartlead: KeyholeIcon,
-  todoist: KeyholeIcon,
-  zerobounce: KeyholeIcon,
+export const providerIcons: Partial<Record<string, IconSvgElement>> = {
+  aiml_api: LockKeyIcon,
+  anthropic: LockKeyIcon,
+  apollo: LockKeyIcon,
+  e2b: LockKeyIcon,
+  github: GithubIcon,
+  google: GoogleIcon,
+  groq: LockKeyIcon,
+  http: LockKeyIcon,
+  notion: Notion01Icon,
+  nvidia: LockKeyIcon,
+  discord: DiscordIcon,
+  d_id: LockKeyIcon,
+  google_maps: GoogleIcon,
+  jina: LockKeyIcon,
+  ideogram: LockKeyIcon,
+  linear: LockKeyIcon,
+  medium: MediumIcon,
+  mem0: LockKeyIcon,
+  ollama: LockKeyIcon,
+  openai: LockKeyIcon,
+  openweathermap: LockKeyIcon,
+  open_router: LockKeyIcon,
+  llama_api: LockKeyIcon,
+  pinecone: LockKeyIcon,
+  enrichlayer: LockKeyIcon,
+  slant3d: LockKeyIcon,
+  screenshotone: LockKeyIcon,
+  smtp: LockKeyIcon,
+  replicate: LockKeyIcon,
+  reddit: LockKeyIcon,
+  fal: LockKeyIcon,
+  revid: LockKeyIcon,
+  twitter: TwitterIcon,
+  unreal_speech: LockKeyIcon,
+  exa: LockKeyIcon,
+  hubspot: LockKeyIcon,
+  smartlead: LockKeyIcon,
+  todoist: LockKeyIcon,
+  zerobounce: LockKeyIcon,
 };
 
 export const getDiscriminatorValue = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
 ): string | undefined => {
   const discriminator = schema.discriminator;
   const discriminatorValues = schema.discriminator_values;
 
-  return [
+  const value = [
     discriminator ? formData[discriminator] : null,
     ...(discriminatorValues || []),
   ].find(Boolean);
+
+  return value === undefined || value === null ? undefined : String(value);
 };
 
 export const getCredentialProviderFromSchema = (
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
 ) => {
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
@@ -158,6 +162,15 @@ export const getCredentialProviderFromSchema = (
   const discriminatedProvider = discriminatorMapping
     ? discriminatorMapping[discriminatorValue ?? ""]
     : null;
+
+  const legacySelectedProvider = providers.find(
+    (provider) =>
+      discriminator &&
+      discriminatorMapping &&
+      discriminatorValue === undefined &&
+      provider === selectedProvider,
+  );
+  if (legacySelectedProvider) return legacySelectedProvider;
 
   if (providers.length > 1) {
     if (!discriminator) {
@@ -173,7 +186,36 @@ export const getCredentialProviderFromSchema = (
       return null;
     }
     return discriminatedProvider;
-  } else {
-    return providers[0];
   }
+
+  // Single-provider fields used to return their one provider unconditionally,
+  // ignoring the discriminator. That is wrong when a field declares a mapping:
+  // an unmapped value means "this choice needs no credential" — AutoPilot's
+  // `platform` transport, which is deliberately absent from the mapping — and
+  // the input must hide rather than ask for a credential nothing will use.
+  if (discriminator && discriminatorMapping) {
+    return discriminatedProvider ?? null;
+  }
+
+  return providers[0];
+};
+
+/**
+ * True when the field has no usable credential route for the current state.
+ *
+ * An unmapped value needs no credential. An unset discriminator also has no
+ * actionable control unless a saved provider identifies a legacy selection.
+ */
+export const credentialNotApplicable = (
+  formData: Record<string, unknown>,
+  schema: BlockIOCredentialsSubSchema,
+  selectedProvider?: string,
+): boolean => {
+  const mapping = schema.discriminator_mapping;
+  if (!schema.discriminator || !mapping) return false;
+
+  const value = getDiscriminatorValue(formData, schema);
+  if (value === undefined || value === null) return !selectedProvider;
+
+  return !Object.hasOwn(mapping, String(value));
 };

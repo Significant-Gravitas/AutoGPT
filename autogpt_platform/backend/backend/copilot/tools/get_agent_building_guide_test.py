@@ -3,8 +3,10 @@
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.enter_building_mode import BuildingModeResponse
 from backend.copilot.tools.get_agent_building_guide import (
     _TRIGGER_AGENTS_HEADING,
+    AgentBuildingGuideResponse,
     GetAgentBuildingGuideTool,
     _load_guide,
     _strip_h3_section,
@@ -98,8 +100,9 @@ async def test_guide_includes_trigger_section_when_flag_enabled(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id="user-1", session=_make_session())
+    assert isinstance(result, AgentBuildingGuideResponse)
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert "Building Trigger Agents" in result.content  # type: ignore[attr-defined]
+    assert "Building Trigger Agents" in result.content
 
 
 @pytest.mark.asyncio
@@ -110,10 +113,11 @@ async def test_guide_strips_trigger_section_when_flag_disabled(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id="user-1", session=_make_session())
+    assert isinstance(result, AgentBuildingGuideResponse)
     assert result.type == ResponseType.AGENT_BUILDER_GUIDE
-    assert "Building Trigger Agents" not in result.content  # type: ignore[attr-defined]
+    assert "Building Trigger Agents" not in result.content
     # Pre-trigger content (e.g. block-ID examples) must still be present.
-    assert "AgentExecutorBlock" in result.content  # type: ignore[attr-defined]
+    assert "AgentExecutorBlock" in result.content
 
 
 @pytest.mark.asyncio
@@ -127,5 +131,167 @@ async def test_guide_strips_trigger_section_when_no_user_id(mocker):
     )
     tool = GetAgentBuildingGuideTool()
     result = await tool._execute(user_id=None, session=_make_session())
-    assert "Building Trigger Agents" not in result.content  # type: ignore[attr-defined]
+    assert isinstance(result, AgentBuildingGuideResponse)
+    assert "Building Trigger Agents" not in result.content
     spy.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_guide_stubbed_when_already_in_system_prompt():
+    """Building sessions carry the guide in the cached system prompt — the
+    tool returns a pointer instead of duplicating ~9K tokens in context."""
+    tool = GetAgentBuildingGuideTool()
+    session = _make_session()
+    session.guide_in_system_prompt = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, AgentBuildingGuideResponse)
+
+    assert result.type == ResponseType.AGENT_BUILDER_GUIDE
+    assert "system prompt" in result.content
+    assert len(result.content) < 500
+
+
+@pytest.mark.asyncio
+async def test_guide_returned_in_full_without_flag(mocker):
+    mocker.patch(
+        "backend.copilot.tools.get_agent_building_guide.is_feature_enabled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    tool = GetAgentBuildingGuideTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, AgentBuildingGuideResponse)
+
+    assert result.type == ResponseType.AGENT_BUILDER_GUIDE
+    assert len(result.content) > 10_000
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_sets_request_flag():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.sdk_turn_active = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
+
+    assert session.building_mode_requested is True
+    assert "upgraded" in result.content
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_noop_when_already_active():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.guide_in_system_prompt = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
+
+    assert session.building_mode_requested is False
+    assert "already active" in result.content
+
+
+def test_enter_building_mode_available_on_baseline():
+    """enter_agent_building_mode is offered on the baseline path too — it
+    branches per path (SDK restart / engine switch / inline guide on
+    SDK-less deployments)."""
+    from backend.copilot.tools import get_available_tools
+
+    names = {t["function"]["name"] for t in get_available_tools()}
+    assert "enter_agent_building_mode" in names
+    assert "get_agent_building_guide" in names
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_baseline_switch_message(mocker):
+    """Baseline turn + SDK-capable deployment: tool registers the switch and
+    instructs the model to end its turn."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=True)),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
+
+    assert session.building_mode_requested is False
+    assert "switches to the agent-building engine" in result.content
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_local_degrades_to_guide(mocker):
+    """SDK-less deployment: tool serves the full guide inline."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=False)),
+    )
+    mocker.patch(
+        "backend.copilot.tools.get_agent_building_guide.is_feature_enabled",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
+
+    assert len(result.content) > 10_000
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_sdk_turn_requests_restart():
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.sdk_turn_active = True
+
+    result = await tool._execute(user_id="user-1", session=session)
+    assert isinstance(result, BuildingModeResponse)
+
+    assert session.building_mode_requested is True
+    assert "upgraded" in result.content
+
+
+@pytest.mark.asyncio
+async def test_enter_building_mode_baseline_registers_engine_switch(mocker):
+    from unittest.mock import MagicMock
+
+    from backend.copilot import engine_switch
+    from backend.copilot.tools.enter_building_mode import EnterAgentBuildingModeTool
+
+    mocker.patch(
+        "backend.copilot.tools.enter_building_mode.chat_config",
+        MagicMock(transport=MagicMock(supports_sdk=True)),
+    )
+    tool = EnterAgentBuildingModeTool()
+    session = _make_session()
+    session.organization_id = "org-9"
+    session.team_id = "team-9"
+
+    await tool._execute(user_id="user-1", session=session)
+
+    switch = engine_switch.pop_switch(session.session_id)
+    assert switch is not None and switch.user_id == "user-1"
+    # Full tenancy tuple must be captured — a dropped org/team would break
+    # continuations for org users and only surface as a dispatch refusal.
+    assert switch.organization_id == "org-9"
+    assert switch.team_id == "team-9"
+    assert engine_switch.pop_switch(session.session_id) is None  # pop-once

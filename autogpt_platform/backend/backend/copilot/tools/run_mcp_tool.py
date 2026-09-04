@@ -1,5 +1,6 @@
 """Tool for discovering and executing MCP (Model Context Protocol) server tools."""
 
+import json
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -35,6 +36,15 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Discovery-response size caps: keep multi-tool catalogs small enough that a
+# 20-tool server doesn't consume a meaningful share of the context window.
+# All inputs here are server-controlled, so every dimension is bounded:
+# tool count, description length, and per-tool params-summary length.
+_TOOL_DESCRIPTION_MAX_CHARS = 300
+_ERROR_SCHEMA_MAX_CHARS = 4000
+_DISCOVERY_MAX_TOOLS = 100
+_PARAMS_SUMMARY_MAX_CHARS = 400
 
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
@@ -340,19 +350,39 @@ class RunMCPToolTool(BaseTool):
         inspect tool schemas and choose one to execute in a follow-up call.
         """
         tools = await client.list_tools()
+        # Full input schemas are deliberately omitted: a server like Notion
+        # exposes 20 tools whose schemas total ~67KB (~17K tokens) — enough
+        # to trigger context compaction on its own. The compact per-tool
+        # param summary covers tool selection; the full schema of a single
+        # tool is delivered on demand via the execution error path.
+        # Tool count and params-summary length are bounded too — both are
+        # server-controlled and would otherwise be unbounded context cost.
+        dropped_tools = max(0, len(tools) - _DISCOVERY_MAX_TOOLS)
         tool_infos = [
             MCPToolInfo(
                 name=t.name,
-                description=t.description,
-                input_schema=t.input_schema,
+                description=(t.description or "")[:_TOOL_DESCRIPTION_MAX_CHARS],
+                params=_summarize_params(t.input_schema),
             )
-            for t in tools
+            for t in tools[:_DISCOVERY_MAX_TOOLS]
         ]
         host = server_host(server_url)
+        truncation_note = (
+            f" NOTE: {dropped_tools} additional tool(s) were omitted from "
+            "this listing to bound context size."
+            if dropped_tools
+            else ""
+        )
         return MCPToolsDiscoveredResponse(
             message=(
-                f"Discovered {len(tool_infos)} tool(s) on {host}. "
-                "Call run_mcp_tool again with tool_name and tool_arguments to execute one."
+                f"Discovered {len(tool_infos)} tool(s) on {host}."
+                f"{truncation_note} Full input "
+                "schemas are omitted to save context — `params` lists each "
+                "tool's argument names with required ones marked `*`. Call "
+                "run_mcp_tool again with tool_name and tool_arguments to "
+                "execute one; if the arguments are wrong, the error response "
+                "includes a schema hint for that tool. Do NOT re-run "
+                "discovery after an argument error."
             ),
             server_url=server_url,
             tools=tool_infos,
@@ -408,8 +438,12 @@ class RunMCPToolTool(BaseTool):
                 for item in result.content
                 if item.get("type") == "text"
             )
+            hint = await self._build_error_hint(client, tool_name)
             return ErrorResponse(
-                message=f"MCP tool '{tool_name}' returned an error: {error_text or 'Unknown error'}",
+                message=(
+                    f"MCP tool '{tool_name}' returned an error: "
+                    f"{error_text or 'Unknown error'}{hint}"
+                ),
                 session_id=session_id,
             )
 
@@ -423,6 +457,31 @@ class RunMCPToolTool(BaseTool):
             success=True,
             session_id=session_id,
         )
+
+    async def _build_error_hint(self, client: MCPClient, tool_name: str) -> str:
+        """Self-correction hint appended to tool-error responses.
+
+        Discovery omits full input schemas (context cost), so this is where
+        the model gets the one schema it actually needs: the failed tool's.
+        For a misspelled tool name, list the available names instead. Both
+        beat the model's fallback of re-running discovery, which re-injects
+        the entire multi-tool catalog into context.
+        """
+        try:
+            tools = await client.list_tools()
+            match = next((t for t in tools if t.name == tool_name), None)
+            if match is not None:
+                schema_json = _bounded_schema_hint(match.input_schema)
+                return f" Input schema for '{tool_name}': {schema_json}"
+            names = ", ".join(t.name for t in tools[:40])
+            return (
+                f" No tool named '{tool_name}' exists on this server. "
+                f"Available tools: {names}"
+            )
+        except Exception:
+            # Best-effort — a failed hint lookup must not mask the original
+            # tool error.
+            return ""
 
     async def _lookup_tool_schema(
         self,
@@ -525,3 +584,61 @@ class RunMCPToolTool(BaseTool):
             graph_id=None,
             graph_version=None,
         )
+
+
+def _summarize_params(schema: dict | None) -> str | None:
+    """Compact one-line argument summary for a tool's input schema.
+
+    Returns ``"query*, limit, filter"`` style output — top-level property
+    names with required ones marked ``*`` — or ``None`` when the schema has
+    no usable properties. Nested structure is intentionally dropped; the
+    full schema is available via the execution error path.
+    """
+    if not isinstance(schema, dict):
+        return None
+    properties = schema.get("properties")
+    if not isinstance(properties, dict) or not properties:
+        return None
+    required = schema.get("required")
+    required_names = set(required) if isinstance(required, list) else set()
+    summary = ", ".join(
+        f"{name}*" if name in required_names else name for name in properties
+    )
+    if len(summary) > _PARAMS_SUMMARY_MAX_CHARS:
+        summary = summary[:_PARAMS_SUMMARY_MAX_CHARS] + "…"
+    return summary
+
+
+def _bounded_schema_hint(schema: dict | None) -> str:
+    """Serialize *schema* for an error hint, bounded to a parseable size.
+
+    Small schemas pass through verbatim. Oversized ones are reduced
+    structurally — top-level properties keep only their ``type`` and a
+    shortened ``description``, plus the ``required`` list and a
+    ``$truncated`` marker — so the hint stays valid JSON instead of a
+    sliced string.
+    """
+    full = json.dumps(schema)
+    if len(full) <= _ERROR_SCHEMA_MAX_CHARS:
+        return full
+    if not isinstance(schema, dict):
+        return full[:_ERROR_SCHEMA_MAX_CHARS]
+
+    properties = schema.get("properties")
+    reduced_props: dict[str, Any] = {}
+    if isinstance(properties, dict):
+        for name, prop in properties.items():
+            entry: dict[str, Any] = {}
+            if isinstance(prop, dict):
+                if "type" in prop:
+                    entry["type"] = prop["type"]
+                if isinstance(prop.get("description"), str):
+                    entry["description"] = prop["description"][:120]
+            reduced_props[name] = entry
+    reduced = {
+        "type": schema.get("type", "object"),
+        "properties": reduced_props,
+        "required": schema.get("required", []),
+        "$truncated": "nested structure omitted to bound context size",
+    }
+    return json.dumps(reduced)

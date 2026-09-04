@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
-import { CircleNotchIcon, MicrophoneIcon } from "@phosphor-icons/react";
+import { Loading03Icon, Mic01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isRecording: boolean;
@@ -10,6 +11,11 @@ interface Props {
   isStreaming: boolean;
   disabled: boolean;
   onClick: () => void;
+  // One-time highlight for the user who skipped the onboarding brain
+  // dump: AutoPilot's intro invites them to record, so the button it
+  // points at has to be findable.
+  highlight?: boolean;
+  className?: string;
 }
 
 export function RecordingButton({
@@ -18,6 +24,8 @@ export function RecordingButton({
   isStreaming,
   disabled,
   onClick,
+  highlight = false,
+  className,
 }: Props) {
   return (
     <Button
@@ -28,17 +36,21 @@ export function RecordingButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-700",
+        "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+        className,
         disabled && "opacity-40",
         isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
         isTranscribing && "bg-zinc-100 text-zinc-400",
         isStreaming && "opacity-40",
+        highlight &&
+          !isRecording &&
+          "border-purple-300 text-purple-600 ring-4 ring-purple-100",
       )}
     >
       {isTranscribing ? (
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
       ) : (
-        <MicrophoneIcon className="h-4 w-4" weight="bold" />
+        <Icon icon={Mic01Icon} className="h-4 w-4" />
       )}
     </Button>
   );

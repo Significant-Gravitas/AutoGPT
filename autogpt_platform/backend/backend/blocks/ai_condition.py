@@ -14,7 +14,7 @@ from backend.blocks.llm import (
     AIBlockBase,
     AICredentials,
     AICredentialsField,
-    LlmModel,
+    LLMModel,
     LLMResponse,
     llm_call,
 )
@@ -76,7 +76,7 @@ class AIConditionBlock(AIBlockBase):
             placeholder="Leave empty to use input_value, or enter a specific value",
             default=None,
         )
-        model: LlmModel = SchemaField(
+        model: LLMModel = SchemaField(
             title="LLM Model",
             default=DEFAULT_LLM_MODEL,
             description="The language model to use for evaluating the condition.",
@@ -134,7 +134,7 @@ class AIConditionBlock(AIBlockBase):
     async def llm_call(
         self,
         credentials: APIKeyCredentials,
-        llm_model: LlmModel,
+        llm_model: LLMModel,
         prompt: list,
         max_tokens: int,
     ) -> LLMResponse:

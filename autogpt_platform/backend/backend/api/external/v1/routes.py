@@ -166,8 +166,21 @@ async def create_graph(
     # and library agent half-saved.
     graph_model = await before_graph_activate(graph_model, user_id=auth.user_id)
 
-    await graph_db.create_graph(graph_model, user_id=auth.user_id)
-    await library_db.create_library_agent(graph_model, auth.user_id)
+    # Dual-write org/team tenancy to BOTH the graph and the library entry,
+    # matching the internal create route. An org- or team-scoped API key must
+    # not leave the graph untenanted while its library row is org-tagged.
+    await graph_db.create_graph(
+        graph_model,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
+    )
+    await library_db.create_library_agent(
+        graph_model,
+        auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id_restriction,
+    )
 
     return graph_model
 
@@ -188,12 +201,38 @@ async def execute_graph(
     # than fail-open via the deep gate inside add_graph_execution).
     # Consistent with the JWT-gated internal graph-execute route.
     await enforce_payment_paywall(auth.user_id)
+
+    # Attribute the execution to the API key's org when the key is org-scoped,
+    # so a key issued for org A doesn't get billed/attributed to the user's
+    # default (personal) org. A team-restricted key pins the execution to
+    # that team; otherwise team stays org-home (None). Only fall back to the
+    # user's default org/team when the key carries no org.
+    org_id: str | None
+    team_id: str | None
+    if auth.organization_id:
+        org_id, team_id = auth.organization_id, auth.team_id_restriction
+    else:
+        # Best-effort: a DB hiccup here must not collapse a subsequent
+        # UserPaywalledError into 400 via the broad except below.
+        from backend.api.features.orgs.db import get_user_default_team
+
+        try:
+            org_id, team_id = await get_user_default_team(auth.user_id)
+        except Exception:
+            logger.warning(
+                "get_user_default_team failed for external execute",
+                exc_info=True,
+            )
+            org_id, team_id = None, None
+
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=auth.user_id,
             inputs=node_input,
             graph_version=graph_version,
+            organization_id=org_id,
+            team_id=team_id,
         )
         return {"id": graph_exec.id}
     except UserPaywalledError:

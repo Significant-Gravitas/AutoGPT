@@ -993,3 +993,440 @@ class TestValidateMCPToolBlocks:
         v.validate_mcp_tool_blocks(agent)
 
         assert len(v.errors) == 2
+
+
+class TestMCPToolDynamicSinks:
+    """Dynamic tool arguments declared by a node's tool_input_schema are valid
+    sinks / input_default keys on MCPToolBlock nodes — the executor collects
+    them into tool_arguments at run time."""
+
+    def _mcp_block(self) -> dict:
+        return _make_block(
+            block_id=MCP_TOOL_BLOCK_ID,
+            name="MCPToolBlock",
+            input_schema={
+                "properties": {
+                    "server_url": {"type": "string"},
+                    "selected_tool": {"type": "string"},
+                    "tool_input_schema": {"type": "object"},
+                    "tool_arguments": {
+                        "type": "object",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["server_url"],
+            },
+        )
+
+    def _mcp_node(self, **extra_defaults) -> dict:
+        return _make_node(
+            node_id="mcp-1",
+            block_id=MCP_TOOL_BLOCK_ID,
+            input_default={
+                "server_url": "https://mcp.notion.com/mcp",
+                "selected_tool": "notion-query-data-sources",
+                "tool_input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "object"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["data"],
+                },
+                **extra_defaults,
+            },
+        )
+
+    def test_dynamic_tool_arg_sink_passes(self):
+        v = AgentValidator()
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="mcp-1", sink_name="data"
+        )
+        agent = _make_agent(nodes=[self._mcp_node()], links=[link])
+        assert v.validate_sink_input_existence(agent, [self._mcp_block()]) is True
+
+    def test_unknown_sink_still_fails(self):
+        v = AgentValidator()
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="mcp-1", sink_name="bogus"
+        )
+        agent = _make_agent(nodes=[self._mcp_node()], links=[link])
+        v_result = v.validate_sink_input_existence(agent, [self._mcp_block()])
+        assert v_result is False
+        assert any("bogus" in e for e in v.errors)
+
+    def test_dynamic_tool_arg_in_input_default_passes(self):
+        v = AgentValidator()
+        node = self._mcp_node(limit=10)
+        agent = _make_agent(nodes=[node])
+        assert v.validate_sink_input_existence(agent, [self._mcp_block()]) is True
+
+
+class TestNestedChainsThroughUntypedFields:
+    """_#_ chains through untyped/Any levels are resolved dynamically at run
+    time and must not be rejected statically; scalar levels still reject."""
+
+    def _code_block(self) -> dict:
+        return _make_block(
+            block_id="code-1",
+            name="ExecuteCodeBlock",
+            output_schema={
+                "properties": {
+                    "main_result": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "json": {"anyOf": [{}, {"type": "null"}]},
+                        },
+                    },
+                    "response": {"type": "string"},
+                }
+            },
+        )
+
+    def _link(self, source_name: str) -> dict:
+        return _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+
+    def _agent(self, source_name: str) -> dict:
+        nodes = [
+            _make_node(node_id="n1", block_id="code-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        return _make_agent(nodes=nodes, links=[self._link(source_name)])
+
+    def _blocks(self) -> list[dict]:
+        return [
+            self._code_block(),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+
+    def test_chain_through_untyped_field_passes(self):
+        v = AgentValidator()
+        agent = self._agent("main_result_#_json_#_has_new")
+        assert v.validate_source_output_existence(agent, self._blocks()) is True
+
+    def test_declared_child_still_verified(self):
+        v = AgentValidator()
+        agent = self._agent("main_result_#_nonexistent")
+        assert v.validate_source_output_existence(agent, self._blocks()) is False
+        assert any("nonexistent" in e for e in v.errors)
+
+    def test_chain_into_scalar_fails(self):
+        v = AgentValidator()
+        agent = self._agent("response_#_field")
+        assert v.validate_source_output_existence(agent, self._blocks()) is False
+        assert any("no extractable sub-fields" in e for e in v.errors)
+
+    def test_chain_through_scalar_anyof_fails(self):
+        v = AgentValidator()
+        agent = self._agent("main_result_#_text_#_deeper")
+        assert v.validate_source_output_existence(agent, self._blocks()) is False
+        assert any("no extractable sub-fields" in e for e in v.errors)
+        # _resolve_optional_union unwraps [string, null] to its non-null
+        # branch, so the message names the concrete type — never 'None'.
+        assert any("type 'string'" in e for e in v.errors)
+
+    def test_sink_side_chain_through_untyped_field_passes(self):
+        """The shared walker also guards sink chains — an untyped declared
+        input accepts nested delivery."""
+        v = AgentValidator()
+        link = _make_link(
+            source_id="n1",
+            source_name="response",
+            sink_id="n2",
+            sink_name="input_#_nested_#_deep",
+        )
+        nodes = [
+            _make_node(node_id="n1", block_id="code-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        agent = _make_agent(nodes=nodes, links=[link])
+        assert v.validate_sink_input_existence(agent, self._blocks()) is True
+
+
+class TestNestedChainEdgeCases:
+    """Regressions from review: empty schemas are present-but-untyped, and
+    Optional[X] unions resolve to X for strict validation."""
+
+    def _agent_with_source(self, source_name: str, output_schema: dict) -> tuple:
+        blocks = [
+            _make_block(block_id="src-1", output_schema=output_schema),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        return _make_agent(nodes=nodes, links=[link]), blocks
+
+    def test_empty_schema_property_is_present_and_untyped(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_with_source(
+            "value_#_child", {"properties": {"value": {}}}
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_optional_declared_object_valid_child_passes(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {
+                "cfg": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"key": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            }
+        }
+        agent, blocks = self._agent_with_source("cfg_#_key", schema)
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_optional_declared_object_invalid_child_fails(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {
+                "cfg": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"key": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            }
+        }
+        agent, blocks = self._agent_with_source("cfg_#_missing", schema)
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("missing" in e for e in v.errors)
+
+    def test_optional_scalar_still_rejects_descent(self):
+        v = AgentValidator()
+        schema = {
+            "properties": {"name": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
+        }
+        agent, blocks = self._agent_with_source("name_#_x", schema)
+        assert v.validate_source_output_existence(agent, blocks) is False
+
+
+class TestDynamicRequiredInputs:
+    """Required arguments declared in a node's dynamic schema (MCP tool /
+    sub-agent input schema) must be enforced by validate_required_inputs —
+    the static block schema says nothing about them."""
+
+    def _mcp_node(self, input_default: dict) -> dict:
+        return _make_node(block_id=MCP_TOOL_BLOCK_ID, input_default=input_default)
+
+    def _mcp_block(self) -> dict:
+        return _make_block(block_id=MCP_TOOL_BLOCK_ID, name="MCPToolBlock")
+
+    def test_missing_required_dynamic_argument_fails(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+            }
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_required_inputs(agent, [self._mcp_block()]) is False
+        assert any("'data'" in e for e in v.errors)
+
+    def test_required_dynamic_argument_via_default_passes(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+                "data": "hello",
+            }
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_required_inputs(agent, [self._mcp_block()]) is True
+
+    def test_required_dynamic_argument_via_link_passes(self):
+        v = AgentValidator()
+        node = self._mcp_node(
+            {
+                "server_url": "https://mcp.example.com/sse",
+                "selected_tool": "search",
+                "tool_input_schema": {
+                    "properties": {"data": {"type": "string"}},
+                    "required": ["data"],
+                },
+            }
+        )
+        source = _make_node(block_id="block-1")
+        link = _make_link(
+            source_id=source["id"],
+            source_name="output",
+            sink_id=node["id"],
+            sink_name="data",
+        )
+        agent = _make_agent(nodes=[source, node], links=[link])
+
+        assert (
+            v.validate_required_inputs(agent, [self._mcp_block(), _make_block()])
+            is True
+        )
+
+
+class TestAdditionalPropertiesChains:
+    """Levels that allow additionalProperties accept the remaining chain —
+    the executor delivers arbitrary keys into such dicts at run time."""
+
+    def _agent_and_blocks(self, output_schema: dict) -> tuple[dict, list[dict]]:
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1",
+            source_name="payload_#_anything_#_deeper",
+            sink_id="n2",
+            sink_name="input",
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        blocks = [
+            _make_block(block_id="src-1", output_schema=output_schema),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        return agent, blocks
+
+    def test_direct_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {"type": "object", "additionalProperties": True}
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_anyof_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {
+                        "anyOf": [
+                            {"type": "object", "additionalProperties": True},
+                            {"type": "null"},
+                        ]
+                    }
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_anyof_items_additional_properties_accepts_chain(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {
+                "properties": {
+                    "payload": {
+                        "anyOf": [
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": True,
+                                },
+                            },
+                            {"type": "null"},
+                        ]
+                    }
+                }
+            }
+        )
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_missing_top_level_property_lists_available(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks(
+            {"properties": {"other": {"type": "string"}}}
+        )
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("Available properties" in e and "other" in e for e in v.errors)
+
+
+class TestDeepDeclaredChains:
+    """Arbitrary-depth strict validation through multiple *declared* object
+    levels — each declared level is verified, and a miss names the level."""
+
+    def _agent_and_blocks(self, source_name: str) -> tuple[dict, list[dict]]:
+        nodes = [
+            _make_node(node_id="n1", block_id="src-1"),
+            _make_node(node_id="n2", block_id="sink-1"),
+        ]
+        link = _make_link(
+            source_id="n1", source_name=source_name, sink_id="n2", sink_name="input"
+        )
+        agent = _make_agent(nodes=nodes, links=[link])
+        blocks = [
+            _make_block(
+                block_id="src-1",
+                output_schema={
+                    "properties": {
+                        "a": {
+                            "type": "object",
+                            "properties": {
+                                "b": {
+                                    "type": "object",
+                                    "properties": {"c": {}},
+                                }
+                            },
+                        }
+                    }
+                },
+            ),
+            _make_block(
+                block_id="sink-1",
+                input_schema={"properties": {"input": {}}, "required": []},
+            ),
+        ]
+        return agent, blocks
+
+    def test_three_declared_levels_pass(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_c")
+        assert v.validate_source_output_existence(agent, blocks) is True
+
+    def test_miss_at_third_declared_level_names_it(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_x")
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("'x'" in e and "'a_#_b'" in e for e in v.errors)
+
+    def test_miss_at_second_declared_level_names_it(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_x_#_c")
+        assert v.validate_source_output_existence(agent, blocks) is False
+        assert any("'x'" in e and "'a'" in e for e in v.errors)
+
+    def test_untyped_leaf_after_declared_levels_accepts_further_descent(self):
+        v = AgentValidator()
+        agent, blocks = self._agent_and_blocks("a_#_b_#_c_#_anything")
+        assert v.validate_source_output_existence(agent, blocks) is True

@@ -146,6 +146,8 @@ class ContinueRunBlockTool(BaseTool):
             node_exec_id=review_id,
             matched_credentials=matched_creds,
             dry_run=False,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
         )
 
         # Delete review record after successful execution (one-time use)

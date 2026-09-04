@@ -178,48 +178,28 @@ Then you can use the same steps above but you need to add the Ollama server's IP
 
 ## Add Custom Models (Advanced)
 
-If you want to use models other than the default ones, you'll need to add them to the model list. Follow these steps:
+Model definitions are centralized in the LLM catalog — see [Managing LLM Models](contributing/managing-llm-models.md) for the full field reference and workflow. To add a custom Ollama model:
 
-1. **Add the model to the LlmModel enum** in `autogpt_platform/backend/backend/blocks/llm.py`:
-   
-   Find the Ollama models section (around line 119) and add your model like the other Ollama models:
+1. **Add a catalog entry** in `autogpt_platform/backend/backend/data/llm_registry/catalog.py`, next to the other Ollama models:
    ```python
-   # Ollama models
-   OLLAMA_LLAMA3_3 = "llama3.3"
-   OLLAMA_LLAMA3_2 = "llama3.2"
-   OLLAMA_YOUR_MODEL = "The-model-name-from-ollama"  # Add your model here
+   CatalogModel(
+       slug="The-model-name-from-ollama",  # bare name, exactly as Ollama serves it
+       display_name="Your Model",
+       provider="ollama",
+       context_window=8192,  # adjust for your model
+       cost=CatalogModelCost(run_credits=1),
+   ),
    ```
+   Ollama models use bare model names (no `vendor/` prefix) — the name must match what `ollama list` shows. A run cost of `1` is fine for local usage; cost tracking is disabled for self-hosted instances.
 
-2. **Add model metadata** in the same file:
-   
-   Find the `MODEL_METADATA` dictionary (around line 181) and add your model with its metadata:
-   ```python
-   # In MODEL_METADATA dictionary, add:
-   LlmModel.OLLAMA_YOUR_MODEL: ModelMetadata("ollama", 8192, None),
-   ```
-   
-   Where:
+2. **Also add one `LLMModel` name line** in `autogpt_platform/backend/backend/data/llm_registry/llm_models.py` (Ollama section) — that identifier is what block schemas serialize; every model FACT (metadata, costs) lives in the catalog entry itself, and an import-time check refuses to boot if an enum name has no catalog entry. The catalog entry is what centralizes the model's metadata and makes it routable for AutoPilot.
 
-   - `"ollama"` = provider name
-   - `8192` = max context window (adjust based on your model)
-   - `None` = max output tokens (None means no specific limit)
-
-3. **Add model cost configuration** in `autogpt_platform/backend/backend/data/block_cost_config.py`:
-   
-   Find the `MODEL_COST` dictionary (around line 54) and add your model:
-   ```python
-   # In MODEL_COST dictionary, add:
-   LlmModel.OLLAMA_YOUR_MODEL: 1,
-   ```
-   
-   > **Note**: Setting cost to `1` is fine for local usage as cost tracking is disabled for self-hosted instances.
-
-4. **Rebuild the backend**:
+3. **Rebuild the backend**:
    ```bash
    docker compose up -d --build
    ```
 
-5. **Pull the model in Ollama**:
+4. **Pull the model in Ollama**:
    ```bash
    ollama pull your-model-name
    ```

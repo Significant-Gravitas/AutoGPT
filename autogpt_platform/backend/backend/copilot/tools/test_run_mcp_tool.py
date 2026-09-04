@@ -197,6 +197,9 @@ async def test_discover_tools_returns_discovered_response():
     assert response.tools[0].name == "fetch"
     assert response.tools[1].name == "search"
     assert response.server_url == _SERVER_URL
+    # Full schemas are omitted from discovery to keep the payload small
+    assert response.tools[0].input_schema is None
+    assert response.tools[1].input_schema is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -498,6 +501,132 @@ async def test_execute_tool_returns_error_on_tool_failure():
 
     assert isinstance(response, ErrorResponse)
     assert "nonexistent" in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_discovery_summarizes_params_and_truncates_description():
+    """Discovery returns a compact params summary instead of full schemas."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    t = MagicMock()
+    t.name = "notion-search"
+    t.description = "x" * 500
+    t.input_schema = {
+        "type": "object",
+        "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}},
+        "required": ["query"],
+    }
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_client = AsyncMock()
+            mock_client.list_tools = AsyncMock(return_value=[t])
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                )
+
+    assert isinstance(response, MCPToolsDiscoveredResponse)
+    assert response.tools[0].params == "query*, limit"
+    assert response.tools[0].input_schema is None
+    assert len(response.tools[0].description) == 300
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_tool_error_includes_failed_tools_schema():
+    """A failing tool call returns that tool's full schema as a hint so the
+    model can self-correct without re-running the (large) discovery step."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    known = _make_tool_list("known-tool")[0]
+    known.input_schema = {
+        "type": "object",
+        "properties": {"page_id": {"type": "string"}},
+        "required": ["page_id"],
+    }
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result(
+                [{"type": "text", "text": "Missing required argument"}], is_error=True
+            )
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            mock_client.list_tools = AsyncMock(return_value=[known])
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="known-tool",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, ErrorResponse)
+    assert "Input schema for 'known-tool'" in response.message
+    assert "page_id" in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_unknown_tool_error_lists_available_names():
+    """A call to a nonexistent tool returns the valid tool names as a hint."""
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_result = _make_call_result(
+                [{"type": "text", "text": "Tool not found"}], is_error=True
+            )
+            mock_client = AsyncMock()
+            mock_client.call_tool = AsyncMock(return_value=mock_result)
+            mock_client.list_tools = AsyncMock(
+                return_value=_make_tool_list("notion-search", "notion-fetch")
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                    tool_name="notion-retrieve-page",
+                    tool_arguments={},
+                )
+
+    assert isinstance(response, ErrorResponse)
+    assert "No tool named 'notion-retrieve-page'" in response.message
+    assert "notion-search" in response.message
+    assert "notion-fetch" in response.message
 
 
 # ---------------------------------------------------------------------------

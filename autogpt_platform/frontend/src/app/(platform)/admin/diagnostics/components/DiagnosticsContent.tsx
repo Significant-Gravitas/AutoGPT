@@ -9,11 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
-import { ArrowClockwise } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";
 import { SchedulesTable } from "./SchedulesTable";
+import { Refresh01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function DiagnosticsContent() {
   const {
@@ -34,7 +35,10 @@ export function DiagnosticsContent() {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <ArrowClockwise className="mx-auto h-8 w-8 animate-spin text-gray-400" />
+          <Icon
+            icon={Refresh01Icon}
+            className="mx-auto h-8 w-8 animate-spin text-gray-400"
+          />
           <p className="mt-2 text-gray-500">Loading diagnostics...</p>
         </div>
       </div>
@@ -66,7 +70,8 @@ export function DiagnosticsContent() {
           variant="outline"
           size="small"
         >
-          <ArrowClockwise
+          <Icon
+            icon={Refresh01Icon}
             className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
           />
           Refresh

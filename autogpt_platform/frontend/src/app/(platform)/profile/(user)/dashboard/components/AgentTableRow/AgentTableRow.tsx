@@ -7,16 +7,17 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Status } from "@/components/__legacy__/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import {
-  DotsThreeVerticalIcon,
-  EyeIcon,
-  ImageBroken,
-  StarIcon,
-  TrashIcon,
-  PencilIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import {
+  Delete02Icon,
+  EyeIcon,
+  ImageNotFound01Icon,
+  MoreVerticalIcon,
+  PencilIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type AgentTableRowProps = {
   storeAgentSubmission: StoreSubmission;
@@ -79,7 +80,10 @@ export const AgentTableRow = ({
             </div>
           ) : (
             <div className="flex aspect-video w-32 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-zinc-100">
-              <ImageBroken className="h-8 w-8 text-zinc-800" />
+              <Icon
+                icon={ImageNotFound01Icon}
+                className="h-8 w-8 text-zinc-800"
+              />
             </div>
           )}
           <div className="flex flex-col">
@@ -130,7 +134,7 @@ export const AgentTableRow = ({
               <span className="text-sm font-medium">
                 {review_avg_rating.toFixed(1)}
               </span>
-              <StarIcon weight="fill" className="h-2 w-2" />
+              <Icon icon={StarIcon} className="h-2 w-2" />
             </div>
           ) : (
             <span className="text-sm text-neutral-600 dark:text-neutral-400">
@@ -143,7 +147,10 @@ export const AgentTableRow = ({
         <div className="flex justify-end">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger data-testid="agent-table-row-actions">
-              <DotsThreeVerticalIcon className="h-5 w-5 text-neutral-800" />
+              <Icon
+                icon={MoreVerticalIcon}
+                className="h-5 w-5 text-neutral-800"
+              />
             </DropdownMenu.Trigger>
             <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
               {canModify ? (
@@ -151,7 +158,10 @@ export const AgentTableRow = ({
                   onSelect={handleEdit}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <PencilIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <Icon
+                    icon={PencilIcon}
+                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                  />
                   <span className="dark:text-gray-100">Edit</span>
                 </DropdownMenu.Item>
               ) : (
@@ -159,7 +169,10 @@ export const AgentTableRow = ({
                   onSelect={handleView}
                   className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <EyeIcon className="mr-2 h-4 w-4 dark:text-gray-100" />
+                  <Icon
+                    icon={EyeIcon}
+                    className="mr-2 h-4 w-4 dark:text-gray-100"
+                  />
                   <span className="dark:text-gray-100">View</span>
                 </DropdownMenu.Item>
               )}
@@ -170,7 +183,10 @@ export const AgentTableRow = ({
                     onSelect={handleDelete}
                     className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    <TrashIcon className="mr-2 h-4 w-4 text-red-500 dark:text-red-400" />
+                    <Icon
+                      icon={Delete02Icon}
+                      className="mr-2 h-4 w-4 text-red-500 dark:text-red-400"
+                    />
                     <span className="dark:text-red-400">Delete</span>
                   </DropdownMenu.Item>
                 </>

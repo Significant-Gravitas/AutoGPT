@@ -1496,7 +1496,12 @@ The search is performed against the Mem0 memory store and returns memories ranke
 ## Store Value
 
 ### What it is
-A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.
+Holds or receives a value and outputs it statically so that it can be used multiple
+times within the same agent run. Whenever consumed, the output value reflects the
+last input value that was received.
+
+NOTE: The value is NOT persisted across runs. To store data that survives between
+runs, use PersistInformationBlock and RetrieveInformationBlock instead.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

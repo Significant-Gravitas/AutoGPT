@@ -71,10 +71,13 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "confirm_expert_change",
+    "confirm_expert_soul_update",
     "connect_integration",
     "continue_run_block",
     "create_agent",
@@ -82,12 +85,14 @@ ToolName = Literal[
     "create_folder",
     "customize_agent",
     "decompose_goal",
+    "delegate_to_expert",
     "delete_folder",
     "delete_preset",
     "delete_schedule",
     "delete_skill",
     "delete_workspace_file",
     "edit_agent",
+    "enter_agent_building_mode",
     "find_agent",
     "find_block",
     "find_library_agent",
@@ -97,12 +102,15 @@ ToolName = Literal[
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "handoff_to_expert",
+    "hire_expert",
     "list_agent_triggers",
     "list_chat_platform_channels",
     "list_folders",
     "list_presets",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
@@ -111,6 +119,7 @@ ToolName = Literal[
     "move_agents_to_folder",
     "move_folder",
     "post_to_chat_platform",
+    "raise_expert",
     "read_skill",
     "read_workspace_file",
     "run_agent",
@@ -122,6 +131,8 @@ ToolName = Literal[
     "search_feature_requests",
     "setup_agent_webhook_trigger",
     "store_skill",
+    "update_expert",
+    "update_expert_soul",
     "update_folder",
     "update_preset",
     "validate_agent_graph",
@@ -144,7 +155,7 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and
@@ -157,7 +168,8 @@ the model as available tools.
 # baseline mode ships an MCP-wrapped platform version
 # (``tools/todo_write.py``), while SDK mode still uses the CLI-native
 # original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# ``Task`` remains an SDK-only built-in
 # (for queue-backed context-isolation on baseline, use ``run_sub_session``
 # instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(

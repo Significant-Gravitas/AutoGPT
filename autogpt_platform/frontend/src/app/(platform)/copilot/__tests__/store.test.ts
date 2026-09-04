@@ -29,6 +29,7 @@ function resetStore() {
       activeArtifact: null,
       history: [],
       activeTab: "files",
+      lastArtifact: null,
     },
   });
   // Clear the module-level auto-open flags so each test starts isolated —
@@ -111,6 +112,35 @@ describe("artifactPanel store actions", () => {
     // Drawer is gated on activeArtifact — closing must drop it so it can't float.
     expect(s.activeArtifact).toBeNull();
     expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact/closeArtifactPanel persist the open state by default", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "true",
+    );
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(window.localStorage.getItem("copilot-context-panel-open")).toBe(
+      "false",
+    );
+  });
+
+  it("openArtifact/closeArtifactPanel skip localStorage with persist: false", () => {
+    window.localStorage.removeItem("copilot-context-panel-open");
+    useCopilotUIStore
+      .getState()
+      .openArtifact(makeArtifact("a"), { persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    useCopilotUIStore.getState().closeArtifactPanel({ persist: false });
+    expect(
+      window.localStorage.getItem("copilot-context-panel-open"),
+    ).toBeNull();
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("openArtifact does not resurrect a previously closed artifact into history", () => {
@@ -202,14 +232,6 @@ describe("context panel open/close guards", () => {
     useCopilotUIStore.getState().openContextPanelForFiles();
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
   });
-
-  it("openContextPanelForProgress respects an explicit user close via the toggle", () => {
-    useCopilotUIStore.getState().openContextPanelForProgress();
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    useCopilotUIStore.getState().toggleContextPanel(); // user close → sets flag
-    useCopilotUIStore.getState().openContextPanelForProgress(); // now a no-op
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
-  });
 });
 
 describe("useCopilotUIStore", () => {
@@ -224,7 +246,6 @@ describe("useCopilotUIStore", () => {
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       showNotificationDialog: false,
-      copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
     });
   });
@@ -371,32 +392,6 @@ describe("useCopilotUIStore", () => {
     });
   });
 
-  describe("copilotChatMode", () => {
-    it("defaults to extended_thinking", () => {
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
-        "extended_thinking",
-      );
-    });
-
-    it("sets mode to fast", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe("fast");
-    });
-
-    it("sets mode back to extended_thinking", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      useCopilotUIStore.getState().setCopilotChatMode("extended_thinking");
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
-        "extended_thinking",
-      );
-    });
-
-    it("persists mode to localStorage", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      expect(window.localStorage.getItem("copilot-mode")).toBe("fast");
-    });
-  });
-
   describe("copilotLlmModel", () => {
     it("defaults to standard", () => {
       expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
@@ -413,11 +408,34 @@ describe("useCopilotUIStore", () => {
     });
   });
 
+  describe("copilotLlmAuth", () => {
+    it("starts unset so the saved default can decide", () => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
+    });
+
+    it("stores a Codex credential without changing the selected model", () => {
+      useCopilotUIStore.getState().setCopilotLlmModel("advanced");
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
+      expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
+    });
+  });
+
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
       useCopilotUIStore.getState().setSearchOpen(true);
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
+      useCopilotUIStore.getState().setCopilotLlmAuth({
+        authProvider: "codex",
+        credentialId: "codex-credential-1",
+      });
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
@@ -426,8 +444,8 @@ describe("useCopilotUIStore", () => {
 
       const state = useCopilotUIStore.getState();
       expect(state.isSearchOpen).toBe(false);
-      expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
+      expect(state.copilotLlmAuth).toBeNull();
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);
@@ -468,17 +486,44 @@ describe("useCopilotUIStore localStorage initialisation", () => {
     window.localStorage.clear();
   });
 
-  it("reads fast chat mode from localStorage on store creation", async () => {
-    window.localStorage.setItem("copilot-mode", "fast");
-    vi.resetModules();
-    const { useCopilotUIStore: fresh } = await import("../store");
-    expect(fresh.getState().copilotChatMode).toBe("fast");
-  });
-
   it("reads advanced model from localStorage on store creation", async () => {
     window.localStorage.setItem("copilot-model", "advanced");
     vi.resetModules();
     const { useCopilotUIStore: fresh } = await import("../store");
     expect(fresh.getState().copilotLlmModel).toBe("advanced");
+  });
+
+  it("falls back to the files card for a persisted tab the sidebar no longer has", async () => {
+    window.localStorage.setItem("copilot-context-panel-tab", "progress");
+    vi.resetModules();
+    const { useCopilotUIStore: fresh } = await import("../store");
+    expect(fresh.getState().artifactPanel.activeTab).toBe("files");
+  });
+});
+
+describe("lastArtifact session scoping", () => {
+  beforeEach(resetStore);
+
+  it("closeArtifactPanel remembers the preview for the in-session toggle", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact?.id).toBe(
+      "a",
+    );
+  });
+
+  it("clearLastArtifact drops the memory so a new chat cannot restore the previous chat's artifact", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().clearLastArtifact();
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
+  });
+
+  it("closing the artifacts tab forgets the remembered preview", () => {
+    useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    useCopilotUIStore.getState().toggleContextPanelTab("artifacts");
+    expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
   });
 });

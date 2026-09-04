@@ -7,17 +7,17 @@ import {
   createCopilotTransport,
   type MutableValue,
 } from "./copilotStreamTransport";
-import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotLlmModel } from "./store";
 
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
-  copilotModeRef: MutableValue<CopilotMode | undefined>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
   onFinish?: (args: {
     isDisconnect?: boolean;
     isAbort?: boolean;
   }) => void | Promise<void>;
   onError?: (error: Error) => void;
+  onData?: (dataPart: { type: string; data?: unknown }) => void;
 }
 
 interface CopilotChatRuntimeStore {
@@ -72,18 +72,15 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const existing = copilotChatRuntimes.get(sessionId);
   if (existing) return existing;
 
-  const copilotModeRef: MutableValue<CopilotMode | undefined> = {
-    current: undefined,
-  };
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
-  const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError"> = {};
+  const callbacks: Pick<CopilotChatRuntime, "onFinish" | "onError" | "onData"> =
+    {};
   const chat = new Chat<UIMessage>({
     id: sessionId,
     transport: createCopilotTransport({
       sessionId,
-      copilotModeRef,
       copilotModelRef,
     }),
     onFinish: (args) => {
@@ -98,11 +95,19 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
       }
       return callbacks.onError?.(error);
     },
+    onData: (dataPart) => {
+      callbacks.onData?.(dataPart);
+    },
   });
   const runtime = {
     chat,
-    copilotModeRef,
     copilotModelRef,
+    get onData() {
+      return callbacks.onData;
+    },
+    set onData(value: CopilotChatRuntime["onData"]) {
+      callbacks.onData = value;
+    },
     get onFinish() {
       return callbacks.onFinish;
     },

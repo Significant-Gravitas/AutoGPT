@@ -245,7 +245,7 @@ class TestSdkModelVendorCompatibility:
             # aux check.
             aux_api_key="or-aux-key",
         )
-        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
 
     def test_openrouter_with_kimi_override_succeeds(self):
         """Kimi slug round-trips cleanly when OpenRouter is on — exercised
@@ -477,7 +477,7 @@ class TestTransportProfile:
 
     def test_thinking_available_alias_matches_profile(self):
         """``thinking_available`` is a backwards-compat alias used by
-        ``executor.processor.resolve_use_sdk_for_mode`` — must stay in
+        ``executor.processor.resolve_use_sdk`` — must stay in
         sync with ``transport.supports_sdk``."""
         for kwargs in (
             dict(use_local=True, api_key="ollama", base_url="http://h:11434/v1"),
@@ -592,7 +592,7 @@ class TestLocalAuxModels:
     def test_cloud_transport_does_not_inherit(self):
         """Cloud transports leave the per-field cloud defaults alone — an
         operator might genuinely want gpt-4o-mini for titles even though
-        their primary model is anthropic/claude-sonnet-4-6."""
+        their primary model is anthropic/claude-sonnet-5."""
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -600,7 +600,7 @@ class TestLocalAuxModels:
         )
         assert cfg.title_model == "anthropic/claude-haiku-4-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
-        assert cfg.fast_advanced_model == "anthropic/claude-opus-4.7"
+        assert cfg.fast_advanced_model == "anthropic/claude-opus-4-8"
 
 
 class TestLocalRequirementsValidator:
@@ -651,7 +651,7 @@ class TestLocalTransport:
     Claude Agent SDK CLI speaks Anthropic's wire protocol and Ollama
     doesn't implement it. ``thinking_available`` reports this so the
     request layer can downgrade gracefully (see
-    ``executor.processor.resolve_use_sdk_for_mode``)."""
+    ``executor.processor.resolve_use_sdk``)."""
 
     def test_local_transport_overrides_subscription(self):
         """An operator opting into local self-hosting must not have their

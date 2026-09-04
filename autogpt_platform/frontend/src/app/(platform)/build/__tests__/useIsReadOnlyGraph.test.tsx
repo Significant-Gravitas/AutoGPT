@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let mockUser: { id: string } | null = null;
 let mockIsUserLoading = false;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ user: mockUser, isUserLoading: mockIsUserLoading }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ user: mockUser, isUserLoading: mockIsUserLoading }),
 }));
 
 vi.mock("nuqs", () => ({

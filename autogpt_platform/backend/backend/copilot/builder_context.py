@@ -10,6 +10,7 @@ from backend.copilot.model import ChatSession, ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
+from backend.copilot.tools.helpers import session_entered_building_mode
 
 logger = logging.getLogger(__name__)
 
@@ -178,13 +179,25 @@ def _format_links(
 
 
 async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
-    """Return the cacheable system-prompt suffix for a builder session.
+    """Return the cacheable system-prompt suffix for a building session.
 
-    Holds only static content (dispatch guidance + building guide) so the
-    bytes are identical across turns AND across sessions for different
-    graphs — the live id/name/version ride on the per-turn prefix.
+    Two cases include the full agent-building guide in the system prompt so
+    it lives in the cached static prefix instead of the compactable
+    conversation tail:
+
+    - **Builder-bound sessions** additionally get the builder tool/dispatch
+      guidance (existing behaviour).
+    - **Building sessions** — a regular session where the guide was loaded
+      (tool or skill) in a *prior* turn — get the guide alone. Detection is
+      derived from persisted message history, so no session-metadata write
+      is needed and the suffix stays byte-identical across the rest of the
+      session (one prompt-cache re-write when the mode first activates).
+
+    Holds only static content so the bytes are identical across turns AND
+    across sessions — live graph id/name/version ride on the per-turn prefix.
     """
-    if not session.metadata.builder_graph_id:
+    is_builder = bool(session.metadata.builder_graph_id)
+    if not is_builder and not session_entered_building_mode(session):
         return ""
 
     try:
@@ -195,7 +208,14 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
 
     # The guide is trusted server-side content (read from disk). We do NOT
     # escape it — the LLM needs the raw markdown to make sense of block ids,
-    # code fences, and example JSON.
+    # code fences, and example JSON. INVARIANT: _load_guide()'s source must
+    # stay server-controlled; if it ever becomes user- or store-influenced,
+    # escape or sandbox the content before it enters the system prompt.
+    guide_block = (
+        f"<building_guide>\n{_BUILDING_GUIDE_PREAMBLE}\n\n{guide}\n</building_guide>"
+    )
+    if not is_builder:
+        return f"\n\n{guide_block}"
     return (
         f"\n\n<{BUILDER_SESSION_TAG}>\n"
         f"<tool_usage>\n"
@@ -204,9 +224,17 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
         f"<run_agent_dispatch_mode>\n"
         f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
         f"</run_agent_dispatch_mode>\n"
-        f"<building_guide>\n{guide}\n</building_guide>\n"
+        f"{guide_block}\n"
         f"</{BUILDER_SESSION_TAG}>"
     )
+
+
+_BUILDING_GUIDE_PREAMBLE = (
+    "The complete agent-building guide is included below and stays available "
+    "for the rest of this session — refer to it directly. Do NOT call "
+    'get_agent_building_guide or read the "agent_building_guide" skill '
+    "again, including after context compaction."
+)
 
 
 async def build_builder_context_turn_prefix(
