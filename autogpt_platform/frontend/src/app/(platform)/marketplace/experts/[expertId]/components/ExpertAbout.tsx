@@ -4,10 +4,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
-import { ExpertSectionLabel } from "./ExpertSectionLabel";
+import { ExpertSection } from "./ExpertSection";
 
 // Roughly the number of characters that fit in the six-line clamp below.
-const CLAMPED_LENGTH = 420;
+const CLAMPED_LENGTH = 500;
 
 interface Props {
   text: string;
@@ -18,11 +18,10 @@ export function ExpertAbout({ text }: Props) {
   const isClampable = text.length > CLAMPED_LENGTH;
 
   return (
-    <section>
-      <ExpertSectionLabel>About</ExpertSectionLabel>
+    <ExpertSection title="About">
       <p
         className={cn(
-          "whitespace-pre-line text-base leading-relaxed text-zinc-600",
+          "whitespace-pre-line text-[15px] leading-6 text-zinc-600",
           isClampable && !isExpanded && "line-clamp-6",
         )}
       >
@@ -32,7 +31,7 @@ export function ExpertAbout({ text }: Props) {
         <button
           type="button"
           onClick={() => setIsExpanded((value) => !value)}
-          className="mt-2 flex items-center gap-1 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
+          className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-zinc-500 transition-colors hover:text-zinc-900"
         >
           {isExpanded ? "Show less" : "Read more"}
           <Icon
@@ -45,6 +44,6 @@ export function ExpertAbout({ text }: Props) {
           />
         </button>
       ) : null}
-    </section>
+    </ExpertSection>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
@@ -12,7 +12,7 @@ import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ExpertAbout } from "./components/ExpertAbout";
 import { ExpertComingSoon } from "./components/ExpertComingSoon";
-import { ExpertHireCard } from "./components/ExpertHireCard";
+import { ExpertHireActions } from "./components/ExpertHireActions";
 import { ExpertPageHeader } from "./components/ExpertPageHeader";
 import { ExpertSkills } from "./components/ExpertSkills";
 import { ExpertWorkflowList } from "./components/ExpertWorkflowList";
@@ -20,13 +20,13 @@ import { useExpertPage } from "./useExpertPage";
 import { useHireFlow } from "./useHireFlow";
 
 const MAIN_CLASS =
-  "mx-auto flex w-full max-w-[1120px] flex-col gap-8 px-6 pb-20 pt-8 md:px-10";
+  "mx-auto flex w-full max-w-[760px] flex-col px-6 pb-24 pt-8 md:px-8";
 
 function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#experts"
-      className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+      className="mb-8 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
     >
       <Icon icon={ArrowLeft02Icon} size={14} />
       Back to marketplace
@@ -52,11 +52,19 @@ export default function MarketplaceExpertPage() {
   if (!isReady || isLoading) {
     return (
       <main className={MAIN_CLASS}>
-        <Skeleton className="h-5 w-40" />
-        <Skeleton className="h-44 w-full rounded-3xl" />
-        <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-          <Skeleton className="h-72 w-full rounded-2xl" />
-          <Skeleton className="h-56 w-full rounded-3xl" />
+        <Skeleton className="mb-8 h-4 w-32" />
+        <div className="flex items-start gap-4">
+          <Skeleton className="h-16 w-16 rounded-full" />
+          <div className="flex flex-1 flex-col gap-2 pt-1">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <Skeleton className="h-9 w-28 rounded-full" />
+        </div>
+        <div className="mt-8 flex flex-col gap-3 border-t border-zinc-200 pt-8">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-3/4" />
         </div>
       </main>
     );
@@ -65,7 +73,6 @@ export default function MarketplaceExpertPage() {
   if (!canHire) {
     return (
       <main className={MAIN_CLASS}>
-        <BackToMarketplaceLink />
         <ExpertComingSoon isLoggedIn={isLoggedIn} />
       </main>
     );
@@ -93,19 +100,25 @@ export default function MarketplaceExpertPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
-      <ExpertPageHeader expert={expert} accent={accent} />
-      <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-10">
-          <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
-          <ExpertSkills skills={expert.skills ?? []} />
-          <ExpertWorkflowList workflows={expert.workflows} accent={accent} />
-        </div>
-        <ExpertHireCard
-          expert={expert}
+      <ExpertPageHeader
+        expert={expert}
+        accent={accent}
+        actions={
+          <ExpertHireActions
+            expert={expert}
+            hiredExpert={hiredExpert}
+            isHiring={isHiring}
+            onHire={hire}
+          />
+        }
+      />
+      <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
+        <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
+        <ExpertSkills skills={expert.skills ?? []} />
+        <ExpertWorkflowList
+          name={expert.name}
+          workflows={expert.workflows}
           accent={accent}
-          hiredExpert={hiredExpert}
-          isHiring={isHiring}
-          onHire={hire}
         />
       </div>
 

@@ -1,6 +1,5 @@
 import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   isLoggedIn: boolean;
@@ -10,24 +9,20 @@ interface Props {
  *  signed in without the feature yet. */
 export function ExpertComingSoon({ isLoggedIn }: Props) {
   return (
-    <section className="relative flex flex-col items-center gap-6 overflow-hidden rounded-3xl border border-zinc-200/60 bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)] px-6 py-16 text-center sm:py-24">
-      <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-medium uppercase tracking-[0.14em] text-violet-700 ring-1 ring-inset ring-violet-600/10">
-        Coming soon
+    <section className="flex flex-col items-center py-20 text-center sm:py-28">
+      <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)] ring-1 ring-zinc-200">
+        <AITeamIcon size={26} className="text-zinc-900" />
       </span>
-      <AITeamIcon size={56} />
-      <div className="flex max-w-lg flex-col gap-2">
-        <Text variant="h3" className="text-zinc-900">
-          Meet the AI Experts
-        </Text>
-        <Text variant="large" className="text-zinc-600">
-          Ready-made specialists you can hire in a click, competent on day one
-          and working for you in minutes. This expert&apos;s page opens as soon
-          as Experts reach your account.
-        </Text>
-      </div>
-      <div className="flex flex-col items-center gap-3 sm:flex-row">
+      <h1 className="mt-6 text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
+        Coming soon
+      </h1>
+      <p className="mt-2 max-w-sm text-[15px] leading-6 text-zinc-500">
+        Ready-made specialists you hire in a click, working for you in minutes.
+        This expert&apos;s page opens as soon as Experts reach your account.
+      </p>
+      <div className="mt-8 flex flex-col items-center gap-2 sm:flex-row">
         {isLoggedIn ? null : (
-          <Button as="NextLink" href="/login" variant="primary" size="large">
+          <Button as="NextLink" href="/login" variant="primary" size="small">
             Sign in
           </Button>
         )}
@@ -35,7 +30,7 @@ export function ExpertComingSoon({ isLoggedIn }: Props) {
           as="NextLink"
           href="/marketplace"
           variant="secondary"
-          size="large"
+          size="small"
         >
           Back to marketplace
         </Button>
