@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
+from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
 from backend.data.notifications import (
@@ -23,6 +24,7 @@ from backend.data.notifications import (
     NotificationEventModel,
     NotificationResult,
     PassWorkEvent,
+    TrialUpdateData,
     get_notif_data_type,
 )
 from backend.data.user import (
@@ -42,6 +44,7 @@ from backend.notifications.queue import (
     create_notification_config,
     queue_notification_async,
 )
+from backend.notifications.trial import trial_notice_is_current
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel, discord_send_alert
@@ -194,6 +197,11 @@ class NotificationManager(AppService):
         event = self._parse_message(message)
         if not event:
             return False
+
+        if event.type == NotificationType.TRIAL_UPDATE:
+            data = TrialUpdateData.model_validate(event.data.model_dump())
+            if not await trial_notice_is_current(event.user_id, data):
+                return True
 
         preference = await get_database_manager_async_client(
             should_retry=False

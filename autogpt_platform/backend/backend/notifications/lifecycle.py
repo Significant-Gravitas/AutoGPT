@@ -5,8 +5,7 @@ keep them from misfiring — first subscription only, first failed charge only,
 the false→true flip rather than every subscription update — live here rather
 than in the webhook router, so the webhook stays a dispatcher.
 
-There is deliberately no trial handler: the platform does not offer a trial, so
-`customer.subscription.trial_will_end` is not listened for.
+Trial enrollment and conversion notices are handled separately in `trial.py`.
 """
 
 import logging
@@ -36,6 +35,7 @@ from backend.notifications.lifecycle_plan import (
     plan_from_subscription,
 )
 from backend.notifications.queue import queue_audience_change, queue_notification_async
+from backend.notifications.trial import notify_trial, on_trial_subscription_updated
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
 from backend.util.settings import Settings
@@ -95,6 +95,8 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     """First subscription → welcome email and the onboarding tour. A returning
     customer is not greeted like a stranger: they go straight into the
     changelog audience instead."""
+    if await notify_trial(subscription, "started"):
+        return
     user = await _user_for(session.get("customer"))
     if user is None:
         return
@@ -206,6 +208,8 @@ async def on_payment_failed(invoice: dict) -> None:
 async def on_subscription_updated(subscription: dict, previous: dict) -> None:
     """Only the cancel_at_period_end flip matters here; this event fires for
     many unrelated changes."""
+    if await on_trial_subscription_updated(subscription, previous):
+        return
     if "cancel_at_period_end" not in previous:
         return
     user = await _user_for(subscription.get("customer"))
@@ -268,6 +272,8 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    if await notify_trial(subscription, "ended"):
+        return
     user = await _user_for(subscription.get("customer"))
     if user is None:
         return

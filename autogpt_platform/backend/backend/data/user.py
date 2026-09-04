@@ -34,6 +34,7 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.org_migration import ensure_personal_org
+from backend.data.subscription_trial import get_subscription_trial
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
@@ -221,6 +222,11 @@ async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
     user = await prisma.user.find_unique(where={"id": user_id})
     if not user:
         raise ValueError(f"User not found with ID: {user_id}")
+    if user.subscriptionTier == SubscriptionTier.TRIAL:
+        trial = await get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return SubscriptionTier.NO_TIER
+        return SubscriptionTier(trial.offer.tier)
     return user.subscriptionTier or SubscriptionTier.NO_TIER
 
 

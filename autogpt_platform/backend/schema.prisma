@@ -138,6 +138,7 @@ model User {
   defaultChatCredentialId String?
 
   subscriptionTier SubscriptionTier @default(NO_TIER)
+  subscriptionTrial SubscriptionTrial?
 
   // Relations
 
@@ -196,11 +197,38 @@ enum ChatSessionStatus {
 
 enum SubscriptionTier {
   NO_TIER
+  TRIAL
   BASIC
   PRO
   MAX
   BUSINESS
   ENTERPRISE
+}
+
+model SubscriptionTrial {
+  id                      String    @id @default(uuid())
+  userId                  String    @unique
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer                   Json
+  stripeCustomerId        String
+  stripeCheckoutSessionId String?   @unique
+  stripeSubscriptionId    String?   @unique
+  checkoutAttempt         Int       @default(0)
+  checkoutSuccessUrl      String
+  checkoutCancelUrl       String
+  checkoutMetadata        Json      @default("{}")
+  status                  String    @default("checkout_pending")
+  cardVerifiedAt          DateTime?
+  startedAt               DateTime?
+  endsAt                  DateTime?
+  consumedAt              DateTime?
+  convertedAt             DateTime?
+  cancelAtPeriodEnd       Boolean   @default(false)
+  costMicrodollars         BigInt    @default(0)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([status, endsAt])
 }
 
 model UserOnboarding {
@@ -777,6 +805,7 @@ enum NotificationType {
   SUBSCRIPTION_CANCELLED
   SUBSCRIPTION_RESUMED
   SUBSCRIPTION_ENDED
+  TRIAL_UPDATE
 }
 
 // How often the Briefing is delivered. OFF is the "alerts only" / "pause"

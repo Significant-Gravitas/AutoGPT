@@ -9,6 +9,7 @@ import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
+import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -58,6 +59,7 @@ export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoggedIn, isUserLoading, refreshSession, user } = useAuth();
+  const trialConfirmation = useTrialCheckoutReturn();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -116,7 +118,8 @@ export function useOnboardingPage() {
           : null,
     },
   });
-  const userHasActivePlan = !!tier && tier !== "NO_TIER";
+  const userHasActivePlan =
+    trialConfirmation.active || (!!tier && tier !== "NO_TIER");
 
   const isPaymentEnabled =
     (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
@@ -137,7 +140,10 @@ export function useOnboardingPage() {
   // isLoggedIn is transiently false, the tier query stays disabled
   // (isTierLoading=false), and init fires with the wrong preparingStep.
   const isReady =
-    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
+    areFlagsReady &&
+    !isUserLoading &&
+    (!isLoggedIn || !isTierLoading) &&
+    trialConfirmation.ready;
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
@@ -160,7 +166,8 @@ export function useOnboardingPage() {
     // subscription step before redirect) would clamp the user back onto the
     // paywall they just paid through.
     const isSubscriptionSuccess =
-      searchParams.get("subscription") === "success";
+      searchParams.get("subscription") === "success" ||
+      trialConfirmation.active;
     const ceiling = isSubscriptionSuccess
       ? steps.welcome
       : (Math.min(readHighestStep(), preparingStep) as Step);
@@ -168,7 +175,14 @@ export function useOnboardingPage() {
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-  }, [isReady, searchParams, goToStep, preparingStep, steps]);
+  }, [
+    isReady,
+    searchParams,
+    goToStep,
+    preparingStep,
+    steps,
+    trialConfirmation.active,
+  ]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
@@ -283,5 +297,6 @@ export function useOnboardingPage() {
     steps,
     preparingStep,
     totalSteps,
+    trialConfirmation,
   };
 }

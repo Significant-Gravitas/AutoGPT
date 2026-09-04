@@ -930,7 +930,7 @@ async def test_active_subscription_lookup_is_cached_within_window():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_returns_url():
+async def test_create_subscription_checkout_returns_url(checkout_guard):
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
     with (
@@ -959,7 +959,9 @@ async def test_create_subscription_checkout_returns_url():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_offers_saved_payment_methods():
+async def test_create_subscription_checkout_offers_saved_payment_methods(
+    checkout_guard,
+):
     """Returning subscribers must see their saved cards in Checkout.
 
     Cards attached by a previous subscription-mode Checkout get
@@ -1002,7 +1004,7 @@ async def test_create_subscription_checkout_offers_saved_payment_methods():
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_checkout_no_price_raises():
+async def test_create_subscription_checkout_no_price_raises(checkout_guard):
     with patch(
         "backend.data.credit.get_subscription_price_id",
         new_callable=AsyncMock,
@@ -1015,6 +1017,23 @@ async def test_create_subscription_checkout_no_price_raises():
                 success_url="https://app.example.com/success",
                 cancel_url="https://app.example.com/cancel",
             )
+
+
+@pytest.fixture
+def checkout_guard():
+    with (
+        patch(
+            "backend.data.credit.subscription_checkout_lock", return_value=AsyncMock()
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial", new_callable=AsyncMock
+        ),
+        patch(
+            "backend.data.credit._expire_open_subscription_sessions",
+            new_callable=AsyncMock,
+        ),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
