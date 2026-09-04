@@ -11,10 +11,10 @@ import logging
 import threading
 import time
 from collections import Counter as _Counter
-from dataclasses import dataclass
 from typing import Iterator
 
 from prometheus_client import Counter, Gauge
+from pydantic import BaseModel
 
 from backend.util.settings import Settings
 
@@ -107,8 +107,7 @@ def set_executor_id(executor_id: str) -> None:
     _executor_id = executor_id
 
 
-@dataclass(frozen=True)
-class _Call:
+class _Call(BaseModel, frozen=True):
     graph_exec_id: str | None
     provider: str
     started: float
