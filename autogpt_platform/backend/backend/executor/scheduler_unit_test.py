@@ -1548,13 +1548,36 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
 
 
 def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
-    _, embedding_backfill = _registered_jobs(
+    before = datetime.now(timezone.utc)
+    calls, embedding_backfill = _registered_jobs(
         monkeypatch,
         interval_hours=6,
         startup_embedding_backfill=False,
     )
 
     embedding_backfill.assert_not_called()
+    job = next(c for c in calls if c.kwargs["id"] == "ensure_embeddings_coverage")
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert before + timedelta(hours=6) <= job.kwargs["next_run_time"]
+
+
+def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypatch):
+    before = datetime.now(timezone.utc)
+    calls, embedding_backfill = _registered_jobs(monkeypatch, interval_hours=6)
+
+    embedding_backfill.assert_not_called()
+    jobs = [c for c in calls if c.kwargs["id"] == "ensure_embeddings_coverage"]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
+    job.args[0]()
+    embedding_backfill.assert_called_once_with()
 
 
 def test_startup_embedding_backfill_setting_reads_environment(monkeypatch):
