@@ -19,10 +19,10 @@ To properly set up Ollama for network access, choose one of these methods:
 
 1. Open the Ollama desktop application
 2. Go to **Settings** and toggle **"Expose Ollama to the network"**
-   ![Expose Ollama to Network](../imgs/ollama/Ollama-Expose-Network.png)
+   ![Expose Ollama to Network](../content/imgs/ollama/Ollama-Expose-Network.png)
 3. Click on the model name field in the "New Chat" window
 4. Search for "llama3.2" (or your preferred model)
-   ![Select llama3.2 model](../imgs/ollama/Ollama-Select-llama3.2.png)
+   ![Select llama3.2 model](../content/imgs/ollama/Ollama-Select-llama3.2.png)
 5. Click on it to start the download and load the model to be used
 
 ??? note "Method B: Using Docker (Alternative)"
@@ -99,12 +99,12 @@ This command starts both the backend and frontend services. Once running, visit 
 Now that both Ollama and the AutoGPT platform are running, we can use Ollama with AutoGPT:
 
 1. Add an AI Text Generator block to your workspace (it can work with any AI LLM block but for this example will be using the AI Text Generator block):
-   ![Add AI Text Generator Block](../imgs/ollama/Select-AI-block.png)
+   ![Add AI Text Generator Block](../content/imgs/ollama/Select-AI-block.png)
 
 2. **Configure the API Key field**: Enter any value (e.g., "dummy" or "not-needed") since Ollama doesn't require authentication.
 
 3. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
-   ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
+   ![Select Ollama Model](../content/imgs/ollama/Ollama-Select-Llama32.png)
 
    > **Compatible Models**: The following Ollama models are available in AutoGPT by default:
    > - `llama3.2` (Recommended for most use cases)
@@ -137,15 +137,15 @@ Now that both Ollama and the AutoGPT platform are running, we can use Ollama wit
    192.168.0.39:11434
    ```
 
-   ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
+   ![Ollama Remote Host](../content/imgs/ollama/Ollama-Remote-Host.png)
 
    > **Important**: Since AutoGPT runs in Docker containers, you must use your host machine's IP address instead of `localhost` or `127.0.0.1`. Docker containers cannot reach `localhost` on the host machine.
 
 5. Add prompts to your AI block, save the graph, and run it:
-   ![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
+   ![Add Prompt](../content/imgs/ollama/Ollama-Add-Prompts.png)
 
 That's it! You've successfully setup the AutoGPT platform and made a LLM call to Ollama.
-![Ollama Output](../imgs/ollama/Ollama-Output.png)
+![Ollama Output](../content/imgs/ollama/Ollama-Output.png)
 
 ### Using Ollama on a Remote Server with AutoGPT
 
@@ -174,7 +174,7 @@ Then you can use the same steps above but you need to add the Ollama server's IP
 192.168.0.39:11434
 ```
 
-![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
+![Ollama Remote Host](../content/imgs/ollama/Ollama-Remote-Host.png)
 
 ## Add Custom Models (Advanced)
 
