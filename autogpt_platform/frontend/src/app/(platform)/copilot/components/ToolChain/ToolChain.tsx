@@ -133,9 +133,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const canAutoSend =
     !readOnly && allActionsReady && !needsManualProceed && justConnectedHere;
   // Nothing to sign in to and nothing to fill in: without a button this card
-  // has no way forward at all.
+  // has no way forward at all. Only asks that build a message qualify — an MCP
+  // row builds none, so offering one there is a button that does nothing.
   const offerProceed =
-    !readOnly && allActionsReady && !justConnectedHere && hasCardWork;
+    !readOnly &&
+    allActionsReady &&
+    !justConnectedHere &&
+    (connectorRequests.length > 0 || inputRequests.length > 0);
 
   useEffect(
     function sendOnceEveryCardIsSatisfied() {

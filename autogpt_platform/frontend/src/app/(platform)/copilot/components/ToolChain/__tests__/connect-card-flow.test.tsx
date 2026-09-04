@@ -253,6 +253,32 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     await screen.findByRole("button", { name: "Proceed" });
   });
 
+  it("offers no Proceed for a connected MCP row, which builds no message", async () => {
+    savedCredentials = [
+      {
+        id: "cred-mcp",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Notion",
+        host: "https://mcp.notion.com/mcp",
+        scopes: [],
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[mcpPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await screen.findByText("Plug in what this needs");
+    // The MCP entry's buildMessage returns null, so a Proceed here would draft
+    // an empty message and do nothing at all.
+    expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+  });
+
   it("gives a Proceed to a card whose rows an earlier card already satisfied", async () => {
     // connect_integration returns a card whether or not the user is already
     // connected, so this lands whenever the assistant offers a provider they
@@ -843,5 +869,24 @@ function questionPart(questions: PendingQuestions["questions"]): MessagePart {
     state: "output-available",
     input: {},
     output: { type: "agent_builder_clarification_needed", questions },
+  } as unknown as MessagePart;
+}
+function mcpPart(): MessagePart {
+  return {
+    type: "tool-run_mcp_tool",
+    toolCallId: "call-run_mcp_tool",
+    state: "output-available",
+    input: { server_url: "https://mcp.notion.com/mcp" },
+    output: {
+      type: "setup_requirements",
+      message: "Connect Notion to continue.",
+      session_id: SESSION_ID,
+      setup_info: {
+        agent_id: "https://mcp.notion.com/mcp",
+        agent_name: "notion.com",
+        requirements: {},
+        user_readiness: { has_all_credentials: true },
+      },
+    },
   } as unknown as MessagePart;
 }
