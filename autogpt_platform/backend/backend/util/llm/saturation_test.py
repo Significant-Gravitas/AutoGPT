@@ -29,7 +29,7 @@ def _warnings():
         def emit(self, record):
             records.append(record)
 
-    handler = _Collect(level=logging.WARNING)
+    handler = _Collect(level=logging.DEBUG)
     saturation.logger.addHandler(handler)
     try:
         yield records
@@ -70,6 +70,9 @@ def test_the_warning_carries_what_an_operator_needs():
         saturation.evaluate_saturation(now=100.0)
 
     assert len(records) == 1
+    # ERROR is the mechanism: LoggingIntegration()'s default event_level drops
+    # anything lower, so a WARNING here would reach no alerting surface.
+    assert records[0].levelno == logging.ERROR
     msg = records[0].getMessage()
     assert "exec-1" in msg, "an alert that can't name the pod can't be routed"
     assert "openai=2" in msg and "anthropic=1" in msg

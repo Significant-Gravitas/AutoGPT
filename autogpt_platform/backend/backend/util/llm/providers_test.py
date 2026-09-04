@@ -10,6 +10,7 @@ fields each provider exposes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1421,115 +1422,92 @@ class TestTimeoutThreading:
     no explicit timeout is passed, so high-``max_tokens`` calls hard-fail.
     """
 
-    @pytest.mark.asyncio
-    async def test_anthropic_receives_bounded_timeout(self):
-        fake_response = SimpleNamespace(
-            content=[SimpleNamespace(type="text", text="ok")],
-            usage=SimpleNamespace(
-                input_tokens=1,
-                output_tokens=1,
-                cache_read_input_tokens=0,
-                cache_creation_input_tokens=0,
-            ),
-            stop_reason="end_turn",
-        )
-        async_create = AsyncMock(return_value=fake_response)
-        with patch(
-            "backend.util.llm.providers.anthropic.AsyncAnthropic",
-            return_value=SimpleNamespace(messages=SimpleNamespace(create=async_create)),
-        ):
-            await call_provider(
-                provider="anthropic",
-                model="claude-sonnet-4-6",
-                api_key="sk-test",
-                messages=[_msg("user", "hi")],
-                max_tokens=10,
-                timeout_seconds=42.0,
+    @staticmethod
+    @contextlib.contextmanager
+    def _sdk_site(kind: str, capture):
+        """Install a fake client for one provider branch; `capture` sees the
+        kwargs the SDK is called with."""
+        if kind == "anthropic":
+            response = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="ok")],
+                usage=SimpleNamespace(
+                    input_tokens=1,
+                    output_tokens=1,
+                    cache_read_input_tokens=0,
+                    cache_creation_input_tokens=0,
+                ),
+                stop_reason="end_turn",
             )
-        assert async_create.call_args.kwargs["timeout"] == request_timeout(42.0)
-
-    @pytest.mark.asyncio
-    async def test_groq_receives_bounded_timeout(self):
-        captured: dict = {}
-
-        async def capture(**kwargs):
-            captured.update(kwargs)
-            return _fake_openai_chat_response("ok", prompt=1, completion=1)
-
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
-        with patch("groq.AsyncGroq", return_value=fake_client):
-            await call_provider(
-                provider="groq",
-                model="llama-3.3-70b",
-                api_key="gsk-test",
-                messages=[_msg("user", "hi")],
-                max_tokens=10,
-                timeout_seconds=42.0,
+            client = SimpleNamespace(messages=SimpleNamespace(create=capture(response)))
+            with patch(
+                "backend.util.llm.providers.anthropic.AsyncAnthropic",
+                return_value=client,
+            ):
+                yield
+        elif kind == "chat_completions":
+            response = _fake_openai_chat_response("ok", prompt=1, completion=1)
+            client = SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(create=capture(response))
+                )
             )
-        assert captured["timeout"] == request_timeout(42.0)
-
-    @pytest.mark.asyncio
-    async def test_openai_compat_receives_bounded_timeout(self):
-        captured: dict = {}
-
-        async def capture(**kwargs):
-            captured.update(kwargs)
-            return _fake_openai_chat_response("ok", prompt=1, completion=1)
-
-        fake_client = SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=capture))
-        )
-        with patch(
-            "backend.util.llm.providers.openai.AsyncOpenAI", return_value=fake_client
-        ):
-            await call_provider(
-                provider="open_router",
-                model="anthropic/claude-sonnet-4.6",
-                api_key="sk-or",
-                messages=[_msg("user", "hi")],
-                max_tokens=10,
-                timeout_seconds=42.0,
+            with patch("groq.AsyncGroq", return_value=client), patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI", return_value=client
+            ):
+                yield
+        else:  # the default `openai` branch: Responses API + its extractors
+            client = SimpleNamespace(
+                responses=SimpleNamespace(create=capture(SimpleNamespace()))
             )
-        assert captured["timeout"] == request_timeout(42.0)
-
-    @pytest.mark.asyncio
-    async def test_openai_responses_receives_bounded_timeout(self):
-        """The default ``openai`` branch — the one the LLM block uses."""
-        async_create = AsyncMock(return_value=SimpleNamespace())
-        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
-        with (
-            patch(
-                "backend.util.llm.providers.openai.AsyncOpenAI",
-                return_value=fake_client,
-            ),
-            patch(
+            with patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI", return_value=client
+            ), patch(
                 "backend.util.llm.providers.extract_responses_tool_calls",
                 return_value=None,
-            ),
-            patch(
+            ), patch(
                 "backend.util.llm.providers.extract_responses_content",
                 return_value="ok",
-            ),
-            patch(
+            ), patch(
                 "backend.util.llm.providers.extract_responses_reasoning",
                 return_value=None,
-            ),
-            patch(
+            ), patch(
                 "backend.util.llm.providers.extract_responses_usage",
                 return_value=(1, 1),
-            ),
-        ):
+            ):
+                yield
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "kind, provider, model, api_key",
+        [
+            ("anthropic", "anthropic", "claude-sonnet-4-6", "sk-test"),
+            ("chat_completions", "groq", "llama-3.3-70b", "gsk-test"),
+            ("chat_completions", "open_router", "anthropic/claude-sonnet-4.6", "sk-or"),
+            ("responses", "openai", "gpt-4.1", "sk-test"),
+        ],
+    )
+    async def test_every_sdk_site_receives_the_bounded_timeout(
+        self, kind, provider, model, api_key
+    ):
+        seen: dict = {}
+
+        def capture(response):
+            async def _create(**kwargs):
+                seen.update(kwargs)
+                return response
+
+            return _create
+
+        with self._sdk_site(kind, capture):
             await call_provider(
-                provider="openai",
-                model="gpt-4.1",
-                api_key="sk-test",
+                provider=provider,
+                model=model,
+                api_key=api_key,
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
                 timeout_seconds=42.0,
             )
-        assert async_create.call_args.kwargs["timeout"] == request_timeout(42.0)
+        assert seen["timeout"] == request_timeout(42.0)
 
     @pytest.mark.asyncio
     async def test_call_provider_omitted_timeout_resolves_at_call_time(
@@ -1538,30 +1516,16 @@ class TestTimeoutThreading:
         """The headline configurability, on the PRIMARY dispatch path. Hardcoding
         the default back to 120 passed every other test in this file."""
         monkeypatch.setattr(providers_mod, "DEFAULT_REQUEST_TIMEOUT_SECONDS", 321.0)
-        async_create = AsyncMock(return_value=SimpleNamespace())
-        fake_client = SimpleNamespace(responses=SimpleNamespace(create=async_create))
-        with (
-            patch(
-                "backend.util.llm.providers.openai.AsyncOpenAI",
-                return_value=fake_client,
-            ),
-            patch(
-                "backend.util.llm.providers.extract_responses_tool_calls",
-                return_value=None,
-            ),
-            patch(
-                "backend.util.llm.providers.extract_responses_content",
-                return_value="ok",
-            ),
-            patch(
-                "backend.util.llm.providers.extract_responses_reasoning",
-                return_value=None,
-            ),
-            patch(
-                "backend.util.llm.providers.extract_responses_usage",
-                return_value=(1, 1),
-            ),
-        ):
+        seen: dict = {}
+
+        def capture(response):
+            async def _create(**kwargs):
+                seen.update(kwargs)
+                return response
+
+            return _create
+
+        with self._sdk_site("responses", capture):
             await call_provider(
                 provider="openai",
                 model="gpt-4.1",
@@ -1569,7 +1533,7 @@ class TestTimeoutThreading:
                 messages=[_msg("user", "hi")],
                 max_tokens=10,
             )
-        assert async_create.call_args.kwargs["timeout"] == request_timeout(321.0)
+        assert seen["timeout"] == request_timeout(321.0)
 
     @pytest.mark.asyncio
     async def test_openai_compat_sync_helper_receives_bounded_timeout(self):

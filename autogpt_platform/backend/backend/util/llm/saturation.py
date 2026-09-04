@@ -1,4 +1,4 @@
-"""Warn when every graph worker is parked on a slow LLM call.
+"""Report when every graph worker is parked on a slow LLM call.
 
 Raising the per-call deadline to 600s means one degraded provider can occupy
 every worker for ten minutes. Nothing else reports that state: the executor's
@@ -67,7 +67,7 @@ def track_llm_call(
 
 
 def evaluate_saturation(now: float | None = None) -> int:
-    """Refresh the gauge; log once on entering saturation. Returns the count."""
+    """Refresh the gauge; report once on entering saturation. Returns the count."""
     global _saturated
     now = now if now is not None else time.monotonic()
     cutoff = now - SATURATION_CALL_AGE_SECONDS
@@ -97,7 +97,9 @@ def evaluate_saturation(now: float | None = None) -> int:
     saturated_workers_gauge.set(count)
     if episode:
         saturation_episodes_counter.inc()
-        logger.warning(episode)
+        # ERROR, not WARNING: metrics.py registers LoggingIntegration() with its
+        # default event_level=ERROR, so a warning reaches no alerting surface.
+        logger.error(episode)
     return count
 
 

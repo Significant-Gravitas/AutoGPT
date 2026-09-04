@@ -259,71 +259,40 @@ async def llm_call(
         provider=llm_model.metadata.provider,
         now=started,
     ):
-        return await _bounded_llm_call(
-            credentials=credentials,
-            llm_model=llm_model,
-            prompt=prompt,
-            max_tokens=max_tokens,
-            force_json_output=force_json_output,
-            tools=tools,
-            ollama_host=ollama_host,
-            parallel_tool_calls=parallel_tool_calls,
-            compress_prompt_to_fit=compress_prompt_to_fit,
-            execution_context=execution_context,
-            started=started,
-        )
-
-
-async def _bounded_llm_call(
-    *,
-    credentials: APIKeyCredentials,
-    llm_model: LLMModel,
-    prompt: list[dict],
-    max_tokens: int | None,
-    force_json_output: bool,
-    tools: list[dict] | None,
-    ollama_host: str,
-    parallel_tool_calls,
-    compress_prompt_to_fit: bool,
-    execution_context: "ExecutionContext | None",
-    started: float,
-) -> LLMResponse:
-    try:
-        return await asyncio.wait_for(
-            _llm_call(
-                credentials=credentials,
+        try:
+            return await asyncio.wait_for(
+                _llm_call(
+                    credentials=credentials,
+                    llm_model=llm_model,
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    force_json_output=force_json_output,
+                    tools=tools,
+                    ollama_host=ollama_host,
+                    parallel_tool_calls=parallel_tool_calls,
+                    compress_prompt_to_fit=compress_prompt_to_fit,
+                ),
+                # Same budget as the provider layer, but this one starts before
+                # prompt compression, so it always fires first for block callers;
+                # the provider deadline is there for callers that skip this seam.
+                timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+            )
+        # SDK-native timeouts never reach the wait_for, so both are caught here
+        # to keep this the single place that reports burned spend.
+        except (
+            asyncio.TimeoutError,
+            openai.APITimeoutError,
+            anthropic.APITimeoutError,
+        ) as e:
+            _log_timeout_outcome(
+                elapsed=time.monotonic() - started,
                 llm_model=llm_model,
-                prompt=prompt,
-                max_tokens=max_tokens,
-                force_json_output=force_json_output,
-                tools=tools,
-                ollama_host=ollama_host,
-                parallel_tool_calls=parallel_tool_calls,
-                compress_prompt_to_fit=compress_prompt_to_fit,
-            ),
-            # Same budget as the provider layer, but this one starts before
-            # prompt compression, so it always fires first for block callers;
-            # the provider deadline is there for callers that skip this seam.
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError as e:
-        _log_timeout_outcome(
-            elapsed=time.monotonic() - started,
-            llm_model=llm_model,
-            execution_context=execution_context,
-            error=e,
-        )
-        raise _block_timeout_error(llm_model, max_tokens) from e
-    except (openai.APITimeoutError, anthropic.APITimeoutError) as e:
-        # SDK-native timeouts never reach the wait_for above; classify them here
-        # so the seam stays the single place that reports burned spend.
-        _log_timeout_outcome(
-            elapsed=time.monotonic() - started,
-            llm_model=llm_model,
-            execution_context=execution_context,
-            error=e,
-        )
-        raise
+                execution_context=execution_context,
+                error=e,
+            )
+            if isinstance(e, asyncio.TimeoutError):
+                raise _block_timeout_error(llm_model, max_tokens) from e
+            raise
 
 
 async def _llm_call(

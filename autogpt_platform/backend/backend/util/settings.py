@@ -186,19 +186,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         # stays under that cap, whatever it is set to.
         le=1500,
         description=(
-            "Wall-clock cap on a single LLM provider request. The block path is "
-            "non-streaming: the provider sends no bytes until the whole completion "
-            "is ready, so this deadline has to cover the full generation, not just "
-            "time-to-first-byte. 600s matches the OpenAI/Anthropic SDK defaults and "
-            "the ~10 min ceiling those APIs impose on non-streaming requests. Capped "
-            "at 1500s so it stays under the per-node wall-clock cap "
-            "(DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS, 30 min); past that the node "
-            "cap fires first and replaces the provider/model error with a generic one. "
-            "Raising it also lengthens how long a stalled provider holds one of "
-            "`num_graph_workers` slots, so a higher value trades drain rate under an "
-            "incident for tolerance of slow generations. AgentExecutor and AutoPilot "
-            "opt out of the per-node cap (execution_timeout_seconds = None), so for "
-            "those this is their only per-call wall-clock bound."
+            "Wall-clock cap on a single LLM provider request, covering the whole "
+            "generation (the block path is non-streaming). Raising it lengthens how "
+            "long a stalled provider holds one of `num_graph_workers` slots. "
+            "AgentExecutor and AutoPilot opt out of the per-node cap, so for those "
+            "this is the only per-call wall-clock bound."
         ),
     )
     enable_auth: bool = Field(

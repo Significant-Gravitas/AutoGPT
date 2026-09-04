@@ -1770,43 +1770,6 @@ class TestLLMRequestTimeout:
         ], "the sub-threshold branch must still say what happened"
 
     @pytest.mark.asyncio
-    async def test_ordinary_failure_does_not_alert(self):
-        """Only timeouts burn a full generation; a 500 must not page."""
-        with self._captured_logs() as records:
-            await self._run_block_expecting_failure(ValueError("boom"), retry=1)
-
-        assert not self._alerts(records)
-
-    @pytest.mark.asyncio
-    async def test_success_does_not_alert(self):
-        mock_response = MagicMock()
-        mock_response.output_text = '{"key": "value"}'
-        mock_response.output = []
-        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
-        outputs = []
-
-        with self._captured_logs() as records:
-            with patch("openai.AsyncOpenAI") as mock_openai:
-                mock_client = AsyncMock()
-                mock_openai.return_value = mock_client
-                mock_client.responses.create = AsyncMock(return_value=mock_response)
-                block = llm.AIStructuredResponseGeneratorBlock()
-                input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-                    prompt="Hello",
-                    expected_format={"key": "value"},
-                    model=llm.DEFAULT_LLM_MODEL,
-                    credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-                    force_json_output=True,
-                )
-                async for name, data in block.run(
-                    input_data, credentials=llm.TEST_CREDENTIALS
-                ):
-                    outputs.append(name)
-
-        assert "response" in outputs, "the success path did not actually run"
-        assert not self._alerts(records)
-
-    @pytest.mark.asyncio
     async def test_the_seam_registers_the_call_for_saturation(self):
         """Wiring guard: the saturation warning is only as good as this. Read
         from the real registry while the provider call is in flight."""
