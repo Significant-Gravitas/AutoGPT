@@ -24,10 +24,11 @@ downstream follows.
 ## Definitions
 
 - **Task**: a unit of work a person asked for *now*. Either a human-started
-  agent run (`triggerSource` in `manual`, `api`, `copilot`) or a human chat
-  turn (a `user` message in an Autopilot or expert session whose origin is not
-  `automation`). Dry runs, nested sub-graph runs and dream/memory sessions are
-  never tasks.
+  agent run (`triggerSource` in `manual`, `api`) or a human chat turn (a
+  `user` message in an Autopilot or expert session whose origin is not
+  `automation`). A run the copilot tool started (`triggerSource` = `copilot`)
+  is counted once, through the chat turn that asked for it. Dry runs, nested
+  sub-graph runs and dream/memory sessions are never tasks.
 - **Automated task**: a schedule fire, a webhook trigger, or a scheduled
   follow-up turn. Counted separately so "people doing things" and "agents
   running" can be compared.

@@ -12,8 +12,10 @@
 --   pick a label column, regress on the rest.
 --
 --   Definitions (change here, everywhere downstream follows):
---   - task            human-started agent run (manual / API / copilot;
---                     untagged legacy rows count) or a human chat turn
+--   - task            human-started agent run (manual / API; untagged
+--                     legacy rows count) or a human chat turn. A run the
+--                     copilot started is represented by the chat turn that
+--                     asked for it, so it is not counted twice.
 --   - activated       >= 3 tasks on >= 2 distinct days within 14 days of signup
 --   - last_active_at  latest of: last task, last visit, last scheduled run,
 --                     falling back to signup
@@ -43,7 +45,8 @@
 --             distinct_agents_run, scheduled_runs_30d, autopilot_turns_total,
 --             expert_turns_total, chat_sessions_total, active_days_total,
 --             tasks_first_7d, tasks_first_14d, active_days_first_14d,
---             tasks_7d, tasks_28d, active_days_28d, schedules_created_total,
+--             tasks_7d, tasks_28d, active_days_28d, tasks_week_4,
+--             schedules_created_total,
 --             experts_hired_total, experts_active, purchases_total
 --   Money:    platform_cost_usd_total, platform_cost_usd_30d,
 --             credits_spent_usd_total, credits_purchased_usd_total
@@ -137,12 +140,14 @@ turns AS (
   GROUP BY 1
 ),
 task_events AS (
+  -- Copilot-started runs are left out on purpose: the user turn that asked
+  -- for them is the task, and it is already in the second half of the union.
   SELECT ge."userId" AS user_id, ge."createdAt" AS at
   FROM platform."AgentGraphExecution" ge
   WHERE ge."isDeleted" = FALSE
     AND ge."parentGraphExecutionId" IS NULL
     AND COALESCE(ge."stats"::jsonb->>'is_dry_run', 'false') <> 'true'
-    AND (ge."triggerSource" IS NULL OR ge."triggerSource" IN ('manual', 'api', 'copilot'))
+    AND (ge."triggerSource" IS NULL OR ge."triggerSource" IN ('manual', 'api'))
   UNION ALL
   SELECT s."userId", m."createdAt"
   FROM platform."ChatMessage" m
@@ -154,6 +159,8 @@ task_events AS (
 task_days AS (
   SELECT
     t.user_id,
+    MIN(t.at)                                                            AS first_task_at,
+    MAX(t.at)                                                            AS last_task_at,
     COUNT(DISTINCT t.at::date)                                           AS active_days_total,
     COUNT(*) FILTER (WHERE t.at < u.signup_at + INTERVAL '7 days')       AS tasks_first_7d,
     COUNT(*) FILTER (WHERE t.at < u.signup_at + INTERVAL '14 days')      AS tasks_first_14d,
@@ -162,7 +169,9 @@ task_days AS (
     COUNT(*) FILTER (WHERE t.at > NOW() - INTERVAL '7 days')             AS tasks_7d,
     COUNT(*) FILTER (WHERE t.at > NOW() - INTERVAL '28 days')            AS tasks_28d,
     COUNT(DISTINCT t.at::date) FILTER (WHERE t.at > NOW() - INTERVAL '28 days')
-                                                                         AS active_days_28d
+                                                                         AS active_days_28d,
+    COUNT(*) FILTER (WHERE t.at >= u.signup_at + INTERVAL '21 days'
+                       AND t.at <  u.signup_at + INTERVAL '28 days')     AS tasks_week_4
   FROM task_events t
   JOIN users u ON u.user_id = t.user_id
   GROUP BY 1
@@ -238,8 +247,7 @@ assembled AS (
     COALESCE(l.login_count, 0)                                           AS login_count,
     r.first_agent_run_at, r.last_agent_run_at,
     t.first_chat_turn_at, t.last_chat_turn_at,
-    LEAST(r.first_agent_run_at, t.first_chat_turn_at)                    AS first_task_at,
-    GREATEST(r.last_agent_run_at, t.last_chat_turn_at)                   AS last_task_at,
+    td.first_task_at, td.last_task_at,
     r.last_scheduled_run_at,
     COALESCE(
       GREATEST(r.last_agent_run_at, t.last_chat_turn_at, l.last_visit_at, r.last_scheduled_run_at),
@@ -266,6 +274,7 @@ assembled AS (
     COALESCE(td.tasks_7d, 0)                                             AS tasks_7d,
     COALESCE(td.tasks_28d, 0)                                            AS tasks_28d,
     COALESCE(td.active_days_28d, 0)                                      AS active_days_28d,
+    COALESCE(td.tasks_week_4, 0)                                         AS tasks_week_4,
     COALESCE(s.schedules_created_total, 0)                               AS schedules_created_total,
     COALESCE(e.experts_hired_total, 0)                                   AS experts_hired_total,
     COALESCE(e.experts_active, 0)                                        AS experts_active,

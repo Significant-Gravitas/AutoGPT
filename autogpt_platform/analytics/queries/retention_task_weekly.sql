@@ -48,7 +48,9 @@ events AS (
     AND e."isDeleted" = FALSE
     AND e."parentGraphExecutionId" IS NULL
     AND COALESCE(e."stats"::jsonb->>'is_dry_run', 'false') <> 'true'
-    AND (e."triggerSource" IS NULL OR e."triggerSource" IN ('manual', 'api', 'copilot'))
+    -- Copilot-started runs are represented by the chat turn that asked for
+    -- them (counted below), so they are not a second task here.
+    AND (e."triggerSource" IS NULL OR e."triggerSource" IN ('manual', 'api'))
   UNION ALL
   SELECT s."userId"::text, m."createdAt"::timestamptz,
          DATE_TRUNC('week', m."createdAt")::date

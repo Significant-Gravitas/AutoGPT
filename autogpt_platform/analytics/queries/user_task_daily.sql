@@ -11,9 +11,10 @@
 --   tasks are people running" and for per-day cost per user.
 --
 --   A "task" is a unit of work a person asked for now: a human-started
---   agent run (manual UI, API key or copilot tool) or a human chat
---   turn. Automated work (schedule fires, webhook triggers, scheduled
---   follow-ups) is counted separately so the two can be compared.
+--   agent run (manual UI or API key) or a human chat turn. A run the
+--   copilot tool started is counted once, through the chat turn that
+--   asked for it. Automated work (schedule fires, webhook triggers,
+--   scheduled follow-ups) is counted separately so the two can be compared.
 --
 --   Sub-graph runs (parentGraphExecutionId set) and dry runs are
 --   excluded from run counts: they are part of the parent task.
@@ -33,10 +34,11 @@
 -- OUTPUT COLUMNS
 --   user_id                      TEXT     User UUID
 --   day                          DATE     Calendar day (UTC)
---   tasks_human                  BIGINT   agent_runs_human + autopilot_turns + expert_turns
+--   tasks_human                  BIGINT   agent_runs_human - agent_runs_copilot + autopilot_turns + expert_turns
 --   tasks_automated              BIGINT   scheduled + webhook runs + scheduled follow-up turns
 --   agent_runs                   BIGINT   All root, non-dry agent runs created that day
 --   agent_runs_human             BIGINT   triggerSource IN (manual, api, copilot) or NULL
+--   agent_runs_copilot           BIGINT   triggerSource = copilot (started from a chat turn, which is the task)
 --   agent_runs_scheduled         BIGINT   triggerSource = schedule
 --   agent_runs_webhook           BIGINT   triggerSource = webhook
 --   agent_runs_untagged          BIGINT   triggerSource IS NULL (pre-deploy rows; already inside agent_runs_human)
@@ -87,6 +89,8 @@ WITH runs AS (
     COUNT(*) FILTER (WHERE ge."triggerSource" IS NULL
                         OR ge."triggerSource" IN ('manual', 'api', 'copilot'))
                                                          AS agent_runs_human,
+    COUNT(*) FILTER (WHERE ge."triggerSource" = 'copilot')
+                                                         AS agent_runs_copilot,
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'schedule')
                                                          AS agent_runs_scheduled,
     COUNT(*) FILTER (WHERE ge."triggerSource" = 'webhook')
@@ -196,12 +200,14 @@ keys AS (
 SELECT
   k.user_id,
   k.day,
-  COALESCE(r.agent_runs_human, 0) + COALESCE(t.autopilot_turns, 0) + COALESCE(t.expert_turns, 0)
+  COALESCE(r.agent_runs_human, 0) - COALESCE(r.agent_runs_copilot, 0)
+    + COALESCE(t.autopilot_turns, 0) + COALESCE(t.expert_turns, 0)
                                                          AS tasks_human,
   COALESCE(r.agent_runs_scheduled, 0) + COALESCE(r.agent_runs_webhook, 0) + COALESCE(t.scheduled_turns, 0)
                                                          AS tasks_automated,
   COALESCE(r.agent_runs, 0)                              AS agent_runs,
   COALESCE(r.agent_runs_human, 0)                        AS agent_runs_human,
+  COALESCE(r.agent_runs_copilot, 0)                      AS agent_runs_copilot,
   COALESCE(r.agent_runs_scheduled, 0)                    AS agent_runs_scheduled,
   COALESCE(r.agent_runs_webhook, 0)                      AS agent_runs_webhook,
   COALESCE(r.agent_runs_untagged, 0)                     AS agent_runs_untagged,

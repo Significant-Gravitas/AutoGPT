@@ -29,7 +29,7 @@
 --   isHumanTurn            BOOLEAN      sessionOrigin <> 'automation'
 --   sourcePlatform         TEXT         'slack' | 'telegram' | 'discord' | NULL (= web chat)
 --   sequence               INT          Position of the message in the session
---   isFirstTurnInSession   BOOLEAN      First user turn of the session within the window
+--   isFirstTurnInSession   BOOLEAN      First user turn of the session (looks past the window)
 --   sessionCreatedAt       TIMESTAMPTZ  When the session was created
 --
 -- WINDOW
@@ -62,8 +62,12 @@ SELECT
                                                                   AS isHumanTurn,
     s."metadata"::jsonb->>'source_platform'                       AS sourcePlatform,
     m."sequence"                                                  AS sequence,
-    ROW_NUMBER() OVER (PARTITION BY m."sessionId" ORDER BY m."sequence") = 1
-                                                                  AS isFirstTurnInSession,
+    NOT EXISTS (
+      SELECT 1 FROM platform."ChatMessage" p
+      WHERE p."sessionId" = m."sessionId"
+        AND p."role" = 'user'
+        AND p."sequence" < m."sequence"
+    )                                                             AS isFirstTurnInSession,
     s."createdAt"                                                 AS sessionCreatedAt
 FROM platform."ChatMessage" m
 JOIN platform."ChatSession" s ON s."id" = m."sessionId"
