@@ -7,7 +7,7 @@ MRTR handling).  No network: HTTP replies are faked at ``MCPClient._post``.
 import base64
 import json
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -170,6 +170,9 @@ class TestHeaderParams:
             {"properties": {"a": {"type": "string", "x-mcp-header": "Region\n"}}},
             # annotation on the root schema itself
             {"type": "object", "x-mcp-header": "Root", "properties": {}},
+            {"type": "object", "x-mcp-header": None, "properties": {}},
+            # present but null
+            {"properties": {"a": {"type": "string", "x-mcp-header": None}}},
             # invalid field-name characters
             {"properties": {"a": {"type": "string", "x-mcp-header": "Bad Name"}}},
             {"properties": {"a": {"type": "string", "x-mcp-header": "X\r\nY"}}},
@@ -646,6 +649,23 @@ class TestEraDetection:
         tools = await client.list_tools()
         assert tools == []
         assert transport.methods() == ["server/discover", "tools/list"]
+
+
+class TestHttpRetries:
+    """Retries are bounded, and never applied to tool execution."""
+
+    @pytest.mark.parametrize(
+        ("method", "attempts"),
+        [("tools/call", 1), ("tools/list", 3), ("server/discover", 3)],
+    )
+    async def test_retry_budget_per_method(self, method: str, attempts: int):
+        client = MCPClient(SERVER_URL)
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+            MockRequests.return_value.post = AsyncMock(
+                return_value=_FakeResponse(200, _rpc_result({}))
+            )
+            await client._post({"jsonrpc": "2.0", "id": 1, "method": method}, {})
+        assert MockRequests.call_args.kwargs["retry_max_attempts"] == attempts
 
 
 # ───────────────────────── legacy requests ─────────────────────────

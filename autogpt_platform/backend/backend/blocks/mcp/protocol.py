@@ -286,8 +286,10 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
     def walk(schema: Any, path: tuple[str, ...]) -> None:
         if not isinstance(schema, dict):
             return
-        annotation = schema.get(_HEADER_PARAM_PROPERTY)
-        if annotation is not None:
+        # Presence, not truthiness: an explicit ``null`` is a malformed
+        # annotation and must invalidate the tool, not be ignored.
+        if _HEADER_PARAM_PROPERTY in schema:
+            annotation = schema[_HEADER_PARAM_PROPERTY]
             if not path:
                 raise InvalidHeaderAnnotation(
                     "x-mcp-header is not allowed on the root schema"

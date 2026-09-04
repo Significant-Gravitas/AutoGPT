@@ -198,10 +198,16 @@ class MCPClient:
 
         Status handling is done by the caller: modern era detection needs to
         read the body of a ``400`` before deciding what it means.
+
+        ``tools/call`` is never retried: a tool may have applied its side
+        effect before the server answered with a retryable status, and the
+        spec gives no idempotency guarantee for re-sending it.
         """
         requests = Requests(
             raise_for_status=False,
-            retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+            retry_max_attempts=(
+                1 if payload.get("method") == "tools/call" else _HTTP_RETRY_ATTEMPTS
+            ),
             extra_headers=headers,
         )
         return await requests.post(self.server_url, json=payload)
