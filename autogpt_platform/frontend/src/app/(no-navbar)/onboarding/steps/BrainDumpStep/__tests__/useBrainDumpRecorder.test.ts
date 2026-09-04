@@ -75,6 +75,12 @@ class SlowStoppingMediaRecorder {
   }
 }
 
+class ThrowingStopMediaRecorder extends SlowStoppingMediaRecorder {
+  stop() {
+    throw new Error("encoder failed to stop");
+  }
+}
+
 // Hands a chunk over on demand, so the chunk → IndexedDB → queue
 // ordering can be observed a step at a time.
 class ChunkingMediaRecorder {
@@ -415,6 +421,52 @@ describe("useBrainDumpRecorder", () => {
 
     expect(result.current.phase).toBe("stopped");
     expect(result.current.hitTimeLimit).toBe(false);
+  });
+
+  it("releases recording resources when stopping fails", async () => {
+    vi.stubGlobal("MediaRecorder", ThrowingStopMediaRecorder);
+    const track = { stop: vi.fn() };
+    const closeAudioContext = vi.fn().mockResolvedValue(undefined);
+    stubGetUserMedia(vi.fn().mockResolvedValue({ getTracks: () => [track] }));
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        close = closeAudioContext;
+        createAnalyser() {
+          return {
+            fftSize: 0,
+            frequencyBinCount: 8,
+            getByteTimeDomainData: vi.fn(),
+          };
+        }
+        createMediaStreamSource() {
+          return { connect: vi.fn() };
+        }
+      },
+    );
+    const { result } = renderHook(() => useBrainDumpRecorder());
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    let stopError: unknown;
+    await act(async () => {
+      try {
+        await result.current.stop();
+      } catch (error) {
+        stopError = error;
+      }
+    });
+
+    const elapsedAfterFailure = result.current.elapsedSeconds;
+    act(() => vi.advanceTimersByTime(1_000));
+
+    expect(stopError).toEqual(new Error("encoder failed to stop"));
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(closeAudioContext).toHaveBeenCalledOnce();
+    expect(result.current.phase).toBe("stopped");
+    expect(result.current.elapsedSeconds).toBe(elapsedAfterFailure);
   });
 
   // The regression: the meta row was written with `durationSecs: 0` at

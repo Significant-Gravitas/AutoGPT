@@ -29,7 +29,9 @@ function getAGPTServerApiUrl() {
     return process.env.AGPT_SERVER_URL;
   }
 
-  return process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  const url =
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  return resolveBrowserURL(url);
 }
 
 function getAGPTServerBaseUrl() {
@@ -41,7 +43,19 @@ function getAGPTWsServerUrl() {
     return process.env.AGPT_WS_SERVER_URL;
   }
 
-  return process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
+  const configuredURL =
+    process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
+  if (environment.isServerSide()) return configuredURL;
+
+  const url = new URL(configuredURL, window.location.origin);
+  if (url.protocol === "http:") url.protocol = "ws:";
+  if (url.protocol === "https:") url.protocol = "wss:";
+  return url.toString();
+}
+
+function resolveBrowserURL(url: string) {
+  if (environment.isServerSide()) return url;
+  return new URL(url, window.location.origin).toString();
 }
 
 function getEnvironmentStr() {
@@ -73,6 +87,14 @@ function getPostHogCredentials() {
 
 function getLaunchDarklyClientId() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+}
+
+function getGoogleAdsID() {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_ID || "";
+}
+
+function getGoogleAdsConversionLabels() {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS || "";
 }
 
 function isProductionBuild() {
@@ -137,6 +159,8 @@ export const environment = {
   getPreviewStealingDev,
   getPostHogCredentials,
   getLaunchDarklyClientId,
+  getGoogleAdsID,
+  getGoogleAdsConversionLabels,
   // Assertions
   isServerSide,
   isClientSide,

@@ -6,6 +6,7 @@ Covers the typed OpenRouter delta parser, the stateful emitter, and the
 parser relies on is exercised end-to-end.
 """
 
+import pytest
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
 from backend.copilot.baseline.reasoning import (
@@ -573,3 +574,53 @@ class TestBaselineReasoningEmitterRenderFlag:
         assert len(events) == 2
         assert isinstance(events[0], StreamReasoningStart)
         assert isinstance(events[1], StreamReasoningDelta)
+
+
+class TestClaude5FamilyThinking:
+    """Claude 5 removed ``budget_tokens`` — both thinking fragments must
+    stay off (the documented adaptive default serves), while 4.x keeps
+    its budget-capped fragments."""
+
+    @pytest.mark.parametrize(
+        "family_member",
+        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+    )
+    def test_openrouter_fragment_suppressed_for_5_family(self, family_member: str):
+        assert reasoning_extra_body(f"anthropic/{family_member}", 5000) is None
+
+    @pytest.mark.parametrize(
+        "family_member",
+        ["claude-sonnet-5", "claude-fable-5", "claude-mythos-5"],
+    )
+    def test_anthropic_fragment_suppressed_for_5_family(self, family_member: str):
+        assert anthropic_thinking_extra_body(family_member, 5000) is None
+
+    @pytest.mark.parametrize("model", ["claude-opus-4-7", "claude-opus-4-8"])
+    def test_opus_4_7_and_4_8_keep_budget_fragments(self, model: str):
+        """4.7/4.8 share the 5-generation tokenizer but NOT the
+        ``budget_tokens`` removal — they must keep the thinking fragment."""
+        assert anthropic_thinking_extra_body(model, 5000) == {
+            "thinking": {"type": "enabled", "budget_tokens": 5000}
+        }
+
+    def test_explicit_guard_wins_even_when_allowlisted(self, monkeypatch):
+        """The explicit ``_is_claude_5_family`` guard must suppress the
+        fragment even if a 5-family slug is (mistakenly) added to
+        ``_THINKING_CAPABLE_PREFIXES`` — otherwise the guard is dead code
+        and this suppression only holds by allowlist omission."""
+        from backend.copilot.baseline import reasoning
+
+        monkeypatch.setattr(
+            reasoning,
+            "_THINKING_CAPABLE_PREFIXES",
+            reasoning._THINKING_CAPABLE_PREFIXES + ("claude-sonnet-5",),
+        )
+        assert anthropic_thinking_extra_body("claude-sonnet-5", 5000) is None
+
+    def test_sonnet_4_6_keeps_budget_fragments(self):
+        assert reasoning_extra_body("anthropic/claude-sonnet-4.6", 5000) == {
+            "reasoning": {"max_tokens": 5000}
+        }
+        assert anthropic_thinking_extra_body("claude-sonnet-4-6", 5000) == {
+            "thinking": {"type": "enabled", "budget_tokens": 5000}
+        }

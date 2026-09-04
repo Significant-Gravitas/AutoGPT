@@ -15,12 +15,15 @@ from backend.copilot.baseline.service import (
     _apply_skills_cache_breakpoint,
     _baseline_conversation_updater,
     _baseline_llm_caller,
+    _baseline_tool_executor,
     _BaselineStreamState,
     _budget_exhausted_notice_text,
     _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
     _build_natural_finish_empty_fallback_events,
     _compress_session_messages,
+    _enqueue_graphiti_turn,
+    _fetch_graphiti_context,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
@@ -29,8 +32,11 @@ from backend.copilot.baseline.service import (
     _natural_finish_empty_notice_text,
     _split_user_message_after_skills_block,
     _supports_prompt_cache_markers,
+    stream_chat_completion_baseline,
 )
-from backend.copilot.model import ChatMessage
+from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
     StreamReasoningDelta,
     StreamReasoningEnd,
@@ -38,11 +44,99 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolOutputAvailable,
 )
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+
+
+@pytest.mark.asyncio
+async def test_expert_identity_failure_precedes_baseline_turn_mutation() -> None:
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    identity_mock = AsyncMock(
+        side_effect=ExpertSessionUnavailableError(
+            "The expert for this session no longer exists or is archived."
+        )
+    )
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=identity_mock,
+        ),
+        pytest.raises(ExpertSessionUnavailableError),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message="private prompt",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
+
+    identity_mock.assert_awaited_once_with(
+        "user-1", "expert-1", organization_id=None, team_id=None
+    )
+    assert session.messages == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_graphiti_context_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    fetch_mock = AsyncMock(return_value="expert context")
+
+    with patch(
+        "backend.copilot.baseline.service.fetch_warm_context",
+        new=fetch_mock,
+    ):
+        context = await _fetch_graphiti_context(
+            "user-1",
+            session,
+            "first prompt",
+        )
+
+    assert context == "expert context"
+    fetch_mock.assert_awaited_once_with(
+        "user-1",
+        "first prompt",
+        expert_id="expert-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_graphiti_turn_uses_expert_session_scope() -> None:
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    enqueue_mock = AsyncMock()
+
+    with patch(
+        "backend.copilot.baseline.service.enqueue_conversation_turn",
+        new=enqueue_mock,
+    ):
+        await _enqueue_graphiti_turn(
+            "user-1",
+            session,
+            "session-1",
+            "private prompt",
+            "private response",
+        )
+
+    enqueue_mock.assert_awaited_once_with(
+        "user-1",
+        "session-1",
+        "private prompt",
+        assistant_msg="private response",
+        expert_id="expert-1",
+    )
 
 
 class TestBaselineStreamState:
@@ -2784,3 +2878,131 @@ class TestApplySkillsCacheBreakpoint:
         assert out[1] is not usr1  # target — gets shallow-copied
         assert out[2] is ast
         assert out[3] is usr2
+
+
+class _StopAfterExpertsGate(Exception):
+    """Raised by a mocked ``build_builder_system_prompt_suffix`` to abort
+    ``stream_chat_completion_baseline`` immediately after it resolves
+    ``experts_enabled`` — before any LLM call would be attempted."""
+
+
+async def _run_baseline_until_experts_gate(
+    *, user_id: str | None, hire_experts_enabled: bool
+) -> AsyncMock:
+    """Drive the real generator up to (and one statement past) the
+    hire-experts flag check, with every other I/O dependency stubbed out.
+
+    Returns the ``is_feature_enabled`` mock so callers can assert whether
+    (and how) it was called.
+    """
+    session = ChatSession.new("owner-1", dry_run=False)
+    session.title = "already titled"  # skip the async title-generation task
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=hire_experts_enabled),
+        ) as is_feature_enabled_mock,
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(side_effect=_StopAfterExpertsGate),
+        ),
+        pytest.raises(_StopAfterExpertsGate),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message=None,
+            user_id=user_id,
+            session=session,
+        ):
+            pass
+
+    return is_feature_enabled_mock
+
+
+class TestBaselineExpertsFlagGuard:
+    """``experts_enabled = bool(user_id) and await is_feature_enabled(...)``:
+    an anonymous turn (``user_id=None``) must fail closed WITHOUT resolving
+    the flag at all — a bare ``await is_feature_enabled(...)`` would await
+    None as a positional arg and/or silently enable the team surface for
+    turns with no user."""
+
+    @pytest.mark.asyncio
+    async def test_anonymous_turn_never_calls_the_hire_experts_flag(self) -> None:
+        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
+            user_id=None, hire_experts_enabled=True
+        )
+        is_feature_enabled_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_authenticated_turn_resolves_the_hire_experts_flag(self) -> None:
+        is_feature_enabled_mock = await _run_baseline_until_experts_gate(
+            user_id="user-1", hire_experts_enabled=True
+        )
+        is_feature_enabled_mock.assert_awaited_once()
+
+
+class TestBaselineToolExecutorForwardsDisabledGroups:
+    """``_baseline_tool_executor`` must forward its ``disabled_groups`` to
+    ``execute_tool`` — that's the only thing making the schema-hiding filter
+    an actual enforcement boundary for the baseline engine."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_groups_reach_execute_tool(self) -> None:
+        session = ChatSession.new("user-1", dry_run=False)
+        state = _BaselineStreamState()
+        tool_call = LLMToolCall(id="call-1", name="hire_expert", arguments="{}")
+
+        with patch(
+            "backend.copilot.baseline.service.execute_tool",
+            new=AsyncMock(
+                return_value=StreamToolOutputAvailable(
+                    toolCallId="call-1",
+                    toolName="hire_expert",
+                    output="{}",
+                    success=False,
+                )
+            ),
+        ) as execute_mock:
+            await _baseline_tool_executor(
+                tool_call,
+                tools=[],
+                state=state,
+                user_id="user-1",
+                session=session,
+                disabled_groups=["expert_admin"],
+            )
+
+        assert execute_mock.await_args.kwargs["disabled_groups"] == ["expert_admin"]

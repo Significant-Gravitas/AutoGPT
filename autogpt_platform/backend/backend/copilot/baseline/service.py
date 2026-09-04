@@ -42,18 +42,22 @@ from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
 )
-from backend.copilot.config import CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
 )
+from backend.copilot.markers import append_error_marker
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
     RoutingSource,
+    clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
@@ -71,7 +75,12 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.prompting import (
+    SHARED_TOOL_NOTES,
+    get_delegation_supplement,
+    get_graphiti_supplement,
+)
+from backend.copilot.provider_failure import classify as classify_provider_failure
 from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -79,6 +88,7 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamModeChanged,
+    StreamProviderFailure,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -104,7 +114,12 @@ from backend.copilot.token_tracking import (
     _extract_cache_creation_tokens,
     persist_and_record_usage,
 )
-from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
+from backend.copilot.tools import (
+    ToolGroup,
+    execute_tool,
+    expert_tool_disabled_groups,
+    get_available_tools,
+)
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
 from backend.copilot.tracking import track_user_message
@@ -124,6 +139,7 @@ from backend.copilot.transcript import (
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.providers import call_provider_stream
 from backend.util.prompt import (
     compress_context,
@@ -432,6 +448,11 @@ class _BaselineStreamState:
     # ever produces "ld" | "catalog" | "env" ("fallback" is SDK-only, marking
     # a CLI 529-overload swap); typed as the shared RoutingSource superset.
     routing_source: RoutingSource = "env"
+    # The connection this turn runs on, stamped onto each assistant row as
+    # it is built. Recorded per turn so a later route change cannot rewrite
+    # what already ran; see backend/copilot/segments.py.
+    llm_auth_provider: CopilotLlmAuthProvider | None = None
+    llm_credential_id: str | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -1024,10 +1045,15 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    disabled_groups: Sequence[ToolGroup],
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
+
+    ``disabled_groups`` is the same list used to build the turn's schema
+    list; passing it here makes the capability gate an enforcement boundary
+    rather than a presentation filter.
     """
     tool_call_id = tool_call.id
     tool_name = tool_call.name
@@ -1087,6 +1113,7 @@ async def _baseline_tool_executor(
             user_id=user_id,
             session=session,
             tool_call_id=tool_call_id,
+            disabled_groups=disabled_groups,
         )
         _emit(state, result)
         tool_output = (
@@ -1245,6 +1272,8 @@ def _baseline_conversation_updater(
             role="assistant",
             model=state.model,
             routing_source=state.routing_source,
+            llm_auth_provider=state.llm_auth_provider,
+            llm_credential_id=state.llm_credential_id,
             content=response.response_text or "",
             tool_calls=[
                 {
@@ -1559,6 +1588,34 @@ async def _upload_final_transcript(
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
 
+async def _fetch_graphiti_context(
+    user_id: str,
+    session: ChatSession,
+    message: str | None,
+) -> str | None:
+    return await fetch_warm_context(
+        user_id,
+        message or "",
+        expert_id=session.expert_id,
+    )
+
+
+async def _enqueue_graphiti_turn(
+    user_id: str,
+    session: ChatSession,
+    session_id: str,
+    message: str,
+    assistant_msg: str,
+) -> None:
+    await enqueue_conversation_turn(
+        user_id,
+        session_id,
+        message,
+        assistant_msg=assistant_msg,
+        expert_id=session.expert_id,
+    )
+
+
 async def stream_chat_completion_baseline(
     session_id: str,
     message: str | None = None,
@@ -1568,7 +1625,6 @@ async def stream_chat_completion_baseline(
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
@@ -1591,6 +1647,13 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    expert_session_suffix = await build_expert_identity_suffix(
+        session.user_id,
+        session.expert_id,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
     if session.organization_id is None and organization_id:
@@ -1607,6 +1670,12 @@ async def stream_chat_completion_baseline(
     # Only the server-injected prefix on the first message is trusted.
     if message:
         message = strip_user_context_tags(message)
+
+    # A reply is the only thing that clears a Home "Needs You" question.
+    # Unconditional on the append result: the HTTP path pre-saves the user
+    # message, so the append is a no-op dedup there.
+    if is_user_message and message and message.strip():
+        await clear_pending_question(session)
 
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
@@ -1775,18 +1844,25 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    # The whole expert-team surface rides the hire-experts flag, failing
+    # closed for anonymous turns.  Resolved here rather than at the
+    # tool-filtering site below so the delegation rules can be gated on the
+    # same boolean — a flag-off turn must not be told to call tools its
+    # ``execute_tool`` gate will refuse.
+    experts_enabled = bool(user_id) and await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    )
+    delegation_supplement = get_delegation_supplement() if experts_enabled else ""
     # Append the builder-session block (graph id+name + full building guide)
     # AFTER the shared supplements so the system prompt is byte-identical
     # across turns of the same builder session — Claude's prompt cache keeps
     # the ~20KB guide warm for the whole session.  Empty string for
     # non-builder sessions keeps the cross-user cache hot.
     builder_session_suffix = await build_builder_system_prompt_suffix(session)
-    expert_session_suffix = await build_expert_identity_suffix(
-        session.user_id, session.expert_id
-    )
     system_prompt = (
         base_system_prompt
         + SHARED_TOOL_NOTES
+        + delegation_supplement
         + graphiti_supplement
         + builder_session_suffix
         + expert_session_suffix
@@ -1799,9 +1875,7 @@ async def stream_chat_completion_baseline(
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
-        from backend.copilot.graphiti.context import fetch_warm_context
-
-        warm_ctx = await fetch_warm_context(user_id, message or "")
+        warm_ctx = await _fetch_graphiti_context(user_id, session, message)
 
     # Context path: transcript content (compacted, isCompactSummary preserved) +
     # gap (DB messages after watermark) + current user turn.
@@ -2035,6 +2109,13 @@ async def stream_chat_completion_baseline(
     disabled_tool_groups: list[ToolGroup] = []
     if not graphiti_enabled:
         disabled_tool_groups.append("graphiti")
+    # ``experts_enabled`` was resolved with the system-prompt supplements
+    # above; the role split lives in the shared helper.
+    disabled_tool_groups.extend(
+        expert_tool_disabled_groups(
+            experts_enabled=experts_enabled, expert_id=session.expert_id
+        )
+    )
     tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
@@ -2080,7 +2161,16 @@ async def stream_chat_completion_baseline(
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
     _stream_error = False  # Track whether an error occurred during streaming
-    state = _BaselineStreamState(model=active_model, routing_source=routing_source)
+    state = _BaselineStreamState(
+        model=active_model,
+        routing_source=routing_source,
+        llm_auth_provider=(
+            session.metadata.llm_auth_provider if session is not None else None
+        ),
+        llm_credential_id=(
+            session.metadata.llm_credential_id if session is not None else None
+        ),
+    )
 
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
@@ -2104,6 +2194,7 @@ async def stream_chat_completion_baseline(
             state=state,
             user_id=user_id,
             session=_session_holder[0],
+            disabled_groups=disabled_tool_groups,
         )
 
     _bound_conversation_updater = partial(
@@ -2237,6 +2328,8 @@ async def stream_chat_completion_baseline(
                                 content=text_only_text,
                                 model=state.model,
                                 routing_source=state.routing_source,
+                                llm_auth_provider=state.llm_auth_provider,
+                                llm_credential_id=state.llm_credential_id,
                             )
                         )
                     for _buffered in state.session_messages:
@@ -2363,8 +2456,41 @@ async def stream_chat_completion_baseline(
             evt = state.pending_events.get_nowait()
             if evt is not None:
                 yield evt
-        yield StreamError(errorText=error_msg, code="baseline_error")
-        # Still persist whatever we got
+        failure = classify_provider_failure(
+            e,
+            auth_provider=session.metadata.llm_auth_provider if session else None,
+            credential_id=session.metadata.llm_credential_id if session else None,
+            message=error_msg,
+        )
+        # Written before the error is yielded, and deliberately not in
+        # ``finally``. The consumer breaks out of its loop the moment it sees
+        # a StreamError and closes this generator, so the tail of ``finally``
+        # -- including its session upsert -- is cut short at the first await.
+        # A marker appended there is built correctly and then thrown away.
+        #
+        # ``_session_holder[0]`` rather than ``session``: the inner task can
+        # replace the binding mid-turn, and the marker has to land on the
+        # object that is actually current.
+        _failed_session = _session_holder[0]
+        if append_error_marker(
+            _failed_session,
+            error_msg,
+            retryable=failure.retryable if failure is not None else True,
+            failure=failure.as_part() if failure is not None else None,
+        ):
+            try:
+                await upsert_chat_session(_failed_session)
+            except Exception as marker_err:
+                logger.error(
+                    "[Baseline] Failed to persist the error marker: %s", marker_err
+                )
+        if failure is not None:
+            # Before the error, so a client that acts on the envelope has it
+            # in hand by the time the turn is reported failed.
+            yield StreamProviderFailure(failure=failure.as_part())
+            yield StreamError(errorText=error_msg, code=failure.kind.value)
+        else:
+            yield StreamError(errorText=error_msg, code="baseline_error")
     finally:
         # Cancel the inner task if we're unwinding early (client disconnect,
         # unexpected error in the consumer) so it doesn't keep streaming
@@ -2513,6 +2639,8 @@ async def stream_chat_completion_baseline(
                     content=final_text,
                     model=state.model,
                     routing_source=state.routing_source,
+                    llm_auth_provider=state.llm_auth_provider,
+                    llm_credential_id=state.llm_credential_id,
                 )
             )
         try:
@@ -2522,17 +2650,16 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-
             # Pass only the final assistant reply (after stripping tool-loop
             # chatter) so derived-finding distillation sees the substantive
             # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
+                _enqueue_graphiti_turn(
                     user_id,
+                    session,
                     session_id,
                     message,
-                    assistant_msg=final_text if state else "",
+                    final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -2599,13 +2726,16 @@ async def stream_chat_completion_baseline(
 def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
     """Terminal events for a turn that registered an engine switch.
 
-    Emitted right before StreamFinish so the frontend flips its mode picker
-    (StreamModeChanged) and narrates the handoff (StreamStatus) exactly once,
-    at the turn boundary where the baseline loop stopped.
+    Emitted right before StreamFinish so the frontend learns the engine
+    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
+    exactly once, at the turn boundary where the baseline loop stopped.
+    There is no mode picker to flip any more — the client uses this only to
+    widen its post-finish refetch window, since a switch takes longer to
+    settle.
     """
     if not engine_switch.is_pending(session_id):
         return []
     return [
         StreamModeChanged(mode="extended_thinking"),
-        StreamStatus(message="Switching to Thinking mode for agent building…"),
+        StreamStatus(message="Switching engines for agent building…"),
     ]

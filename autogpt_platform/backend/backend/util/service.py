@@ -135,8 +135,12 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.service_name}] 🛑 Shared event loop stopped")
             self.shared_event_loop.close()  # ensure held resources are released
 
-    def run_and_wait(self, coro: Coroutine[Any, Any, T]) -> T:
-        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result()
+    def run_and_wait(
+        self, coro: Coroutine[Any, Any, T], timeout: float | None = None
+    ) -> T:
+        return asyncio.run_coroutine_threadsafe(coro, self.shared_event_loop).result(
+            timeout
+        )
 
     def run(self):
         self.shared_event_loop = asyncio.new_event_loop()
@@ -152,8 +156,21 @@ class BaseAppService(AppProcess, ABC):
         **Note:** if you override this method in a subclass, it must call
         `super().cleanup()` *at the end*!
         """
-        # Stop the shared event loop to allow resource clean-up
-        self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+        # Stop the shared event loop to allow resource clean-up. The loop
+        # thread closes the loop right after run_forever() returns, so a
+        # closed loop here means that thread is already gone (loop crash or
+        # repeated cleanup) and there is nothing left to stop — scheduling
+        # onto it would raise "Event loop is closed" mid-shutdown.
+        if not self.shared_event_loop.is_closed():
+            try:
+                self.shared_event_loop.call_soon_threadsafe(self.shared_event_loop.stop)
+            except RuntimeError:
+                # The loop thread closed the loop between the check above and
+                # the scheduling call; equivalent to the is_closed() case.
+                logger.warning(
+                    f"[{self.service_name}] event loop closed before its stop "
+                    "could be scheduled; continuing cleanup"
+                )
 
         super().cleanup()
 
@@ -341,6 +358,21 @@ class AppService(BaseAppService, ABC):
 
             return sync_endpoint
 
+    @classmethod
+    def _register_exception_handlers(cls, app: FastAPI) -> None:
+        app.add_exception_handler(ValueError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            exceptions.NotFoundError, cls._handle_internal_http_error(404)
+        )
+        app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        app.add_exception_handler(
+            UniqueViolationError, cls._handle_internal_http_error(400)
+        )
+        app.add_exception_handler(
+            exceptions.MissingConfigError, cls._handle_internal_http_error(503)
+        )
+        app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
+
     @conn_retry("FastAPI server", "Running FastAPI server")
     def __start_fastapi(self):
         logger.info(
@@ -475,18 +507,7 @@ class AppService(BaseAppService, ABC):
         self.fastapi_app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self.fastapi_app.add_exception_handler(
-            ValueError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            DataError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            UniqueViolationError, self._handle_internal_http_error(400)
-        )
-        self.fastapi_app.add_exception_handler(
-            Exception, self._handle_internal_http_error(500)
-        )
+        self._register_exception_handlers(self.fastapi_app)
 
         # Start the FastAPI server in a separate thread.
         api_thread = threading.Thread(

@@ -1,6 +1,6 @@
 """Unit tests for the Anthropic rate card used in direct-mode cost computation."""
 
-from .anthropic_rate_card import compute_anthropic_cost_usd
+from .anthropic_rate_card import compute_anthropic_cost_usd, get_max_output_tokens
 
 
 class TestComputeAnthropicCostUsd:
@@ -161,3 +161,26 @@ class TestComputeAnthropicCostUsd:
         )
         # fresh_input clamped to 0, cache_read = 1000 × $3 × 0.1 / M = $0.0003.
         assert cost == 0.0003
+
+
+class TestSonnet5Rates:
+    """The refreshed rate card must carry claude-sonnet-5 — without it,
+    direct-Anthropic deployments cap output at the 32K fallback and bill
+    at Opus fallback rates (~7.5x)."""
+
+    def test_sonnet_5_max_output_from_rate_card(self):
+        assert get_max_output_tokens("claude-sonnet-5") == 128000
+
+    def test_sonnet_5_billed_at_litellm_rates_not_fallback(self):
+        cost = compute_anthropic_cost_usd(
+            model="claude-sonnet-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=1_000_000,
+        )
+        # Intro rates in litellm today: 1M x $2 + 1M x $10 = $12 — the
+        # Opus fallback would charge $90. The catalog deliberately bills
+        # sticker ($3/$15); this asserts the vendored litellm value, so
+        # when the intro window ends (2026-08-31) and a rate refresh
+        # brings sticker rates, update this to 18.0 — that change is
+        # expected, not a mispricing.
+        assert cost == 12.0

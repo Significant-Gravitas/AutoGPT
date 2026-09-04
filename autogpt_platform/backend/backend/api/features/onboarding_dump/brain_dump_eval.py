@@ -19,7 +19,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from backend.api.features.onboarding_dump import transcription
+from backend.api.features.onboarding_dump import brain_dump_gate_eval, transcription
+from backend.api.features.onboarding_dump.brain_dump_gate_eval import GateReport
 from backend.api.features.onboarding_dump.brain_dump_wer import (
     WordErrors,
     compute_word_errors,
@@ -68,6 +69,10 @@ class FileResult(BaseModel):
     segment_count: int = 0
     seams: list[Seam] = []
     error: str | None = None
+    transcript: str = ""
+    """The full machine transcript — kept so the quality gate can be scored
+    on exactly what the pipeline produced, and so a bad WER row can be
+    diagnosed from the JSON report without re-running the corpus."""
 
 
 class EvalReport(BaseModel):
@@ -80,6 +85,9 @@ class EvalReport(BaseModel):
     passed: bool
     audio_without_reference: list[str]
     reference_without_audio: list[str]
+    quality_gate: GateReport | None = None
+    """Present when the corpus ships a ``gate_manifest.json`` — every
+    verdict must match it for the run to pass."""
 
 
 class DumpPair(BaseModel):
@@ -133,9 +141,15 @@ def main() -> None:
 
 async def run_eval(directory: Path, duration_secs: float | None = None) -> EvalReport:
     discovery = discover_pairs(directory)
+    manifest = brain_dump_gate_eval.load_manifest(directory)
     started = time.monotonic()
     results = [await evaluate_pair(pair, duration_secs) for pair in discovery.pairs]
     scored = [result for result in results if result.error is None]
+    quality_gate = (
+        await _score_quality_gate(directory, discovery, scored, manifest)
+        if manifest is not None
+        else None
+    )
     pooled = WordErrors(
         substitutions=sum(r.errors.substitutions for r in scored),
         insertions=sum(r.errors.insertions for r in scored),
@@ -152,9 +166,42 @@ async def run_eval(directory: Path, duration_secs: float | None = None) -> EvalR
         gate=WER_RELEASE_GATE,
         passed=bool(scored)
         and len(scored) == len(results)
-        and pooled.wer < WER_RELEASE_GATE,
-        audio_without_reference=discovery.audio_without_reference,
+        and pooled.wer < WER_RELEASE_GATE
+        and (quality_gate is None or quality_gate.passed),
+        # Reference-less audio that the gate manifest claims is deliberate
+        # (silence, noise) is the gate's input, not a corpus mistake.
+        audio_without_reference=[
+            name
+            for name in discovery.audio_without_reference
+            if manifest is None or name not in manifest
+        ],
         reference_without_audio=discovery.reference_without_audio,
+        quality_gate=quality_gate,
+    )
+
+
+async def _score_quality_gate(
+    directory: Path,
+    discovery: PairDiscovery,
+    scored: list[FileResult],
+    manifest: dict[str, brain_dump_gate_eval.GateExpectation],
+) -> GateReport:
+    """Run the real quality gate over everything the manifest covers."""
+    results = [
+        await brain_dump_gate_eval.evaluate_transcript(
+            result.name, manifest.get(result.name, "pass"), result.transcript
+        )
+        for result in scored
+    ]
+    gate_only = brain_dump_gate_eval.discover_gate_only(
+        directory, manifest, {pair.name for pair in discovery.pairs}, AUDIO_EXTENSIONS
+    )
+    results += [
+        await brain_dump_gate_eval.evaluate_gate_only(path, manifest[path.stem])
+        for path in gate_only
+    ]
+    return brain_dump_gate_eval.build_report(
+        results, [result.name for result in scored], manifest
     )
 
 
@@ -189,6 +236,7 @@ async def evaluate_pair(
         model=run.model,
         segment_count=run.segment_count,
         seams=run.seams,
+        transcript=run.transcript,
     )
 
 
@@ -275,13 +323,18 @@ def render_report(report: EvalReport) -> str:
     lines = [
         "",
         f"Brain-dump transcription WER — {len(report.files)} file(s)",
-        "",
-        f"{'file':<20}{'WER':>9}{'sub':>6}{'ins':>6}{'del':>6}"
-        f"{'ref':>8}{'secs':>8}  {'segments':<10}model",
     ]
-    lines.extend(_render_row(result) for result in report.files)
+    lines.extend(
+        brain_dump_gate_eval.render_table(
+            ["file", "WER", "sub", "ins", "del", "ref", "secs", "segments", "model"],
+            [_render_row(result) for result in report.files],
+            right_align=frozenset({1, 2, 3, 4, 5, 6}),
+        )
+    )
     lines.extend(_render_seams(report))
     lines.extend(_render_mismatches(report))
+    if report.quality_gate is not None:
+        lines.extend(brain_dump_gate_eval.render_gate_report(report.quality_gate))
     lines.extend(
         [
             "",
@@ -298,15 +351,20 @@ def render_report(report: EvalReport) -> str:
     return "\n".join(lines)
 
 
-def _render_row(result: FileResult) -> str:
+def _render_row(result: FileResult) -> list[str]:
     if result.error:
-        return f"{result.name:<20}{'ERROR':>9}  {result.error[:60]}"
-    return (
-        f"{result.name:<20}{result.errors.wer:>9.2%}"
-        f"{result.errors.substitutions:>6}{result.errors.insertions:>6}"
-        f"{result.errors.deletions:>6}{result.errors.reference_words:>8}"
-        f"{result.latency_secs:>8.1f}  {result.segment_count:<10}{result.model}"
-    )
+        return [result.name, "ERROR", "", "", "", "", "", "", result.error[:60]]
+    return [
+        result.name,
+        f"{result.errors.wer:.2%}",
+        str(result.errors.substitutions),
+        str(result.errors.insertions),
+        str(result.errors.deletions),
+        str(result.errors.reference_words),
+        f"{result.latency_secs:.1f}",
+        str(result.segment_count),
+        result.model,
+    ]
 
 
 def _render_seams(report: EvalReport) -> list[str]:

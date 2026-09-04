@@ -110,7 +110,7 @@ function getNewLayoutAccountMenuItems(userRole?: string): MenuItemGroup[] {
     {
       icon: IconType.WhatsNew,
       text: "What's new",
-      href: "https://agpt.co/changelog",
+      href: "https://agpt.co/docs/platform/changelog/changelog/",
       external: true,
     },
     {

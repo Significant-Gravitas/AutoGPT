@@ -1,3 +1,5 @@
+import re
+from enum import Enum
 from typing import Mapping
 
 
@@ -49,6 +51,87 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class ExpertNotFoundError(NotFoundError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} not found"
+
+
+class ExpertWriteNotReadableError(Exception):
+    """A write landed, but the expert could not be read back afterwards.
+
+    Deliberately not an ``ExpertNotFoundError``: the row vanishing *after* a
+    committed update is the opposite of the update being refused, and callers
+    must never fold the two together and report a landed change as "nothing
+    was changed".
+    """
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} was updated but could not be read back"
+
+
+class ExpertPrivateTenancyNotFoundError(MissingConfigError):
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Private tenancy for expert {self.expert_id} not found"
+
+
+class ExpertTemplateNotFoundError(Exception):
+    """The roster template a hire referred to no longer exists."""
+
+    def __init__(self, template_id: str):
+        # args mirrors __init__ so the RPC layer can reconstruct the
+        # exception; __str__ keeps the user-facing rendering.
+        super().__init__(template_id)
+        self.template_id = template_id
+
+    def __str__(self) -> str:
+        return f"Expert template {self.template_id} not found"
+
+
+class ExpertHireUnavailableError(Exception):
+    """The expert workspace could not be provisioned for a hire."""
+
+    def __init__(self, expert_id: str):
+        super().__init__(expert_id)
+        self.expert_id = expert_id
+
+    def __str__(self) -> str:
+        return f"Expert {self.expert_id} could not be made available"
+
+
+class ExpertLimitExceededError(Exception):
+    """The account is already at its active-expert cap."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Active expert limit of {self.limit} reached"
+
+
+class RaisedExpertLifetimeLimitExceededError(Exception):
+    """The account has raised its lifetime maximum of experts."""
+
+    def __init__(self, limit: int):
+        super().__init__(limit)
+        self.limit = limit
+
+    def __str__(self) -> str:
+        return f"Raised expert lifetime limit of {self.limit} reached"
+
+
 class GraphNotFoundError(ValueError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
@@ -90,6 +173,71 @@ class InsufficientBalanceError(ValueError):
     def __str__(self):
         """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
         return self.message
+
+
+class UserPaywalledError(Exception):
+    """User has no entitlement to run a paywalled feature (NO_TIER tier
+    + ``ENABLE_PLATFORM_PAYMENT`` on).
+
+    Raised by ``add_graph_execution`` and other deep enqueue paths so
+    that *every* execution entry point (HTTP route, scheduled cron,
+    webhook trigger, external API, internal copilot tool) gets the same
+    gate without each one having to remember a route-level dependency.
+    Routes wrap this into HTTP 402; background tasks log and abandon
+    the run.
+    """
+
+    def __init__(
+        self,
+        message: str = "A subscription is required to run this feature.",
+    ) -> None:
+        super().__init__(message)
+
+
+class ExecutionFailureReason(str, Enum):
+    """Structured reasons for terminal graph execution failures."""
+
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+    ENTITLEMENT_REQUIRED = "entitlement_required"
+
+
+# Keep this legacy-only fallback synchronized with the equivalent predicates in
+# autogpt_platform/analytics/queries/graph_execution.sql and the shared corpus in
+# exceptions_test.py. Live failures are classified by type, never by these messages.
+_LEGACY_INSUFFICIENT_BALANCE_PATTERNS = (
+    re.compile(r"You have no credits left to run an agent\."),
+    re.compile(
+        r"Insufficient balance of \$-?\d+(?:\.\d+)?, "
+        r"where this will cost \$-?\d+(?:\.\d+)?"
+    ),
+    re.compile(
+        r"Insufficient balance to run [A-Za-z_][A-Za-z0-9_]*: "
+        r"dynamic-cost blocks require a positive balance\."
+    ),
+    re.compile(r"Organization has -?\d+ credits but needs \d+"),
+)
+
+
+def get_execution_failure_reason(
+    error: BaseException | str | None,
+    *,
+    allow_legacy_text: bool = False,
+) -> ExecutionFailureReason | None:
+    """Classify trusted exceptions, with an opt-in fallback for persisted text."""
+    if isinstance(error, InsufficientBalanceError):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    if isinstance(error, UserPaywalledError):
+        return ExecutionFailureReason.ENTITLEMENT_REQUIRED
+    if (
+        allow_legacy_text
+        and isinstance(error, str)
+        and any(
+            pattern.fullmatch(error)
+            for pattern in _LEGACY_INSUFFICIENT_BALANCE_PATTERNS
+        )
+    ):
+        return ExecutionFailureReason.INSUFFICIENT_BALANCE
+    return None
 
 
 class ModerationError(ValueError):
@@ -180,3 +328,26 @@ class DuplicateChatMessageError(ValueError):
 
 class WebhookRegistrationError(Exception):
     """Registering a webhook with an external service failed."""
+
+
+class WebhookSetupUnavailableError(Exception):
+    """Webhook setup infrastructure (e.g. the Redis setup lock) is
+    temporarily unavailable. Retryable server-side condition — not a
+    configuration problem, so don't map it to a 4xx."""
+
+
+class ExpertRunPausedError(ValueError):
+    """An expert-attributed scheduled/triggered run was refused because the
+    expert's schedules are paused (weekly credit budget reached or archive).
+    Chat-initiated runs are never gated by this."""
+
+    def __init__(self, message: str, expert_id: str):
+        super().__init__(message)
+        # args carries both values so the RPC layer can reconstruct the
+        # exception; __str__ keeps user-facing rendering to the message.
+        self.args = (message, expert_id)
+        self.message = message
+        self.expert_id = expert_id
+
+    def __str__(self):
+        return self.message

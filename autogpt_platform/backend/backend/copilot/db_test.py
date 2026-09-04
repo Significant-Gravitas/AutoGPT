@@ -13,10 +13,12 @@ from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
+    chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_user_chat_sessions,
     set_turn_duration,
     update_chat_message_tool_calls,
+    update_chat_session_llm_route,
     update_chat_session_pinned,
     update_message_content_by_sequence,
 )
@@ -77,6 +79,67 @@ def _make_session(
         Messages=messages or [],
     )
     return session
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("affected", "expected"), [(1, True), (0, False)])
+async def test_update_chat_session_llm_route_merges_metadata_atomically(
+    affected: int, expected: bool
+) -> None:
+    execute = AsyncMock(return_value=affected)
+
+    with patch("backend.copilot.db.db.execute_raw_with_schema", execute):
+        result = await update_chat_session_llm_route(
+            "sess-1", "user-1", "codex", "cred-1"
+        )
+
+    assert result is expected
+    sql, *params = execute.await_args.args
+    assert "COALESCE" in sql
+    assert "jsonb_build_object" in sql
+    assert '"updatedAt" = NOW()' in sql
+    assert params == ["sess-1", "user-1", "codex", "cred-1"]
+
+
+@pytest.mark.asyncio
+async def test_chat_message_has_assistant_reply_distinguishes_delivery_state():
+    kickoff = _make_msg(3, role="user", content="kickoff")
+    assistant = _make_msg(4, role="assistant", content="ready")
+    find_first = AsyncMock(side_effect=[kickoff, assistant])
+
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=find_first),
+    ):
+        result = await chat_message_has_assistant_reply("msg-3", "sess-1")
+
+    assert result is True
+    assert find_first.await_args_list[1].kwargs["where"] == {
+        "sessionId": "sess-1",
+        "role": "assistant",
+        "sequence": {"gt": 3},
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_message_has_assistant_reply_reports_missing_and_orphaned():
+    missing = AsyncMock(return_value=None)
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=missing),
+    ):
+        assert await chat_message_has_assistant_reply("missing", "sess-1") is None
+
+    kickoff = _make_msg(3, role="user", content="kickoff")
+    orphaned = AsyncMock(side_effect=[kickoff, None])
+    with patch.object(
+        PrismaChatMessage,
+        "prisma",
+        return_value=AsyncMock(find_first=orphaned),
+    ):
+        assert await chat_message_has_assistant_reply("msg-3", "sess-1") is False
 
 
 SESSION_ID = "sess-1"
@@ -673,6 +736,108 @@ async def test_get_user_chat_sessions_orders_pinned_first():
     assert 'ORDER BY "isPinned" DESC, "updatedAt" DESC' in query
 
 
+# ---------- expert-session org-scope carve-out ----------
+#
+# Expert sessions are pinned to the owner's personal org at creation
+# (copilot/model.py::create_chat_session), so scoping them to the caller's
+# ACTIVE org would make them invisible/undeletable whenever a shared org is
+# active. The owner's expert sessions must stay listable, loadable, and
+# deletable regardless of the active organization.
+
+_EXPERT_CARVEOUT_SQL = (
+    '"organizationId" = $2 OR "organizationId" IS NULL' ' OR "expertId" IS NOT NULL'
+)
+
+
+@pytest.mark.asyncio
+async def test_get_session_org_scope_exempts_expert_sessions(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(messages=[_make_msg(1)])
+
+    await get_chat_messages_paginated(
+        SESSION_ID, limit=50, user_id="user-abc", organization_id="shared-org"
+    )
+
+    where = find_first.call_args.kwargs["where"]
+    assert where["userId"] == "user-abc"
+    assert where["AND"] == [
+        {
+            "OR": [
+                {"organizationId": "shared-org"},
+                {"organizationId": None},
+                {"expertId": {"not": None}},
+            ]
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_org_scope_exempts_expert_sessions():
+    from backend.copilot.db import delete_chat_session
+
+    delete_many = AsyncMock(return_value=1)
+    find_first = AsyncMock(return_value=None)
+    client = AsyncMock(delete_many=delete_many, find_first=find_first)
+    with patch.object(PrismaChatSession, "prisma", return_value=client):
+        deleted = await delete_chat_session(
+            "sess-expert", user_id="user-abc", organization_id="shared-org"
+        )
+
+    assert deleted is True
+    where = delete_many.call_args.kwargs["where"]
+    assert where["userId"] == "user-abc"
+    assert where["AND"] == [
+        {
+            "OR": [
+                {"organizationId": "shared-org"},
+                {"organizationId": None},
+                {"expertId": {"not": None}},
+            ]
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_org_scope_exempts_expert_sessions():
+    raw = AsyncMock(return_value=[])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
+        await get_user_chat_sessions(
+            "user-abc", limit=10, offset=0, organization_id="shared-org"
+        )
+
+    query = raw.call_args.args[0]
+    assert _EXPERT_CARVEOUT_SQL in query
+
+
+@pytest.mark.asyncio
+async def test_session_count_org_scope_matches_list_carveout():
+    from backend.copilot.db import get_user_session_count
+
+    raw = AsyncMock(return_value=[{"count": 0}])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
+        await get_user_session_count("user-abc", organization_id="shared-org")
+
+    query = raw.call_args.args[0]
+    assert _EXPERT_CARVEOUT_SQL in query
+
+
+@pytest.mark.asyncio
+async def test_get_user_chat_sessions_can_order_by_strict_recency():
+    raw = AsyncMock(return_value=[])
+    with patch("backend.copilot.db.db.query_raw_with_schema", raw):
+        await get_user_chat_sessions(
+            "user-abc",
+            limit=1,
+            pinned_first=False,
+        )
+
+    query = raw.call_args.args[0]
+    assert 'ORDER BY "updatedAt" DESC' in query
+    assert 'ORDER BY "isPinned"' not in query
+
+
 # NOTE: previously this file had a separate suite for ``db.get_chat_session``
 # (windowed eager-load). That function was removed in favour of going through
 # ``get_chat_messages_paginated`` directly — see ``model._get_session_from_db``.
@@ -1027,3 +1192,89 @@ async def test_update_chat_message_stamps_not_found_returns_false():
             routing_source="env",
         )
     assert ok is False
+
+
+# ---------- append_expert_run_message ----------
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_dedupes_on_message_id() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=_make_msg(sequence=1))
+    add_message = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result is None
+    add_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_uses_latest_expert_session() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=_make_session(session_id="sess-latest"))
+    add_message = AsyncMock()
+    create_session = AsyncMock()
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=create_session),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=7)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-latest"
+    create_session.assert_not_awaited()
+    call_kwargs = add_message.call_args.kwargs
+    assert call_kwargs["session_id"] == "sess-latest"
+    assert call_kwargs["role"] == "assistant"
+    assert call_kwargs["sequence"] == 7
+    assert call_kwargs["message_id"] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_append_expert_run_message_creates_session_when_none_exists() -> None:
+    from backend.copilot.db import append_expert_run_message
+
+    find_unique = AsyncMock(return_value=None)
+    find_first = AsyncMock(return_value=None)
+    add_message = AsyncMock()
+    created = AsyncMock()
+    created_info = AsyncMock()
+    created_info.session_id = "sess-new"
+    created.return_value = created_info
+    with (
+        patch.object(
+            PrismaChatMessage, "prisma", return_value=AsyncMock(find_unique=find_unique)
+        ),
+        patch.object(
+            PrismaChatSession, "prisma", return_value=AsyncMock(find_first=find_first)
+        ),
+        patch("backend.copilot.db.add_chat_message", new=add_message),
+        patch("backend.copilot.db.create_chat_session", new=created),
+        patch("backend.copilot.db.get_next_sequence", new=AsyncMock(return_value=0)),
+    ):
+        result = await append_expert_run_message(
+            user_id="u1", expert_id="e1", content="done", message_id="m1"
+        )
+
+    assert result == "sess-new"
+    assert created.call_args.kwargs["expert_id"] == "e1"
+    assert add_message.call_args.kwargs["session_id"] == "sess-new"

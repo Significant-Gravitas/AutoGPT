@@ -4,22 +4,26 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
-from ldclient import LDClient
+from ldclient import Context, LDClient
 
+import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
     _fetch_user_context_data,
+    evaluate_feature_flag,
     feature_flag,
+    get_client,
     is_feature_enabled,
     mock_flag_variation,
+    shutdown_launchdarkly,
 )
 
 
 @pytest.fixture
 def ld_client(mocker):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch("ldclient.get", return_value=client)
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     client.is_initialized.return_value = True
     return client
 
@@ -107,16 +111,15 @@ def test_flag_enum_values():
 @pytest.mark.asyncio
 async def test_is_feature_enabled_with_flag_enum(mocker):
     """Test is_feature_enabled function with Flag enum."""
-    mock_get_feature_flag_value = mocker.patch(
-        "backend.util.feature_flag.get_feature_flag_value"
-    )
-    mock_get_feature_flag_value.return_value = True
+    mock_evaluate = mocker.patch("backend.util.feature_flag._evaluate_flag_value")
+    mock_evaluate.return_value = (True, True)
 
     result = await is_feature_enabled(Flag.AUTOMOD, "user123")
 
     assert result is True
     # Should call with the flag's string value
-    mock_get_feature_flag_value.assert_called_once()
+    mock_evaluate.assert_called_once()
+    assert mock_evaluate.call_args.args[0] == Flag.AUTOMOD.value
 
 
 class TestEnvFlagOverride:
@@ -411,3 +414,170 @@ class TestUserContextCacheDegradation:
 
         assert ctx.anonymous is True
         accessor.assert_not_called()
+
+
+class TestShutdown:
+    @pytest.fixture(autouse=True)
+    def reset_module_state(self):
+        initialized = feature_flag_module._is_initialized
+        attempted = feature_flag_module._init_attempted
+        yield
+        feature_flag_module._is_initialized = initialized
+        feature_flag_module._init_attempted = attempted
+
+    @pytest.fixture
+    def sdk_key(self, mocker):
+        return mocker.patch.object(
+            feature_flag_module.settings.secrets,
+            "launch_darkly_sdk_key",
+            "sdk-key",
+        )
+
+    def test_shutdown_is_a_noop_when_never_initialized(self, mocker):
+        # `initialize_launchdarkly` returns early when no SDK key is set, so
+        # `ldclient.set_config` was never called and `ldclient.get()` raises
+        # "set_config was not called". Callers pair init/shutdown on app_env
+        # alone, so this ran on every unconfigured non-LOCAL deployment and
+        # took the exception out through service teardown, leaving the process
+        # alive until it was killed.
+        feature_flag_module._is_initialized = False
+        get_ldclient = mocker.patch("backend.util.feature_flag.ldclient.get")
+
+        shutdown_launchdarkly()
+
+        get_ldclient.assert_not_called()
+
+    def test_shutdown_closes_an_initialized_client(self, ld_client):
+        feature_flag_module._is_initialized = True
+
+        shutdown_launchdarkly()
+
+        ld_client.close.assert_called_once()
+
+    def test_shutdown_closes_a_client_that_never_connected(self, ld_client):
+        # A configured client that never reached LaunchDarkly still has
+        # streaming and event threads running. Skipping close() there leaves
+        # exactly the kind of live thread that holds a process open past its
+        # stop deadline.
+        feature_flag_module._is_initialized = True
+        ld_client.is_initialized.return_value = False
+
+        shutdown_launchdarkly()
+
+        ld_client.close.assert_called_once()
+
+    def test_shutdown_does_not_rearm_lazy_initialization(
+        self, mocker, ld_client, sdk_key
+    ):
+        # `_is_initialized` is never cleared, which is what keeps a flag
+        # evaluation arriving after teardown from rebuilding the client. This
+        # pins that property; it is not a regression test for the gate swap.
+        feature_flag_module._is_initialized = True
+        feature_flag_module._init_attempted = True
+        set_config = mocker.patch("backend.util.feature_flag.ldclient.set_config")
+
+        shutdown_launchdarkly()
+        get_client()
+
+        set_config.assert_not_called()
+
+    def test_unconfigured_deployment_only_attempts_initialization_once(
+        self, mocker, ld_client
+    ):
+        # Without a key `_is_initialized` never becomes True, so gating the
+        # lazy init on it re-entered initialize_launchdarkly on every flag
+        # evaluation: a warning plus a raise per call, several per request.
+        feature_flag_module._is_initialized = False
+        feature_flag_module._init_attempted = False
+        mocker.patch.object(
+            feature_flag_module.settings.secrets, "launch_darkly_sdk_key", ""
+        )
+        warn = mocker.patch.object(feature_flag_module.logger, "warning")
+
+        get_client()
+        get_client()
+        get_client()
+
+        assert warn.call_count == 1
+
+
+class TestEvaluateFeatureFlag:
+    """Callers that delete state on a False need to know it was a real answer."""
+
+    @pytest.fixture(autouse=True)
+    def no_env_override(self, monkeypatch: pytest.MonkeyPatch):
+        """`.env` may force unrelated flags; pin this one to LaunchDarkly."""
+        monkeypatch.delenv("FORCE_FLAG_HIRE_EXPERTS", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", raising=False)
+
+    @pytest.fixture
+    def user_context(self, mocker):
+        """A resolved context, so `authoritative` turns purely on evaluation."""
+        return mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create("u-1"), True),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_successful_evaluation_is_authoritative(
+        self, ld_client, user_context
+    ):
+        ld_client.variation.return_value = False
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+
+    @pytest.mark.asyncio
+    async def test_an_uninitialised_client_is_not(self, ld_client, user_context):
+        ld_client.is_initialized.return_value = False
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_an_evaluation_that_raises_is_not(self, ld_client, user_context):
+        """The regression this class exists for: a LIVE client can still fail
+        to produce a value, and that must not read as a real "off"."""
+        ld_client.variation.side_effect = Exception("evaluation exploded")
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_a_degraded_user_context_is_not(self, ld_client, mocker):
+        """The context lookup is a database read that SWALLOWS its failure and
+        returns an anonymous context, so evaluation still succeeds — against
+        the wrong user. That value must not be trusted as an answer."""
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(side_effect=ConnectionError("database unreachable")),
+        )
+        ld_client.variation.return_value = False
+
+        result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, str(uuid.uuid4()))
+
+        assert result == (False, False)
+        ld_client.variation.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):
+        ld_client.variation.return_value = {"some": "object"}
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_an_env_override_answers_without_launchdarkly(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A forced flag is a real answer, so acting on its False is safe."""
+        mocker.patch(
+            "backend.util.feature_flag.get_client",
+            side_effect=Exception("set_config was not called"),
+        )
+        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "false")
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+
+    @pytest.mark.asyncio
+    async def test_is_feature_enabled_still_returns_the_bare_value(
+        self, ld_client, user_context
+    ):
+        """The refactor must not change what existing callers see."""
+        ld_client.variation.return_value = True
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        ld_client.variation.side_effect = Exception("boom")
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False
