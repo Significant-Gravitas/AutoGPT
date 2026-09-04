@@ -30,10 +30,17 @@ interface Args {
   synthesize: (text: string, kind: SpeechKind) => Promise<Blob>;
   /** The queue ran dry. The caller decides whether the reply is over. */
   onIdle: () => void;
+  /** Audio actually started — the moment the user hears anything. */
+  onPlaybackStart?: () => void;
   onError: (error: unknown) => void;
 }
 
-export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
+export function createSpeechPlayer({
+  synthesize,
+  onIdle,
+  onPlaybackStart,
+  onError,
+}: Args) {
   const queue: Promise<Blob | null>[] = [];
   let draining = false;
   /** Bumped by `stop`, so audio synthesised for an abandoned turn is dropped. */
@@ -70,6 +77,7 @@ export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
 
   async function play(blob: Blob) {
     unlock();
+    onPlaybackStart?.();
     const url = URL.createObjectURL(blob);
     try {
       await playUrl(url);

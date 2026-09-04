@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
 import { pickAcknowledgement } from "./acknowledgements";
 import {
@@ -61,6 +62,9 @@ export function useVoiceMode({
   const lastPhrase = useRef<string | null>(null);
   const replyDone = useRef(false);
   const spokeThisTurn = useRef(false);
+  const turnIndex = useRef(0);
+  /** Speech end, for the two latencies the funnel measures. */
+  const utteranceEndedAt = useRef(0);
   const wasStreaming = useRef(false);
   // Bumped by every activate and deactivate. Work started under an older
   // token belongs to a session the user has already left.
@@ -105,7 +109,7 @@ export function useVoiceMode({
     statusLabel: describeVoiceState(state),
     toggle,
     /** The visible stop button: cut the reply short and leave voice mode. */
-    stop: deactivate,
+    stop: () => deactivate("user"),
   };
 
   function toggle() {
@@ -123,11 +127,20 @@ export function useVoiceMode({
     try {
       session = await startVadSession({
         onSpeechStart: () => dispatch({ type: "SPEECH_START" }),
-        onMisfire: () => dispatch({ type: "SPEECH_MISFIRE" }),
+        onMisfire: () => {
+          trackVoiceMode("voice_turn_dropped", { reason: "vad_misfire" });
+          dispatch({ type: "SPEECH_MISFIRE" });
+        },
         onSpeechEnd: (wav) => void handleUtterance(wav),
       });
     } catch (error) {
       report(error);
+      const denied =
+        error instanceof DOMException && error.name === "NotAllowedError";
+      trackVoiceMode(
+        denied ? "voice_mode_permission_denied" : "voice_mode_error",
+        { stage: "vad_start" },
+      );
       return;
     } finally {
       setStarting(false);
@@ -141,11 +154,23 @@ export function useVoiceMode({
     }
 
     vadRef.current = session;
-    setTimer("session", MAX_SESSION_MS, deactivate);
+    turnIndex.current = 0;
+    trackVoiceMode("voice_mode_started", {
+      entry: inputs.current.sessionId ? "existing_chat" : "new_chat",
+    });
+    setTimer("session", MAX_SESSION_MS, () => deactivate("silence_timeout"));
     dispatch({ type: "ENABLE" });
   }
 
-  function deactivate() {
+  function deactivate(reason: "user" | "silence_timeout" = "user") {
+    if (stateRef.current !== "off") {
+      trackVoiceMode(
+        reason === "silence_timeout"
+          ? "voice_mode_timed_out"
+          : "voice_mode_stopped",
+        { turns: turnIndex.current, state: stateRef.current },
+      );
+    }
     activation.current += 1;
     setStarting(false);
     clearTimers();
@@ -169,6 +194,7 @@ export function useVoiceMode({
 
   async function handleUtterance(wav: Blob) {
     const mine = activation.current;
+    utteranceEndedAt.current = Date.now();
     dispatch({ type: "SPEECH_END" });
     acknowledge();
 
@@ -177,9 +203,13 @@ export function useVoiceMode({
       transcript = await transcribeUtterance(wav);
     } catch (error) {
       report(error);
+      trackVoiceMode("voice_turn_dropped", { reason: "transcribe_failed" });
       dispatch({ type: "TRANSCRIPT_DROPPED" });
       return;
     }
+    trackVoiceMode("voice_transcribe_latency_ms", {
+      ms: Date.now() - utteranceEndedAt.current,
+    });
 
     // Transcription takes a second or two. Sending a turn the user opted out
     // of during it is worse than losing the utterance.
@@ -190,15 +220,22 @@ export function useVoiceMode({
 
     if (isRejectableTranscript(transcript)) {
       playerRef.current?.stop();
+      trackVoiceMode("voice_turn_dropped", { reason: "filler_or_empty" });
       dispatch({ type: "TRANSCRIPT_DROPPED" });
       return;
     }
 
     startTurn();
+    turnIndex.current += 1;
+    trackVoiceMode("voice_turn_sent", {
+      turn_index: turnIndex.current,
+      transcript_chars: transcript.trim().length,
+    });
     try {
       await inputs.current.onSend(transcript.trim());
     } catch (error) {
       report(error);
+      trackVoiceMode("voice_mode_error", { stage: "send" });
       dispatch({ type: "ERROR" });
     }
   }
@@ -265,6 +302,9 @@ export function useVoiceMode({
   function dispatch(event: VoiceEvent) {
     const next = voiceReduce(stateRef.current, event);
     if (next === stateRef.current) return;
+    if (event.type === "REPLY_DONE") {
+      trackVoiceMode("voice_turn_completed", { turn_index: turnIndex.current });
+    }
     stateRef.current = next;
     setState(next);
     syncMic(next);
@@ -275,7 +315,9 @@ export function useVoiceMode({
     else vadRef.current?.pause();
 
     if (next === "listening") {
-      setTimer("silence", inputs.current.silenceTimeoutMs, deactivate);
+      setTimer("silence", inputs.current.silenceTimeoutMs, () =>
+        deactivate("silence_timeout"),
+      );
     } else {
       clearTimer("silence");
     }
@@ -290,7 +332,17 @@ export function useVoiceMode({
         onIdle: () => {
           if (replyDone.current) dispatch({ type: "REPLY_DONE" });
         },
-        onError: report,
+        onPlaybackStart: () => {
+          if (!utteranceEndedAt.current) return;
+          trackVoiceMode("voice_first_sound_latency_ms", {
+            ms: Date.now() - utteranceEndedAt.current,
+          });
+          utteranceEndedAt.current = 0;
+        },
+        onError: (error) => {
+          trackVoiceMode("voice_mode_error", { stage: "synthesis" });
+          report(error);
+        },
       });
     }
     return playerRef.current;

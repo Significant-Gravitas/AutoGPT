@@ -1352,7 +1352,7 @@ class ChatConfig(BaseSettings):
         description="OpenAI speech model used for voice-mode replies.",
     )
     voice_tts_voice: str = Field(
-        default="echo",
+        default="marin",
         description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
     )
     voice_tts_instructions: str = Field(

@@ -46,11 +46,18 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+const tracked: [string, Record<string, unknown> | undefined][] = [];
+vi.mock("@/services/copilot/voice-mode-analytics", () => ({
+  trackVoiceMode: (event: string, props?: Record<string, unknown>) =>
+    tracked.push([event, props]),
+}));
+
 import { requestVoiceStart, takeVoiceStart } from "../pendingVoiceStart";
 import { useVoiceMode } from "../useVoiceMode";
 
 describe("useVoiceMode", () => {
   beforeEach(() => {
+    tracked.length = 0;
     takeVoiceStart();
     spoken.length = 0;
     sessions.length = 0;
@@ -307,6 +314,46 @@ describe("useVoiceMode", () => {
     const second = render({});
     await act(async () => undefined);
     expect(second.result.current.state).toBe("off");
+  });
+
+  it("reports a completed turn to the funnel", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    await reply(view, "On it. Building that now.");
+    await waitFor(() => expect(view.result.current.state).toBe("listening"));
+
+    const events = tracked.map(([e]) => e);
+    expect(events).toContain("voice_mode_started");
+    expect(events).toContain("voice_transcribe_latency_ms");
+    expect(events).toContain("voice_turn_sent");
+    expect(events).toContain("voice_turn_completed");
+    // Without this the funnel cannot tell one turn from ten.
+    const sent = tracked.find(([e]) => e === "voice_turn_sent");
+    expect(sent?.[1]?.turn_index).toBe(1);
+  });
+
+  it("distinguishes a silence timeout from the user leaving", async () => {
+    vi.useFakeTimers();
+    const view = render({ silenceTimeoutMs: 8000 });
+    await enable(view);
+    await act(async () => {
+      vi.advanceTimersByTime(8001);
+    });
+
+    expect(tracked.map(([e]) => e)).toContain("voice_mode_timed_out");
+    expect(tracked.map(([e]) => e)).not.toContain("voice_mode_stopped");
+    vi.useRealTimers();
+  });
+
+  it("reports why an utterance was thrown away", async () => {
+    transcript = "Uh, um...";
+    const view = render({});
+    await enable(view);
+    await speak();
+
+    const dropped = tracked.find(([e]) => e === "voice_turn_dropped");
+    expect(dropped?.[1]?.reason).toBe("filler_or_empty");
   });
 
   it("shuts itself down when the flag goes off", async () => {
