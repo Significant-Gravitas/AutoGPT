@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
@@ -58,11 +59,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const pendingQuestions = useContext(PendingQuestionsContext);
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const { onSend } = useCopilotChatActions();
   const sentMessageCount = useCopilotUIStore((s) => s.sentMessageCount);
   // Ids drafted by the last Proceed, plus the send count at that moment.
   // Proceed only fills the composer, so the cards' onSent callbacks fire
   // when the user actually sends — not when the draft is written.
   const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
+  const autoSentRef = useRef(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
@@ -98,6 +101,54 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
       drafted.ids.forEach((id) => actionEntries.get(id)?.onSent?.());
     },
     [sentMessageCount, actionEntries],
+  );
+
+  const pendingActions = [...actionEntries.values()];
+  const connectorRequests = pendingActions
+    .map((entry) => entry.connectors)
+    .filter((request) => request !== undefined);
+  const mcpRequests = pendingActions
+    .map((entry) => entry.mcp)
+    .filter((request) => request !== undefined);
+  const inputRequests = pendingActions
+    .map((entry) => entry.inputs)
+    .filter((request) => request !== undefined);
+  const questionRequests = pendingActions
+    .map((entry) => entry.questions)
+    .filter((request) => request !== undefined);
+  const needsManualProceed = pendingActions.some(
+    (entry) => entry.manualProceed,
+  );
+  const hasCardWork =
+    connectorRequests.length > 0 ||
+    mcpRequests.length > 0 ||
+    inputRequests.length > 0 ||
+    questionRequests.length > 0;
+  const allActionsReady =
+    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
+  // One tool can need several accounts. The turn goes out once, when every
+  // card in the chain is satisfied — otherwise connecting the first provider
+  // sends while the rest of the rows are still visibly unconnected.
+  const canAutoSend =
+    !readOnly &&
+    allActionsReady &&
+    !needsManualProceed &&
+    pendingActions.some((entry) => entry.justConnected);
+
+  useEffect(
+    function sendOnceEveryCardIsSatisfied() {
+      if (!canAutoSend || autoSentRef.current) return;
+      autoSentRef.current = true;
+      const message = pendingActions
+        .map((entry) => entry.buildMessage())
+        .filter(Boolean)
+        .join("\n\n");
+      if (!message) return;
+      pendingActions.forEach((entry) => entry.onSent?.());
+      void onSend(message);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
+    [canAutoSend],
   );
 
   const rows = useMemo(
@@ -151,30 +202,6 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // a resolved node instead of trailing off the last tool. An errored or
   // still-running chain has no such ending.
   const showDone = !isStreaming && !hasError && !windowMode && panelOpen;
-
-  const pendingActions = [...actionEntries.values()];
-  const connectorRequests = pendingActions
-    .map((entry) => entry.connectors)
-    .filter((request) => request !== undefined);
-  const mcpRequests = pendingActions
-    .map((entry) => entry.mcp)
-    .filter((request) => request !== undefined);
-  const inputRequests = pendingActions
-    .map((entry) => entry.inputs)
-    .filter((request) => request !== undefined);
-  const questionRequests = pendingActions
-    .map((entry) => entry.questions)
-    .filter((request) => request !== undefined);
-  const needsManualProceed = pendingActions.some(
-    (entry) => entry.manualProceed,
-  );
-  const hasCardWork =
-    connectorRequests.length > 0 ||
-    mcpRequests.length > 0 ||
-    inputRequests.length > 0 ||
-    questionRequests.length > 0;
-  const allActionsReady =
-    pendingActions.length > 0 && pendingActions.every((entry) => entry.ready);
 
   // Proceed never sends: it drafts the combined reply of every READY card
   // into the chat input so the user reviews/edits and presses send

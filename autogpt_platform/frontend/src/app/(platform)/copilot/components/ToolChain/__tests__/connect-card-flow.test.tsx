@@ -483,6 +483,109 @@ describe("copilot Connect card, already satisfied", () => {
   });
 });
 
+describe("copilot Connect card, one tool needing several providers", () => {
+  beforeEach(() => {
+    savedCredentials = [];
+    server.use(
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          { name: "github", description: "Repositories" },
+          { name: "slack", description: "Messages" },
+        ]),
+      ),
+      http.get("*/api/integrations/providers/system", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json(savedCredentials),
+      ),
+      http.get("*/api/integrations/:provider/login", () =>
+        HttpResponse.json({
+          login_url: "https://example.com/oauth/authorize",
+          state_token: "state-token",
+        }),
+      ),
+      http.post("*/api/integrations/:provider/callback", ({ params }) => {
+        const provider = String(params.provider);
+        const stored = {
+          id: `cred-${provider}`,
+          provider,
+          type: "oauth2",
+          title: provider,
+          scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
+        };
+        savedCredentials = [...savedCredentials, stored];
+        return HttpResponse.json(stored);
+      }),
+    );
+  });
+
+  afterEach(resetStores);
+
+  it("sends once, after the second provider is connected", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    await connectRemainingProvider();
+    // The first account alone must not start the turn: the other row is still
+    // visibly unconnected, and the tool needs both.
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+  });
+
+  it("sends once whichever provider the user connects first", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    // Same assertion from the other end: the order is the user's, the single
+    // turn is not.
+    const buttons = screen.getAllByRole("button", { name: "Connect" });
+    await connectRemainingProvider(buttons.length - 1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+  });
+
+  it("offers one Proceed when a card also collects inputs", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[partWithInputs(), slackRequirementsPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    await connectRemainingProvider();
+
+    // Connecting every account does not finish a chain that also owes inputs;
+    // the user completes it through the chain's single Proceed.
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("stays silent and names what is left when the user connects one and stops", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    await connectRemainingProvider();
+
+    await screen.findByText(/Still to connect:/);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
 function renderChain() {
   const onSend = vi.fn();
   const utils = render(
@@ -628,4 +731,28 @@ function triggerPart(): MessagePart {
     type: "tool-setup_agent_webhook_trigger",
     toolCallId: "call-setup_agent_webhook_trigger",
   } as unknown as MessagePart;
+}
+function renderTwoProviderChain() {
+  const onSend = vi.fn();
+  const utils = render(
+    <CredentialsProvider>
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain
+          parts={[setupRequirementsPart(), slackRequirementsPart()]}
+          isStreaming={false}
+        />
+      </CopilotChatActionsProvider>
+    </CredentialsProvider>,
+  );
+  return { onSend, ...utils };
+}
+
+/** Connects one row by position. The list shrinks as rows resolve, so index 0
+ *  is "the next one still unconnected". */
+async function connectRemainingProvider(index = 0) {
+  const user = userEvent.setup();
+  const buttons = await screen.findAllByRole("button", { name: "Connect" });
+  await user.click(buttons[index]);
+  await user.click(await screen.findByText("OAuth"));
+  await user.click(await screen.findByRole("button", { name: "Continue" }));
 }
