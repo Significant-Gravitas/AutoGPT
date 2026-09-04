@@ -4,6 +4,8 @@
  * inside a user gesture, and later chunks arrive with no gesture of their own.
  */
 
+import type { SpeechKind } from "./speechApi";
+
 const SILENT_WAV =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
 
@@ -25,7 +27,7 @@ export function unlockAudio(): HTMLAudioElement {
 }
 
 interface Args {
-  synthesize: (text: string) => Promise<Blob>;
+  synthesize: (text: string, kind: SpeechKind) => Promise<Blob>;
   /** The queue ran dry. The caller decides whether the reply is over. */
   onIdle: () => void;
   onError: (error: unknown) => void;
@@ -44,9 +46,9 @@ export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
     unlockAudio();
   }
 
-  function enqueue(text: string) {
+  function enqueue(text: string, kind: SpeechKind = "reply") {
     queue.push(
-      synthesize(text).catch((error) => {
+      synthesize(text, kind).catch((error) => {
         onError(error);
         return null;
       }),

@@ -9,7 +9,7 @@ const VAD_OPTIONS = {
   // How long a pause may last before the turn is taken as finished. 700 ms
   // cut people off mid-thought; the model's own latency dwarfs the extra
   // wait, so erring long is nearly free.
-  redemptionMs: 1400,
+  redemptionMs: 1540,
   // Keeps the first phoneme, which the threshold crossing would otherwise eat.
   preSpeechPadMs: 250,
   minSpeechMs: 400,

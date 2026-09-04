@@ -6,6 +6,7 @@ in-plan usage rather than a free side channel.
 """
 
 import logging
+from typing import Literal
 
 from openai import AsyncOpenAI
 
@@ -42,6 +43,8 @@ AUDIO_MEDIA_TYPE = "audio/mpeg"
 
 TTS_BLOCK_NAME = "copilot:tts"
 
+SpeechKind = Literal["reply", "acknowledgement"]
+
 
 class SpeechUnavailable(Exception):
     """No OpenAI key is configured, so voice mode cannot synthesise."""
@@ -53,6 +56,7 @@ async def synthesize_speech(
     text: str,
     session_id: str | None = None,
     voice: str | None = None,
+    kind: SpeechKind = "reply",
 ) -> bytes:
     """Speak *text* as MP3 and meter its cost against the user's plan.
 
@@ -74,7 +78,8 @@ async def synthesize_speech(
         voice=resolved_voice,
         input=cleaned,
         response_format="mp3",
-        instructions=config.voice_tts_instructions,
+        instructions=_instructions_for(kind),
+        speed=config.voice_tts_speed,
     )
     audio = await response.aread()
 
@@ -116,6 +121,13 @@ async def _meter_speech(
             "audio_bytes": audio_bytes,
         },
     )
+
+
+def _instructions_for(kind: SpeechKind) -> str:
+    """A one-line aside and a paragraph of prose need different delivery."""
+    if kind == "acknowledgement":
+        return config.voice_tts_ack_instructions
+    return config.voice_tts_instructions
 
 
 def speech_cost_usd(characters: int) -> float:

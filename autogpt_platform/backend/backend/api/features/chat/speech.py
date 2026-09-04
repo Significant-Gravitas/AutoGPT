@@ -22,6 +22,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.speech import (
     AUDIO_MEDIA_TYPE,
     MAX_SPEECH_CHARS,
+    SpeechKind,
     SpeechUnavailable,
     synthesize_speech,
 )
@@ -46,6 +47,11 @@ class SpeechRequest(BaseModel):
     voice: str | None = Field(
         default=None, description="Overrides the configured default voice."
     )
+    kind: SpeechKind = Field(
+        default="reply",
+        description="Picks the delivery instruction; a canned acknowledgement "
+        "is read far too heavily by the one written for prose.",
+    )
 
 
 @router.post(
@@ -69,6 +75,7 @@ async def synthesize(
             text=request.text,
             session_id=request.session_id,
             voice=request.voice,
+            kind=request.kind,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

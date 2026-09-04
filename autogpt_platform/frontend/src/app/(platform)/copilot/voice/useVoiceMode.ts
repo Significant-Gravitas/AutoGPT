@@ -279,7 +279,7 @@ export function useVoiceMode({
   function acknowledge(kind: UtteranceKind | null) {
     const phrase = pickAcknowledgement(kind, lastPhrase.current);
     lastPhrase.current = phrase;
-    player().enqueue(phrase);
+    player().enqueue(phrase, "acknowledgement");
   }
 
   function dispatch(event: VoiceEvent) {
@@ -306,7 +306,8 @@ export function useVoiceMode({
   function player(): SpeechPlayer {
     if (!playerRef.current) {
       playerRef.current = createSpeechPlayer({
-        synthesize: (text) => synthesizeSpeech(text, inputs.current.sessionId),
+        synthesize: (text, kind) =>
+          synthesizeSpeech(text, inputs.current.sessionId, kind),
         onIdle: () => {
           if (replyDone.current) dispatch({ type: "REPLY_DONE" });
         },

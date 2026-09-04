@@ -33,7 +33,7 @@ describe("startVadSession", () => {
       model: "v5",
       positiveSpeechThreshold: 0.6,
       // Long enough that a pause mid-thought does not end the turn.
-      redemptionMs: 1400,
+      redemptionMs: 1540,
       preSpeechPadMs: 250,
       minSpeechMs: 400,
     });

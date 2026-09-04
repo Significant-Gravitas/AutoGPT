@@ -8,11 +8,15 @@ import { getCopilotAuthHeaders } from "../helpers";
  */
 const cache = new Map<string, Blob>();
 
+export type SpeechKind = "reply" | "acknowledgement";
+
 export async function synthesizeSpeech(
   text: string,
   sessionId: string | null,
+  kind: SpeechKind = "reply",
 ): Promise<Blob> {
-  const cached = cache.get(text);
+  const key = `${kind}:${text}`;
+  const cached = cache.get(key);
   if (cached) return cached;
 
   const response = await fetch(
@@ -23,7 +27,7 @@ export async function synthesizeSpeech(
         ...(await getCopilotAuthHeaders()),
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ text, session_id: sessionId }),
+      body: JSON.stringify({ text, session_id: sessionId, kind }),
     },
   );
 
@@ -32,7 +36,7 @@ export async function synthesizeSpeech(
   }
 
   const blob = await response.blob();
-  if (cache.size < CACHE_LIMIT) cache.set(text, blob);
+  if (cache.size < CACHE_LIMIT) cache.set(key, blob);
   return blob;
 }
 

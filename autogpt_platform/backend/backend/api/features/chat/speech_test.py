@@ -128,6 +128,32 @@ def test_speech_bounds_the_session_id(record_usage: AsyncMock) -> None:
     record_usage.assert_not_awaited()
 
 
+def test_speech_reads_an_acknowledgement_with_its_own_delivery(
+    record_usage: AsyncMock,
+) -> None:
+    client.post("/speech", json={"text": "One moment.", "kind": "acknowledgement"})
+    ack = _last_synthesis_kwargs()
+
+    client.post("/speech", json={"text": "Here is the answer."})
+    reply = _last_synthesis_kwargs()
+
+    assert ack["instructions"] != reply["instructions"]
+    assert ack["instructions"] == speech_module.config.voice_tts_ack_instructions
+
+
+def test_speech_applies_the_configured_speed(record_usage: AsyncMock) -> None:
+    client.post("/speech", json={"text": "A comma, and another, and a third."})
+
+    assert _last_synthesis_kwargs()["speed"] == speech_module.config.voice_tts_speed
+
+
+def test_speech_rejects_an_unknown_kind(record_usage: AsyncMock) -> None:
+    response = client.post("/speech", json={"text": "hi", "kind": "singing"})
+
+    assert response.status_code == 422
+    record_usage.assert_not_awaited()
+
+
 def test_speech_rejects_an_unknown_voice(record_usage: AsyncMock) -> None:
     response = client.post("/speech", json={"text": "hello", "voice": "morgan"})
 
@@ -180,6 +206,10 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     yield
     app.dependency_overrides.clear()
+
+
+def _last_synthesis_kwargs() -> dict:
+    return speech_module._speech_client().audio.speech.create.await_args.kwargs
 
 
 @pytest.fixture
