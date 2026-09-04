@@ -137,11 +137,13 @@ def test_the_first_tracked_call_starts_one_daemon_ticker(monkeypatch):
     monkeypatch.setattr(saturation, "_ticker", None)
     monkeypatch.setattr(saturation, "_TICK_SECONDS", 0.01)
     ticked = threading.Event()
+    parked = threading.Event()  # never set
 
     def _evaluate(now=None):
-        # Park the daemon on its next sleep; the loop has no other exit.
-        saturation._TICK_SECONDS = 3600
         ticked.set()
+        # Park the daemon inside the stub: `while True` has no other exit, and a
+        # thread left looping would call the real evaluator for the whole session.
+        parked.wait()
         return 0
 
     monkeypatch.setattr(saturation, "evaluate_saturation", _evaluate)
