@@ -1,13 +1,28 @@
 /**
- * Synthesises chunks ahead of playback and plays them in order.
- *
- * One `<audio>` element for the whole session: browsers only grant autoplay
- * to an element first played inside a user gesture, and every later chunk
- * arrives from the network with no gesture of its own.
+ * Synthesises chunks ahead of playback and plays them in order, through one
+ * `<audio>` element: browsers only grant autoplay to an element first played
+ * inside a user gesture, and later chunks arrive with no gesture of their own.
  */
 
 const SILENT_WAV =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
+
+/**
+ * One element for the tab, not for the hook: creating a session re-keys the
+ * chat host, and an element first played before that remount is the only one
+ * still allowed to play after it.
+ */
+let sharedAudio: HTMLAudioElement | null = null;
+
+/** Call from a click. Safe to repeat; only the first play grants autoplay. */
+export function unlockAudio(): HTMLAudioElement {
+  if (!sharedAudio) {
+    sharedAudio = new Audio(SILENT_WAV);
+    sharedAudio.preload = "auto";
+    void sharedAudio.play().catch(() => undefined);
+  }
+  return sharedAudio;
+}
 
 interface Args {
   synthesize: (text: string) => Promise<Blob>;
@@ -18,7 +33,6 @@ interface Args {
 
 export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
   const queue: Promise<Blob | null>[] = [];
-  let element: HTMLAudioElement | null = null;
   let draining = false;
   /** Bumped by `stop`, so audio synthesised for an abandoned turn is dropped. */
   let generation = 0;
@@ -27,10 +41,7 @@ export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
 
   /** Must be called from a click handler, before the first `enqueue`. */
   function unlock() {
-    if (element) return;
-    element = new Audio(SILENT_WAV);
-    element.preload = "auto";
-    void element.play().catch(() => undefined);
+    unlockAudio();
   }
 
   function enqueue(text: string) {
@@ -68,13 +79,12 @@ export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
   }
 
   function playUrl(url: string): Promise<void> {
-    const audio = element;
-    if (!audio) return Promise.resolve();
+    const audio = unlockAudio();
     audio.src = url;
     return new Promise((resolve, reject) => {
       function settle(finish: () => void) {
-        audio!.removeEventListener("ended", onEnded);
-        audio!.removeEventListener("error", onFailed);
+        audio.removeEventListener("ended", onEnded);
+        audio.removeEventListener("error", onFailed);
         finish();
       }
       function onEnded() {
@@ -93,15 +103,14 @@ export function createSpeechPlayer({ synthesize, onIdle, onError }: Args) {
   function stop() {
     generation += 1;
     queue.length = 0;
-    if (element) {
-      element.pause();
-      element.src = SILENT_WAV;
+    if (sharedAudio) {
+      sharedAudio.pause();
+      sharedAudio.src = SILENT_WAV;
     }
   }
 
   function destroy() {
     stop();
-    element = null;
   }
 
   function isIdle() {

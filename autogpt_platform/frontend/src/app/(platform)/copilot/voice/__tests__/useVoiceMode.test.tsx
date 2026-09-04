@@ -46,10 +46,12 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+import { requestVoiceStart, takeVoiceStart } from "../pendingVoiceStart";
 import { useVoiceMode } from "../useVoiceMode";
 
 describe("useVoiceMode", () => {
   beforeEach(() => {
+    takeVoiceStart();
     spoken.length = 0;
     sessions.length = 0;
     vadLoad = Promise.resolve();
@@ -256,6 +258,36 @@ describe("useVoiceMode", () => {
 
     expect(spoken).toHaveLength(spokenAfterStop);
     expect(view.result.current.state).toBe("listening");
+  });
+
+  it("starts itself on the mount that follows creating the chat", async () => {
+    // The empty composer asks for voice mode, then the session is created and
+    // this whole subtree is re-keyed and remounted with the new id.
+    requestVoiceStart();
+    const view = render({ sessionId: "session-created-just-now" });
+    await act(async () => undefined);
+
+    expect(view.result.current.state).toBe("listening");
+    expect(sessions).toHaveLength(1);
+  });
+
+  it("does not start itself on an ordinary mount", async () => {
+    const view = render({});
+    await act(async () => undefined);
+
+    expect(view.result.current.state).toBe("off");
+    expect(sessions).toHaveLength(0);
+  });
+
+  it("only honours the request once", async () => {
+    requestVoiceStart();
+    const first = render({});
+    await act(async () => undefined);
+    await act(async () => first.result.current.toggle());
+
+    const second = render({});
+    await act(async () => undefined);
+    expect(second.result.current.state).toBe("off");
   });
 
   it("shuts itself down when the flag goes off", async () => {

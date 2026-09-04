@@ -30,6 +30,11 @@ import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
 import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
 import { useVoiceMode } from "../../voice/useVoiceMode";
 import { useVoiceSilenceTimeout } from "../../voice/useVoiceSilenceTimeout";
+import {
+  requestVoiceStart,
+  takeVoiceStart,
+} from "../../voice/pendingVoiceStart";
+import { unlockAudio } from "../../voice/speechPlayer";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
@@ -225,6 +230,19 @@ export const ChatContainer = ({
     updateHistoryBreakdown(sessionId, messages);
   }, [sessionId, messages, isStreaming]);
 
+  // A chat has to exist before voice mode can send into it, and creating one
+  // re-keys this whole subtree — so ask for voice mode and let the new mount
+  // start it. The unlock has to happen here, in the click.
+  async function handleStartVoiceInNewChat() {
+    unlockAudio();
+    requestVoiceStart();
+    try {
+      await onCreateSession();
+    } catch {
+      takeVoiceStart();
+    }
+  }
+
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -391,6 +409,17 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                voiceToggle={
+                  isVoiceModeEnabled ? (
+                    <VoiceModeButton
+                      isActive={false}
+                      disabled={
+                        isInputDisabled || isSendLocked || isCreatingSession
+                      }
+                      onClick={handleStartVoiceInNewChat}
+                    />
+                  ) : undefined
+                }
                 isUploadingFiles={isUploadingFiles}
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}

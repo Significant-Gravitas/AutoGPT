@@ -17,6 +17,7 @@ import {
   type VoiceEvent,
   type VoiceState,
 } from "./micStateMachine";
+import { takeVoiceStart } from "./pendingVoiceStart";
 import { createReplyTextReader } from "./replyText";
 import { synthesizeSpeech, transcribeUtterance } from "./speechApi";
 import { takeSpeakableChunks } from "./speechChunker";
@@ -94,6 +95,12 @@ export function useVoiceMode({
   useEffect(() => {
     if (!enabled && stateRef.current !== "off") deactivate();
   }, [enabled]);
+
+  // Asked for on the previous mount, from the composer of a chat that did not
+  // exist yet. The audio element was already unlocked by that click.
+  useEffect(() => {
+    if (enabled && sessionId && takeVoiceStart()) void activate();
+  }, [enabled, sessionId]);
 
   useEffect(() => teardown, []);
 
