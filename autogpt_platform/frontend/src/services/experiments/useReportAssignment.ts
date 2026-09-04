@@ -1,6 +1,6 @@
 "use client";
 
-import { usePostV2RecordExperimentAssignment } from "@/app/api/__generated__/endpoints/experiments/experiments";
+import { usePostExperimentsRecordExperimentAssignment } from "@/app/api/__generated__/endpoints/experiments/experiments";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useEffect } from "react";
 
@@ -26,15 +26,21 @@ export function useReportAssignment({
   source,
 }: Args) {
   const { user } = useAuth();
-  const { mutate: recordAssignment } = usePostV2RecordExperimentAssignment();
+  const { mutate: recordAssignment } =
+    usePostExperimentsRecordExperimentAssignment();
   const userID = user?.id ?? null;
 
   useEffect(() => {
     if (!isResolved || !variant || !userID) return;
     if (!claimAssignmentReport(userID, experimentKey)) return;
-    recordAssignment({
-      data: { experiment_key: experimentKey, variant, source },
-    });
+    recordAssignment(
+      { data: { experiment_key: experimentKey, variant, source } },
+      {
+        // The backend is idempotent, so a failed report may be retried on
+        // the next render instead of being lost for the rest of the session.
+        onError: () => releaseAssignmentReport(userID, experimentKey),
+      },
+    );
   }, [isResolved, variant, userID, experimentKey, source, recordAssignment]);
 }
 
@@ -45,6 +51,10 @@ function claimAssignmentReport(userID: string, experimentKey: string) {
   if (reportedAssignments.has(key)) return false;
   reportedAssignments.add(key);
   return true;
+}
+
+function releaseAssignmentReport(userID: string, experimentKey: string) {
+  reportedAssignments.delete(`${userID}:${experimentKey}`);
 }
 
 export function resetReportedAssignmentsForTests() {
