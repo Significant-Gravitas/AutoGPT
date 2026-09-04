@@ -169,7 +169,7 @@ test("shows a calm empty state when agents produced nothing yet", async () => {
 
   render(<HomePage />);
 
-  expect(await screen.findByText("No work delivered yet")).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
 });
 
 test("renders the rest of the page when recent_work is absent", async () => {
@@ -179,6 +179,6 @@ test("renders the rest of the page when recent_work is absent", async () => {
 
   render(<HomePage />);
 
-  expect(await screen.findByText("No work delivered yet")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your briefing" })).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
 });

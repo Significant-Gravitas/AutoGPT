@@ -56,7 +56,6 @@ async def test_add_graph_to_library_create_new_agent() -> None:
     mock_from_db.assert_called_once_with(
         created_agent,
         schedule_info={},
-        store_listing_version_id="slv-id",
     )
     # Verify create was called with correct data
     create_call = mock_prisma.return_value.create.call_args
@@ -185,7 +184,6 @@ async def test_add_graph_to_library_unique_violation_updates_existing() -> None:
     mock_from_db.assert_called_once_with(
         updated_agent,
         schedule_info={},
-        store_listing_version_id="slv-id",
     )
     # Verify update was called with correct where and data
     update_call = mock_prisma.return_value.update.call_args

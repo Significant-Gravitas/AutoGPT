@@ -153,7 +153,6 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
-    record_graph_execution,
     record_graph_operation,
 )
 from backend.notifications import lifecycle
@@ -830,6 +829,10 @@ async def configure_user_auto_top_up(
             await credit_model.top_up_credits(user_id, request.amount)
         else:
             await credit_model.top_up_credits(user_id, 0)
+    except NotImplementedError as e:
+        raise HTTPException(
+            status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -2122,8 +2125,6 @@ async def execute_graph(
             trigger=execution_db.ExecutionTrigger.MANUAL,
             trigger_ref=source,
         )
-        # Record successful graph execution
-        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
             await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
@@ -2131,10 +2132,6 @@ async def execute_graph(
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
-        # Record failed graph execution
-        record_graph_execution(
-            graph_id=graph_id, status="validation_error", user_id=user_id
-        )
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -2147,8 +2144,6 @@ async def execute_graph(
             },
         )
     except Exception:
-        # Record any other failures
-        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
         record_graph_operation(operation="execute", status="error")
         raise
 
