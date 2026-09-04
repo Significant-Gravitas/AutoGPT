@@ -115,7 +115,7 @@ export default function MarketplaceExpertPage() {
       />
       <div className="mt-8 flex flex-col gap-10 border-t border-zinc-200 pt-8">
         <ExpertAbout key={expert.id} text={expert.bio || expert.identity} />
-        <ExpertSkills skills={expert.skills ?? []} />
+        <ExpertSkills skills={expert.skills ?? []} accent={accent} />
         <ExpertWorkflowList
           name={expert.name}
           workflows={expert.workflows}
