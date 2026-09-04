@@ -282,6 +282,7 @@ DEFAULT_CREDENTIALS = [
     google_maps_credentials,
     llama_api_credentials,
     v0_credentials,
+    google_credentials,
     webshare_proxy_credentials,
     openweathermap_credentials,
     elevenlabs_credentials,
