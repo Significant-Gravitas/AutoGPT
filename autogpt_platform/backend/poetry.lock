@@ -465,7 +465,7 @@ google-cloud-logging = "^3.13.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
 pyjwt = {version = "^2.11.0", extras = ["crypto"]}
-redis = "^6.2.0"
+redis = "^8.1.0"
 
 [package.source]
 type = "directory"
@@ -1615,19 +1615,22 @@ tzdata = "*"
 
 [[package]]
 name = "falkordb"
-version = "1.2.2"
+version = "1.7.1"
 description = "Python client for interacting with FalkorDB database"
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "falkordb-1.2.2-py3-none-any.whl", hash = "sha256:cc1fcccaa1148be9e3d22d85af03d027f19b398e0f38d04424f3757a02744976"},
-    {file = "falkordb-1.2.2.tar.gz", hash = "sha256:3fc150d3262b971916a0f2c15f419f7fe521a94fe3a672b6f174288d885fd239"},
+    {file = "falkordb-1.7.1-py3-none-any.whl", hash = "sha256:0e62d535edd5abf7b6d35e2493fba71118734313436ff803fcd5d1b20e9e2194"},
+    {file = "falkordb-1.7.1.tar.gz", hash = "sha256:09dd89dfb668c6fe7741c0ec67fcdb5c7a4b009e87f065a644199170f4fa5766"},
 ]
 
 [package.dependencies]
-python-dateutil = ">=2.9.0,<3.0.0"
-redis = ">=6.0.0,<7.0.0"
+python-dateutil = ">=2.9.0,<3"
+redis = ">=8.0.0,<9"
+
+[package.extras]
+test = ["pytest (>=9.0.2)", "pytest-asyncio (>=1.3.0)", "pytest-cov (>=7.0.0)"]
 
 [[package]]
 name = "fastapi"
@@ -6360,23 +6363,26 @@ all = ["numpy"]
 
 [[package]]
 name = "redis"
-version = "6.4.0"
+version = "8.1.0"
 description = "Python client for Redis database and key-value store"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "redis-6.4.0-py3-none-any.whl", hash = "sha256:f0544fa9604264e9464cdf4814e7d4830f74b165d52f2a330a760a88dd248b7f"},
-    {file = "redis-6.4.0.tar.gz", hash = "sha256:b01bc7282b8444e28ec36b261df5375183bb47a07eb9c603f284e89cbc5ef010"},
+    {file = "redis-8.1.0-py3-none-any.whl", hash = "sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb"},
+    {file = "redis-8.1.0.tar.gz", hash = "sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25"},
 ]
 
 [package.dependencies]
 async-timeout = {version = ">=4.0.3", markers = "python_full_version < \"3.11.3\""}
 
 [package.extras]
+circuit-breaker = ["pybreaker (>=1.4.0)"]
 hiredis = ["hiredis (>=3.2.0)"]
-jwt = ["pyjwt (>=2.9.0)"]
+jwt = ["pyjwt (>=2.13.0)"]
 ocsp = ["cryptography (>=36.0.1)", "pyopenssl (>=20.0.1)", "requests (>=2.31.0)"]
+otel = ["opentelemetry-api (>=1.39.1)", "opentelemetry-exporter-otlp-proto-http (>=1.39.1)", "opentelemetry-sdk (>=1.39.1)"]
+xxhash = ["xxhash (>=3.6.0,<3.7.0)"]
 
 [[package]]
 name = "referencing"
@@ -8625,4 +8631,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "04944453b9281e73cc0d5df5f706deaf2cfb1c9ce20327f269354a924041cc82"
+content-hash = "04ea08252542d2cd874b3f3b5374b187b0af4e97b718e37e9434fe473431af51"
