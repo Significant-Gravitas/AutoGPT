@@ -78,6 +78,10 @@ charge will succeed.
   provides unit economics and experiment views; PR #14287 at
   `c726c35b227eeac8a1f584e1667c7c6ebce07f2a` provides first-write-wins
   experiment assignments. They are inspected dependencies, not merged evidence.
+- A later read-only status refresh found both still open: #14290 head
+  `b3700b0e1e923540faee82f0fcca86587508ba52` (BEHIND), and #14287 head
+  `d302ac9e9b96f42a7fc6df49c15c004dba35851d` (BLOCKED). Those newer diffs have
+  not yet been reviewed for trial integration.
 - Backend and frontend dependencies are installed. Prisma generation needed
   Node 24 and the worktree Poetry virtualenv first on PATH due to a stale global
   launcher. The frontend client was regenerated from the worktree OpenAPI spec.
@@ -106,6 +110,12 @@ dispatch, onboarding/billing UI, and trial-specific analytics.
   subscription updates disabled, card updates enabled, and cancellation at period
   end enabled. This is read-only evidence, not a configuration change.
 - Whole-backend `poetry run format` (including pyright) passed.
+- Feature checkpoint `988c69b591ec1a4a3e7084e0c313608c7da41bd0` passed all
+  configured commit hooks. The trial fixture's opaque test IDs were replaced
+  with stable labels without suppressing scanner rules. A separate all-files
+  secret scan still reports pre-existing findings outside this change; it is
+  not a passing repository-wide security audit. Its only baseline edit was an
+  existing fingerprint's line number (12 to 13) and the generated timestamp.
 - The standalone shared-library commit hook exposed four unresolved existing
   lazy backend imports. Added the sibling backend source path to its pyright
   config; standalone type checking and all **247 shared-library tests passed**.
@@ -128,6 +138,9 @@ dispatch, onboarding/billing UI, and trial-specific analytics.
 
 - Real Stripe hosted Checkout: successful card setup, declines, 3DS, abandonment,
   and resuming setup when a subscription exists but no verified card is recorded.
+- Check the platform-payment flag alongside trial enrollment, and verify card
+  updates through the portal, including customer versus subscription default
+  payment methods and payment-recovery behavior.
 - Stripe test-clock conversion success/failure/cancellation; current price and
   quantity must agree with accepted terms before first conversion. Portal settings
   alone are not sufficient protection against other subscription-update paths.
