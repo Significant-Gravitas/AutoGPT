@@ -4,6 +4,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
+// Sized and shaped like the small button beside it so the pair reads as one row.
+const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
+
 // A white, hairline-bordered secondary so the button sits quietly next to
 // the status badge instead of reading as a solid grey slab.
 const SECONDARY_CLASS =
@@ -26,8 +29,8 @@ export function ExpertHireActions({
   if (hiredExpert) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="success">
-          <Icon icon={CheckmarkCircle02Icon} size={14} />
+        <Badge variant="success" className={STATUS_CLASS}>
+          <Icon icon={CheckmarkCircle02Icon} size={16} />
           On your team
         </Badge>
         <Button
