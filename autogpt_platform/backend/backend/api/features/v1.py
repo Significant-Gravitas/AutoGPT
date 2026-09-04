@@ -651,11 +651,10 @@ async def upload_file(
     Args:
         file: The file to upload
         user_id: The user ID
-        provider: Cloud storage provider ("gcs", "s3", "azure")
         expiration_hours: Hours until file expires (1-48)
 
     Returns:
-        Dict containing the cloud storage path and signed URL
+        UploadFileResponse with the storage path and signed URL
     """
     if expiration_hours < 1 or expiration_hours > 48:
         raise HTTPException(

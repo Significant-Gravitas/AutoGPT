@@ -226,10 +226,12 @@ async def execute_node(
     persist the execution result, and return the subsequent node to be executed.
 
     Args:
-        db_client: The client to send execution updates to the server.
-        creds_manager: The manager to acquire and release credentials.
+        node: The node to execute.
         data: The execution data for executing the current node.
+        execution_processor: The processor managing the node execution lifecycle.
         execution_stats: The execution statistics to be updated.
+        nodes_input_masks: Optional input masks applied to node inputs.
+        nodes_to_skip: Optional set of node IDs to skip execution for.
 
     Returns:
         The subsequent node to be enqueued, or None if there is no subsequent node.
