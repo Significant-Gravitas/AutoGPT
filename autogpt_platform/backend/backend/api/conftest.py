@@ -88,7 +88,7 @@ def _bypass_paywall(mocker):
     raise ``UserPaywalledError`` from ``add_graph_execution`` once the
     paywall is wired up. Tests that specifically exercise the paywall
     (e.g. ``TestEnforcePaymentPaywall``, ``TestIsUserPaywalled``) live
-    in ``rate_limit_test.py`` and patch ``_fetch_user_tier`` directly,
+    in ``rate_limit_test.py`` and patch ``get_user_subscription_tier`` directly,
     bypassing this helper.
     """
     paywall_off = mocker.AsyncMock(return_value=False)
