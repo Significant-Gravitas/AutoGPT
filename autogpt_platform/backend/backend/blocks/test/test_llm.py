@@ -10,6 +10,7 @@ import pytest
 
 import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+from backend.util.llm.providers import ProviderResponse
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
 # but not at the type level. Cast once here to avoid per-test suppressors.
@@ -1663,3 +1664,93 @@ class TestClaude5ModelThreading:
         est_5 = estimate_token_count(prompt, model=m5.value)
         assert est_5 == int(est_46 * 1.5)
         assert (m5.context_window - est_5) < (m46.context_window - est_46)
+
+
+class TestOllamaCredentials:
+    def test_ai_credentials_only_require_keys_for_remote_models(self):
+        info = (
+            llm.AIStructuredResponseGeneratorBlock.Input.get_credentials_fields_info()[
+                "credentials"
+            ]
+        )
+
+        assert (
+            "credentials"
+            not in llm.AIStructuredResponseGeneratorBlock.Input.get_required_fields()
+        )
+        for model in llm.LLMModel:
+            assert info.requires_credentials(model.value) is (
+                model.metadata.provider != llm.ProviderName.OLLAMA
+            )
+
+        # A model removed from the registry must not be mistaken for a known
+        # credential-free local model.
+        assert info.requires_credentials("retired-model") is True
+        assert llm.ProviderName.OLLAMA not in info.provider
+
+    @pytest.mark.asyncio
+    async def test_ollama_call_does_not_require_credentials(self):
+        provider_response = ProviderResponse(
+            content="local response",
+            prompt_tokens=2,
+            completion_tokens=3,
+        )
+
+        with patch(
+            "backend.util.llm.providers.call_provider",
+            new=AsyncMock(return_value=provider_response),
+        ) as call_provider:
+            response = await llm._llm_call(
+                credentials=None,
+                llm_model=llm.LLMModel.OLLAMA_LLAMA3_3,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                compress_prompt_to_fit=False,
+            )
+
+        assert response.response == "local response"
+        call_provider.assert_awaited_once()
+        assert call_provider.call_args.kwargs["api_key"] == ""
+        assert call_provider.call_args.kwargs["provider"] == llm.ProviderName.OLLAMA
+
+    @pytest.mark.asyncio
+    async def test_remote_model_without_credentials_fails_before_provider_call(self):
+        with (
+            patch(
+                "backend.util.llm.providers.call_provider", new_callable=AsyncMock
+            ) as call_provider,
+            pytest.raises(ValueError, match=r"Credentials are required for openai/"),
+        ):
+            await llm._llm_call(
+                credentials=None,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+                compress_prompt_to_fit=False,
+            )
+
+        call_provider.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_text_block_runs_ollama_without_credentials_kwarg(self):
+        block = llm.AITextGeneratorBlock()
+        input_data = block.Input(
+            prompt="Hello",
+            model=llm.LLMModel.OLLAMA_LLAMA3_3,
+        )
+
+        with patch.object(
+            block,
+            "llm_call",
+            new_callable=AsyncMock,
+            return_value="local response",
+        ) as mock_llm_call:
+            outputs = [item async for item in block.run(input_data)]
+
+        assert ("response", "local response") in outputs
+        mock_llm_call.assert_awaited_once()
+        assert mock_llm_call.await_args is not None
+        structured_input, credentials = mock_llm_call.await_args.args
+        assert credentials is None
+        assert structured_input.credentials is None
+        assert structured_input.model == llm.LLMModel.OLLAMA_LLAMA3_3

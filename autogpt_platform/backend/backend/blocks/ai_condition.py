@@ -133,7 +133,7 @@ class AIConditionBlock(AIBlockBase):
 
     async def llm_call(
         self,
-        credentials: APIKeyCredentials,
+        credentials: APIKeyCredentials | None,
         llm_model: LLMModel,
         prompt: list,
         max_tokens: int,
@@ -148,7 +148,11 @@ class AIConditionBlock(AIBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         """
         Evaluate the AI condition and return appropriate outputs.

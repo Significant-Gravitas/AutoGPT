@@ -585,17 +585,10 @@ class GraphModel(Graph, GraphMeta):
             }
 
             for node in graph.nodes:
-                # A node's credentials are optional if either:
-                # 1. The node metadata says so (credentials_optional=True), or
-                # 2. All credential fields on the block have defaults (not required by schema)
+                # Conditional credential fields can have a schema default while
+                # still requiring credentials for the currently selected route.
                 block_required = node.block.input_schema.get_required_fields()
-                creds_required_by_schema = any(
-                    fname in block_required
-                    for fname in node.block.input_schema.get_credentials_fields()
-                )
-                node_required_map[node.id] = (
-                    not node.credentials_optional and creds_required_by_schema
-                )
+                node_required_map[node.id] = False
 
                 for (
                     field_name,
@@ -603,6 +596,11 @@ class GraphModel(Graph, GraphMeta):
                 ) in node.block.input_schema.get_credentials_fields_info().items():
                     discriminator = field_info.discriminator
                     if not discriminator:
+                        if (
+                            not node.credentials_optional
+                            and field_name in block_required
+                        ):
+                            node_required_map[node.id] = True
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
@@ -637,6 +635,27 @@ class GraphModel(Graph, GraphMeta):
                         discriminator_value = _mappable_discriminator_default(
                             node.block.input_schema, field_info
                         )
+
+                    required_discriminator_value = discriminator_value
+                    if (
+                        required_discriminator_value is None
+                        and not discriminator_is_linked
+                    ):
+                        required_discriminator_value = (
+                            node.block.input_schema.get_field_schema(discriminator).get(
+                                "default"
+                            )
+                        )
+                    if not node.credentials_optional and (
+                        field_name in block_required
+                        or (
+                            required_discriminator_value is not None
+                            and field_info.requires_credentials(
+                                required_discriminator_value
+                            )
+                        )
+                    ):
+                        node_required_map[node.id] = True
 
                     if discriminator_value is None:
                         node_credential_data.append((field_info, (node.id, field_name)))
