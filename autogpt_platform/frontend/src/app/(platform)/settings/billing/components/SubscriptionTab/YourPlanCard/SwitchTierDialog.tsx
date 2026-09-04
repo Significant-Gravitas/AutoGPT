@@ -55,6 +55,8 @@ export function SwitchTierDialog({
             onClick={onConfirm}
             disabled={isSaving}
             loading={isSaving}
+            data-fast-goal="subscription_change_confirm"
+            data-fast-goal-surface="settings_billing"
           >
             {confirmLabel ?? `Upgrade to ${targetTierLabel}`}
           </Button>
