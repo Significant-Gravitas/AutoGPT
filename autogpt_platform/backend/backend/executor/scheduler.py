@@ -50,6 +50,7 @@ from backend.monitoring import (
     report_late_executions,
     send_due_briefings,
 )
+from backend.monitoring.instrumentation import SCHEDULER_JOBS
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -65,6 +66,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    UserPaywalledError,
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.logging import PrefixFilter
@@ -232,6 +234,11 @@ async def _execute_graph(**kwargs):
     except ExpertRunPausedError as e:
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
+        logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
+    except UserPaywalledError as e:
+        # Expected while the owner has no subscription: skip quietly. The
+        # schedule stays registered so it resumes on its own once they
+        # subscribe, and a recurring tick is not an error worth paging on.
         logger.info(f"Skipping scheduled run for graph #{args.graph_id}: {e}")
     except ExpertPrivateTenancyNotFoundError:
         # Graph schedules are recurring, so the next cron tick is the retry.
@@ -2247,6 +2254,13 @@ class Scheduler(AppService):
             if self._jobs_cache_version == version_at_start:
                 self._jobs_cache = jobs
                 self._jobs_cache_expires_at = time.monotonic() + self._JOBS_CACHE_TTL_S
+                # The one scheduler metric with an alert on it was never set.
+                # Only an accepted read may publish it: a read that was
+                # invalidated mid-query is stale by definition and must not
+                # overwrite a newer count another reader has already set.
+                SCHEDULER_JOBS.labels(job_type="execution", status="scheduled").set(
+                    len(jobs)
+                )
         return jobs
 
     def _invalidate_jobs_cache(self) -> None:
