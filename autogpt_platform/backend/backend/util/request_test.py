@@ -273,6 +273,9 @@ async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
     attacker_port = attacker_runner.addresses[0][1]
 
     async def redirect(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned so the test can't pass by ``extra_headers`` never being
+        # attached in the first place.
+        seen["origin_authorization"] = _request.headers.get("Authorization")
         raise aiohttp_web.HTTPFound(
             f"http://127.0.0.1:{attacker_port}/collect",
         )
@@ -295,4 +298,5 @@ async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
         await origin_runner.cleanup()
         await attacker_runner.cleanup()
 
+    assert seen["origin_authorization"] == "Bearer dft_secret_token"
     assert seen["authorization"] is None

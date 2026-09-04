@@ -676,7 +676,18 @@ class TestStoreToken:
         """MCPClient sets no timeout and no retry ceiling, so an unbounded
         probe could pin the handler forever."""
         hanging = _probe_client()
-        hanging.initialize = AsyncMock(side_effect=asyncio.TimeoutError)
+        cancelled = asyncio.Event()
+
+        async def never_returns():
+            # Raising TimeoutError directly would pass with ``wait_for``
+            # removed; the probe has to actually hang for this to mean
+            # anything.
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        hanging.initialize = never_returns
         with (
             patch("backend.api.features.mcp.routes.MCPClient", return_value=hanging),
             patch("backend.api.features.mcp.routes._PROBE_TIMEOUT_SECONDS", 0.01),
@@ -695,6 +706,7 @@ class TestStoreToken:
 
         assert response.status_code == 200
         mock_cm.create.assert_called_once()
+        assert cancelled.is_set()
 
 
 class TestSSRFValidation:
