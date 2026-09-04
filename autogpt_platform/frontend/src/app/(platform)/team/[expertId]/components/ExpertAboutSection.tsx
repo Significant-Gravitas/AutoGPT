@@ -14,7 +14,7 @@ export function ExpertAboutSection({
   boundaries,
 }: Props) {
   return (
-    <section className="space-y-5 font-inter">
+    <section className="space-y-5">
       {bio ? (
         <p className="whitespace-pre-line text-xs text-zinc-600">{bio}</p>
       ) : null}

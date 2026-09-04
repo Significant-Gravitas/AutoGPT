@@ -30,7 +30,6 @@ export enum Key {
   TOP_UP_MODAL_LAST_SHOWN = "top-up-modal-last-shown",
   LOW_CREDIT_BANNER_DISMISSED = "low-credit-banner-dismissed",
   BUILDER_MOBILE_WARNING_SUPPRESSED = "builder-mobile-warning-suppressed",
-  DESIGN_THEME = "design-theme",
 }
 
 function get(key: Key) {

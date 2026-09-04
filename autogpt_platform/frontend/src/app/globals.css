@@ -38,30 +38,6 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-
-    /* Design-scale hooks. Defaults reproduce the current look; linear.css
-       overrides them under html[data-design="linear"]. */
-    --font-heading: var(--font-poppins);
-    --font-body: var(--font-geist-sans);
-    --fw-medium: 500;
-    --fw-semibold: 600;
-    --fw-bold: 700;
-    --radius-xl: 0.75rem;
-    --radius-2xl: 1rem;
-    --radius-3xl: 1.5rem;
-    --radius-small: 0.5rem;
-    --radius-medium: 0.75rem;
-    --radius-large: 1rem;
-    --radius-xlarge: 1.25rem;
-    --radius-2xlarge: 1.5rem;
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md:
-      0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg:
-      0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl:
-      0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
   }
 
   .dark {
