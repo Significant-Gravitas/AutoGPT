@@ -666,3 +666,22 @@ class TestEveryPartSurvivesReplay:
                 missing.append(f"{name} ({default.value})")
 
         assert not missing, f"parts that cannot survive replay: {missing}"
+
+
+class TestStreamEntries:
+    def test_resp2_list_shape_is_normalised(self):
+        raw = [("stream-key", [("1-0", {"data": "x"}), (b"2-0", {b"data": b"y"})])]
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"}), ("2-0", {"data": "y"})])
+        ]
+
+    def test_resp3_dict_shape_is_normalised(self):
+        raw = {b"stream-key": [("1-0", {"data": "x"})]}
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"})])
+        ]
+
+    def test_empty_and_none_yield_nothing(self):
+        assert stream_registry._stream_entries(None) == []
+        assert stream_registry._stream_entries([]) == []
+        assert stream_registry._stream_entries([("s", None)]) == [("s", [])]
