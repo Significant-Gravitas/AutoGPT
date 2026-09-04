@@ -5,11 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
-import {
-  classifyUtterance,
-  pickAcknowledgement,
-  type UtteranceKind,
-} from "./acknowledgements";
+import { pickAcknowledgement } from "./acknowledgements";
 import {
   describeVoiceState,
   isMicOpen,
@@ -32,8 +28,6 @@ export const SILENCE_TIMEOUT_MS = 8_000;
 const MAX_SESSION_MS = 5 * 60 * 1000;
 /** A reply that produces no speakable text still has to give the mic back. */
 const REPLY_WATCHDOG_MS = 45_000;
-/** A second, register-aware phrase for the long wait before the first token. */
-const FOLLOW_UP_ACK_MS = 6_000;
 
 interface Args {
   enabled: boolean;
@@ -110,8 +104,8 @@ export function useVoiceMode({
     isStarting,
     statusLabel: describeVoiceState(state),
     toggle,
-    /** The visible stop button: cut the reply short and listen again. */
-    interrupt,
+    /** The visible stop button: cut the reply short and leave voice mode. */
+    stop: deactivate,
   };
 
   function toggle() {
@@ -162,14 +156,6 @@ export function useVoiceMode({
     dispatch({ type: "DISABLE" });
   }
 
-  function interrupt() {
-    playerRef.current?.stop();
-    // Without this the held-back partial sentence is spoken at stream end,
-    // with the mic already back open — the echo the state machine prevents.
-    discardReply();
-    dispatch({ type: "INTERRUPT" });
-  }
-
   function setStarting(value: boolean) {
     starting.current = value;
     setIsStarting(value);
@@ -184,8 +170,7 @@ export function useVoiceMode({
   async function handleUtterance(wav: Blob) {
     const mine = activation.current;
     dispatch({ type: "SPEECH_END" });
-    // Spoken before the transcript exists, so the register is still unknown.
-    acknowledge(null);
+    acknowledge();
 
     let transcript = "";
     try {
@@ -209,7 +194,7 @@ export function useVoiceMode({
       return;
     }
 
-    startTurn(classifyUtterance(transcript));
+    startTurn();
     try {
       await inputs.current.onSend(transcript.trim());
     } catch (error) {
@@ -258,26 +243,21 @@ export function useVoiceMode({
     dispatch({ type: "REPLY_SPEAKING" });
   }
 
-  function startTurn(kind: UtteranceKind) {
+  function startTurn() {
     replyDone.current = false;
     spokeThisTurn.current = false;
     chunkBuffer.current = "";
     reader.current.reset();
     clearTimer("session");
     dispatch({ type: "TRANSCRIPT_SENT" });
-    // AutoPilot's first token lands a median 13.9 s out; one more line keeps
-    // the wait from reading as a dropped call.
-    setTimer("followUpAck", FOLLOW_UP_ACK_MS, () => {
-      if (!spokeThisTurn.current) acknowledge(kind);
-    });
     setTimer("reply", REPLY_WATCHDOG_MS, () => {
       replyDone.current = true;
       if (player().isIdle()) dispatch({ type: "REPLY_DONE" });
     });
   }
 
-  function acknowledge(kind: UtteranceKind | null) {
-    const phrase = pickAcknowledgement(kind, lastPhrase.current);
+  function acknowledge() {
+    const phrase = pickAcknowledgement(lastPhrase.current);
     lastPhrase.current = phrase;
     player().enqueue(phrase, "acknowledgement");
   }
@@ -299,7 +279,6 @@ export function useVoiceMode({
     } else {
       clearTimer("silence");
     }
-    if (next !== "thinking") clearTimer("followUpAck");
     if (next === "listening" || next === "off") clearTimer("reply");
   }
 

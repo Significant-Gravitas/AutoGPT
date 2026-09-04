@@ -27,8 +27,6 @@ export type VoiceEvent =
   | { type: "REPLY_SPEAKING" }
   /** The reply finished with nothing left to say. */
   | { type: "REPLY_DONE" }
-  /** User pressed stop, or a silence timeout expired. */
-  | { type: "INTERRUPT" }
   | { type: "ERROR" };
 
 export function voiceReduce(state: VoiceState, event: VoiceEvent): VoiceState {
@@ -50,8 +48,6 @@ export function voiceReduce(state: VoiceState, event: VoiceEvent): VoiceState {
       return state === "thinking" || state === "speaking" ? "speaking" : state;
     case "REPLY_DONE":
       return state === "thinking" || state === "speaking" ? "listening" : state;
-    case "INTERRUPT":
-      return "listening";
     case "ERROR":
       return "listening";
     default:

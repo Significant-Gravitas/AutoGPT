@@ -97,6 +97,23 @@ describe("useVoiceMode", () => {
     expect(spoken[0]).not.toContain("Slack");
   });
 
+  it("speaks exactly one acknowledgement, however long the reply takes", async () => {
+    vi.useFakeTimers();
+    const view = render({});
+    await enable(view);
+    await speak();
+    expect(spoken).toHaveLength(1);
+
+    // The model's first token is a median 13.9 s out. Nothing may fill that
+    // gap with a second phrase — two in a row read as a glitch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(spoken).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it("speaks the reply one sentence at a time as it streams", async () => {
     const view = render({});
     await enable(view);
@@ -146,7 +163,7 @@ describe("useVoiceMode", () => {
     expect(view.result.current.state).toBe("listening");
   });
 
-  it("stops playback and listens again when interrupted", async () => {
+  it("leaves voice mode when the reply is stopped", async () => {
     const view = render({});
     await enable(view);
     await speak();
@@ -157,9 +174,11 @@ describe("useVoiceMode", () => {
       });
     });
 
-    await act(async () => view.result.current.interrupt());
+    await act(async () => view.result.current.stop());
 
-    expect(view.result.current.state).toBe("listening");
+    // Stop means "I am done", not "skip this bit" — the mic closes with it.
+    expect(view.result.current.state).toBe("off");
+    expect(sessions[0].destroy).toHaveBeenCalled();
   });
 
   it("closes the mic after the silence timeout", async () => {
@@ -246,7 +265,7 @@ describe("useVoiceMode", () => {
     });
     expect(spoken).toContain("First sentence.");
 
-    await act(async () => view.result.current.interrupt());
+    await act(async () => view.result.current.stop());
     const spokenAfterStop = spoken.length;
     await act(async () => {
       view.rerender({
@@ -257,7 +276,7 @@ describe("useVoiceMode", () => {
     await act(async () => undefined);
 
     expect(spoken).toHaveLength(spokenAfterStop);
-    expect(view.result.current.state).toBe("listening");
+    expect(view.result.current.state).toBe("off");
   });
 
   it("starts itself on the mount that follows creating the chat", async () => {

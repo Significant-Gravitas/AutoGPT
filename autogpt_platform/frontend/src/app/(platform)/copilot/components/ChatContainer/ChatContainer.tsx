@@ -361,7 +361,7 @@ export const ChatContainer = ({
                     <VoiceModeBar
                       state={voice.state}
                       statusLabel={voice.statusLabel}
-                      onStop={voice.interrupt}
+                      onStop={voice.stop}
                     />
                     <Tooltip open={isLimitReached ? undefined : false}>
                       <TooltipTrigger asChild>

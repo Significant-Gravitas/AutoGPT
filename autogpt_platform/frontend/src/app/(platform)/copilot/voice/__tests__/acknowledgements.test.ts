@@ -1,61 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyUtterance, pickAcknowledgement } from "../acknowledgements";
+import { pickAcknowledgement } from "../acknowledgements";
 
-function everyPhrase(kind: Parameters<typeof pickAcknowledgement>[0]) {
+function everyPhrase(previous: string | null = null) {
   const seen = new Set<string>();
   for (let i = 0; i < 200; i++) {
-    seen.add(pickAcknowledgement(kind, null, () => i / 200));
+    seen.add(pickAcknowledgement(previous, () => i / 200));
   }
   return seen;
 }
 
 describe("pickAcknowledgement", () => {
-  it("offers at least twenty distinct phrases across the registers", () => {
-    const all = new Set([
-      ...everyPhrase(null),
-      ...everyPhrase("question"),
-      ...everyPhrase("request"),
-    ]);
-    expect(all.size).toBeGreaterThanOrEqual(20);
+  it("offers at least twenty phrases, so a session does not sound canned", () => {
+    expect(everyPhrase().size).toBeGreaterThanOrEqual(20);
   });
 
   it("never repeats the previous phrase", () => {
-    const phrases = [...everyPhrase(null)];
-    for (const previous of phrases) {
-      for (let i = 0; i < 50; i++) {
-        expect(pickAcknowledgement(null, previous, () => i / 50)).not.toBe(
-          previous,
-        );
-      }
+    for (const previous of everyPhrase()) {
+      expect(everyPhrase(previous).has(previous)).toBe(false);
     }
   });
 
-  it("uses a register-specific phrase once the transcript exists", () => {
-    expect(everyPhrase("question")).not.toEqual(everyPhrase("request"));
-  });
-
-  it("stays register-neutral before the transcript exists", () => {
-    const neutral = everyPhrase(null);
-    expect(neutral.size).toBeGreaterThan(1);
-    for (const phrase of neutral) {
-      expect(everyPhrase("question").has(phrase)).toBe(false);
+  it("offers nothing that only fits an instruction or only fits a question", () => {
+    // It is chosen before the transcript exists, so every phrase has to sit
+    // equally well after "what did I run yesterday" and "build me an agent".
+    for (const phrase of everyPhrase()) {
+      expect(phrase).not.toMatch(/\b(doing|get that|take care of|started)\b/i);
     }
-  });
-});
-
-describe("classifyUtterance", () => {
-  it("reads a trailing question mark", () => {
-    expect(classifyUtterance("Ship it?")).toBe("question");
-  });
-
-  it("reads a question opener without punctuation", () => {
-    expect(classifyUtterance("how many runs failed today")).toBe("question");
-    expect(classifyUtterance("Can you check the logs")).toBe("question");
-  });
-
-  it("treats an imperative as a request", () => {
-    expect(classifyUtterance("Build me a Slack agent")).toBe("request");
-    expect(classifyUtterance("send that to my inbox")).toBe("request");
   });
 });

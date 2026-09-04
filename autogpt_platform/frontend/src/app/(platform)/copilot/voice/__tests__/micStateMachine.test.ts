@@ -68,12 +68,6 @@ describe("voiceReduce", () => {
     ).toBe("speaking");
   });
 
-  it("interrupts straight back to listening from any state", () => {
-    expect(run(["ENABLE", "SPEECH_START", "SPEECH_END", "INTERRUPT"])).toBe(
-      "listening",
-    );
-  });
-
   it("turns off from anywhere", () => {
     expect(run(["ENABLE", "SPEECH_START", "SPEECH_END", "DISABLE"])).toBe(
       "off",
