@@ -9,14 +9,16 @@ schedule must never fail or delay the schedule.
 
 The activity event goes through the DatabaseManager RPC, whose client keeps
 retrying for a long time while the service is unreachable. That write is
-therefore handed to a background thread: the schedule call returns
+therefore handed to a small background worker pool: the schedule call returns
 immediately and a DatabaseManager outage costs a log line, not a stalled
-scheduler.
+scheduler. The pool is bounded so an outage queues records instead of
+spawning a thread per schedule, and its workers are joined at interpreter
+exit so an in-flight write is not cut off by shutdown.
 """
 
 import logging
-import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from pydantic import BaseModel
@@ -54,7 +56,6 @@ def record_schedule_created(record: ScheduleCreatedRecord) -> None:
         run_at=record.run_at,
         graph_id=record.graph_id,
         session_id=record.session_id,
-        name=record.title,
     )
 
 
@@ -88,8 +89,14 @@ def _write_activity_event(record: ScheduleCreatedRecord) -> None:
         )
 
 
+_executor: ThreadPoolExecutor | None = None
+
+
 def _submit(work: Callable[[], None]) -> None:
     """Run *work* off the caller's thread. Tests replace this to run inline."""
-    threading.Thread(
-        target=work, name="schedule-created-activity-event", daemon=True
-    ).start()
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="schedule-created-activity-event"
+        )
+    _executor.submit(work)

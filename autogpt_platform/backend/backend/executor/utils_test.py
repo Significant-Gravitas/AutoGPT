@@ -5,7 +5,11 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.execution import (
+    ExecutionStatus,
+    ExecutionTrigger,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
@@ -443,6 +447,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        trigger_source=ExecutionTrigger.MANUAL,
+        trigger_ref=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
