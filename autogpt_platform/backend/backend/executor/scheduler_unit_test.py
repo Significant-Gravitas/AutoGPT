@@ -39,6 +39,7 @@ from backend.executor.scheduler import (
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserPaywalledError,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -1087,6 +1088,38 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    mock_add = AsyncMock(
+        side_effect=UserPaywalledError("A subscription is required to run agents.")
+    )
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert "Skipping scheduled run for graph #graph-1" in caplog.text
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
 @pytest.mark.asyncio
