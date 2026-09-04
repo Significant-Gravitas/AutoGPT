@@ -129,8 +129,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -235,8 +239,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -299,7 +307,11 @@ class TestLLMStatsTracking:
             retry=2,
         )
 
-        with patch("secrets.token_hex", return_value="test123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -340,7 +352,11 @@ class TestLLMStatsTracking:
             retry=1,
         )
 
-        with patch("secrets.token_hex", return_value="tok123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="tok123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -483,8 +499,12 @@ class TestLLMStatsTracking:
                 max_tokens=1000,  # Large enough to avoid chunking
             )
 
-            # Mock secrets.token_hex to return consistent ID
-            with patch("secrets.token_hex", return_value="test123456"):
+            # Patch the deterministic output-tag helper to a fixed value
+            with patch.object(
+                llm.AIStructuredResponseGeneratorBlock,
+                "get_collision_proof_output_tag_id",
+                return_value="test123456",
+            ):
                 outputs = {}
                 async for output_name, output_data in block.run(
                     input_data, credentials=llm.TEST_CREDENTIALS
@@ -654,8 +674,12 @@ class TestLLMStatsTracking:
 
         # Run the block
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
