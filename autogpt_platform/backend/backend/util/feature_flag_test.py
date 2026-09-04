@@ -4,13 +4,14 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
-from ldclient import LDClient
+from ldclient import Context, LDClient
 
 import backend.util.feature_flag as feature_flag_module
 from backend.util.feature_flag import (
     Flag,
     _env_flag_override,
     _fetch_user_context_data,
+    evaluate_feature_flag,
     feature_flag,
     get_client,
     is_feature_enabled,
@@ -110,16 +111,15 @@ def test_flag_enum_values():
 @pytest.mark.asyncio
 async def test_is_feature_enabled_with_flag_enum(mocker):
     """Test is_feature_enabled function with Flag enum."""
-    mock_get_feature_flag_value = mocker.patch(
-        "backend.util.feature_flag.get_feature_flag_value"
-    )
-    mock_get_feature_flag_value.return_value = True
+    mock_evaluate = mocker.patch("backend.util.feature_flag._evaluate_flag_value")
+    mock_evaluate.return_value = (True, True)
 
     result = await is_feature_enabled(Flag.AUTOMOD, "user123")
 
     assert result is True
     # Should call with the flag's string value
-    mock_get_feature_flag_value.assert_called_once()
+    mock_evaluate.assert_called_once()
+    assert mock_evaluate.call_args.args[0] == Flag.AUTOMOD.value
 
 
 class TestEnvFlagOverride:
@@ -499,3 +499,85 @@ class TestShutdown:
         get_client()
 
         assert warn.call_count == 1
+
+
+class TestEvaluateFeatureFlag:
+    """Callers that delete state on a False need to know it was a real answer."""
+
+    @pytest.fixture(autouse=True)
+    def no_env_override(self, monkeypatch: pytest.MonkeyPatch):
+        """`.env` may force unrelated flags; pin this one to LaunchDarkly."""
+        monkeypatch.delenv("FORCE_FLAG_HIRE_EXPERTS", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS", raising=False)
+
+    @pytest.fixture
+    def user_context(self, mocker):
+        """A resolved context, so `authoritative` turns purely on evaluation."""
+        return mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status",
+            return_value=(Context.create("u-1"), True),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_successful_evaluation_is_authoritative(
+        self, ld_client, user_context
+    ):
+        ld_client.variation.return_value = False
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+
+    @pytest.mark.asyncio
+    async def test_an_uninitialised_client_is_not(self, ld_client, user_context):
+        ld_client.is_initialized.return_value = False
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_an_evaluation_that_raises_is_not(self, ld_client, user_context):
+        """The regression this class exists for: a LIVE client can still fail
+        to produce a value, and that must not read as a real "off"."""
+        ld_client.variation.side_effect = Exception("evaluation exploded")
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_a_degraded_user_context_is_not(self, ld_client, mocker):
+        """The context lookup is a database read that SWALLOWS its failure and
+        returns an anonymous context, so evaluation still succeeds — against
+        the wrong user. That value must not be trusted as an answer."""
+        mock_prisma = mocker.patch("backend.data.db.prisma")
+        mock_prisma.is_connected.return_value = True
+        mocker.patch(
+            "backend.data.user.get_auth_user_flag_fields",
+            new=mocker.AsyncMock(side_effect=ConnectionError("database unreachable")),
+        )
+        ld_client.variation.return_value = False
+
+        result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, str(uuid.uuid4()))
+
+        assert result == (False, False)
+        ld_client.variation.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_non_boolean_flag_value_is_not(self, ld_client, user_context):
+        ld_client.variation.return_value = {"some": "object"}
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
+
+    @pytest.mark.asyncio
+    async def test_an_env_override_answers_without_launchdarkly(
+        self, mocker, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A forced flag is a real answer, so acting on its False is safe."""
+        mocker.patch(
+            "backend.util.feature_flag.get_client",
+            side_effect=Exception("set_config was not called"),
+        )
+        monkeypatch.setenv("FORCE_FLAG_HIRE_EXPERTS", "false")
+        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, True)
+
+    @pytest.mark.asyncio
+    async def test_is_feature_enabled_still_returns_the_bare_value(
+        self, ld_client, user_context
+    ):
+        """The refactor must not change what existing callers see."""
+        ld_client.variation.return_value = True
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is True
+        ld_client.variation.side_effect = Exception("boom")
+        assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1") is False

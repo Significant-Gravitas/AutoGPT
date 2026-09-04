@@ -395,7 +395,7 @@ app.include_router(
 app.include_router(
     backend.api.features.experiments.router,
     prefix="/api/experiments",
-    tags=["v2", "experiments"],
+    tags=["experiments"],
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
@@ -460,6 +460,7 @@ app.include_router(
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
 app.include_router(home_routes.router, prefix="/api")

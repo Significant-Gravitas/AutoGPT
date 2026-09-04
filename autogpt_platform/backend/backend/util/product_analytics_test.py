@@ -222,7 +222,6 @@ def test_schedule_created_and_fired(capture: Mock) -> None:
         schedule_id="sched-1",
         target="autopilot",
         cron=None,
-        name="check CI",
     )
     product_analytics.track_schedule_fired(
         user_id="user-1", schedule_id="sched-1", target="agent", graph_exec_id="exec-1"

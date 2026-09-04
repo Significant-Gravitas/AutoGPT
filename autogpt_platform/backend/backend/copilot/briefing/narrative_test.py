@@ -177,6 +177,29 @@ async def test_expert_voice_carries_the_soul_document():
 
 
 @pytest.mark.asyncio
+async def test_an_expert_with_a_role_keeps_the_dash_clause():
+    with patch_llm(return_value=completion("Morning.")) as mock:
+        await compose_narrative(USER, make_content(), [make_expert()])
+
+    system = mock.await_args.kwargs["messages"][0]["content"]
+    assert "You are Ana — Researcher, a hired expert on the user's team." in system
+
+
+@pytest.mark.asyncio
+async def test_an_expert_with_no_role_drops_the_dash_clause():
+    """An unset role rendered as "You are Ana — , a hired expert ..." — a
+    stray dash and comma in the persona line of a system prompt."""
+    expert = make_expert()
+    expert.role = ""
+    with patch_llm(return_value=completion("Morning.")) as mock:
+        await compose_narrative(USER, make_content(), [expert])
+
+    system = mock.await_args.kwargs["messages"][0]["content"]
+    assert "You are Ana, a hired expert on the user's team." in system
+    assert " — ," not in system
+
+
+@pytest.mark.asyncio
 async def test_voice_preferences_are_fenced_in_the_narrative_prompt():
     """A pasted writing sample carrying an injection reaches this prompt too
     (same column the hire flow writes), so it must render as blockquoted
