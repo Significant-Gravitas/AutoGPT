@@ -1,0 +1,103 @@
+/* Linear-style design tokens. Activated by <html data-design="linear">
+   (see designTheme.ts). Only overrides the CSS variables that tailwind.config.ts
+   and globals.css read, so the whole app shifts without per-component edits.
+
+   Principles (linear.app/now/how-we-redesigned-the-linear-ui, 2026 refresh):
+   - one chromatic accent (#5e6ad2), used only for primary actions + focus
+   - structure felt, not seen: hairline borders, no drop shadows
+   - Inter at 400 / 510 / 590, negative tracking on headings
+   - radius capped at 12px, CTAs 8px, no pill buttons
+   - warm neutral grays, nav recedes, content wins */
+
+html[data-design="linear"] {
+  --font-heading: var(--font-inter);
+  --font-body: var(--font-inter);
+
+  --fw-medium: 510;
+  --fw-semibold: 590;
+  --fw-bold: 590;
+
+  --radius: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 0.75rem;
+  --radius-small: 0.375rem;
+  --radius-medium: 0.625rem;
+  --radius-large: 0.75rem;
+  --radius-xlarge: 0.75rem;
+  --radius-2xlarge: 0.75rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 8px 24px 0 rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --shadow-xl: var(--shadow-lg);
+  --shadow-2xl: var(--shadow-lg);
+
+  --background: 0 0% 98.4%;
+  --foreground: 240 6% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 6% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 6% 12%;
+  --primary: 234 56% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 5% 95%;
+  --secondary-foreground: 240 6% 12%;
+  --muted: 240 5% 95%;
+  --muted-foreground: 245 4% 45%;
+  --accent: 234 56% 60%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 79% 63%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 4% 90%;
+  --input: 240 4% 87%;
+  --ring: 234 56% 60%;
+  --sidebar-background: 240 5% 97%;
+  --sidebar-foreground: 240 4% 35%;
+  --sidebar-primary: 240 6% 12%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 5% 92%;
+  --sidebar-accent-foreground: 240 6% 12%;
+  --sidebar-border: 240 4% 90%;
+  --sidebar-ring: 234 56% 60%;
+  --smooth-ring-color: rgb(0 0 0 / 0.07);
+
+  font-feature-settings: "cv01", "ss03";
+}
+
+html[data-design="linear"].dark {
+  --background: 220 4% 8%;
+  --foreground: 220 8% 97%;
+  --card: 210 4% 10%;
+  --card-foreground: 220 8% 97%;
+  --popover: 210 4% 10%;
+  --popover-foreground: 220 8% 97%;
+  --primary: 234 56% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 4% 12%;
+  --secondary-foreground: 220 8% 97%;
+  --muted: 220 4% 12%;
+  --muted-foreground: 220 6% 57%;
+  --accent: 234 56% 60%;
+  --accent-foreground: 0 0% 100%;
+  --border: 225 9% 15%;
+  --input: 225 9% 15%;
+  --ring: 234 56% 60%;
+  --sidebar-background: 220 5% 6%;
+  --sidebar-foreground: 220 6% 57%;
+  --sidebar-accent: 220 4% 12%;
+  --sidebar-accent-foreground: 220 8% 97%;
+  --sidebar-border: 225 9% 15%;
+}
+
+html[data-design="linear"] body {
+  background-color: hsl(var(--background));
+}
+
+html[data-design="linear"] :is(h1, h2, h3, h4) {
+  letter-spacing: -0.02em;
+}
+
+html[data-design="linear"] .agpt-card {
+  border-color: hsl(var(--border));
+}

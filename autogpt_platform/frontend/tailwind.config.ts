@@ -65,9 +65,14 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-geist-sans)"],
+        sans: ["var(--font-body)"],
         mono: ["var(--font-geist-mono)"],
-        poppins: ["var(--font-poppins)"],
+        poppins: ["var(--font-heading)"],
+      },
+      fontWeight: {
+        medium: "var(--fw-medium)",
+        semibold: "var(--fw-semibold)",
+        bold: "var(--fw-bold)",
       },
       colors: {
         ...colors,
@@ -170,18 +175,26 @@ const config = {
       },
       borderRadius: {
         xsmall: "0.25rem",
-        small: "0.5rem",
-        medium: "0.75rem",
-        large: "1rem",
-        xlarge: "1.25rem",
-        "2xlarge": "1.5rem",
+        small: "var(--radius-small)",
+        medium: "var(--radius-medium)",
+        large: "var(--radius-large)",
+        xlarge: "var(--radius-xlarge)",
+        "2xlarge": "var(--radius-2xlarge)",
         full: "9999px",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "var(--radius-xl)",
+        "2xl": "var(--radius-2xl)",
+        "3xl": "var(--radius-3xl)",
       },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+        xl: "var(--shadow-xl)",
+        "2xl": "var(--shadow-2xl)",
       },
       keyframes: {
         "accordion-down": {

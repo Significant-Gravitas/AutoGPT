@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import React from "react";
 
 import "./globals.css";
+import "@/components/styles/linear.css";
 
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
@@ -15,6 +16,8 @@ import { environment } from "@/services/environment";
 import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
+import Script from "next/script";
+import { designThemeBootScript } from "@/components/styles/designTheme";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
@@ -46,10 +49,13 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
+      className={`${fonts.poppins.variable} ${fonts.inter.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-screen">
+        <Script id="design-theme" strategy="beforeInteractive">
+          {designThemeBootScript}
+        </Script>
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
