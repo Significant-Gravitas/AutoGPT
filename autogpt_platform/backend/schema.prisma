@@ -137,7 +137,7 @@ model User {
   defaultChatAuthProvider String?
   defaultChatCredentialId String?
 
-  subscriptionTier SubscriptionTier @default(NO_TIER)
+  subscriptionTier  SubscriptionTier   @default(NO_TIER)
   subscriptionTrial SubscriptionTrial?
 
   // Relations
@@ -206,27 +206,28 @@ enum SubscriptionTier {
 }
 
 model SubscriptionTrial {
-  id                      String    @id @default(uuid())
-  userId                  String    @unique
-  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer                   Json
-  stripeCustomerId        String
-  stripeCheckoutSessionId String?   @unique
-  stripeSubscriptionId    String?   @unique
-  checkoutAttempt         Int       @default(0)
-  checkoutSuccessUrl      String
-  checkoutCancelUrl       String
-  checkoutMetadata        Json      @default("{}")
-  status                  String    @default("checkout_pending")
-  cardVerifiedAt          DateTime?
-  startedAt               DateTime?
-  endsAt                  DateTime?
-  consumedAt              DateTime?
-  convertedAt             DateTime?
-  cancelAtPeriodEnd       Boolean   @default(false)
-  costMicrodollars         BigInt    @default(0)
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  id                        String    @id @default(uuid())
+  userId                    String    @unique
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer                     Json
+  stripeCustomerId          String
+  stripeCheckoutSessionId   String?   @unique
+  stripeSubscriptionId      String?   @unique
+  stripeConversionInvoiceId String?   @unique
+  checkoutAttempt           Int       @default(0)
+  checkoutSuccessUrl        String
+  checkoutCancelUrl         String
+  checkoutMetadata          Json      @default("{}")
+  status                    String    @default("checkout_pending")
+  cardVerifiedAt            DateTime?
+  startedAt                 DateTime?
+  endsAt                    DateTime?
+  consumedAt                DateTime?
+  convertedAt               DateTime?
+  cancelAtPeriodEnd         Boolean   @default(false)
+  costMicrodollars          BigInt    @default(0)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@index([status, endsAt])
 }
@@ -240,19 +241,19 @@ model UserOnboarding {
   // backend, OpenAPI-generated union on the frontend). Storing as String[]
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
-  completedSteps                String[]         @default([])
-  walletShown                   Boolean          @default(false)
-  notified                      String[]         @default([])
-  rewardedFor                   String[]         @default([])
+  completedSteps                String[]  @default([])
+  walletShown                   Boolean   @default(false)
+  notified                      String[]  @default([])
+  rewardedFor                   String[]  @default([])
   usageReason                   String?
-  integrations                  String[]         @default([])
+  integrations                  String[]  @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
-  agentRuns                     Int              @default(0)
+  agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
-  consecutiveRunDays            Int              @default(0)
+  consecutiveRunDays            Int       @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -317,13 +318,13 @@ model OnboardingBrainDump {
   /// Written once when the dump is processed, read by the copilot home's
   /// greeting. Generated up-front rather than on page load so the greeting
   /// is instant — the user has already waited through the loading screen.
-  greeting         String?
+  greeting             String?
   /// List of {title, prompt} objects the user can pick from under the
   /// greeting. JSON so the shape can evolve without a migration.
-  suggestedPrompts Json    @default("[]")
+  suggestedPrompts     Json    @default("[]")
   /// True once the user has sent their first message. The greeting is
   /// never shown again after this, but its content is kept.
-  greetingSeen     Boolean @default(false)
+  greetingSeen         Boolean @default(false)
   /// List of {provider, reason} objects Claude picks from the transcript
   /// and the live provider registry. Null until the recommendation
   /// background job (separate from the greeting one) writes its result.
@@ -855,7 +856,7 @@ model AlertCondition {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  cause AlertCause
+  cause    AlertCause
   // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
   // id>"), so re-raising the same condition updates one row instead of piling
   // up duplicates, and resolving it can find the row without the payload.
@@ -867,7 +868,7 @@ model AlertCondition {
   resolvedAt DateTime?
   // Set once the condition has been carried into a Briefing's attention
   // block, so the next Briefing doesn't repeat it.
-  briefedAt DateTime?
+  briefedAt  DateTime?
 
   @@unique([userId, causeKey])
   @@index([status, createdAt])
@@ -931,9 +932,9 @@ model PushSubscription {
 // For the library page
 // It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   lastRunAt DateTime?
 
   userId String
@@ -1025,17 +1026,17 @@ model Expert {
   ownerUserId String?
   OwnerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  name      String
-  avatarUrl String?
+  name             String
+  avatarUrl        String?
   // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
-  color     String   @default("")
-  role      String
-  tagline   String?
-  identity  String
-  bio       String?
-  skills    String[] @default([])
-  voicePreferences String @default("")
-  boundaries       String @default("")
+  color            String   @default("")
+  role             String
+  tagline          String?
+  identity         String
+  bio              String?
+  skills           String[] @default([])
+  voicePreferences String   @default("")
+  boundaries       String   @default("")
 
   toolProfile Json?
 
@@ -1049,7 +1050,7 @@ model Expert {
   // Weekly credit guardrail: null = platform default from config.
   // Spend is tracked per ISO week in Redis and reconciled from
   // CreditTransaction via the execution's expertId.
-  weeklyBudget Int?
+  weeklyBudget      Int?
   // Set when a budget breach (or archive) paused this expert's schedules
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?

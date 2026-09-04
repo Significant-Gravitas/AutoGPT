@@ -1,10 +1,11 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 
-from backend.data import credit
+from backend.data import credit, stripe_client, subscription_checkout
 from backend.data.credit import _expire_open_subscription_sessions
 
 
@@ -72,3 +73,49 @@ async def test_session_completed_during_expiration_stops_new_checkout():
     ):
         with pytest.raises(stripe.InvalidRequestError):
             await _expire_open_subscription_sessions("cus_test")
+
+
+@pytest.mark.asyncio
+async def test_checkout_history_pagination_has_a_bounded_timeout():
+    first = stripe.ListObject.construct_from(
+        {
+            "data": [{"id": "sub_old", "status": "canceled", "metadata": {}}],
+            "has_more": True,
+        },
+        "test-key",
+    )
+    second = stripe.ListObject.construct_from(
+        {
+            "data": [
+                {
+                    "id": "sub_trial",
+                    "status": "trialing",
+                    "metadata": {"trial_enrollment_id": "trial-1"},
+                }
+            ],
+            "has_more": False,
+        },
+        "test-key",
+    )
+
+    async def delayed_page():
+        await asyncio.sleep(0.05)
+        return second
+
+    with (
+        patch.object(stripe_client, "DEFAULT_TIMEOUT_SECONDS", 0.01),
+        patch.object(
+            subscription_checkout,
+            "get_subscription_trial",
+            AsyncMock(return_value=MagicMock(id="trial-1", converted_at=None)),
+        ),
+        patch.object(stripe.Subscription, "list_async", AsyncMock(return_value=first)),
+        patch.object(
+            stripe.ListObject, "next_page_async", AsyncMock(side_effect=delayed_page)
+        ) as next_page,
+    ):
+        with pytest.raises(stripe.APIConnectionError):
+            await subscription_checkout.ensure_no_unconverted_trial(
+                "user-1", "cus_test"
+            )
+    next_page.assert_awaited_once()

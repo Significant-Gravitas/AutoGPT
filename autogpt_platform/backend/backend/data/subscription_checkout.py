@@ -7,6 +7,7 @@ import stripe
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import get_subscription_trial
 
 
@@ -37,22 +38,25 @@ async def subscription_checkout_lock(user_id: str):
 async def expire_other_subscription_checkouts(
     customer_id: str, keep_session_id: str | None = None
 ) -> None:
-    sessions = await stripe.checkout.Session.list_async(
-        customer=customer_id, status="open", limit=100
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async,
+        customer=customer_id,
+        status="open",
+        limit=100,
     )
-    async for session in sessions.auto_paging_iter():
+    async for session in stripe_list_items(sessions):
         if session.mode == "subscription" and session.id != keep_session_id:
-            await stripe.checkout.Session.expire_async(session.id)
+            await stripe_call(stripe.checkout.Session.expire_async, session.id)
 
 
 async def ensure_no_unconverted_trial(user_id: str, customer_id: str) -> None:
     trial = await get_subscription_trial(user_id)
     if trial is None or trial.converted_at:
         return
-    subscriptions = await stripe.Subscription.list_async(
-        customer=customer_id, status="all", limit=100
+    subscriptions = await stripe_call(
+        stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
     )
-    async for subscription in subscriptions.auto_paging_iter():
+    async for subscription in stripe_list_items(subscriptions):
         if (subscription.metadata or {}).get(
             "trial_enrollment_id"
         ) == trial.id and subscription.status not in ("canceled", "incomplete_expired"):

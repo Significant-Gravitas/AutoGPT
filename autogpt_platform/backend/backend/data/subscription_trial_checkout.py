@@ -9,6 +9,7 @@ from backend.data.credit import (
     get_subscription_price_id,
     sync_tier_from_checkout_session,
 )
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     SubscriptionCheckoutUnavailable as TrialUnavailable,
 )
@@ -96,7 +97,7 @@ async def resolve_trial_price(offer: TrialOffer) -> AcceptedTrialOffer:
     )
     if not price_id:
         raise TrialUnavailable("The trial's paid plan is not configured")
-    price = await stripe.Price.retrieve_async(price_id)
+    price = await stripe_call(stripe.Price.retrieve_async, price_id)
     interval = "month" if offer.billing_cycle == "monthly" else "year"
     if (
         not price.active
@@ -128,7 +129,8 @@ async def _resume_checkout(trial: TrialState) -> str:
             trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
         )
     if session is None:
-        session = await stripe.checkout.Session.create_async(
+        session = await stripe_call(
+            stripe.checkout.Session.create_async,
             **trial_checkout_params(trial),
             idempotency_key=f"trial-checkout-{trial.id}-{trial.checkout_attempt}",
         )
@@ -147,11 +149,13 @@ async def _resume_checkout(trial: TrialState) -> str:
 
 async def _find_checkout(trial: TrialState) -> stripe.checkout.Session | None:
     if trial.checkout_session_id:
-        return await stripe.checkout.Session.retrieve_async(trial.checkout_session_id)
-    sessions = await stripe.checkout.Session.list_async(
-        customer=trial.customer_id, limit=100
+        return await stripe_call(
+            stripe.checkout.Session.retrieve_async, trial.checkout_session_id
+        )
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async, customer=trial.customer_id, limit=100
     )
-    async for session in sessions.auto_paging_iter():
+    async for session in stripe_list_items(sessions):
         metadata = session.metadata or {}
         if metadata.get("trial_enrollment_id") == trial.id and metadata.get(
             "trial_checkout_attempt"

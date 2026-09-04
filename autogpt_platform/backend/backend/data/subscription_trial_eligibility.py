@@ -1,5 +1,6 @@
 import stripe
 
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import SubscriptionCheckoutUnavailable
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import TrialOffer
@@ -17,10 +18,10 @@ async def verify_trial_eligibility(
     user = await get_user_by_id(user_id)
     if trial and session and not _owned_checkout(trial, session):
         raise SubscriptionCheckoutUnavailable("Checkout does not match this trial")
-    result = await stripe.Subscription.list_async(
-        customer=customer_id, status="all", limit=100
+    result = await stripe_call(
+        stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
     )
-    subscriptions = [sub async for sub in result.auto_paging_iter()]
+    subscriptions = [sub async for sub in stripe_list_items(result)]
     allowed = await _unfinished_subscriptions(trial, session) if subscriptions else {}
     has_history = any(
         sub.status not in allowed.get(sub.id, ()) for sub in subscriptions
@@ -45,10 +46,10 @@ async def _unfinished_subscriptions(
         sub_id = current.subscription or trial.subscription_id
         if sub_id:
             allowed[str(sub_id)] = ("trialing", "incomplete")
-    sessions = await stripe.checkout.Session.list_async(
-        customer=trial.customer_id, limit=100
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async, customer=trial.customer_id, limit=100
     )
-    async for session in sessions.auto_paging_iter():
+    async for session in stripe_list_items(sessions):
         if session.status != "expired" or not _owned_checkout(
             trial, session, previous=True
         ):

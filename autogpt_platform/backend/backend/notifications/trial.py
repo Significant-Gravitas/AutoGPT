@@ -18,6 +18,7 @@ from backend.data.notifications import (
     SubscriptionPlan,
     TrialUpdateData,
 )
+from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
@@ -34,7 +35,9 @@ async def notify_trial(
     metadata = subscription.get("metadata") or {}
     if not metadata.get("trial_enrollment_id"):
         return False
-    current = dict(await stripe.Subscription.retrieve_async(subscription["id"]))
+    current = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, subscription["id"])
+    )
     user_id = (current.get("metadata") or {}).get("user_id")
     if not user_id:
         raise ValueError("Trial notification has no user identity")
@@ -88,7 +91,7 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
     sub_id = _invoice_subscription_id(invoice)
     if not sub_id:
         return False
-    subscription = dict(await stripe.Subscription.retrieve_async(sub_id))
+    subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if not (subscription.get("metadata") or {}).get("trial_enrollment_id"):
         return False
     await sync_subscription_from_stripe(subscription)
@@ -99,6 +102,8 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
     if trial is None:
         raise ValueError("Trial invoice has no matching enrollment")
     if paid and trial.converted_at:
+        if invoice.get("id") != trial.conversion_invoice_id:
+            return False
         await notify_trial(subscription, "converted")
         return True
     if not paid and trial.converted_at is None:
@@ -113,7 +118,9 @@ async def trial_notice_is_current(user_id: str, data: TrialUpdateData) -> bool:
         return False
     if data.offer_version != trial.offer.version:
         return False
-    current = dict(await stripe.Subscription.retrieve_async(trial.subscription_id))
+    current = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, trial.subscription_id)
+    )
     return _notice_applies(trial, data.kind, current)
 
 

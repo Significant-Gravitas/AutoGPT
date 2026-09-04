@@ -217,9 +217,65 @@ still exist for follow-up validation. No live Stripe configuration was changed.
 - Fresh origin/dev is `a242bc9392a8a062cce48a7913b57a833b3b909b`. It includes
   shared async Stripe calls/timeouts (#14324), Redis 8.1 (#14334), and DataFast
   onboarding/billing instrumentation (#14186/#14187); integration is next.
-- Still audit notification replay after later paid renewals: a durable first
-  conversion invoice identity is needed so monthly invoices cannot re-trigger a
-  trial-converted notice after the current Redis dedupe TTL expires.
+- Conversion now stores `stripeConversionInvoiceId` alongside `convertedAt`.
+  Subsequent reconciliation preserves both, and only that invoice can drive the
+  trial-converted notice. Two test-first regressions reproduced the old behavior;
+  first-invoice/renewal tests and a real database round-trip now pass. This does
+  not make the notification queue durable: replay of the same invoice after the
+  Redis TTL and the claim-before-publish crash window still need an outbox.
+
+## Dev integration validation (2026-09-04)
+
+- Merged dev at `a242bc9392a8a062cce48a7913b57a833b3b909b` without rebasing;
+  kept the fail-closed competing-checkout expiration behavior
+  and the newly merged DataFast onboarding step tracking.
+- All trial Stripe requests now use the shared async timeout/metrics helper.
+  Added bounded pagination so later pages cannot bypass the timeout, and tests
+  for pagination, an incomplete empty page, and timeout during subscription-history
+  inspection. These checks fail closed before a second checkout is created.
+- Regenerated the client from the merged backend OpenAPI schema, resolving the
+  missing admin impersonation endpoint types. The frontend format/lint/types
+  sequence passed. Its first full test run had 6,150 passing and one stale toast
+  failure in NeedsAttentionList. Fixed test isolation by awaiting the previous
+  mutations and dismissing singleton toasts; all nine tests in that file passed.
+  The repeated complete frontend sequence passed in order: format, lint, types,
+  and **6,151 tests across 578 files**, in 409.78 seconds. No expected failures.
+- Updated existing billing tests for the new trial database boundary and Stripe
+  pagination interface. Replaced the obsolete test asserting trial-ending events
+  are ignored with a reconciliation-and-reminder dispatch assertion.
+- Expanded isolated backend suite: **557 passed**, including existing billing,
+  all copilot rate-limit tests, and new conversion identity tests. Two database
+  metadata tests were explicitly deselected; five legacy refund integration
+  tests require the full server fixture and were not rerun in this isolated suite.
+- Disposable trial PostgreSQL integration: **9 passed**. Shared-library suite:
+  **247 passed** after the Redis dependency update. Whole-backend formatting and
+  type checking passed. Whole-schema Prisma formatting also fixed existing
+  alignment; retain those formatter changes per repository instructions.
+- Applied the complete revised migration to a fresh pre-trial schema in local
+  database `trial_migration_1788564518918`; both enums, the table, five indexes,
+  and the foreign key were created. The separate local `trial_test` database was
+  updated additively for the new field; no production database was touched.
+- Stripe's installed Checkout SDK accepts `trial_period_days >= 1`; the separate
+  absolute `trial_end` parameter requires at least 48 hours. This implementation
+  uses days, so the configurable minimum of one day matches that API contract.
+- Stripe's [customer email settings](https://docs.stripe.com/billing/revenue-recovery/customer-emails)
+  offer a seven-day trial reminder and payment confirmation/recovery links.
+  Verify reminder settings and the cancellation link before launch; do not assume
+  the three-day `trial_will_end` webhook alone covers card-network requirements.
+- Billing-auth PR #14226 and analytics PRs #14290/#14287 remain open at the heads
+  recorded above. There are no Sentry connector tools available in this session;
+  runtime validation still needs the deployed environment, not just local tests.
+- Spend audit found and fixed a specific mismatch: the trial-aware remaining
+  budget helper returns the actual remaining amount (including zero), but
+  `copilot/sdk/service.py::_resolve_dynamic_max_budget_usd` applied the paid
+  $0.50 floor. Trial SDK budget resolution now preserves five cents as five cents
+  and raises before dispatch for zero, negative, or non-finite remaining budget.
+  Five test-first failures reproduced the bug; all **12 trial/paid budget resolver
+  tests pass**. Actual provider enforcement and the user-visible zero-budget
+  recovery path still need end-to-end validation. The existing active-turn admission is
+  also explicitly non-locked; it is not a spend reservation. Missing provider
+  costs bypass counters, and late settlement currently depends on the user's
+  current tier/status rather than the enrollment funding the original turn.
 
 ## Outstanding launch choices
 

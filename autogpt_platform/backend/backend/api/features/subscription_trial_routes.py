@@ -10,6 +10,7 @@ from backend.api.features.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.data.credit import _datafast_metadata, sync_subscription_from_stripe
+from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import (
     get_subscription_trial,
     has_received_onboarding_credit,
@@ -97,8 +98,11 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
     user = await get_user_by_id(user_id)
     has_history = False
     if user.stripe_customer_id:
-        subscriptions = await stripe.Subscription.list_async(
-            customer=user.stripe_customer_id, status="all", limit=1
+        subscriptions = await stripe_call(
+            stripe.Subscription.list_async,
+            customer=user.stripe_customer_id,
+            status="all",
+            limit=1,
         )
         has_history = bool(subscriptions.data)
     if not offer.is_eligible(
@@ -155,11 +159,15 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if trial is None or trial.subscription_id is None or trial.consumed_at is None:
         raise HTTPException(409, "No trial subscription is available to cancel")
-    subscription = await stripe.Subscription.retrieve_async(trial.subscription_id)
+    subscription = await stripe_call(
+        stripe.Subscription.retrieve_async, trial.subscription_id
+    )
     if subscription.customer != trial.customer_id or subscription.status != "trialing":
         raise HTTPException(409, "This trial has ended. Manage the plan in billing.")
-    subscription = await stripe.Subscription.modify_async(
-        trial.subscription_id, cancel_at_period_end=True
+    subscription = await stripe_call(
+        stripe.Subscription.modify_async,
+        trial.subscription_id,
+        cancel_at_period_end=True,
     )
     await sync_subscription_from_stripe(dict(subscription))
     return await get_trial_status(user_id)

@@ -176,6 +176,37 @@ async def test_checkout_proof_rejects_mismatched_identity_or_collection(
 
 
 @pytest.mark.asyncio
+async def test_conversion_invoice_identity_is_immutable(trial, boundaries):
+    now = datetime.now(UTC)
+    invoice = fulfillment.Invoice(
+        id="in_first",
+        status="paid",
+        created=int(now.timestamp()),
+        billing_reason="subscription_cycle",
+    )
+    snapshot = fulfillment.SubscriptionSnapshot(
+        id="sub_1",
+        customer="cus_1",
+        status="active",
+        latest_invoice=invoice,
+    )
+    await fulfillment._save_snapshot(
+        trial, snapshot, SubscriptionTier.PRO, now, boundaries, True
+    )
+    first = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert first["stripeConversionInvoiceId"] == "in_first"
+    converted = trial.model_copy(
+        update={"converted_at": now, "conversion_invoice_id": "in_first"}
+    )
+    invoice.id = "in_renewal"
+    await fulfillment._save_snapshot(
+        converted, snapshot, SubscriptionTier.PRO, now, boundaries, True
+    )
+    later = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert later["stripeConversionInvoiceId"] == "in_first"
+
+
+@pytest.mark.asyncio
 async def test_completed_card_checkout_grants_trial(trial, boundaries):
     result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
     assert result is not None and result[1] == SubscriptionTier.TRIAL

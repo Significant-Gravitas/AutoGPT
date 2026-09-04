@@ -26,6 +26,7 @@ class TrialState(BaseModel):
     ends_at: datetime | None
     consumed_at: datetime | None
     converted_at: datetime | None
+    conversion_invoice_id: str | None = None
     cancel_at_period_end: bool
     cost_microdollars: int
 
@@ -58,6 +59,7 @@ class TrialState(BaseModel):
             ends_at=row.endsAt,
             consumed_at=row.consumedAt,
             converted_at=row.convertedAt,
+            conversion_invoice_id=row.stripeConversionInvoiceId,
             cancel_at_period_end=row.cancelAtPeriodEnd,
             cost_microdollars=row.costMicrodollars,
         )

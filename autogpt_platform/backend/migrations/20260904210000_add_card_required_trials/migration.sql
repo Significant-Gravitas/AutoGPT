@@ -8,6 +8,7 @@ CREATE TABLE "SubscriptionTrial" (
     "stripeCustomerId" TEXT NOT NULL,
     "stripeCheckoutSessionId" TEXT,
     "stripeSubscriptionId" TEXT,
+    "stripeConversionInvoiceId" TEXT,
     "checkoutAttempt" INTEGER NOT NULL DEFAULT 0,
     "checkoutSuccessUrl" TEXT NOT NULL,
     "checkoutCancelUrl" TEXT NOT NULL,
@@ -29,6 +30,7 @@ CREATE TABLE "SubscriptionTrial" (
 CREATE UNIQUE INDEX "SubscriptionTrial_userId_key" ON "SubscriptionTrial"("userId");
 CREATE UNIQUE INDEX "SubscriptionTrial_stripeCheckoutSessionId_key" ON "SubscriptionTrial"("stripeCheckoutSessionId");
 CREATE UNIQUE INDEX "SubscriptionTrial_stripeSubscriptionId_key" ON "SubscriptionTrial"("stripeSubscriptionId");
+CREATE UNIQUE INDEX "SubscriptionTrial_stripeConversionInvoiceId_key" ON "SubscriptionTrial"("stripeConversionInvoiceId");
 CREATE INDEX "SubscriptionTrial_status_endsAt_idx" ON "SubscriptionTrial"("status", "endsAt");
 ALTER TABLE "SubscriptionTrial" ADD CONSTRAINT "SubscriptionTrial_userId_fkey"
     FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -27,6 +27,11 @@ from backend.data.subscription_trial import (
     reserve_subscription_trial,
 )
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_stripe import (
+    Invoice,
+    SubscriptionSnapshot,
+    _save_snapshot,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("TRIAL_TEST_DATABASE") != "1",
@@ -172,6 +177,37 @@ async def test_trial_cost_increments_are_atomic_and_do_not_reset(user_id):
     await reserve(user_id, 500)
     trial = await get_subscription_trial(user_id)
     assert trial is not None and trial.cost_microdollars == 3000
+
+
+@pytest.mark.asyncio
+async def test_conversion_invoice_survives_database_roundtrip_and_renewal(user_id):
+    trial = await reserve(user_id)
+    now = datetime.now(UTC)
+    invoice = Invoice(
+        id=f"in_first_{user_id}", status="paid", created=int(now.timestamp())
+    )
+    snapshot = SubscriptionSnapshot(
+        id=f"sub_{user_id}",
+        customer=trial.customer_id,
+        status="active",
+        latest_invoice=invoice,
+    )
+    async with db.transaction() as tx:
+        await _save_snapshot(
+            trial, snapshot, credit.SubscriptionTier.PRO, now, tx, True
+        )
+    converted = await get_subscription_trial(user_id)
+    assert converted is not None and converted.converted_at is not None
+    assert converted.conversion_invoice_id == f"in_first_{user_id}"
+    invoice.id = f"in_renewal_{user_id}"
+    async with db.transaction() as tx:
+        await _save_snapshot(
+            converted, snapshot, credit.SubscriptionTier.PRO, now, tx, True
+        )
+    renewed = await get_subscription_trial(user_id)
+    assert renewed is not None
+    assert renewed.conversion_invoice_id == converted.conversion_invoice_id
+    assert renewed.converted_at == converted.converted_at
     assert trial.offer.onboarding_credit_amount == 300
 
 

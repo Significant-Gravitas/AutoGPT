@@ -25,6 +25,7 @@ from backend.data.notifications import (
     SubscriptionResumedData,
     SubscriptionWelcomeData,
 )
+from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
@@ -82,12 +83,16 @@ async def send_welcome_for_session(session_id: str) -> None:
     Raises on failure so the consumer retries; `on_checkout_completed` is
     idempotent via the `welcomeEmailSentAt` claim.
     """
-    session = dict(await stripe.checkout.Session.retrieve_async(session_id))
+    session = dict(
+        await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
+    )
     subscription_id = session.get("subscription")
     if not subscription_id:
         logger.info(f"Checkout {session_id} has no subscription; nothing to welcome")
         return
-    subscription = dict(await stripe.Subscription.retrieve_async(str(subscription_id)))
+    subscription = dict(
+        await stripe_call(stripe.Subscription.retrieve_async, str(subscription_id))
+    )
     await on_checkout_completed(session, subscription)
 
 

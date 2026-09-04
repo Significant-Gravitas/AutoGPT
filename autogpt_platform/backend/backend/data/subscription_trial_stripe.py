@@ -8,6 +8,7 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
@@ -97,8 +98,10 @@ async def reconcile_trial_subscription(
 async def _reconcile_locked(
     trial: TrialState, subscription_id: str, tx: Prisma
 ) -> tuple[dict, SubscriptionTier | None] | None:
-    raw = await stripe.Subscription.retrieve_async(
-        subscription_id, expand=["default_payment_method", "latest_invoice"]
+    raw = await stripe_call(
+        stripe.Subscription.retrieve_async,
+        subscription_id,
+        expand=["default_payment_method", "latest_invoice"],
     )
     snapshot = SubscriptionSnapshot.model_validate(raw)
     if snapshot.metadata.get("trial_enrollment_id") != trial.id:
@@ -131,8 +134,11 @@ async def _reconcile_locked(
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
         for status in ("active", "trialing"):
-            others = await stripe.Subscription.list_async(
-                customer=trial.customer_id, status=status, limit=100
+            others = await stripe_call(
+                stripe.Subscription.list_async,
+                customer=trial.customer_id,
+                status=status,
+                limit=100,
             )
             if any(sub.id != snapshot.id for sub in others.data):
                 return dict(raw), None
@@ -150,14 +156,14 @@ async def _completed_card_checkout(
     trial: TrialState, subscription_id: str, tx: Prisma
 ) -> bool:
     if trial.checkout_session_id:
-        session = await stripe.checkout.Session.retrieve_async(
-            trial.checkout_session_id
+        session = await stripe_call(
+            stripe.checkout.Session.retrieve_async, trial.checkout_session_id
         )
         return _checkout_proves_card_collection(trial, subscription_id, session)
-    sessions = await stripe.checkout.Session.list_async(
-        customer=trial.customer_id, limit=100
+    sessions = await stripe_call(
+        stripe.checkout.Session.list_async, customer=trial.customer_id, limit=100
     )
-    async for session in sessions.auto_paging_iter():
+    async for session in stripe_list_items(sessions):
         if (session.metadata or {}).get("trial_enrollment_id") != trial.id:
             continue
         if (session.metadata or {}).get("trial_checkout_attempt") != str(
@@ -233,8 +239,12 @@ async def _save_snapshot(
     if checkout_complete:
         consumed_at = consumed_at or now
     converted_at = trial.converted_at
-    if tier.value == trial.offer.tier:
-        converted_at = converted_at or now
+    conversion_invoice_id = trial.conversion_invoice_id
+    if converted_at is None and tier.value == trial.offer.tier:
+        if snapshot.latest_invoice is None:
+            raise ValueError("Trial conversion requires a paid invoice")
+        converted_at = now
+        conversion_invoice_id = snapshot.latest_invoice.id
     await tx.subscriptiontrial.update(
         where={"userId": trial.user_id},
         data={
@@ -251,6 +261,7 @@ async def _save_snapshot(
             "endsAt": _timestamp(snapshot.trial_end),
             "consumedAt": consumed_at,
             "convertedAt": converted_at,
+            "stripeConversionInvoiceId": conversion_invoice_id,
             "cancelAtPeriodEnd": snapshot.cancel_at_period_end,
         },
     )

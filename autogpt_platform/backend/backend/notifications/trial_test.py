@@ -174,3 +174,50 @@ def test_canceled_trial_suppresses_late_ending_reminder(trial):
 
 def test_failed_conversion_suppresses_paid_confirmation(trial):
     assert not notices._notice_applies(trial, "converted", {"status": "past_due"})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invoice_id,expected", [("in_first", True), ("in_renewal", False)]
+)
+async def test_only_conversion_invoice_triggers_trial_confirmation(
+    trial, invoice_id, expected
+):
+    trial = trial.model_copy(
+        update={"converted_at": datetime.now(UTC), "conversion_invoice_id": "in_first"}
+    )
+    subscription = {
+        "id": "sub_1",
+        "customer": "cus_1",
+        "metadata": {
+            "user_id": trial.user_id,
+            "trial_enrollment_id": trial.id,
+            "trial_checkout_attempt": "0",
+        },
+    }
+    invoice = {
+        "id": invoice_id,
+        "subscription": "sub_1",
+        "subscription_details": {"metadata": subscription["metadata"]},
+    }
+    with (
+        patch.object(
+            notices.stripe.Subscription,
+            "retrieve_async",
+            AsyncMock(return_value=subscription),
+        ),
+        patch.object(notices, "sync_subscription_from_stripe", AsyncMock()),
+        patch.object(
+            notices,
+            "credit_db",
+            return_value=MagicMock(
+                get_subscription_trial=AsyncMock(return_value=trial)
+            ),
+        ),
+        patch.object(notices, "notify_trial", AsyncMock()) as notify,
+    ):
+        assert await notices.on_trial_invoice(invoice, paid=True) is expected
+    if expected:
+        notify.assert_awaited_once_with(subscription, "converted")
+    else:
+        notify.assert_not_awaited()
