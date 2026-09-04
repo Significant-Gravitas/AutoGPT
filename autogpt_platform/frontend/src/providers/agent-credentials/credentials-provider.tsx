@@ -341,6 +341,9 @@ export default function CredentialsProvider({
         if (!result.deleted) {
           return result;
         }
+        // A list request that started before the delete would otherwise
+        // resolve afterwards with the deleted credential and republish it.
+        loadGenerationRef.current += 1;
         // Drop any pending copy first. A credential deleted while still
         // pending would otherwise be merged straight back into the picker by
         // the next load.
