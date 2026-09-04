@@ -225,7 +225,10 @@ COMMENTED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/comments" 
 ANSWERED_AT=$(printf '%s\n%s\n' "$REVIEWED_AT" "$COMMENTED_AT" | grep -v '^$' | sort | tail -1)
 
 # Pending iff a request exists and no answer is strictly newer than it.
+# Start every poll from `false`: a stale `true` from the previous poll would
+# otherwise keep the gate waiting after the answer has already landed.
 # `[ a \< b ]` is not portable (fails under zsh), so compare via sort.
+pending=false
 NEWEST=$(printf '%s\n%s\n' "$REQUESTED_AT" "$ANSWERED_AT" | grep -v '^$' | sort | tail -1)
 if [ -n "$REQUESTED_AT" ] && { [ -z "$ANSWERED_AT" ] || [ "$NEWEST" = "$REQUESTED_AT" ]; }; then
   pending=true
