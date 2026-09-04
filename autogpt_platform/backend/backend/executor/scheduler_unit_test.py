@@ -41,6 +41,7 @@ from backend.util.exceptions import (
     ExpertPrivateTenancyNotFoundError,
     UserPaywalledError,
 )
+from backend.util.settings import Config
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
 
@@ -1484,14 +1485,24 @@ def test_add_graph_schedule_keeps_autopilot_tenancy():
 # ---------------------------------------------------------------------------
 
 
-def _registered_jobs(monkeypatch, interval_hours: int) -> list:
+def _registered_jobs(
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+) -> tuple[list, MagicMock]:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, returning the list of ``add_job`` mock calls."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
     )
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.scheduler_startup_embedding_backfill",
+        startup_embedding_backfill,
+        raising=False,
+    )
     mock_scheduler = MagicMock()
+    embedding_backfill = MagicMock()
     with (
         patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
@@ -1504,12 +1515,12 @@ def _registered_jobs(monkeypatch, interval_hours: int) -> list:
             f"{_SCHEDULER_PATH}._extract_schema_from_url",
             return_value=("public", "sqlite://"),
         ),
-        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", return_value=None),
+        patch(f"{_SCHEDULER_PATH}.ensure_embeddings_coverage", new=embedding_backfill),
         # super().run_service() blocks forever keeping the service alive; no-op it.
         patch("backend.util.service.AppService.run_service", return_value=None),
     ):
         Scheduler(register_system_tasks=True).run_service()
-    return mock_scheduler.add_job.call_args_list
+    return mock_scheduler.add_job.call_args_list, embedding_backfill
 
 
 def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance(
@@ -1517,7 +1528,7 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 ):
     """The sweep must be registered as an interval job keyed off the configured
     interval setting and capped to a single concurrent instance."""
-    calls = _registered_jobs(monkeypatch, interval_hours=6)
+    calls, _ = _registered_jobs(monkeypatch, interval_hours=6)
 
     matches = [c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers]
     assert len(matches) == 1
@@ -1531,9 +1542,50 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
-    calls = _registered_jobs(monkeypatch, interval_hours=12)
+    calls, _ = _registered_jobs(monkeypatch, interval_hours=12)
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
     assert match.kwargs["seconds"] == 12 * 3600
+
+
+def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
+    before = datetime.now(timezone.utc)
+    calls, embedding_backfill = _registered_jobs(
+        monkeypatch,
+        interval_hours=6,
+        startup_embedding_backfill=False,
+    )
+
+    embedding_backfill.assert_not_called()
+    job = next(c for c in calls if c.kwargs["id"] == "ensure_embeddings_coverage")
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert before + timedelta(hours=6) <= job.kwargs["next_run_time"]
+
+
+def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypatch):
+    before = datetime.now(timezone.utc)
+    calls, embedding_backfill = _registered_jobs(monkeypatch, interval_hours=6)
+
+    embedding_backfill.assert_not_called()
+    jobs = [c for c in calls if c.kwargs["id"] == "ensure_embeddings_coverage"]
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
+    assert job.kwargs["trigger"] == "interval"
+    assert job.kwargs["hours"] == 6
+    assert job.kwargs["max_instances"] == 1
+    assert job.kwargs["misfire_grace_time"] is None
+    assert job.kwargs["coalesce"] is True
+    job.args[0]()
+    embedding_backfill.assert_called_once_with()
+
+
+def test_startup_embedding_backfill_setting_reads_environment(monkeypatch):
+    monkeypatch.setenv("SCHEDULER_STARTUP_EMBEDDING_BACKFILL", "false")
+
+    settings = Config(_env_file=None)
+
+    assert settings.scheduler_startup_embedding_backfill is False
 
 
 class TestScheduleOrgVisibility:

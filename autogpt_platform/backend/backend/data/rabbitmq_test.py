@@ -27,8 +27,23 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_ROUTING_KEY,
     create_execution_queue_config,
 )
+from backend.notifications.queue import create_notification_config
 
 # ---------- Quorum queue config: classic→quorum rollover guard ----------
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        create_execution_queue_config,
+        create_copilot_queue_config,
+        create_notification_config,
+    ],
+)
+@pytest.mark.parametrize("vhost", ["/", "ci-shard"])
+def test_queue_config_uses_configured_vhost(monkeypatch, factory, vhost: str) -> None:
+    monkeypatch.setenv("RABBITMQ_VHOST", vhost)
+    assert factory().vhost == vhost
 
 
 def test_graph_execution_queue_is_quorum() -> None:

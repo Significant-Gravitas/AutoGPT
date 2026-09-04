@@ -1,12 +1,70 @@
 # Testing
 
-We use [Playwright](https://playwright.dev/) for our testing framework.
+The AutoGPT Platform uses several test frameworks at different layers:
+
+- Backend tests use pytest.
+- Frontend integration tests use Vitest, React Testing Library, and MSW. These
+  are the primary frontend tests.
+- End-to-end browser tests use [Playwright](https://playwright.dev/).
+
+Run the complete local suites from their respective workspaces:
+
+```bash
+# autogpt_platform/backend
+poetry run test
+
+# autogpt_platform/frontend
+pnpm test:unit
+pnpm test
+```
+
+See the frontend [testing guide](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/TESTING.md)
+for patterns, commands, and guidance on choosing integration or end-to-end
+coverage.
+
+## Continuous integration
+
+CI divides the complete backend and frontend integration suites into balanced
+shards so they finish sooner. Sharding changes where a test runs, not whether it
+runs: every collected test ID remains part of the required result. Backend
+shards retain isolated PostgreSQL databases, RabbitMQ virtual hosts, and Redis
+clusters while using the same real service types as the unsharded suite.
+
+Dependency and browser caches are keyed to their lockfiles. BuildKit layer
+caches reuse content within component and platform scopes, including configured
+fallbacks. Full-stack cache export is limited to trusted `dev` pushes or an
+explicit cache-publishing dispatch, and the single-container build uses a
+dedicated GHCR cache per architecture instead of the repository Actions cache.
+The generated E2E seed-data cache is keyed to the exact commit under test. Warm
+caches may avoid repeated dependency downloads, seed generation, or cache
+export, but they never
+bypass tests, linting, type checks, coverage collection, image builds, image
+smoke tests, or security scans.
+
+Every test job uploads a JUnit XML or JSON report, plus coverage artifacts where
+applicable. The report validators fail closed on missing or malformed reports,
+zero discovered tests, count mismatches, failures, and errors. Frontend
+integration and Playwright reports also reject skipped tests; the
+single-container suite permits only its explicitly identified Bash 3
+availability skip. Backend reports retain pytest's existing skip semantics. If
+a wrapped test command cannot start or a test report cannot be parsed, the test
+report tooling records a machine-readable error before uploading the artifacts.
+
+These CI workflows have no required manual-dispatch inputs. Full-stack
+dispatches import caches by default; set `publish_build_cache` only when a test
+commit should deliberately refresh them. A manually dispatched single-container
+run builds, smoke-tests, and scans the image but cannot publish it; publication
+jobs are reachable only from a release event. Single-container validation also
+runs on every `dev` push and release, while pull requests trigger it only when
+appliance packaging inputs change.
 
 ## Before you start
 
-Almost all of the tests require that you are running the frontend and backend servers. You will hit strange and hard to debug errors if you don't have them running because the tests will try to interact with the application when it's not running in an interactable state.
+Playwright tests require the frontend and backend servers. You will hit strange
+and hard to debug errors if they are not running because the tests will try to
+interact with an application that is not ready.
 
-## Running the tests
+## Running the Playwright tests
 
 To run the tests, you can use the following commands:
 
@@ -28,9 +86,12 @@ You can also pass `--debug` to the test command to open the browsers in view mod
 pnpm test --debug
 ```
 
-In CI, we run the tests in headless mode, with multiple browsers, and retry a failed test up to 2 times.
-
-You can find the full configuration in [playwright.config.ts](https://github.com/Significant-Gravitas/Autogpt/blob/master/autogpt_platform/frontend/playwright.config.ts).
+In CI, the [full-stack workflow](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/.github/workflows/platform-fullstack-ci.yml)
+runs the Chromium project headlessly with zero retries and retains a trace on
+failure. Its JSON validator requires every test to have exactly one successful
+attempt and rejects skipped, flaky, unexpected, or missing results and top-level
+errors. See the shared settings in
+[playwright.config.ts](https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/playwright.config.ts).
 
 ### Debugging tests
 
@@ -159,7 +220,6 @@ You can pass information between tests using the `testInfo` object. This is usef
   });
 });
 ```
-
 
 ## See Also
 

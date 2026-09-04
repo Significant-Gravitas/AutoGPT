@@ -3,33 +3,30 @@ name: AutoGPT Platform - Single-container image
 on:
   push:
     branches: [dev]
-    paths:
-      - ".dockerignore"
-      - ".github/scripts/platform-single-container-publish.sh"
-      - ".github/scripts/platform-single-container-smoke.sh"
-      - ".github/workflows/platform-single-container-docker.yml"
-      - "autogpt_platform/**"
-      - "docs/platform/single-container.md"
   pull_request:
     paths:
       - ".dockerignore"
       - ".github/scripts/platform-single-container-publish.sh"
+      - ".github/scripts/run_command_junit.py"
+      - ".github/scripts/run_unittest_junit.py"
+      - ".github/scripts/verify_single_container_reports.py"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
-      - "autogpt_platform/**"
+      - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/backend/poetry.lock"
+      - "autogpt_platform/backend/pyproject.toml"
+      - "autogpt_platform/docker-compose.yml"
+      - "autogpt_platform/docker-compose.platform.yml"
+      - "autogpt_platform/frontend/package.json"
+      - "autogpt_platform/frontend/pnpm-lock.yaml"
+      - "autogpt_platform/single-container/**"
       - "docs/platform/single-container.md"
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish the current dev commit to Docker Hub"
-        required: true
-        type: boolean
-        default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && 'publication' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'release' && 'publication' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -37,10 +34,11 @@ permissions:
 
 env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
+  BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
 
 jobs:
   authorize-publication:
-    name: Authorize publication source
+    name: Evaluate publication eligibility
     runs-on: ubuntu-24.04
     outputs:
       allowed: ${{ steps.policy.outputs.allowed }}
@@ -50,19 +48,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate publication source
+      - name: Determine publication eligibility
         id: policy
         shell: bash
         env:
-          PUBLISH_REQUESTED: ${{ inputs.publish }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: bash .github/scripts/platform-single-container-publish.sh authorize
 
   build-and-scan:
     name: Build, smoke, and scan (${{ matrix.platform }})
-    needs: authorize-publication
-    if: ${{ github.event_name != 'release' || needs.authorize-publication.outputs.allowed == 'true' }}
+    permissions:
+      contents: read
+      packages: write
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
@@ -79,24 +77,81 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Test appliance runtime helpers
+      - name: Initialize validation reports
         shell: bash
-        run: python3 -m unittest discover -s autogpt_platform/single-container/tests -p 'test_*.py' -v
-
-      - name: Test publication helpers
-        shell: bash
-        run: bash .github/scripts/platform-single-container-publish.sh self-test
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run: |
+          mkdir -p "$REPORT_DIR"
+          jq -n \
+            --arg sha "$GITHUB_SHA" \
+            --arg platform "${{ matrix.platform }}" \
+            '{sha: $sha, platform: $platform, validated: false}' \
+            > "$REPORT_DIR/status.json"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
           version: v0.36.0
+          cleanup: false
           driver-opts: |
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
+      - name: Authenticate to GHCR build cache
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure registry build cache
+        id: cache
+        shell: bash
+        env:
+          CACHE_ENABLED: ${{ github.event_name != 'pull_request' }}
+          CACHE_WRITE_ENABLED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
+          CACHE_REF: ${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          echo "set<<CACHE_EOF" >> "$GITHUB_OUTPUT"
+          if [[ "$CACHE_ENABLED" == "true" ]]; then
+            echo "backend-server.cache-from=type=registry,ref=$CACHE_REF" >> "$GITHUB_OUTPUT"
+            echo "single-container.cache-from=type=registry,ref=$CACHE_REF" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$CACHE_WRITE_ENABLED" == "true" ]]; then
+            echo "single-container.cache-to=type=registry,ref=$CACHE_REF,mode=max,oci-mediatypes=true,image-manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "CACHE_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Test appliance runtime helpers
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run: >-
+          python3 .github/scripts/run_unittest_junit.py
+          --start-directory autogpt_platform/single-container/tests
+          --pattern 'test_*.py'
+          --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+          --output "$REPORT_DIR/runtime-helpers.xml"
+
+      - name: Test publication helpers
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run: >-
+          python3 .github/scripts/run_command_junit.py
+          --name publication-policy
+          --classname single-container.publication
+          --output "$REPORT_DIR/publication-policy.xml"
+          -- bash .github/scripts/platform-single-container-publish.sh self-test
+
       - name: Build image without publishing
+        id: build-image
+        background: true
         uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
         with:
           source: .
@@ -104,46 +159,148 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
-            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
-            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
             single-container.output=type=docker
             single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+            ${{ steps.cache.outputs.set }}
 
-      - name: Smoke-test the complete image
+      - name: Wait for image build
+        wait: build-image
+
+      - name: Verify image source revision
         shell: bash
         env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        run: |
+          actual_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$SMOKE_IMAGE")"
+          if [[ "$actual_revision" != "$GITHUB_SHA" ]]; then
+            echo "expected image revision $GITHUB_SHA, got $actual_revision" >&2
+            exit 1
+          fi
+          image_id="$(docker image inspect --format '{{ .Id }}' "$SMOKE_IMAGE")"
+          jq -n \
+            --arg sha "$GITHUB_SHA" \
+            --arg platform "${{ matrix.platform }}" \
+            --arg image "$SMOKE_IMAGE" \
+            --arg image_id "$image_id" \
+            '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated: false}' \
+            > "$REPORT_DIR/status.json"
+
+      - name: Smoke-test the complete image
+        id: complete-image-smoke
+        background: true
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
           SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           SMOKE_PLATFORM: ${{ matrix.platform }}
-        run: bash .github/scripts/platform-single-container-smoke.sh
+          SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+        run: >-
+          python3 .github/scripts/run_command_junit.py
+          --name complete-image-smoke
+          --classname single-container.smoke
+          --output "$REPORT_DIR/smoke.xml"
+          -- bash .github/scripts/platform-single-container-smoke.sh
 
       - name: Scan for fixable critical vulnerabilities
+        id: vulnerability_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          format: table
+          scanners: vuln,secret
+          format: json
+          output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
           ignore-unfixed: true
           severity: CRITICAL
           exit-code: "1"
           timeout: 30m
 
       - name: Scan image filesystem for embedded secrets
+        id: secret_scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: secret
-          format: table
+          format: json
+          output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
           severity: HIGH,CRITICAL
           exit-code: "1"
           timeout: 30m
 
+      - name: Signal concurrent scans complete
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+        run: touch "$SCAN_COMPLETION_FILE"
+
+      - name: Wait for complete-image smoke test
+        wait: complete-image-smoke
+
+      - name: Verify machine-readable reports
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
+        run: |
+          scan_failed=0
+          if [[ "$VULNERABILITY_SCAN_OUTCOME" != "success" ]]; then
+            echo "vulnerability scan action concluded $VULNERABILITY_SCAN_OUTCOME" >&2
+            scan_failed=1
+          fi
+          if [[ "$SECRET_SCAN_OUTCOME" != "success" ]]; then
+            echo "secret scan action concluded $SECRET_SCAN_OUTCOME" >&2
+            scan_failed=1
+          fi
+          reports=(
+            runtime-helpers.xml
+            publication-policy.xml
+            smoke.xml
+            trivy-critical.json
+            trivy-secrets.json
+          )
+          for report in "${reports[@]}"; do
+            if [[ ! -s "$REPORT_DIR/$report" ]]; then
+              echo "missing machine-readable report: $report" >&2
+              exit 1
+            fi
+          done
+          python3 .github/scripts/verify_single_container_reports.py \
+            --report-dir "$REPORT_DIR" \
+            --expected-image "$SMOKE_IMAGE"
+          ((scan_failed == 0))
+
+      - name: Mark validation complete
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run: |
+          jq '.validated = true' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
+          mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+
+      - name: Upload single-container reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-single-container-ci-${{ matrix.suffix }}
+          path: ${{ runner.temp }}/platform-single-container-results
+          if-no-files-found: error
+          retention-days: 7
+
   publish-platform-digests:
     name: Publish, smoke, and scan (${{ matrix.platform }})
-    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
+    if: ${{ github.event_name == 'release' && needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
     needs: [authorize-publication, build-and-scan]
+    permissions:
+      contents: read
+      packages: read
     environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
@@ -167,6 +324,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
           version: v0.36.0
+          cleanup: false
           driver-opts: |
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
@@ -175,6 +333,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Authenticate to GHCR build cache
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push platform digest
         id: build
@@ -185,12 +350,10 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
-            backend-server.cache-from=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }}
-            backend-server.cache-to=type=gha,scope=platform-single-container-backend-${{ matrix.suffix }},mode=max,ignore-error=true
+            backend-server.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
-            single-container.cache-from=type=gha,scope=platform-single-container-${{ matrix.suffix }}
-            single-container.cache-to=type=gha,scope=platform-single-container-${{ matrix.suffix }},mode=max,ignore-error=true
+            single-container.cache-from=type=registry,ref=${{ env.BUILD_CACHE_IMAGE }}:v3-${{ matrix.suffix }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}
             single-container.attest=type=provenance,mode=max
             single-container.attest=type=sbom
@@ -272,7 +435,7 @@ jobs:
 
   publish-manifest:
     name: Publish multi-platform manifest
-    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
+    if: ${{ github.event_name == 'release' && needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
     needs: [authorize-publication, publish-platform-digests]
     environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ubuntu-24.04

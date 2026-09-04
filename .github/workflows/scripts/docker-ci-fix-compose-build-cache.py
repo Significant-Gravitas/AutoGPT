@@ -30,7 +30,7 @@ def main():
     parser.add_argument(
         "--cache-to",
         default="type=gha,mode=max",
-        help="Cache destination configuration",
+        help="Cache destination configuration; pass an empty value to disable export",
     )
     for component in CACHE_BUILDS_FOR_COMPONENTS:
         parser.add_argument(
@@ -149,7 +149,7 @@ def main():
                 master_scope = f"platform-{component}-{target}-{DEFAULT_BRANCH}"
                 cache_from_list.append(f"{args.cache_from},scope={master_scope}")
 
-        if "type=gha" in args.cache_to:
+        if args.cache_to and "type=gha" in args.cache_to:
             # Write to both hash-based and branch-based scopes
             if component_hash:
                 hash_scope = f"platform-{component}-{target}-{component_hash}"
@@ -162,11 +162,14 @@ def main():
         # Ensure we have at least one cache source/target
         if not cache_from_list:
             cache_from_list.append(args.cache_from)
-        if not cache_to_list:
+        if args.cache_to and not cache_to_list:
             cache_to_list.append(args.cache_to)
 
         build_config["cache_from"] = cache_from_list
-        build_config["cache_to"] = cache_to_list
+        if cache_to_list:
+            build_config["cache_to"] = cache_to_list
+        else:
+            build_config.pop("cache_to", None)
         modified_services.append(service_name)
 
     # Write back to the same file

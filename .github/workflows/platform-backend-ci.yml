@@ -6,6 +6,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/validate_junit.py"
+      - ".github/scripts/test_validate_junit.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
@@ -13,6 +16,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/validate_junit.py"
+      - ".github/scripts/test_validate_junit.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:
@@ -21,18 +27,10 @@ on:
   # automatic push/pull_request runs are skipped) but you still want to run the
   # suite and produce a fresh coverage upload for that branch's HEAD commit.
   #   gh workflow run platform-backend-ci.yml --ref <branch>
-  # Pass pr_number to attach the coverage upload to an open PR (refreshes that
-  # PR's codecov/project/platform-backend status):
-  #   gh workflow run platform-backend-ci.yml --ref <branch> -f pr_number=<PR#>
   workflow_dispatch:
-    inputs:
-      pr_number:
-        description: "Open PR number to attach this coverage upload to (refreshes that PR's codecov status). Leave blank for a plain branch run."
-        required: false
-        type: string
 
 concurrency:
-  group: ${{ format('backend-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('backend-ci-{0}', github.event_name == 'workflow_dispatch' && github.run_id || (github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha)) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 defaults:
@@ -67,6 +65,17 @@ jobs:
           HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
           echo "Using Poetry version ${HEAD_POETRY_VERSION}"
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Check poetry.lock
+        run: |
+          poetry lock
+
+          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
+            echo "Error: poetry.lock not up to date."
+            echo
+            git diff poetry.lock
+            exit 1
+          fi
 
       - name: Install Python dependencies
         run: poetry install
@@ -116,7 +125,21 @@ jobs:
         run: poetry install
 
       - name: Run pytest
-        run: poetry run pytest -q
+        run: poetry run pytest -q --junitxml=junit-autogpt-libs.xml
+
+      - name: Validate test report
+        if: ${{ always() }}
+        run: >-
+          python ../../.github/scripts/validate_junit.py --synthesize-invalid
+          junit-autogpt-libs.xml
+
+      - name: Upload test report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: autogpt-libs-test-report
+          path: autogpt_platform/autogpt_libs/junit-autogpt-libs.xml
+          if-no-files-found: error
 
     env:
       CI: true
@@ -167,20 +190,19 @@ jobs:
       PLAIN_OUTPUT: True
 
   test:
+    name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # The suite is ~10.6k tests run serially (no pytest-xdist): the pytest step
-    # alone measures p50 ~13min / max ~18min, on top of 2-7min of container,
-    # checkout and dependency setup. A 20min cap sat *below* the job's real p95,
-    # so healthy runs were killed mid-suite and reported as `cancelled`. On
-    # merge_group that is fatal: `Check PR Status` treats a non-success check as
-    # a failure and GitHub ejects the PR from the merge queue. This is a guard
-    # against a hung job, not a performance budget - keep it well above p99.
+    # Each Python leg preserves the complete suite while its four disjoint path
+    # groups run on separate standard runners. This avoids CPU and service
+    # contention without deselecting tests or sharing mutable state between
+    # shards. The timeout remains a hang guard, not a performance budget.
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+        test-shard: [data, copilot, util-executor, remainder]
     runs-on: ubuntu-latest
 
     services:
@@ -255,6 +277,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
           # Full ref history is needed so the "Install Poetry" step below can
           # read poetry.lock off the base branch. `filter: blob:none` keeps
           # every ref reachable while skipping the blob download for all of
@@ -266,75 +289,175 @@ jobs:
           filter: blob:none
           submodules: true
 
+      - name: Configure test shard
+        shell: bash
+        env:
+          MATRIX_TEST_SHARD: ${{ matrix.test-shard }}
+        run: |
+          case "$MATRIX_TEST_SHARD" in
+            data|copilot|remainder)
+              database_suffix="$MATRIX_TEST_SHARD"
+              ;;
+            util-executor)
+              database_suffix="util_executor"
+              ;;
+            *)
+              echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "TEST_SHARD=$MATRIX_TEST_SHARD"
+            echo "DATABASE_NAME=ci_${database_suffix}"
+            echo "RABBITMQ_VHOST=ci-${MATRIX_TEST_SHARD}"
+            echo "REDIS_PORT=17000"
+          } >> "$GITHUB_ENV"
+
+      - name: Start isolated stateful services
+        id: stateful-services
+        working-directory: autogpt_platform
+        background: true
+        env:
+          CLAMAV_CONTAINER: ${{ job.services.clamav.id }}
+          RABBITMQ_CONTAINER: ${{ job.services.rabbitmq.id }}
+        run: |
+          postgres_image=pgvector/pgvector:pg15
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$postgres_image"
+          docker run --pull=never -d --name postgres-test \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
+            "$postgres_image"
+
+          postgres_ready=false
+          for _ in $(seq 1 30); do
+            if docker exec postgres-test pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+              postgres_ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$postgres_ready" != "true" ]]; then
+            echo "Postgres failed to start" >&2
+            docker logs postgres-test >&2
+            exit 1
+          fi
+
+          docker exec postgres-test createdb -h 127.0.0.1 -U postgres "$DATABASE_NAME"
+          docker exec postgres-test psql -h 127.0.0.1 -U postgres \
+            -v ON_ERROR_STOP=1 -d "$DATABASE_NAME" \
+            -f /docker-entrypoint-initdb.d/00-init.sql
+
+          if [[ -z "$RABBITMQ_CONTAINER" ]]; then
+            echo "RabbitMQ service container was not found" >&2
+            exit 1
+          fi
+          docker exec "$RABBITMQ_CONTAINER" rabbitmqctl add_vhost "$RABBITMQ_VHOST"
+          docker exec "$RABBITMQ_CONTAINER" rabbitmqctl set_permissions \
+            -p "$RABBITMQ_VHOST" "$RABBITMQ_DEFAULT_USER" ".*" ".*" ".*"
+
+          start_redis_cluster() {
+            local name="$1"
+            local base_port="$2"
+            local network="redis-cluster-ci-${name}"
+            docker network create "$network"
+
+            for offset in 0 1 2; do
+              local port=$((base_port + offset))
+              local bus=$((base_port + 10000 + offset))
+              local container="redis-${name}-${offset}"
+              docker run --pull=never -d --name "$container" --network "$network" \
+                --network-alias "$container" \
+                -p "$port:$port" \
+                "$redis_image" \
+                redis-server --port "$port" \
+                  --cluster-enabled yes \
+                  --cluster-config-file nodes.conf \
+                  --cluster-node-timeout 5000 \
+                  --cluster-require-full-coverage no \
+                  --cluster-announce-hostname "$container" \
+                  --cluster-announce-port "$port" \
+                  --cluster-announce-bus-port "$bus" \
+                  --cluster-preferred-endpoint-type hostname
+            done
+
+            for offset in 0 1 2; do
+              local port=$((base_port + offset))
+              local container="redis-${name}-${offset}"
+              local ready=false
+              for _ in $(seq 1 30); do
+                if docker exec "$container" redis-cli -p "$port" ping 2>/dev/null | grep -q '^PONG$'; then
+                  ready=true
+                  break
+                fi
+                sleep 1
+              done
+              if [[ "$ready" != "true" ]]; then
+                echo "$container failed to accept commands" >&2
+                docker logs "$container" >&2
+                return 1
+              fi
+            done
+
+            docker run --pull=never --rm --network "$network" "$redis_image" \
+              redis-cli --cluster create \
+                "redis-${name}-0:${base_port}" \
+                "redis-${name}-1:$((base_port + 1))" \
+                "redis-${name}-2:$((base_port + 2))" \
+                --cluster-replicas 0 --cluster-yes
+
+            for _ in $(seq 1 30); do
+              local info
+              if info=$(docker exec "redis-${name}-0" redis-cli -p "$base_port" cluster info); then
+                local state
+                state=$(printf '%s\n' "$info" | awk -F: '/^cluster_state:/ {print $2}' | tr -d '[:cntrl:]')
+                if [[ "$state" == "ok" ]]; then
+                  echo "Redis cluster ${name} ready on ${base_port}-$((base_port + 2))"
+                  return 0
+                fi
+              fi
+              sleep 1
+            done
+
+            echo "Redis cluster ${name} failed to converge" >&2
+            docker exec "redis-${name}-0" redis-cli -p "$base_port" cluster info >&2
+            return 1
+          }
+
+          redis_image=redis:7
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$redis_image"
+          start_redis_cluster "$TEST_SHARD" "$REDIS_PORT"
+
+          if [[ -z "$CLAMAV_CONTAINER" ]]; then
+            echo "ClamAV service container was not found" >&2
+            exit 1
+          fi
+          clamav_ready=false
+          for _ in $(seq 1 60); do
+            if nc -z localhost 3310; then
+              clamav_ready=true
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$clamav_ready" != "true" ]]; then
+            echo "ClamAV failed to start" >&2
+            docker logs "$CLAMAV_CONTAINER" >&2
+            exit 1
+          fi
+          if ! timeout 10 bash -c 'echo "PING" | nc localhost 3310'; then
+            echo "ClamAV is not responding to PING" >&2
+            docker logs "$CLAMAV_CONTAINER" >&2
+            exit 1
+          fi
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Start Redis Cluster (3 shards)
-        run: |
-          # 3-master Redis Cluster matching the local compose stack
-          # (autogpt_platform/docker-compose.platform.yml) and prod. Each
-          # shard runs in its own container on a dedicated bridge network,
-          # announces its compose-style hostname for intra-network clients,
-          # and publishes 1700N on the GHA host so tests can reach every
-          # shard via localhost. The backend's ``_address_remap`` rewrites
-          # every CLUSTER SLOTS reply to localhost:<announced-port>, which
-          # picks the right published port per shard.
-          #
-          # Not reusing docker-compose.platform.yml directly because compose
-          # validates the full file even when only some services are ``up``
-          # — pulling it in would needlessly couple CI to the full
-          # local-dev stack.
-          docker network create redis-cluster-ci
-          for i in 0 1 2; do
-            port=$((17000 + i))
-            bus=$((27000 + i))
-            docker run -d --name redis-$i --network redis-cluster-ci \
-              --network-alias redis-$i \
-              -p $port:$port \
-              redis:7 \
-              redis-server --port $port \
-                --cluster-enabled yes \
-                --cluster-config-file nodes.conf \
-                --cluster-node-timeout 5000 \
-                --cluster-require-full-coverage no \
-                --cluster-announce-hostname redis-$i \
-                --cluster-announce-port $port \
-                --cluster-announce-bus-port $bus \
-                --cluster-preferred-endpoint-type hostname
-          done
-          # Wait for each shard to accept commands.
-          for i in 0 1 2; do
-            port=$((17000 + i))
-            for _ in $(seq 1 30); do
-              docker exec redis-$i redis-cli -p $port ping 2>/dev/null | grep -q PONG && break
-              sleep 1
-            done
-          done
-          # Form the cluster from an init container on the same network so
-          # --cluster-preferred-endpoint-type hostname resolves redis-0/1/2.
-          docker run --rm --network redis-cluster-ci redis:7 \
-            redis-cli --cluster create \
-              redis-0:17000 redis-1:17001 redis-2:17002 \
-              --cluster-replicas 0 --cluster-yes
-          # Confirm convergence.
-          for _ in $(seq 1 30); do
-            state=$(docker exec redis-0 redis-cli -p 17000 cluster info | awk -F: '/^cluster_state:/ {print $2}' | tr -d '[:cntrl:]')
-            if [ "$state" = "ok" ]; then
-              echo "Redis Cluster ready (3 shards, state=ok)"
-              docker exec redis-0 redis-cli -p 17000 cluster nodes
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Redis Cluster failed to reach ok state" >&2
-          docker exec redis-0 redis-cli -p 17000 cluster info >&2 || true
-          exit 1
-
-      - id: get_date
-        name: Get date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Python dependency cache
         uses: actions/cache@v5
@@ -350,7 +473,11 @@ jobs:
 
           if [ -n "$BASE_REF" ]; then
             BASE_BRANCH=${BASE_REF/refs\/heads\//}
-            BASE_POETRY_VERSION=$((git show "origin/$BASE_BRANCH":./poetry.lock; true) | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)
+            if ! BASE_LOCK=$(git show "origin/$BASE_BRANCH":./poetry.lock); then
+              echo "Could not read poetry.lock from ${BASE_REF}" >&2
+              exit 1
+            fi
+            BASE_POETRY_VERSION=$(printf '%s\n' "$BASE_LOCK" | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)
             echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
             POETRY_VERSION=$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)
           else
@@ -368,103 +495,119 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
-      - name: Check poetry.lock
-        run: |
-          poetry lock
-
-          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
-            echo "Error: poetry.lock not up to date."
-            echo
-            git diff poetry.lock
-            exit 1
-          fi
-
       - name: Install Python dependencies
         run: poetry install
 
       - name: Generate Prisma Client
         run: poetry run prisma generate && poetry run gen-prisma-stub
 
-      - name: Start Postgres
-        working-directory: autogpt_platform
+      - name: Wait for isolated stateful services
+        wait: stateful-services
+
+      - name: Migrate shard database
         run: |
-          # Plain pgvector Postgres; the init script creates the legacy
-          # `auth` schema shim that historical migrations reference.
-          docker run -d --name postgres-test \
-            -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=postgres \
-            -p 5432:5432 \
-            -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
-            pgvector/pgvector:pg15
-          for _ in $(seq 1 30); do
-            if docker exec postgres-test pg_isready -U postgres >/dev/null 2>&1; then
-              echo "Postgres ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Postgres failed to start" >&2
-          docker logs postgres-test >&2
-          exit 1
+          export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
+          export DIRECT_URL="$DATABASE_URL"
+          poetry run prisma migrate deploy
 
-      - name: Wait for ClamAV to be ready
-        run: |
-          echo "Waiting for ClamAV daemon to start..."
-          max_attempts=60
-          attempt=0
-
-          until nc -z localhost 3310 || [ $attempt -eq $max_attempts ]; do
-            echo "ClamAV is unavailable - sleeping (attempt $((attempt+1))/$max_attempts)"
-            sleep 5
-            attempt=$((attempt+1))
-          done
-
-          if [ $attempt -eq $max_attempts ]; then
-            echo "ClamAV failed to start after $((max_attempts*5)) seconds"
-            echo "Checking ClamAV service logs..."
-            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
-            exit 1
-          fi
-
-          echo "ClamAV is ready!"
-
-          # Verify ClamAV is responsive
-          echo "Testing ClamAV connection..."
-          timeout 10 bash -c 'echo "PING" | nc localhost 3310' || {
-            echo "ClamAV is not responding to PING"
-            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
-            exit 1
-          }
-
-      - name: Run Database Migrations
-        run: poetry run prisma migrate deploy
+      - name: Test shard
+        shell: bash
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
-
-      - name: Run pytest with coverage
-        run: |
-          if [[ "${{ runner.debug }}" == "1" ]]; then
-            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG \
-              --cov=backend --cov-branch --cov-report term-missing --cov-report xml
-          else
-            poetry run pytest -s -vv \
-              --cov=backend --cov-branch --cov-report term-missing --cov-report xml
-          fi
-        env:
+          COVERAGE_FILE: .coverage-${{ matrix.test-shard }}
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters" # DO NOT USE IN PRODUCTION!!
-          REDIS_HOST: "localhost"
-          REDIS_PORT: "17000"
-          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
-          # Opt-in: lets backend/data/e2e_redis_restart_test.py spin up its
-          # own isolated 3-shard cluster (ports 27110–27112) and exercise
-          # ``docker restart <shard>`` mid-stream. Off locally so a
-          # contributor's ``poetry run test`` doesn't pay the ~15s cost.
-          E2E_RESTART_ISOLATED: "1"
+          EXECUTION_MANAGER_PORT: "18002"
+          DATABASE_API_PORT: "18005"
+          AGENT_API_PORT: "18006"
+          EXECUTION_SCHEDULER_PORT: "18003"
+          NOTIFICATION_SERVICE_PORT: "18007"
+          JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters"
+          REDIS_HOST: localhost
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
+        run: |
+          export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
+          export DIRECT_URL="$DATABASE_URL"
+          pytest_args=(
+            -p no:cacheprovider
+            --cov=backend
+            --cov-branch
+            --cov-report=
+            --cov-report="xml:coverage-${TEST_SHARD}.xml"
+            --junitxml="junit-${TEST_SHARD}.xml"
+          )
+          if [[ "${{ runner.debug }}" == "1" ]]; then
+            pytest_args+=(-s -vv -o log_cli=true -o log_cli_level=DEBUG)
+          else
+            pytest_args+=(-q)
+          fi
+
+          case "$TEST_SHARD" in
+            data)
+              test_paths=(backend/data)
+              export E2E_REDIS_CLUSTER_RESTART=1
+              ;;
+            copilot)
+              test_paths=(backend/copilot)
+              ;;
+            util-executor)
+              test_paths=(backend/util backend/executor)
+              ;;
+            remainder)
+              test_paths=()
+              for path in backend/*/; do
+                case "$path" in
+                  backend/data/|backend/copilot/|backend/util/|backend/executor/)
+                    continue
+                    ;;
+                esac
+                test_paths+=("${path%/}")
+              done
+              test_paths+=(
+                scripts
+                test
+                ../../.github/scripts/test_validate_junit.py
+              )
+              ;;
+            *)
+              echo "Unknown backend test shard: $TEST_SHARD" >&2
+              exit 1
+              ;;
+          esac
+
+          if (( ${#test_paths[@]} == 0 )); then
+            echo "Backend test shard $TEST_SHARD selected no paths" >&2
+            exit 1
+          fi
+          poetry run pytest "${pytest_args[@]}" "${test_paths[@]}"
+
+      - name: Validate test reports
+        if: ${{ always() }}
+        run: >-
+          python ../../.github/scripts/validate_junit.py --synthesize-invalid
+          junit-${{ matrix.test-shard }}.xml
+
+      - name: Validate coverage reports
+        if: ${{ always() }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = Path("coverage-${{ matrix.test-shard }}.xml")
+          if not report.is_file() or not report.stat().st_size:
+              raise SystemExit(f"Missing or empty report: {report}")
+          ElementTree.parse(report)
+          print(f"Validated nonempty XML report: {report}")
+          PY
+
+      - name: Upload test and coverage reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}
+          path: |
+            autogpt_platform/backend/junit-${{ matrix.test-shard }}.xml
+            autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
+          if-no-files-found: error
 
       - name: Upload coverage reports to Codecov
         if: ${{ !cancelled() }}
@@ -472,12 +615,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-backend
-          files: ./autogpt_platform/backend/coverage.xml
-          # On a manual workflow_dispatch, attach the upload to the given PR so
-          # codecov re-evaluates that PR's project status against its base.
-          # Empty for all automatic events (push/pull_request/merge_group), so
-          # their normal PR/commit detection is unchanged.
-          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
+          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
 
     env:
       CI: true
