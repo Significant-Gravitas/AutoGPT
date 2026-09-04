@@ -212,4 +212,4 @@ We thank the following security researchers for contributing responsibly to impr
 - David Carliez ([@DavidCarliez](https://github.com/DavidCarliez)) – 1 advisory
 - [@long2809-exploi](https://github.com/long2809-exploi) – 1 advisory
 
-**Last updated: April 2026**
+**Last updated: September 2026**
