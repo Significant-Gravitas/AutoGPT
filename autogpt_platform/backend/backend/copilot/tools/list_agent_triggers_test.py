@@ -73,6 +73,35 @@ async def test_list_triggers_exposes_webhook_url(tool, session):
     assert trigger.provider == "generic_webhook"
 
 
+@pytest.mark.parametrize("session_expert_id", [None, "expert-a"])
+@pytest.mark.asyncio
+async def test_list_triggers_scopes_presets_to_session_expert(tool, session_expert_id):
+    """The preset listing must carry the session's memory scope: an expert
+    session sees only its expert's presets, an AutoPilot session only
+    unattributed ones — otherwise cross-scope webhook ingress URLs leak into
+    the chat context."""
+    session = make_session(_USER, expert_id=session_expert_id)
+    preset_response = MagicMock()
+    preset_response.presets = []
+
+    mock_ldb = MagicMock()
+    mock_ldb.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    mock_ldb.list_trigger_agents = AsyncMock(return_value=[])
+    mock_ldb.list_presets = AsyncMock(return_value=preset_response)
+
+    with patch(f"{_PATH}.library_db", return_value=mock_ldb):
+        await tool._execute(user_id=_USER, session=session, library_agent_id="lib-1")
+
+    mock_ldb.list_presets.assert_awaited_once_with(
+        user_id=_USER,
+        page=1,
+        page_size=100,
+        graph_id="graph-1",
+        expert_id=session_expert_id,
+        filter_by_expert=True,
+    )
+
+
 @pytest.mark.asyncio
 async def test_list_triggers_includes_trigger_agents(tool, session):
     """The 'agent' kind (hidden trigger agents) is surfaced alongside webhooks."""

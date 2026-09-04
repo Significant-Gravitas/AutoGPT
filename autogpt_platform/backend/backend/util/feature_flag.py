@@ -25,6 +25,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
+_init_attempted = False
 
 
 class Flag(str, Enum):
@@ -168,6 +169,13 @@ class Flag(str, Enum):
     # targeted.
     COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
+    # Shows a connection the user's plan does not include as a locked entry
+    # in the connection list, rather than omitting it.  Merchandising, not
+    # access: the entitlement still decides what may actually run, and a
+    # locked offer is never routable.  Off by default so the upsell reaches
+    # a cohort before it reaches everyone.
+    CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""
@@ -176,12 +184,19 @@ def is_configured() -> bool:
 
 def get_client() -> LDClient:
     """Get the LaunchDarkly client singleton."""
-    if not _is_initialized:
+    # Gate on "did we try" rather than "did it work". Without a key
+    # `_is_initialized` never becomes True, so gating on it re-entered
+    # `initialize_launchdarkly` on every flag evaluation -- a warning and a
+    # raise per call on the unconfigured deployments this appliance ships as.
+    if not _init_attempted:
         initialize_launchdarkly()
     return ldclient.get()
 
 
 def initialize_launchdarkly() -> None:
+    global _init_attempted
+    _init_attempted = True
+
     sdk_key = settings.secrets.launch_darkly_sdk_key
     logger.debug(
         f"Initializing LaunchDarkly with SDK key: {'present' if sdk_key else 'missing'}"
@@ -194,9 +209,15 @@ def initialize_launchdarkly() -> None:
     config = Config(sdk_key)
     ldclient.set_config(config)
 
+    # Read the client before recording that one exists: if constructing it
+    # raised, `shutdown_launchdarkly` would otherwise build a fresh one purely
+    # to close it. Being unreachable is not a construction failure -- that
+    # returns an uninitialized client rather than raising -- so this only
+    # covers the abnormal case.
     global _is_initialized
+    connected = ldclient.get().is_initialized()
     _is_initialized = True
-    if ldclient.get().is_initialized():
+    if connected:
         logger.info("LaunchDarkly client initialized successfully")
     else:
         logger.error("LaunchDarkly client failed to initialize")
@@ -204,9 +225,29 @@ def initialize_launchdarkly() -> None:
 
 def shutdown_launchdarkly() -> None:
     """Shutdown the LaunchDarkly client."""
-    if ldclient.get().is_initialized():
-        ldclient.get().close()
-        logger.info("LaunchDarkly client closed successfully")
+    if not _is_initialized:
+        # `initialize_launchdarkly` returns early when no SDK key is configured,
+        # so `ldclient.set_config` was never called and `ldclient.get()` would
+        # raise "set_config was not called". Callers pair init/shutdown on
+        # app_env alone (see `rest_api.launch_darkly_context` and
+        # `scheduler._shutdown_launchdarkly_for_scheduler`), so an unconfigured
+        # non-LOCAL deployment would otherwise raise out of service teardown and
+        # leave the process alive instead of exiting.
+        return
+
+    # Close whenever a client was constructed, not just when it connected, so
+    # buffered events are flushed and sockets are torn down in order. This is
+    # not about keeping the process alive: every SDK thread is a daemon, so
+    # they never blocked interpreter exit -- it was the escaping exception that
+    # did. Note `close()` flushes synchronously, so an unreachable
+    # LaunchDarkly can make it wait on the SDK's HTTP timeouts.
+    #
+    # `_is_initialized` is deliberately left set: `get_client` reads a false
+    # value as "never started", and clearing it here would let a flag
+    # evaluation arriving during shutdown -- an in-flight request served through
+    # FastAPI's lifespan teardown -- rebuild the client we just closed.
+    ldclient.get().close()
+    logger.info("LaunchDarkly client closed successfully")
 
 
 async def _fetch_user_context_data(user_id: str) -> Context:
@@ -227,14 +268,28 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     Returns:
         LaunchDarkly Context object
     """
+    context, _ = await _fetch_user_context_status(user_id)
+    return context
+
+
+async def _fetch_user_context_status(user_id: str) -> tuple[Context, bool]:
+    """``(context, resolved)`` — see :func:`_fetch_user_context_data`.
+
+    ``resolved`` is False only when the lookup FAILED and the anonymous
+    context is standing in for real user data. A non-UUID key such as
+    ``"system"`` is anonymous by design and counts as resolved. The
+    distinction matters because an evaluation against a degraded context
+    still succeeds — it just answers for the wrong user — so callers acting
+    irreversibly on a ``False`` must not trust one.
+    """
     try:
         uuid.UUID(user_id)
     except ValueError:
         # Non-UUID key (e.g. "system") — skip user lookup, return anonymous context.
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), True
 
     try:
-        return await _fetch_user_context(user_id)
+        return await _fetch_user_context(user_id), True
     except Exception as e:
         logger.warning(
             f"Failed to fetch user context for {user_id}: {e} — "
@@ -242,7 +297,7 @@ async def _fetch_user_context_data(user_id: str) -> Context:
             "evaluations for this user may be degraded until the lookup "
             "succeeds"
         )
-        return _anonymous_context(user_id)
+        return _anonymous_context(user_id), False
 
 
 def _anonymous_context(user_id: str) -> Context:
@@ -311,6 +366,21 @@ async def get_feature_flag_value(
     Returns:
         The flag value from LaunchDarkly
     """
+    value, _ = await _evaluate_flag_value(flag_key, user_id, default)
+    return value
+
+
+async def _evaluate_flag_value(
+    flag_key: str, user_id: str, default: Any = None
+) -> tuple[Any, bool]:
+    """``(value, evaluated)`` for one raw flag read.
+
+    ``evaluated`` is False whenever *default* is standing in for an answer
+    LaunchDarkly could not give — no client, an uninitialised one, a failed
+    user-context lookup, or an evaluation that raised. An initialised client
+    is not on its own enough: the context lookup is a database read, so a
+    live client can still fail to produce a value.
+    """
     try:
         client = get_client()
 
@@ -319,10 +389,10 @@ async def get_feature_flag_value(
             logger.debug(
                 f"LaunchDarkly not initialized, using default={default} for {flag_key}"
             )
-            return default
+            return default, False
 
         # Get user context (role/email) from the Better Auth user table
-        context = await _fetch_user_context_data(user_id)
+        context, context_resolved = await _fetch_user_context_status(user_id)
 
         # Evaluate flag
         result = client.variation(flag_key, context, default)
@@ -330,13 +400,15 @@ async def get_feature_flag_value(
         logger.debug(
             f"Feature flag {flag_key} for user {user_id}: {result} (type: {type(result).__name__})"
         )
-        return result
+        # A degraded context evaluates fine, it just answers for an anonymous
+        # user rather than this one — so the value is a guess, not an answer.
+        return result, context_resolved
 
     except Exception as e:
         logger.warning(
             f"LaunchDarkly flag evaluation failed for {flag_key}: {e}, using default={default}"
         )
-        return default
+        return default, False
 
 
 def _env_flag_override(flag_key: Flag) -> bool | None:
@@ -379,16 +451,33 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    enabled, _ = await evaluate_feature_flag(flag_key, user_id, default)
+    return enabled
+
+
+async def evaluate_feature_flag(
+    flag_key: Flag,
+    user_id: str,
+    default: bool = False,
+) -> tuple[bool, bool]:
+    """``(enabled, authoritative)`` for one flag read.
+
+    ``authoritative`` is False when *enabled* is only the default, because the
+    flag could not be evaluated or came back as a non-boolean. Use this rather
+    than :func:`is_feature_enabled` wherever "off" triggers something
+    irreversible — a failed read is indistinguishable from a real "off" on the
+    value alone.
+    """
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
-        return override
+        return override, True
 
-    result = await get_feature_flag_value(flag_key.value, user_id, default)
+    result, evaluated = await _evaluate_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
-        return result
+        return result, evaluated
 
     # Log a warning if the flag is not returning a boolean
     logger.warning(
@@ -396,9 +485,9 @@ async def is_feature_enabled(
         f"This flag should be configured as a boolean in LaunchDarkly. Using default={default}"
     )
 
-    # Return the default if we get a non-boolean value
-    # This prevents objects from being incorrectly treated as True
-    return default
+    # A misconfigured flag is not an answer either: fall back to the default,
+    # but never let a caller take an irreversible action on it.
+    return default, False
 
 
 def feature_flag(

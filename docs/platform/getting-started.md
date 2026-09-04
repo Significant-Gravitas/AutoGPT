@@ -27,7 +27,7 @@ docker -v
 docker info
 ```
 
-## Quick Setup with Auto Setup Script (Recommended)
+## Quick Setup with Auto Setup Script
 If you're self-hosting AutoGPT locally, the release installer pulls and starts
 the published single-container appliance. Install and start Docker first, and
 select a local Docker daemon using Linux containers on `amd64` or `arm64`.

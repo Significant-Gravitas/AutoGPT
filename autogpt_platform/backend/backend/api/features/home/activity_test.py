@@ -4,12 +4,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserDailyCost, UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
-from .activity import (
-    compose_active_tasks,
-    compose_briefing,
-    compose_upcoming_tasks,
-    compose_week_summary,
-)
+from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week_summary
 from .helpers import AgentRef
 
 NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
@@ -40,79 +35,6 @@ def _execution(
         expert_id=expert_id,
         stats=GraphExecutionMeta.Stats(activity_status=activity_status, error=error),
     )
-
-
-def test_briefing_ignores_runs_outside_the_24h_window() -> None:
-    briefing = compose_briefing(
-        now=NOW,
-        executions=[
-            _execution(
-                exec_id="fresh",
-                status=ExecutionStatus.COMPLETED,
-                ended_at=NOW - timedelta(hours=2),
-            ),
-            _execution(
-                exec_id="stale",
-                status=ExecutionStatus.COMPLETED,
-                ended_at=NOW - timedelta(hours=30),
-            ),
-        ],
-        expert_by_id={},
-        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
-    )
-
-    assert briefing.window_started_at == NOW - timedelta(hours=24)
-    assert briefing.completed_count == 1
-    assert [outcome.id for outcome in briefing.outcomes] == ["fresh"]
-
-
-def test_briefing_lists_failures_before_successes() -> None:
-    briefing = compose_briefing(
-        now=NOW,
-        executions=[
-            _execution(
-                exec_id="ok",
-                status=ExecutionStatus.COMPLETED,
-                ended_at=NOW - timedelta(hours=1),
-                activity_status="Sorted 12 emails. Nothing needed a reply.",
-            ),
-            _execution(
-                exec_id="broken",
-                status=ExecutionStatus.FAILED,
-                ended_at=NOW - timedelta(hours=3),
-            ),
-        ],
-        expert_by_id={},
-        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
-    )
-
-    assert [outcome.status for outcome in briefing.outcomes] == ["failed", "completed"]
-    assert briefing.failed_count == 1
-    assert briefing.outcomes[0].title == "Inbox triage needs a retry"
-    assert briefing.outcomes[1].title == "Sorted 12 emails."
-    assert briefing.outcomes[1].summary == "Nothing needed a reply."
-
-
-def test_briefing_counts_unlisted_successes_as_routine() -> None:
-    executions = [
-        _execution(
-            exec_id=f"run-{index}",
-            status=ExecutionStatus.COMPLETED,
-            ended_at=NOW - timedelta(hours=1),
-        )
-        for index in range(6)
-    ]
-
-    briefing = compose_briefing(
-        now=NOW,
-        executions=executions,
-        expert_by_id={},
-        agent_by_graph={"graph": AgentRef(name="Inbox triage", library_agent_id=None)},
-    )
-
-    assert briefing.completed_count == 6
-    assert len(briefing.outcomes) == 4
-    assert briefing.routine_count == 2
 
 
 def test_week_summary_maps_status_counts_and_credits() -> None:
@@ -153,62 +75,6 @@ def test_week_summary_maps_status_counts_and_credits() -> None:
     assert summary.credits_balance == 250
     assert summary.daily[0].completed_count == 2
     assert summary.daily[0].failed_count == 1
-
-
-def test_briefing_keeps_a_raw_error_out_of_the_headline() -> None:
-    briefing = compose_briefing(
-        now=NOW,
-        executions=[
-            _execution(
-                exec_id="broken",
-                status=ExecutionStatus.FAILED,
-                ended_at=NOW - timedelta(hours=1),
-                error="KeyError: 'recipient'",
-            )
-        ],
-        expert_by_id={},
-        agent_by_graph=TRIAGE,
-    )
-
-    assert briefing.outcomes[0].title == "Inbox triage needs a retry"
-    assert briefing.outcomes[0].summary == "KeyError: 'recipient'"
-
-
-def test_briefing_orders_each_status_group_most_recent_first() -> None:
-    briefing = compose_briefing(
-        now=NOW,
-        executions=[
-            _execution(
-                exec_id="old-failure",
-                status=ExecutionStatus.FAILED,
-                ended_at=NOW - timedelta(hours=8),
-            ),
-            _execution(
-                exec_id="new-failure",
-                status=ExecutionStatus.FAILED,
-                ended_at=NOW - timedelta(hours=1),
-            ),
-            _execution(
-                exec_id="old-success",
-                status=ExecutionStatus.COMPLETED,
-                ended_at=NOW - timedelta(hours=9),
-            ),
-            _execution(
-                exec_id="new-success",
-                status=ExecutionStatus.COMPLETED,
-                ended_at=NOW - timedelta(hours=2),
-            ),
-        ],
-        expert_by_id={},
-        agent_by_graph=TRIAGE,
-    )
-
-    assert [outcome.id for outcome in briefing.outcomes] == [
-        "new-failure",
-        "old-failure",
-        "new-success",
-        "old-success",
-    ]
 
 
 def test_active_tasks_map_status_and_cap_the_list() -> None:

@@ -111,19 +111,31 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
-  maxEmailsPerDay              Int     @default(3)
-  notifyOnAgentRun             Boolean @default(true)
-  notifyOnZeroBalance          Boolean @default(true)
-  notifyOnLowBalance           Boolean @default(true)
-  notifyOnBlockExecutionFailed Boolean @default(true)
-  notifyOnContinuousAgentError Boolean @default(true)
-  notifyOnDailySummary         Boolean @default(true)
-  notifyOnWeeklySummary        Boolean @default(true)
-  notifyOnMonthlySummary       Boolean @default(true)
-  notifyOnAgentApproved        Boolean @default(true)
-  notifyOnAgentRejected        Boolean @default(true)
+  maxEmailsPerDay Int @default(3)
+
+  // The volume knob from the Briefing footer: a frequency plus two switches,
+  // instead of one unsubscribe trapdoor.
+  briefingFrequency    BriefingFrequency @default(WEEKLY)
+  alertsEnabled        Boolean           @default(true)
+  notifyOnStoreVerdict Boolean           @default(true)
+
+  // Last Briefing actually sent, so a re-run of the scheduler can't send the
+  // same period twice and the next period knows where to start.
+  lastBriefingAt DateTime?
+
+  // Set the first time this user pays for a plan. Doubles as the "first
+  // subscription" test for the welcome email and its idempotency key.
+  welcomeEmailSentAt DateTime?
 
   timezone String @default("not-set")
+
+  // Default AutoPilot connection for chats the caller didn't route explicitly
+  // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
+  // the server picks, exactly as it did before this setting existed. The
+  // credential is stored alongside the provider so the choice keeps pointing at
+  // one ChatGPT account once a user can link several.
+  defaultChatAuthProvider String?
+  defaultChatCredentialId String?
 
   subscriptionTier SubscriptionTier @default(NO_TIER)
 
@@ -137,10 +149,12 @@ model User {
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   UserBriefings        UserBriefing[]
+  ActivityEvents       ActivityEvent[]
   AgentPresets         AgentPreset[]
   LibraryAgents        LibraryAgent[]
   LibraryFolders       LibraryFolder[]
   OwnedExperts         Expert[]
+  ExpertPods           ExpertPod[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
@@ -153,6 +167,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  AlertConditions       AlertCondition[]
   PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
@@ -310,6 +325,46 @@ model UserBriefing {
   // Every read is by user + date (latest-first or exact date), so the unique
   // index above serves them all — no secondary index to pay for on write.
   @@unique([userId, briefingDate])
+}
+
+enum ActivityEventCategory {
+  FILE
+  INTEGRATION
+  RUN
+  SCHEDULE
+}
+
+// Append-only audit log of work agents performed on the user's behalf:
+// side-effecting copilot tool calls, credentialed block executions, and
+// run completions. Powers the Home "Recent work" feed.
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+
+  // Soft references on purpose: events must outlive the expert, session or
+  // schedule that produced them, so attribution falls back to `data`.
+  expertId    String?
+  sessionId   String?
+  graphExecId String?
+  nodeExecId  String?
+  scheduleId  String?
+
+  category  ActivityEventCategory
+  eventType String
+  provider  String?
+  objectId  String?
+  title     String
+  data      Json                  @default("{}")
+
+  @@index([userId, createdAt])
+  @@index([userId, category, createdAt])
+  @@index([sessionId])
+  @@index([expertId, createdAt])
 }
 
 ////////////////////////////////////////////////////////////
@@ -581,6 +636,14 @@ model ChatMessage {
   model         String?
   routingSource String?
 
+  // Which connection served this assistant turn. The session's metadata is
+  // the route a chat STARTS on; these record the route a turn actually RAN
+  // on, so a later route change cannot rewrite what already happened.
+  // Null on user/tool rows and on rows predating this column, where the
+  // session's own route is the answer (see `segment_of`).
+  llmAuthProvider String?
+  llmCredentialId String?
+
   // Per-row JSONB metadata bag.  Currently holds the dispatcher's
   // submit-time payload (file_ids, mode, model, permissions, context,
   // request_arrival_at) on the user row that triggered a queued turn,
@@ -699,19 +762,87 @@ model AgentPreset {
   @@index([organizationId])
 }
 
+// The four product-notification families plus the account/billing service
+// messages. Every email the platform sends is one of these; there is
+// deliberately no per-run notification type — a finished run is evidence for
+// the Briefing's highlights, not a message of its own.
 enum NotificationType {
-  AGENT_RUN
-  ZERO_BALANCE
+  BRIEFING
+  ALERT
+  VERDICT
+  OPS
+  SUBSCRIPTION_WELCOME
+  PAYMENT_FAILED
+  PAYMENT_FINAL_NOTICE
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RESUMED
+  SUBSCRIPTION_ENDED
+}
+
+// How often the Briefing is delivered. OFF is the "alerts only" / "pause"
+// half of the footer volume knob; `alertsEnabled` carries the other half.
+enum BriefingFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  OFF
+}
+
+// Every condition the Alert family can fire for. The last four have no
+// equivalent in the notification surface this replaces.
+enum AlertCause {
+  AUTH_EXPIRED
+  PAUSED_FAILURES
+  BLOCK_FAILED
+  CONTINUOUS_ERROR
+  AWAITING_REVIEW
+  AWAITING_INPUT
   LOW_BALANCE
-  BLOCK_EXECUTION_FAILED
-  CONTINUOUS_AGENT_ERROR
-  DAILY_SUMMARY
-  WEEKLY_SUMMARY
-  MONTHLY_SUMMARY
-  REFUND_REQUEST
-  REFUND_PROCESSED
-  AGENT_APPROVED
-  AGENT_REJECTED
+  ZERO_BALANCE
+  GUARDRAIL
+}
+
+enum AlertConditionStatus {
+  // Raised, inside the debounce window, not yet emailed.
+  PENDING
+  // Emailed. Blocks the same cause from re-alerting for 24h.
+  SENT
+  // Deduped or capped — folds into the next Briefing's attention block
+  // instead of re-pinging the inbox.
+  DEFERRED
+  // Cleared before it was ever sent, or fixed afterwards.
+  RESOLVED
+}
+
+// One row per live "the platform is blocked on the human" condition. The
+// alert engine debounces (10 min), coalesces, dedupes per cause per 24h and
+// caps sends at two a day off this table; anything it can't send lands in the
+// Briefing rather than being dropped.
+model AlertCondition {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cause AlertCause
+  // Stable identity of the underlying problem (e.g. "auth_expired:gmail:<graph
+  // id>"), so re-raising the same condition updates one row instead of piling
+  // up duplicates, and resolving it can find the row without the payload.
+  causeKey String
+  data     Json
+
+  status     AlertConditionStatus @default(PENDING)
+  sentAt     DateTime?
+  resolvedAt DateTime?
+  // Set once the condition has been carried into a Briefing's attention
+  // block, so the next Briefing doesn't repeat it.
+  briefedAt DateTime?
+
+  @@unique([userId, causeKey])
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 model NotificationEvent {
@@ -867,6 +998,8 @@ model Expert {
 
   name      String
   avatarUrl String?
+  // Accent color token picked while raising (e.g. "sky-300"); "" = unset.
+  color     String   @default("")
   role      String
   tagline   String?
   identity  String
@@ -892,11 +1025,22 @@ model Expert {
   // and triggers. Chat is never paused. Cleared by the resume endpoint.
   schedulesPausedAt DateTime?
 
+  // Null until the credential allow-list has been seeded from the expert's
+  // installed workflows. Distinguishes "never curated" from "deliberately
+  // empty": without it, revoking an expert's last credential would look
+  // identical to a fresh expert and re-seed the grant straight back.
+  credentialsSeededAt DateTime?
+
   Workflows       ExpertWorkflow[]
+  Credentials     ExpertCredential[]
   ChatSessions    ChatSession[]
   GraphExecutions AgentGraphExecution[]
   AgentPresets    AgentPreset[]
   PauseEvents     ExpertPauseEvent[]
+
+  // Owner-scoped grouping into named "pods" (distinct from org-tenancy Team).
+  podId String?
+  Pod   ExpertPod? @relation(fields: [podId], references: [id], onDelete: SetNull)
 
   // Tenancy
   organizationId String?
@@ -911,6 +1055,7 @@ model Expert {
   @@index([isTemplate, isArchived])
   @@index([teamId])
   @@index([organizationId])
+  @@index([podId])
 }
 
 // Join between an Expert and a workflow (marketplace agent) installed on it.
@@ -943,6 +1088,31 @@ model ExpertWorkflow {
   @@index([expertId])
 }
 
+// Which of the owner's integration credentials an expert may use.
+// Deny-by-default: an expert with no rows here reaches nothing, so the
+// seeding marker on Expert (credentialsSeededAt) is what keeps existing
+// experts working across the migration.
+model ExpertCredential {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  expertId String
+  Expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  // IntegrationCredential.id for USER-scoped rows. Deliberately NOT a foreign
+  // key: system credentials (platform LLM keys built from settings) never have
+  // a row at all, and reads intersect grants against the user's live
+  // credentials anyway — so a deleted credential leaves an inert grant rather
+  // than blocking the delete or cascading a revoke the user did not ask for.
+  credentialId String
+  // Denormalized so listing an expert's integrations never has to decrypt a
+  // payload just to learn which logo to draw.
+  provider     String
+
+  @@unique([expertId, credentialId])
+  @@index([expertId])
+}
+
 // Audit log for expert schedule pauses (budget breach, archive). "All
 // pauses logged and reversible": resume stamps clearedAt on the open row.
 model ExpertPauseEvent {
@@ -956,6 +1126,24 @@ model ExpertPauseEvent {
   clearedAt DateTime?
 
   @@index([expertId, createdAt])
+}
+
+// A user-owned named group of the user's own experts. Distinct from the
+// org-tenancy Team model: pods are a personal roster grouping with no
+// members, invites, or org. Deleting a pod detaches its experts (SetNull).
+model ExpertPod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+
+  Experts Expert[]
+
+  // Doubles as the userId lookup index for list_pods.
+  @@unique([userId, name])
 }
 
 ////////////////////////////////////////////////////////////
@@ -1085,6 +1273,13 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Scored once, when the run reaches a terminal state, from signals we
+  // already have (outcome, first-ever success, novel output, cost/duration
+  // anomaly). Assembling a Briefing is then a ranked read rather than a scan
+  // of every run in the period. Null for runs that finished before scoring
+  // existed, and for runs still in flight.
+  interestingness Float?
+
   // Parent-child execution tracking for nested agent graphs
   parentGraphExecutionId String?
   ParentExecution        AgentGraphExecution?  @relation("ParentChildExecution", fields: [parentGraphExecutionId], references: [id], onDelete: SetNull)
@@ -1110,6 +1305,8 @@ model AgentGraphExecution {
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
+  // Briefing assembly: top-scored runs for one user over one period.
+  @@index([userId, endedAt, interestingness])
   @@index([agentPresetId])
   @@index([expertId, createdAt])
   @@index([shareToken])

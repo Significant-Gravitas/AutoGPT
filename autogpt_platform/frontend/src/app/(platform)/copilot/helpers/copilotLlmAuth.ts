@@ -27,8 +27,9 @@ export function getChatTransportSelection(
 
 export function findSelectedLLMTransport(
   transports: ChatTransportResponse[] | null | undefined,
-  selection: CopilotLlmAuthSelection,
+  selection: CopilotLlmAuthSelection | null,
 ): ChatTransportResponse | undefined {
+  if (!selection) return undefined;
   return getAvailableLLMTransports(transports).find(
     (transport) =>
       transport.auth_provider === selection.authProvider &&
@@ -39,11 +40,15 @@ export function findSelectedLLMTransport(
 
 export function resolveCopilotLLMAuthSelection(
   transports: ChatTransportResponse[] | null | undefined,
-  currentSelection: CopilotLlmAuthSelection,
+  currentSelection: CopilotLlmAuthSelection | null,
 ): CopilotLlmAuthSelection | null {
   if (transports == null) return null;
 
   const availableTransports = getAvailableLLMTransports(transports);
+
+  // A selection the user can still use is never overridden — including by
+  // the saved default, which decides where a chat *starts*, not where one
+  // already in progress continues.
   const selectedTransport = findSelectedLLMTransport(
     availableTransports,
     currentSelection,

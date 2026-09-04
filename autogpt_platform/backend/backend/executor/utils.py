@@ -26,6 +26,7 @@ from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.block_preflight_estimates import get_preflight_estimate
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db import prisma
+from backend.data.db_accessors import experts_db as get_experts_db
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionContext,
@@ -43,6 +44,8 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.integrations.credentials_store import is_system_credential
+from backend.monitoring.instrumentation import record_graph_execution
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -50,6 +53,8 @@ from backend.util.clients import (
     get_integration_credentials_store,
 )
 from backend.util.exceptions import (
+    ExpertNotFoundError,
+    ExpertPrivateTenancyNotFoundError,
     GraphNotFoundError,
     GraphValidationError,
     NotFoundError,
@@ -1184,7 +1189,103 @@ async def _enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
         )
 
 
+async def _resolve_expert_execution_tenancy(
+    user_id: str, expert_id: str
+) -> tuple[str, str | None]:
+    return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
+
+
+async def _enforce_expert_credential_scope(
+    user_id: str,
+    expert_id: str,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]],
+) -> None:
+    """Reject a run that would use credentials this expert was not granted.
+
+    The gate lives here rather than at each caller because every expert-attributed
+    run funnels through ``add_graph_execution`` — schedules, webhook triggers and
+    copilot tool runs alike. Enforcing at creation also means a revoke takes effect
+    on the next run instead of only on newly created schedules.
+
+    System credentials (platform LLM keys) carry no grant and are always allowed;
+    filtering them would stop every expert from running an LLM block.
+    """
+    if not graph_credentials_inputs:
+        return
+    allowed = set(
+        await get_experts_db().expert_allowed_credential_ids(user_id, expert_id)
+    )
+    denied = sorted(
+        {
+            meta.id
+            for meta in graph_credentials_inputs.values()
+            if not is_system_credential(meta.id) and meta.id not in allowed
+        }
+    )
+    if denied:
+        raise ValueError(
+            f"Expert #{expert_id} has not been given access to credentials "
+            f"{', '.join(denied)}. Grant them on the expert's page to let it "
+            f"run this workflow."
+        )
+
+
 async def add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: Optional[GraphInput] = None,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+) -> GraphExecutionWithNodes:
+    """Add a graph execution to the queue, recording the outcome.
+
+    Thin wrapper over :func:`_add_graph_execution` so that every caller of
+    this shared path, not only the legacy v1 route, feeds
+    ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
+    not an execute outcome, and is not counted.
+    """
+    try:
+        result = await _add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            execution_context=execution_context,
+            graph_exec_id=graph_exec_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            bypass_paywall=bypass_paywall,
+        )
+    except GraphValidationError:
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        raise
+    except UserPaywalledError:
+        raise
+    except Exception:
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        raise
+    record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+    return result
+
+
+async def _add_graph_execution(
     graph_id: str,
     user_id: str,
     inputs: Optional[GraphInput] = None,
@@ -1218,9 +1319,9 @@ async def add_graph_execution(
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
         expert_id: Expert attribution — set when the run was started by/for a
-            hired expert (schedule or trigger) so any surface can answer
-            "who ran this". Stored on the execution row; not validated here,
-            callers own the ownership check.
+            hired expert (schedule or trigger). Expert-attributed executions
+            are validated here. Only owner-only PRIVATE experts are supported;
+            they run in the owner's personal organization and default team.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
         bypass_paywall: Skip the per-user paywall check. Set ONLY for admin
@@ -1248,13 +1349,14 @@ async def add_graph_execution(
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
-    # Weekly credit guardrail: expert-attributed runs (schedules, triggers)
-    # are refused while the expert is paused/archived or over budget. Chat
-    # runs never carry an expert_id, so chat is never gated. REQUEUE mode
-    # is gated below once the persisted expert id is loaded — admin
-    # recovery paths signal themselves via bypass_paywall and stay exempt.
-    if expert_id:
-        await _enforce_expert_run_budget(user_id, expert_id)
+    context_expert_id = execution_context.expert_id if execution_context else None
+    if expert_id is not None and context_expert_id not in (None, expert_id):
+        raise ValueError(
+            f"Expert #{expert_id} does not match execution context expert "
+            f"#{context_expert_id}"
+        )
+    if expert_id is None:
+        expert_id = context_expert_id
 
     if prisma.is_connected():
         edb = execution_db
@@ -1277,10 +1379,36 @@ async def add_graph_execution(
         if not graph_exec:
             raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
+        # The persisted row is authoritative on resume. A caller cannot turn
+        # an AutoPilot run into an expert run or swap one expert for another.
+        if expert_id is not None and expert_id != graph_exec.expert_id:
+            raise ValueError(
+                f"Expert scope does not match graph execution #{graph_exec.id}"
+            )
+        expert_id = graph_exec.expert_id
+
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
-        if graph_exec.expert_id and not bypass_paywall:
-            await _enforce_expert_run_budget(user_id, graph_exec.expert_id)
+        if expert_id:
+            try:
+                organization_id, team_id = await _resolve_expert_execution_tenancy(
+                    user_id, expert_id
+                )
+                graph_exec.organization_id = organization_id
+                graph_exec.team_id = team_id
+            except (ExpertNotFoundError, ExpertPrivateTenancyNotFoundError):
+                # Admin recovery must be able to requeue a stuck run even
+                # after its expert was archived/deleted mid-flight — fall
+                # back to the execution's persisted tenancy instead of
+                # 404ing. User-initiated requeues keep the strict check.
+                # The locals must be set explicitly: the expert branch of the
+                # ExecutionContext builder below trusts them verbatim.
+                if not bypass_paywall:
+                    raise
+                organization_id = graph_exec.organization_id
+                team_id = graph_exec.team_id
+            if not bypass_paywall:
+                await _enforce_expert_run_budget(user_id, expert_id)
 
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
@@ -1290,6 +1418,15 @@ async def add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        if expert_id:
+            organization_id, team_id = await _resolve_expert_execution_tenancy(
+                user_id, expert_id
+            )
+            await _enforce_expert_run_budget(user_id, expert_id)
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, graph_credentials_inputs
+            )
+
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
@@ -1401,11 +1538,26 @@ async def add_graph_execution(
             # params are authoritative; on resume/requeue (params unset)
             # recover them from the persisted execution row so the run
             # doesn't silently fall back to user-only scope.
-            organization_id=organization_id or graph_exec.organization_id,
-            team_id=team_id or graph_exec.team_id,
+            organization_id=(
+                organization_id
+                if expert_id
+                else organization_id or graph_exec.organization_id
+            ),
+            team_id=team_id if expert_id else team_id or graph_exec.team_id,
             # Same recovery rule as org/team: explicit param on create,
             # persisted row on resume/requeue.
             expert_id=expert_id or graph_exec.expert_id,
+        )
+    elif expert_id:
+        # Expert tenancy is authoritative even for caller-supplied contexts.
+        # This prevents a stale or forged org/team from steering expert work
+        # into a shared organization.
+        execution_context = execution_context.model_copy(
+            update={
+                "organization_id": organization_id,
+                "team_id": team_id,
+                "expert_id": expert_id,
+            }
         )
     elif execution_context.organization_id is None and graph_exec.organization_id:
         # A caller-supplied context (e.g. review-resume, admin-requeue) may
@@ -1428,9 +1580,17 @@ async def add_graph_execution(
 
         # Update execution status to QUEUED BEFORE publishing to prevent race condition
         # where two concurrent requests could both publish the same execution
+        # A stuck run persisted without tenancy (nullable organizationId)
+        # must still be recoverable: update_graph_execution_stats raises
+        # when update_tenancy=True with no organization_id, which would
+        # fail the whole requeue — the exact case the admin fallback serves.
+        persist_tenancy = expert_id is not None and organization_id is not None
         updated_exec = await edb.update_graph_execution_stats(
             graph_exec_id=graph_exec.id,
             status=ExecutionStatus.QUEUED,
+            update_tenancy=persist_tenancy,
+            organization_id=organization_id if persist_tenancy else None,
+            team_id=team_id if persist_tenancy else None,
         )
 
         # Verify the status update succeeded (prevents duplicate queueing in race conditions)

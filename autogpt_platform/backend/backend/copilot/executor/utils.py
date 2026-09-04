@@ -6,6 +6,7 @@ Defines two exchanges and queues following the graph executor pattern:
 """
 
 import logging
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -16,7 +17,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -205,9 +206,6 @@ class CoPilotExecutionEntry(BaseModel):
     team_id: str | None = None
     """Active workspace for tenant-scoped execution"""
 
-    mode: CopilotMode | None = None
-    """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
-
     model: CopilotLLMModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
@@ -252,7 +250,6 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -286,7 +283,6 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         organization_id=organization_id,
         team_id=team_id,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
@@ -315,7 +311,6 @@ async def schedule_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -381,7 +376,6 @@ async def schedule_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -404,7 +398,6 @@ async def dispatch_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -457,7 +450,6 @@ async def dispatch_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -485,12 +477,13 @@ async def schedule_chat_turn(
     user_id: str,
     message: str,
     message_id: str | None = None,
+    message_metadata: dict[str, Any] | None = None,
+    message_already_persisted: bool = False,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -504,7 +497,8 @@ async def schedule_chat_turn(
     Returns the new ``turn_id`` on a fresh dispatch, or ``None`` if the
     inbound message was a duplicate of one already saved (caller should
     subscribe to the existing in-flight turn's stream instead of opening
-    a new one).
+    a new one). ``message_already_persisted`` re-dispatches an orphaned
+    kickoff row only when this caller atomically admits the idle session.
 
     Raises :class:`backend.copilot.active_turns.ConcurrentTurnLimitError`
     when the user is at the configured cap. Caller maps that to HTTP 429.
@@ -524,12 +518,15 @@ async def schedule_chat_turn(
     from backend.copilot.tracking import track_user_message
 
     async with acquire_turn_slot(user_id, session_id) as slot:
+        if message_already_persisted and not slot.admitted:
+            return None
         is_duplicate = False
-        if message:
+        if message and not message_already_persisted:
             chat_message = ChatMessage(
                 id=message_id,
                 role="user" if is_user_message else "assistant",
                 content=message,
+                metadata=message_metadata,
             )
             is_duplicate = (
                 await append_and_save_message(session_id, chat_message)
@@ -556,7 +553,6 @@ async def schedule_chat_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,

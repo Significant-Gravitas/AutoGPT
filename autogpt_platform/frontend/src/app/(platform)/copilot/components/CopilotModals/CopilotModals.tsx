@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { IntegrationsPanel } from "@/components/contextual/IntegrationsPanel/IntegrationsPanel";
 import { SchedulesPanel } from "@/components/contextual/SchedulesPanel/SchedulesPanel";
 import { SkillsPanel } from "@/components/contextual/SkillsPanel/SkillsPanel";
@@ -51,12 +52,17 @@ export function CopilotModals() {
       <Dialog
         controlled={{ isOpen: modal === "integrations", set: handleOpenChange }}
         styling={{ maxWidth: "56rem" }}
-        title="Third Party Integrations"
+        title="Integrations"
       >
         <Dialog.Content>
           <IntegrationsPanel withHeading={false} />
         </Dialog.Content>
       </Dialog>
+
+      <ConnectServiceDialog
+        open={modal === "connect"}
+        onOpenChange={handleOpenChange}
+      />
     </>
   );
 }

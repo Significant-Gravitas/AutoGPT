@@ -652,7 +652,7 @@ def _credentials() -> OAuth2Credentials:
         access_token=SecretStr("access-secret"),
         refresh_token=SecretStr("refresh-secret"),
         scopes=[],
-        refresh_strategy="provider_runtime",
+        refresh_strategy="oauth_handler",
         provider_state=SecretStr("provider-secret"),
         provider_state_version=1,
     )

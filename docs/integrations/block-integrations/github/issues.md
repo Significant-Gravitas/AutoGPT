@@ -114,6 +114,8 @@ Each comment includes the comment ID, body text, author username, and a direct U
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | issue_url | URL of the GitHub issue or pull request | str | Yes |
+| limit | Maximum number of comments to fetch | int | No |
+| since | Only include comments updated after the given ISO 8601 timestamp | str | No |
 
 ### Outputs
 
@@ -149,6 +151,17 @@ The block takes the GitHub credentials and repository URL as inputs. It then sen
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | repo_url | URL of the GitHub repository | str | Yes |
+| state | Only include issues in this state | "open" \| "closed" \| "all" | No |
+| include_pull_requests | Whether to also include pull requests in the results. The GitHub API considers every pull request an issue. | bool | No |
+| labels | Only include issues that have all of these labels | List[str] | No |
+| limit | Maximum number of issues to fetch | int | No |
+| assignee | Only include issues assigned to this user. Use 'none' for unassigned issues, or '*' for issues with any assignee. | str | No |
+| creator | Only include issues created by this user | str | No |
+| mentioned | Only include issues in which this user is mentioned | str | No |
+| milestone | Only include issues in this milestone, by milestone number. Use 'none' for issues without a milestone, or '*' for issues with any milestone. | str | No |
+| sort | What to sort the issues by | "created" \| "updated" \| "comments" | No |
+| direction | Sort direction | "asc" \| "desc" | No |
+| since | Only include issues updated after the given ISO 8601 timestamp | str | No |
 
 ### Outputs
 

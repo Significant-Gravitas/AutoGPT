@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "sentry.{edge,server}.config.ts",
+    "scripts/migrate-supabase-auth.ts",
+    "scripts/seed-preview-accounts.ts"
+  ],
+  "ignoreDependencies": [
+    "@opentelemetry/instrumentation",
+    "import-in-the-middle",
+    "require-in-the-middle",
+    "postcss-load-config"
+  ],
+  "ignoreExportsUsedInFile": true
+}

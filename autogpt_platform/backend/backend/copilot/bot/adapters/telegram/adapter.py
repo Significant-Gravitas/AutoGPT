@@ -488,14 +488,33 @@ class TelegramAdapter(WebhookAdapter):
     ) -> Optional[PostedRef]:
         chat_id, thread_id = _decode_target(channel_id)
         first_id: Optional[str] = None
-        for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
-            result = await self._client.call(
-                "sendMessage",
-                chat_id=chat_id,
-                text=chunk,
-                parse_mode="HTML",
-                message_thread_id=thread_id,
-            )
+        # Chunk the canonical markdown (the splitter balances ``` fences), then
+        # localize each chunk, so a cut never lands inside a <pre> block. The
+        # 4096 cap is "characters after entities parsing" (Bot API,
+        # sendMessage.text): tags count for nothing and an entity for one char,
+        # so the canonical length is the one that matters.
+        # Raise only if the *first* chunk fails: past that, keep the partial
+        # result instead of reporting the whole post failed, because the
+        # caller's retry would repost the chunks already delivered (mirrors
+        # Discord's ``_send_chunked``).
+        posted = False
+        for chunk in iter_chunks(text, config.CHUNK_FLUSH_AT):
+            try:
+                result = await self._client.call(
+                    "sendMessage",
+                    chat_id=chat_id,
+                    text=self.localize_markup(chunk),
+                    parse_mode="HTML",
+                    message_thread_id=thread_id,
+                )
+            except Exception:
+                # TelegramAPIError for 400/429, httpx errors for transport —
+                # a partial send must survive either.
+                if not posted:
+                    raise
+                logger.exception("Dropping trailing Telegram chunk after partial send")
+                break
+            posted = True
             if first_id is None:
                 first_id = str(result.get("message_id", ""))
         if first_id is None:

@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { getSelectors } from "../utils/selectors";
 
@@ -7,9 +7,9 @@ export class ProfileFormPage extends BasePage {
     super(page);
   }
 
-  private getId(id: string | RegExp): Locator {
-    const { getId } = getSelectors(this.page);
-    return getId(id);
+  async open(): Promise<void> {
+    await this.page.goto("/settings/profile");
+    await expect(this.page).toHaveURL(/\/settings\/profile/);
   }
 
   private async hideFloatingWidgets(): Promise<void> {
@@ -22,7 +22,8 @@ export class ProfileFormPage extends BasePage {
 
   // Locators
   title(): Locator {
-    return this.getId("profile-info-form-title");
+    const { getRole } = getSelectors(this.page);
+    return getRole("heading", "Profile");
   }
 
   displayNameField(): Locator {
@@ -46,9 +47,9 @@ export class ProfileFormPage extends BasePage {
     return getField(`Link ${index}`);
   }
 
-  cancelButton(): Locator {
+  discardButton(): Locator {
     const { getButton } = getSelectors(this.page);
-    return getButton("Cancel");
+    return getButton("Discard");
   }
 
   saveButton(): Locator {
@@ -111,8 +112,8 @@ export class ProfileFormPage extends BasePage {
     }
   }
 
-  async clickCancel(): Promise<void> {
-    await this.cancelButton().click();
+  async clickDiscard(): Promise<void> {
+    await this.discardButton().click();
   }
 
   async clickSave(): Promise<void> {
@@ -126,13 +127,7 @@ export class ProfileFormPage extends BasePage {
   }
 
   async waitForSaveComplete(timeoutMs: number = 15_000): Promise<void> {
-    const { getButton } = getSelectors(this.page);
-    await getButton("Save changes").waitFor({
-      state: "attached",
-      timeout: timeoutMs,
-    });
-    await getButton("Save changes").waitFor({
-      state: "visible",
+    await expect(this.page.getByText("Profile saved")).toBeVisible({
       timeout: timeoutMs,
     });
   }

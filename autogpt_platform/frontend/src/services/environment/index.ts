@@ -89,6 +89,14 @@ function getLaunchDarklyClientId() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 }
 
+function getGoogleAdsID() {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_ID || "";
+}
+
+function getGoogleAdsConversionLabels() {
+  return process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS || "";
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -151,6 +159,8 @@ export const environment = {
   getPreviewStealingDev,
   getPostHogCredentials,
   getLaunchDarklyClientId,
+  getGoogleAdsID,
+  getGoogleAdsConversionLabels,
   // Assertions
   isServerSide,
   isClientSide,
