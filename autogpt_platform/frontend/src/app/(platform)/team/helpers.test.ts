@@ -243,4 +243,18 @@ describe("filterExpertSchedules", () => {
       filterExpertSchedules(schedules, "", "later", now).map((s) => s.id),
     ).toEqual(["s3"]);
   });
+
+  test("treats a missing next run time as later, never as due now", () => {
+    const paused = { ...schedule("s4", "Paused sync", 1), next_run_time: "" };
+    const all = [...schedules, paused];
+    expect(
+      filterExpertSchedules(all, "", "today", now).map((s) => s.id),
+    ).toEqual(["s1"]);
+    expect(
+      filterExpertSchedules(all, "", "week", now).map((s) => s.id),
+    ).toEqual(["s1", "s2"]);
+    expect(
+      filterExpertSchedules(all, "", "later", now).map((s) => s.id),
+    ).toEqual(["s3", "s4"]);
+  });
 });

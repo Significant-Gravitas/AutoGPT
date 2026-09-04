@@ -333,8 +333,7 @@ export function filterExpertSchedules(
       if (!haystack.includes(needle)) return false;
     }
     if (filter === "all") return true;
-    const untilNext =
-      new Date(schedule.next_run_time).getTime() - now.getTime();
+    const untilNext = nextRunMs(schedule) - now.getTime();
     if (filter === "today") return untilNext <= DAY_MS;
     if (filter === "week") return untilNext <= 7 * DAY_MS;
     return untilNext > 7 * DAY_MS;
