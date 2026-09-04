@@ -684,4 +684,5 @@ async def test_refresh_cache_incremental_passes_last_fetch_as_str():
 
     assert fetch.await_args.kwargs["start_date"] == "2026-09-01T00:00:00+00:00"
     assert "old@example.com" in email_index
+    assert "alice@example.com" in email_index
     assert questions == SAMPLE_QUESTIONS
