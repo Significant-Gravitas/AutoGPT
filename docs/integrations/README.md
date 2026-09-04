@@ -549,7 +549,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Read File](block-integrations/github/repo_files.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
 | [Github Read Folder](block-integrations/github/repo_files.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
 | [Github Read Issue](block-integrations/github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
-| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
+| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, changes, and full raw object of a specified GitHub pull request |
 | [Github Release Trigger](block-integrations/github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |

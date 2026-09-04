@@ -109,7 +109,7 @@ describe("useOnboardingIntroCard — flag gating", () => {
     // The regression: with the flag off the intro query is disabled, so it
     // never answers — and "no answer yet" was read as "still generating".
     // isAwaitingGreeting stayed true forever and EmptySession hides the
-    // composer, PulseChips and SuggestionThemes behind it, so the default
+    // composer and SuggestionThemes behind it, so the default
     // flag-off copilot rendered a hero with no way to type.
     flags.current = {};
 

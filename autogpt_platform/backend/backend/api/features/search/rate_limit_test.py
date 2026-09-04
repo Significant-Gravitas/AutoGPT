@@ -99,3 +99,20 @@ async def test_per_user_keys_are_distinct(fake_redis):
     assert key_a != key_b
     assert "alice" in key_a
     assert "bob" in key_b
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_over_limit_records_a_rate_limit_hit(fake_redis):
+    before = _counter("autogpt_rate_limit_hits_total", endpoint="/api/search")
+    fake_redis.incr.return_value = rate_limit.GLOBAL_SEARCH_MAX_REQUESTS + 1
+    with pytest.raises(fastapi.HTTPException):
+        await rate_limit.enforce_global_search_rate_limit("u1")
+    assert (
+        _counter("autogpt_rate_limit_hits_total", endpoint="/api/search") == before + 1
+    )

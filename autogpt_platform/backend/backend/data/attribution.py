@@ -10,6 +10,7 @@ user's second device never rewrites the channel that actually brought them.
 from datetime import datetime
 from typing import cast
 
+import prisma.errors
 import prisma.models
 import prisma.types
 from pydantic import BaseModel, Field
@@ -83,8 +84,17 @@ async def record_user_attribution(
             prisma.types.UserAttributionCreateInput,
             {"userId": user_id, **provided},
         )
-        row = await prisma.models.UserAttribution.prisma().create(data=create_input)
-        return UserAttribution.from_db(row)
+        try:
+            row = await prisma.models.UserAttribution.prisma().create(data=create_input)
+            return UserAttribution.from_db(row)
+        except prisma.errors.UniqueViolationError:
+            # Two tabs reported at once and the other one won the create;
+            # fall through and fill whatever it left empty.
+            existing = await prisma.models.UserAttribution.prisma().find_unique(
+                where={"userId": user_id}
+            )
+            if existing is None:
+                raise
 
     missing = {
         column: value
