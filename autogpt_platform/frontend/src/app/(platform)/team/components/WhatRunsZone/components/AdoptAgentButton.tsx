@@ -43,7 +43,7 @@ export function AdoptAgentButton({
         loading={isPending}
         onClick={handleSingleExpert}
       >
-        Adopt
+        Install
       </Button>
     );
   }
@@ -52,7 +52,7 @@ export function AdoptAgentButton({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="secondary" size="small" loading={isPending}>
-          Adopt
+          Install
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-2">
@@ -77,7 +77,7 @@ export function AdoptAgentButton({
                   {expert.name}
                 </Text>
                 <Text variant="small" className="text-zinc-500">
-                  Adds this agent to {expert.name}&apos;s workflows.
+                  Installs on {expert.name}.
                 </Text>
               </div>
             </button>

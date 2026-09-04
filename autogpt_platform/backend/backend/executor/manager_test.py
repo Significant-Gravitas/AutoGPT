@@ -570,3 +570,78 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     await assert_sample_graph_executions(test_graph, alt_test_user, graph_exec_id)
     logger.info("Completed test_agent_execution")
+
+
+def _run_completions(status: str) -> float:
+    from prometheus_client import REGISTRY
+
+    return (
+        REGISTRY.get_sample_value(
+            "autogpt_graph_run_completions_total", {"status": status}
+        )
+        or 0.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_wrapper_counts_only_an_applied_terminal_transition():
+    """Executor-side wrapper: a row back means the transition applied and is
+    counted once; None back (VALID_STATUS_TRANSITIONS rejected it) is not
+    counted and not broadcast."""
+    from unittest.mock import MagicMock
+
+    from backend.executor.manager import async_update_graph_execution_state
+
+    db = MagicMock()
+    before = _run_completions("COMPLETED")
+
+    with patch(
+        "backend.executor.manager.send_async_execution_update",
+        new_callable=AsyncMock,
+    ) as send:
+        db.update_graph_execution_stats = AsyncMock(return_value=MagicMock())
+        await async_update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.COMPLETED
+        )
+        assert _run_completions("COMPLETED") == before + 1
+        send.assert_awaited_once()
+
+        send.reset_mock()
+        db.update_graph_execution_stats = AsyncMock(return_value=None)
+        await async_update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.COMPLETED
+        )
+        assert _run_completions("COMPLETED") == before + 1
+        send.assert_not_awaited()
+
+
+def test_sync_wrapper_counts_only_an_applied_terminal_transition():
+    from unittest.mock import MagicMock
+
+    from backend.executor.manager import update_graph_execution_state
+
+    db = MagicMock()
+    before = _run_completions("FAILED")
+
+    with patch("backend.executor.manager.send_execution_update") as send:
+        db.update_graph_execution_stats = MagicMock(return_value=MagicMock())
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.FAILED
+        )
+        assert _run_completions("FAILED") == before + 1
+        send.assert_called_once()
+
+        send.reset_mock()
+        db.update_graph_execution_stats = MagicMock(return_value=None)
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.FAILED
+        )
+        assert _run_completions("FAILED") == before + 1
+        send.assert_not_called()
+
+        # Non-terminal transitions are never counted, applied or not.
+        db.update_graph_execution_stats = MagicMock(return_value=MagicMock())
+        update_graph_execution_state(
+            db, "ge-1", status=execution.ExecutionStatus.RUNNING
+        )
+        assert _run_completions("FAILED") == before + 1

@@ -82,7 +82,7 @@ def test_graph_schedule_records_activity_event_and_product_event(
     assert props["target"] == "agent"
     assert props["graph_id"] == "graph-1"
     assert props["schedule_id"] == "sched-1"
-    assert props["name"] == "Daily digest"
+    assert "name" not in props
 
 
 def test_expert_schedule_targets_expert(db_client: Mock, track_created: Mock) -> None:

@@ -39,7 +39,11 @@ import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceF
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
-import { getFilesFromClipboard } from "./helpers";
+import {
+  CARD_ICON_BUTTON_CLASS,
+  CARD_SEND_BUTTON_CLASS,
+  getFilesFromClipboard,
+} from "./helpers";
 import { useChatInput } from "./useChatInput";
 import { useChatMentions } from "./useChatMentions";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
@@ -74,6 +78,9 @@ interface Props {
   hideSubmitWhenEmpty?: boolean;
   /** Recipient picker chip rendered before the mode chips (new-task state). */
   recipientPicker?: ReactNode;
+  /** Card composer: the text always keeps its own row above the controls,
+   *  instead of sharing a single pill row until it wraps. Empty state only. */
+  stacked?: boolean;
 }
 
 export function ChatInput({
@@ -92,6 +99,7 @@ export function ChatInput({
   sessionId = null,
   hideSubmitWhenEmpty = false,
   recipientPicker,
+  stacked = false,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -275,7 +283,11 @@ export function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[1.75rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          // Card composer: a hairline ring and a shallow drop instead of the
+          // pill's deep shadow, so it reads as a surface the text sits on.
+          stacked &&
+            "gap-3 !rounded-3xl border-transparent px-3.5 pb-3.5 pt-3 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-transparent",
           isRecording &&
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
@@ -284,31 +296,43 @@ export function ChatInput({
           attachments={attachments}
           onRemove={handleRemoveAttachment}
           isUploading={isUploadingFiles}
+          stacked={stacked}
         />
-        <div className="flex w-full flex-wrap items-end">
+        <div
+          className={cn(
+            "flex w-full flex-wrap",
+            stacked ? "items-center" : "items-end",
+          )}
+        >
           <InputGroupAddon
             align="inline-start"
-            className="order-none gap-1 py-1 pl-1.5"
+            className={cn(
+              "order-none gap-1 py-1 pl-1.5",
+              stacked && "gap-1.5 p-0",
+            )}
           >
             <ComposerPlusMenu
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
+              className={
+                stacked
+                  ? cn(
+                      CARD_ICON_BUTTON_CLASS,
+                      "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
+                    )
+                  : undefined
+              }
             />
             {recipientPicker}
-            {/* Connection and tier are per-message settings, so they remain
-                changeable between turns in an existing session. */}
-            {(!hasSession || !isStreaming) && (
-              <ConnectionPicker connectionLocked={hasSession} />
-            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
           <div
             className={cn(
               "relative",
-              isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
             )}
           >
             <PromptInputTextarea
@@ -322,6 +346,7 @@ export function ChatInput({
               disabled={isInputDisabled}
               placeholder={resolvedPlaceholder}
               onMultilineChange={setIsMultiline}
+              className={stacked ? "px-0.5 py-1" : undefined}
             />
             {isRecording && !value && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -334,8 +359,17 @@ export function ChatInput({
           </div>
           <InputGroupAddon
             align="inline-end"
-            className="order-none ml-auto gap-1 py-1 pr-1.5"
+            className={cn(
+              "order-none ml-auto gap-1 py-1 pr-1.5",
+              stacked && "gap-1.5 p-0",
+            )}
           >
+            {/* Connection and tier are per-message settings, so they remain
+                changeable between turns in an existing session. The card
+                composer leaves this to the page's top-right control. */}
+            {!stacked && (!hasSession || !isStreaming) && (
+              <ConnectionPicker connectionLocked={hasSession} />
+            )}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
@@ -352,6 +386,7 @@ export function ChatInput({
                 isStreaming={isStreaming}
                 disabled={disabled || isTranscribing || isStreaming}
                 highlight={isMicGlowing}
+                className={stacked ? CARD_ICON_BUTTON_CLASS : undefined}
                 onClick={() => {
                   dismissGlow();
                   toggleRecording();
@@ -390,7 +425,10 @@ export function ChatInput({
                 <TooltipContent side="top">Stop</TooltipContent>
               </Tooltip>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
-              <PromptInputSubmit disabled={!canSend} />
+              <PromptInputSubmit
+                disabled={!canSend}
+                className={stacked ? CARD_SEND_BUTTON_CLASS : undefined}
+              />
             )}
           </InputGroupAddon>
         </div>

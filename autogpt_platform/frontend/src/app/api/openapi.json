@@ -6081,9 +6081,9 @@
     },
     "/api/experiments/assignments": {
       "get": {
-        "tags": ["v2", "experiments"],
+        "tags": ["experiments"],
         "summary": "List experiment assignments",
-        "operationId": "getV2List experiment assignments",
+        "operationId": "getExperimentsList experiment assignments",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6094,7 +6094,7 @@
                     "$ref": "#/components/schemas/ExperimentAssignment"
                   },
                   "type": "array",
-                  "title": "Response Getv2List Experiment Assignments"
+                  "title": "Response Getexperimentslist Experiment Assignments"
                 }
               }
             }
@@ -6106,9 +6106,9 @@
         "security": [{ "HTTPBearerJWT": [] }]
       },
       "post": {
-        "tags": ["v2", "experiments"],
+        "tags": ["experiments"],
         "summary": "Record experiment assignment",
-        "operationId": "postV2Record experiment assignment",
+        "operationId": "postExperimentsRecord experiment assignment",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6341,7 +6341,7 @@
     },
     "/api/experts/templates": {
       "get": {
-        "tags": ["v2", "experts", "experts", "private"],
+        "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
         "operationId": "list_expert_templates",
         "responses": {
@@ -6356,12 +6356,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/experts/{expert_id}": {
@@ -6828,7 +6824,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Expert not found" },
+          "404": { "description": "Expert or workflow not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -13888,7 +13884,6 @@
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
         "operationId": "getV2Get agent by version",
-        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -13905,9 +13900,6 @@
                 "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -21640,13 +21632,17 @@
       "InstallWorkflowRequest": {
         "properties": {
           "store_listing_version_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Store Listing Version Id"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
           }
         },
         "type": "object",
-        "required": ["store_listing_version_id"],
-        "title": "InstallWorkflowRequest"
+        "title": "InstallWorkflowRequest",
+        "description": "One workflow source: a marketplace listing, or the caller's own agent."
       },
       "IntroCardResponse": {
         "properties": {
@@ -21968,11 +21964,6 @@
               { "$ref": "#/components/schemas/MarketplaceListing" },
               { "type": "null" }
             ]
-          },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id",
-            "description": "ID of the approved marketplace listing version whose graph snapshot exactly matches this agent's graph_id and graph_version. Install flows can use it directly to install this exact version."
           }
         },
         "type": "object",
