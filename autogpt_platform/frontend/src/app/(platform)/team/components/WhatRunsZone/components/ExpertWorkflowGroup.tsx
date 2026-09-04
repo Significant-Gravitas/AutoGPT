@@ -28,7 +28,7 @@ export function ExpertWorkflowGroup({ group }: Props) {
   return (
     <section
       aria-label={`${expert.name} runs`}
-      className="rounded-2xl border border-zinc-200 bg-white"
+      className="overflow-hidden rounded-xl border border-zinc-200/80 bg-white"
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3">
         <ExpertAvatar
@@ -37,7 +37,7 @@ export function ExpertWorkflowGroup({ group }: Props) {
           size={32}
         />
         <div className="min-w-0 flex-1">
-          <Text variant="large-medium" className="truncate">
+          <Text variant="body-medium" className="truncate">
             {`${expert.name} · ${countLabel}`}
           </Text>
         </div>

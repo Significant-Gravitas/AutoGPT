@@ -2,15 +2,15 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
-import { TEAM_GRID_CLASS } from "../../helpers";
-import { AutopilotCard } from "../AutopilotCard";
-import { ExpertTeamCardSkeleton } from "../ExpertTeamCardSkeleton";
+import { LIST_SURFACE_CLASS, SECTION_LABEL_CLASS } from "../../helpers";
+import { AutopilotRow } from "../AutopilotRow";
+import { ExpertRowSkeleton } from "../ExpertRowSkeleton";
 
 interface Props {
   isLoading: boolean;
   podGroups: { pod: ExpertPod; experts: Expert[] }[];
   ungroupedExperts: Expert[];
-  renderCard: (expert: Expert) => ReactNode;
+  renderRow: (expert: Expert) => ReactNode;
 }
 
 interface SectionHeaderProps {
@@ -22,14 +22,14 @@ export function TeamRoster({
   isLoading,
   podGroups,
   ungroupedExperts,
-  renderCard,
+  renderRow,
 }: Props) {
   if (isLoading) {
     return (
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
+      <div className={LIST_SURFACE_CLASS}>
+        <AutopilotRow />
         {[0, 1, 2].map((index) => (
-          <ExpertTeamCardSkeleton key={index} />
+          <ExpertRowSkeleton key={index} />
         ))}
       </div>
     );
@@ -37,24 +37,24 @@ export function TeamRoster({
 
   if (podGroups.length === 0) {
     return (
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
-        {ungroupedExperts.map(renderCard)}
+      <div className={LIST_SURFACE_CLASS}>
+        <AutopilotRow />
+        {ungroupedExperts.map(renderRow)}
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
+    <div className="flex flex-col gap-8">
+      <div className={LIST_SURFACE_CLASS}>
+        <AutopilotRow />
       </div>
       {podGroups.map((group) => (
-        <section key={group.pod.id} className="space-y-3">
+        <section key={group.pod.id} className="flex flex-col gap-2.5">
           <SectionHeader name={group.pod.name} count={group.experts.length} />
           {group.experts.length > 0 ? (
-            <div className={TEAM_GRID_CLASS}>
-              {group.experts.map(renderCard)}
+            <div className={LIST_SURFACE_CLASS}>
+              {group.experts.map(renderRow)}
             </div>
           ) : (
             <Text variant="small" className="text-zinc-500">
@@ -64,10 +64,10 @@ export function TeamRoster({
         </section>
       ))}
       {ungroupedExperts.length > 0 ? (
-        <section className="space-y-3">
+        <section className="flex flex-col gap-2.5">
           <SectionHeader name="Ungrouped" count={ungroupedExperts.length} />
-          <div className={TEAM_GRID_CLASS}>
-            {ungroupedExperts.map(renderCard)}
+          <div className={LIST_SURFACE_CLASS}>
+            {ungroupedExperts.map(renderRow)}
           </div>
         </section>
       ) : null}
@@ -78,8 +78,8 @@ export function TeamRoster({
 function SectionHeader({ name, count }: SectionHeaderProps) {
   return (
     <div className="flex items-baseline gap-2">
-      <Text variant="h4">{name}</Text>
-      <Text variant="small" className="text-zinc-500">
+      <h3 className={SECTION_LABEL_CLASS}>{name}</h3>
+      <Text variant="small" className="text-zinc-400">
         {count} {count === 1 ? "expert" : "experts"}
       </Text>
     </div>

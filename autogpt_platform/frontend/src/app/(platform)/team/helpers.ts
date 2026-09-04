@@ -4,18 +4,28 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { formatDistanceToNow } from "date-fns";
 
-/** Section headings sit outside the cards, so they need the cards' own content
- *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
- *  up with the text inside them instead of with the card edge. */
-export const SECTION_INSET_CLASS = "px-5";
+/** The one list surface on this page. Matches the sections on
+ *  /team/[expertId] so the roster and the expert page read as one system. */
+export const LIST_SURFACE_CLASS =
+  "divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200/80 bg-white";
+
+/** A row inside LIST_SURFACE_CLASS. */
+export const ROW_CLASS = "relative flex items-center gap-3 px-4 py-3";
+
+/** Quiet uppercase section label, shared with /team/[expertId]. */
+export const SECTION_LABEL_CLASS =
+  "text-xs font-medium uppercase tracking-[0.14em] text-zinc-400";
+
+/** Stretched hit area that makes a whole row a link without nesting the row's
+ *  own buttons inside an anchor. Row content sits above it via ROW_CLASS's
+ *  positioned children. */
+export const ROW_LINK_CLASS =
+  "absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-900";
 
 interface PodGroup {
   pod: ExpertPod;
   experts: Expert[];
 }
-
-export const TEAM_GRID_CLASS =
-  "grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3";
 
 /** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
 export const POD_NAME_MAX_LENGTH = 100;

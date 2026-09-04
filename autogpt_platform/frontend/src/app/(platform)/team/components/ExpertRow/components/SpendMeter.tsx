@@ -6,10 +6,10 @@ const SEGMENT_COUNT = 36;
 interface Props {
   spent: number;
   budget: number;
-  muted?: boolean;
+  className?: string;
 }
 
-export function SpendMeter({ spent, budget, muted }: Props) {
+export function SpendMeter({ spent, budget, className }: Props) {
   const ratio = budget > 0 ? Math.min(Math.max(spent / budget, 0), 1) : 0;
   const filledCount = Math.round(ratio * SEGMENT_COUNT);
   const clampedSpent = Math.min(Math.max(spent, 0), Math.max(budget, 0));
@@ -25,10 +25,7 @@ export function SpendMeter({ spent, budget, muted }: Props) {
       aria-valuemin={0}
       aria-valuemax={budget}
       aria-valuetext={valueText}
-      className={cn(
-        "flex h-4 w-full items-stretch gap-[3px]",
-        muted && "opacity-50",
-      )}
+      className={cn("flex h-4 w-full items-stretch gap-[3px]", className)}
     >
       {Array.from({ length: SEGMENT_COUNT }, (_, index) => (
         <span
