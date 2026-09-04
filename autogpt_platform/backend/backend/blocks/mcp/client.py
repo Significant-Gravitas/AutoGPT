@@ -360,6 +360,13 @@ class MCPClient:
         version = self.protocol_version or MODERN_PROTOCOL_VERSION
         reply = await self._post_modern(method, params, version)
 
+        if reply.status in _NO_FALLBACK_STATUSES or reply.status >= 500:
+            # Credential, rate-limit and server errors keep their HTTP meaning
+            # even when they carry a JSON-RPC envelope, so the auth flows in
+            # the routes and the copilot tool see the same exceptions as on
+            # the legacy path.
+            reply.response.raise_for_status()
+
         code = reply.error_code
         if code == ERROR_UNSUPPORTED_PROTOCOL_VERSION and not _retried_version:
             self._adopt_negotiated_version(reply)
@@ -466,6 +473,22 @@ class MCPClient:
             and error.status_code in _NO_FALLBACK_STATUSES
         )
 
+    @classmethod
+    def _is_discover_result(cls, result: Any) -> bool:
+        """Does a ``server/discover`` reply look like a ``DiscoverResult``?
+
+        The spec requires ``supportedVersions``; be as lenient as
+        :meth:`_send_modern` is about ``resultType`` and accept any other
+        member of the result too.  A legacy server never answers this method
+        with a result, only with ``-32601``.
+        """
+        if not isinstance(result, dict):
+            return False
+        members = ("supportedVersions", "capabilities", "resultType", "instructions")
+        return any(key in result for key in members) or (
+            cls._server_info_from(result) is not None
+        )
+
     async def _probe_modern(self) -> dict[str, Any] | None:
         """Send ``server/discover`` and classify the server's era.
 
@@ -489,9 +512,7 @@ class MCPClient:
 
         if reply.response.ok:
             result = reply.result
-            if isinstance(result, dict) and (
-                "supportedVersions" in result or "resultType" in result
-            ):
+            if self._is_discover_result(result):
                 self.protocol_version = version
                 return result
             if is_modern_jsonrpc_error(reply.body):

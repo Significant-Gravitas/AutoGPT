@@ -510,7 +510,8 @@ class TestProtocolEras:
         result = await client.initialize()
         assert client.era is MCPProtocolEra.LEGACY
         assert result["protocolVersion"] == "2025-03-26"
-        assert era_cache.get(client.server_url) is not None
+        cached = era_cache.get(client.server_url)
+        assert cached is not None and cached.era is MCPProtocolEra.LEGACY
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_legacy_fallback_from_plain_400(self, session_legacy_server):

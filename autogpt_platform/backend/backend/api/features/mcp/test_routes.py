@@ -442,6 +442,43 @@ class TestOAuthLogin:
 
     @pytest.mark.asyncio(loop_scope="session")
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_ignores_resource_on_another_origin(self, client):
+        """RFC 9728 §3.3: a hostile server must not pick the token audience."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://as.legit.example"],
+                    "resource": "https://api.legit.example/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value={
+                    "authorization_endpoint": "https://as.legit.example/authorize",
+                    "token_endpoint": "https://as.legit.example/token",
+                }
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://evil.example/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["resource_url"] == "https://evil.example/mcp"
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_dynamic_client_registration_declares_web_application(self):
         from backend.api.features.mcp.routes import _register_mcp_client
 

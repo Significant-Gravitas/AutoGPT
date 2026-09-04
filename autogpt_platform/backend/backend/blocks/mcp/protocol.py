@@ -240,7 +240,8 @@ def name_header_for(method: str, params: dict[str, Any] | None) -> str | None:
 
 # ─────────────────────────── x-mcp-header ───────────────────────────
 
-_TCHAR_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+# RFC 7230 ``tchar``; matched with ``fullmatch`` so a trailing newline fails.
+_TCHAR_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _HEADER_PARAM_TYPES = {"string", "integer", "boolean"}
 _SAFE_INT_MIN = -(2**53) + 1
 _SAFE_INT_MAX = 2**53 - 1
@@ -286,7 +287,11 @@ def collect_header_params(input_schema: Any) -> list[HeaderParam]:
         if not isinstance(schema, dict):
             return
         annotation = schema.get(_HEADER_PARAM_PROPERTY)
-        if annotation is not None and path:
+        if annotation is not None:
+            if not path:
+                raise InvalidHeaderAnnotation(
+                    "x-mcp-header is not allowed on the root schema"
+                )
             _validate_annotation(annotation, schema, path, seen_names)
             found.append(
                 HeaderParam(path=path, header_name=annotation, json_type=schema["type"])
@@ -312,7 +317,7 @@ def _validate_annotation(
         raise InvalidHeaderAnnotation(
             f"{where}: x-mcp-header must be a non-empty string"
         )
-    if not _TCHAR_RE.match(annotation):
+    if not _TCHAR_RE.fullmatch(annotation):
         raise InvalidHeaderAnnotation(
             f"{where}: x-mcp-header {annotation!r} is not a valid HTTP field name"
         )

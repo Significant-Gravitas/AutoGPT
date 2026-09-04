@@ -166,6 +166,10 @@ class TestHeaderParams:
         [
             # empty name
             {"properties": {"a": {"type": "string", "x-mcp-header": ""}}},
+            # trailing newline (``$`` would accept it, ``fullmatch`` must not)
+            {"properties": {"a": {"type": "string", "x-mcp-header": "Region\n"}}},
+            # annotation on the root schema itself
+            {"type": "object", "x-mcp-header": "Root", "properties": {}},
             # invalid field-name characters
             {"properties": {"a": {"type": "string", "x-mcp-header": "Bad Name"}}},
             {"properties": {"a": {"type": "string", "x-mcp-header": "X\r\nY"}}},
@@ -476,6 +480,30 @@ class TestEraDetection:
         client = _client(transport)
         with pytest.raises(HTTPServerError):
             await client.initialize()
+
+    async def test_discover_result_without_versions_is_still_modern(self):
+        """Only a modern server answers server/discover with a *result*."""
+        transport = _Transport(
+            {
+                "server/discover": [
+                    _FakeResponse(
+                        200,
+                        _rpc_result(
+                            {
+                                "capabilities": {"tools": {}},
+                                "_meta": {META_SERVER_INFO: {"name": "m"}},
+                            }
+                        ),
+                    )
+                ]
+            }
+        )
+        client = _client(transport)
+        result = await client.initialize()
+        assert client.era is MCPProtocolEra.MODERN
+        assert client.protocol_version == MODERN_PROTOCOL_VERSION
+        assert result["serverInfo"] == {"name": "m"}
+        assert transport.methods() == ["server/discover"]
 
     async def test_cached_legacy_skips_modern_probe(self):
         era_cache.set(
@@ -972,6 +1000,39 @@ class TestModernRequests:
             await client.call_tool("t", {})
         assert transport.methods().count("tools/call") == 3
         assert transport.methods().count("tools/list") == 1
+
+    @pytest.mark.parametrize("status", [401, 403, 407, 429])
+    async def test_credential_errors_with_envelope_keep_http_meaning(self, status):
+        """A JSON-RPC envelope on a 401 must not turn it into MCPClientError."""
+        client, _ = _modern_client(
+            {"tools/call": [_FakeResponse(status, _rpc_error(-32001, "Unauthorized"))]}
+        )
+        await client.initialize()
+        with pytest.raises(HTTPClientError) as exc:
+            await client.call_tool("t", {})
+        assert exc.value.status_code == status
+
+    async def test_server_error_with_envelope_keeps_http_meaning(self):
+        client, _ = _modern_client(
+            {"tools/call": [_FakeResponse(503, _rpc_error(-32000, "down"))]}
+        )
+        await client.initialize()
+        with pytest.raises(HTTPServerError):
+            await client.call_tool("t", {})
+
+    async def test_cached_modern_401_with_envelope_keeps_cache(self):
+        cached = MCPServerProtocol(
+            era=MCPProtocolEra.MODERN, protocol_version=MODERN_PROTOCOL_VERSION
+        )
+        era_cache.set(SERVER_URL, cached)
+        transport = _Transport(
+            {"server/discover": [_FakeResponse(401, _rpc_error(-32001, "expired"))]}
+        )
+        client = _client(transport, auth_token="expired")
+        with pytest.raises(HTTPClientError) as exc:
+            await client.initialize()
+        assert exc.value.status_code == 401
+        assert era_cache.get(SERVER_URL) == cached
 
     async def test_missing_capability_error(self):
         client, _ = _modern_client(
