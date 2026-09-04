@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
@@ -15,7 +16,7 @@ from prisma.models import Expert
 from pytest_mock import MockerFixture
 
 from backend.data.redis_client import get_redis_async
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import NotFoundError, RedisError
 
 from .model import (
     ChatMessage,
@@ -28,6 +29,7 @@ from .model import (
     get_or_create_builder_session,
     is_message_duplicate,
     maybe_append_user_message,
+    update_session_llm_route,
     upsert_chat_session,
 )
 
@@ -53,6 +55,92 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_propagates_database_failures(
+    mocker: MockerFixture,
+) -> None:
+    @asynccontextmanager
+    async def acquired_lock(_session_id: str):
+        yield True
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=acquired_lock)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await update_session_llm_route("session-1", "user-1", "platform", None)
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_serializes_database_and_cache(
+    mocker: MockerFixture,
+) -> None:
+    lock_held = False
+
+    @asynccontextmanager
+    async def acquired_lock(_session_id: str):
+        nonlocal lock_held
+        lock_held = True
+        try:
+            yield True
+        finally:
+            lock_held = False
+
+    async def update_route(*_args):
+        assert lock_held
+        return True
+
+    cached = ChatSession.new(user_id="user-1", dry_run=False)
+    cached.session_id = "session-1"
+    cached.messages.append(ChatMessage(role="assistant", content="keep me"))
+
+    async def cache_session(session: ChatSession):
+        assert lock_held
+        assert session.messages[-1].content == "keep me"
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(side_effect=update_route)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=acquired_lock)
+    mocker.patch(
+        "backend.copilot.model._get_session_from_cache",
+        new=mocker.AsyncMock(return_value=cached),
+    )
+    write_cache = mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new=mocker.AsyncMock(side_effect=cache_session),
+    )
+
+    assert await update_session_llm_route(
+        "session-1", "user-1", "codex", "credential-1"
+    )
+    assert cached.metadata.llm_auth_provider == "codex"
+    assert cached.metadata.llm_credential_id == "credential-1"
+    write_cache.assert_awaited_once_with(cached)
+    assert not lock_held
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_fails_before_writing_without_lock(
+    mocker: MockerFixture,
+) -> None:
+    @asynccontextmanager
+    async def unavailable_lock(_session_id: str):
+        yield False
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=unavailable_lock)
+
+    with pytest.raises(RedisError, match="Could not serialize route update"):
+        await update_session_llm_route("session-1", "user-1", "codex", "credential-1")
+    db.update_chat_session_llm_route.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1914,6 +2002,8 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         sequence=7,
         model="claude-sonnet-4-6",
         routing_source="env",
+        llm_auth_provider=None,
+        llm_credential_id=None,
     )
     assert flushed.stamps_pending_save is False
 

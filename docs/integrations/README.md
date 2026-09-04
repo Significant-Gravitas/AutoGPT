@@ -494,13 +494,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
-| [All Quiet Create Incident](block-integrations/allquiet/incidents.md#all-quiet-create-incident) | Creates an incident in All Quiet and pages the on-call responder |
-| [All Quiet Get Incident](block-integrations/allquiet/incident_search.md#all-quiet-get-incident) | Fetches a single All Quiet incident by ID |
-| [All Quiet Get On Call](block-integrations/allquiet/on_call.md#all-quiet-get-on-call) | Looks up who is on call in All Quiet, now or at a given time |
-| [All Quiet Incident Trigger](block-integrations/allquiet/triggers.md#all-quiet-incident-trigger) | Triggers a graph when All Quiet posts an incident to this webhook |
-| [All Quiet List Incidents](block-integrations/allquiet/incident_search.md#all-quiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
-| [All Quiet List Teams](block-integrations/allquiet/teams.md#all-quiet-list-teams) | Lists All Quiet teams and their IDs |
-| [All Quiet Update Incident](block-integrations/allquiet/incidents.md#all-quiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [AllQuiet Create Incident](block-integrations/allquiet/incidents.md#allquiet-create-incident) | Creates an incident in All Quiet and pages the on-call responder |
+| [AllQuiet Get Incident](block-integrations/allquiet/incident_search.md#allquiet-get-incident) | Fetches a single All Quiet incident by ID |
+| [AllQuiet Get On Call](block-integrations/allquiet/on_call.md#allquiet-get-on-call) | Looks up who is on call in All Quiet, now or at a given time |
+| [AllQuiet Incident Trigger](block-integrations/allquiet/triggers.md#allquiet-incident-trigger) | Triggers a graph when All Quiet posts an incident to this webhook |
+| [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
+| [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
+| [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
@@ -519,31 +519,37 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Discussion Trigger](block-integrations/github/triggers.md#github-discussion-trigger) | This block triggers on GitHub Discussions events |
 | [Github Fork Repository](block-integrations/github/repo.md#github-fork-repository) | This block forks a GitHub repository to your account or an organization |
 | [Github Get CI Results](block-integrations/github/ci.md#github-get-ci-results) | This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs |
+| [Github Get Notification Thread](block-integrations/github/notifications.md#github-get-notification-thread) | This block fetches a single GitHub notification thread |
 | [Github Get PR Review Comments](block-integrations/github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
 | [Github Get Repository Info](block-integrations/github/repo.md#github-get-repository-info) | This block retrieves metadata about a GitHub repository |
 | [Github Get Repository Tree](block-integrations/github/repo_files.md#github-get-repository-tree) | This block lists the entire file tree of a GitHub repository recursively |
+| [Github Get User Info](block-integrations/github/users.md#github-get-user-info) | This block fetches information about a GitHub user, or about the authenticated user (yourself) if no username is given |
 | [Github Issues Trigger](block-integrations/github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |
 | [Github List Branches](block-integrations/github/repo_branches.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
 | [Github List Comments](block-integrations/github/issues.md#github-list-comments) | A block that retrieves all comments from a GitHub issue or pull request, including comment metadata and content |
 | [Github List Commits](block-integrations/github/commits.md#github-list-commits) | This block lists commits on a branch in a GitHub repository |
 | [Github List Discussions](block-integrations/github/repo.md#github-list-discussions) | This block lists recent discussions for a specified GitHub repository |
 | [Github List Issues](block-integrations/github/issues.md#github-list-issues) | A block that retrieves a list of issues from a GitHub repository with their titles and URLs |
-| [Github List PR Reviewers](block-integrations/github/pull_requests.md#github-list-pr-reviewers) | This block lists all reviewers for a specified GitHub pull request |
+| [Github List Notifications](block-integrations/github/notifications.md#github-list-notifications) | This block lists GitHub notifications for the authenticated user, e |
+| [Github List PR Reviewers](block-integrations/github/pull_requests.md#github-list-pr-reviewers) | This block lists the requested reviewers for a specified GitHub pull request, optionally including users who have already submitted a review |
 | [Github List PR Reviews](block-integrations/github/reviews.md#github-list-pr-reviews) | This block lists all reviews for a specified GitHub pull request |
 | [Github List Pull Requests](block-integrations/github/pull_requests.md#github-list-pull-requests) | This block lists all pull requests for a specified GitHub repository |
-| [Github List Releases](block-integrations/github/repo.md#github-list-releases) | This block lists all releases for a specified GitHub repository |
+| [Github List Releases](block-integrations/github/repo.md#github-list-releases) | This block lists releases for a specified GitHub repository, optionally filtered by type and date range |
 | [Github List Stargazers](block-integrations/github/repo.md#github-list-stargazers) | This block lists all users who have starred a specified GitHub repository |
 | [Github List Tags](block-integrations/github/repo.md#github-list-tags) | This block lists all tags for a specified GitHub repository |
 | [Github Make Branch](block-integrations/github/repo_branches.md#github-make-branch) | This block creates a new branch from a specified source branch |
 | [Github Make Issue](block-integrations/github/issues.md#github-make-issue) | A block that creates new issues on GitHub repositories with a title and body content |
 | [Github Make Pull Request](block-integrations/github/pull_requests.md#github-make-pull-request) | This block creates a new pull request on a specified GitHub repository |
+| [Github Mark Notification Thread As Done](block-integrations/github/notifications.md#github-mark-notification-thread-as-done) | This block marks a GitHub notification thread as done, removing it from the notification inbox |
+| [Github Mark Notification Thread As Read](block-integrations/github/notifications.md#github-mark-notification-thread-as-read) | This block marks a single GitHub notification thread as read |
+| [Github Mark Notifications As Read](block-integrations/github/notifications.md#github-mark-notifications-as-read) | This block marks all GitHub notifications as read, optionally scoped to a single repository |
 | [Github Merge Pull Request](block-integrations/github/pull_requests.md#github-merge-pull-request) | This block merges a pull request using merge, squash, or rebase |
 | [Github Multi File Commit](block-integrations/github/commits.md#github-multi-file-commit) | This block creates a single commit with multiple file upsert/delete operations using the Git Trees API |
 | [Github Pull Request Trigger](block-integrations/github/triggers.md#github-pull-request-trigger) | This block triggers on pull request events and outputs the event type and payload |
 | [Github Read File](block-integrations/github/repo_files.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
 | [Github Read Folder](block-integrations/github/repo_files.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
 | [Github Read Issue](block-integrations/github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
-| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
+| [Github Read Pull Request](block-integrations/github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, changes, and full raw object of a specified GitHub pull request |
 | [Github Release Trigger](block-integrations/github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
 | [Github Remove Label](block-integrations/github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](block-integrations/github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
@@ -553,6 +559,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Submit Pending Review](block-integrations/github/reviews.md#github-submit-pending-review) | This block submits a pending (draft) review on a GitHub pull request |
 | [Github Unassign Issue](block-integrations/github/issues.md#github-unassign-issue) | A block that removes a user's assignment from a GitHub issue |
 | [Github Unassign PR Reviewer](block-integrations/github/pull_requests.md#github-unassign-pr-reviewer) | This block unassigns a reviewer from a specified GitHub pull request |
+| [Github Unsubscribe Notification Thread](block-integrations/github/notifications.md#github-unsubscribe-notification-thread) | This block unsubscribes you from a GitHub notification thread, muting future notifications unless you are mentioned again |
 | [Github Update Check Run](block-integrations/github/checks.md#github-update-check-run) | Updates an existing check run in a GitHub repository |
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
 | [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |

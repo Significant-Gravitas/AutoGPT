@@ -594,13 +594,13 @@ def test_every_response_type_survives_the_relay():
     stays green — this has now happened twice (MODE_CHANGED, COMPACTION).
     Adding a ``ResponseType`` should force a decision here.
     """
-    import inspect
-    import re
-
     from backend.copilot.response_model import ResponseType
 
-    source = inspect.getsource(stream_registry._reconstruct_chunk)
-    mapped = set(re.findall(r"ResponseType\.(\w+)\.value", source))
+    mapped = {
+        member.name
+        for member in ResponseType
+        if member.value in stream_registry.CHUNK_TYPE_TO_CLASS
+    }
     expected = {m.name for m in ResponseType} - _UNRELAYED_RESPONSE_TYPES
 
     missing = sorted(expected - mapped)
@@ -608,3 +608,121 @@ def test_every_response_type_survives_the_relay():
         f"ResponseType(s) {missing} are not registered in _reconstruct_chunk — "
         "they would be dropped on the executor → Redis → rest_server relay"
     )
+
+
+class TestEveryPartSurvivesReplay:
+    """A part the registry cannot reconstruct never reaches the client.
+
+    Turns run in the executor and reach the browser by replay through this
+    registry, so a stream part is only real if ``_reconstruct_chunk`` knows
+    its type. ``StreamProviderFailure`` was emitted correctly, published
+    correctly, and dropped here with "Unknown chunk type" -- invisible except
+    as a warning in the logs.
+    """
+
+    def test_provider_failure_is_reconstructed(self) -> None:
+        from backend.copilot.response_model import ResponseType, StreamProviderFailure
+        from backend.copilot.stream_registry import _reconstruct_chunk
+
+        chunk = _reconstruct_chunk(
+            {
+                "type": ResponseType.PROVIDER_FAILURE.value,
+                "failure": {"kind": "usage_limit", "retryable": False},
+            }
+        )
+
+        assert isinstance(chunk, StreamProviderFailure)
+        assert chunk.failure["kind"] == "usage_limit"
+
+    def test_no_emittable_part_is_missing_from_the_registry(self) -> None:
+        # The map is hand-maintained, so a new part is only one forgotten
+        # line away from being emitted, published, and silently undelivered.
+        import inspect
+
+        from backend.copilot import response_model
+        from backend.copilot.response_model import StreamBaseResponse
+        from backend.copilot.stream_registry import CHUNK_TYPE_TO_CLASS
+
+        # Parts nothing can emit, so nothing can fail to deliver:
+        #   StreamHeartbeat rides as an SSE comment, never as a chunk.
+        #   StreamCursor is deprecated and no longer constructed anywhere.
+        #     (Its docstring says it is kept so older stored chunks can be
+        #     reconstructed, which the missing map entry does not actually
+        #     deliver -- harmless while nothing emits it, but not what the
+        #     docstring claims.)
+        never_published = {"StreamHeartbeat", "StreamCursor"}
+
+        missing = []
+        for name, cls in inspect.getmembers(response_model, inspect.isclass):
+            if not issubclass(cls, StreamBaseResponse) or cls is StreamBaseResponse:
+                continue
+            if name in never_published:
+                continue
+            field = cls.model_fields.get("type")
+            default = getattr(field, "default", None)
+            if default is None or not hasattr(default, "value"):
+                continue
+            if default.value not in CHUNK_TYPE_TO_CLASS:
+                missing.append(f"{name} ({default.value})")
+
+        assert not missing, f"parts that cannot survive replay: {missing}"
+
+
+class TestStreamEntries:
+    def test_resp2_list_shape_is_normalised(self):
+        raw = [("stream-key", [("1-0", {"data": "x"}), (b"2-0", {b"data": b"y"})])]
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"}), ("2-0", {"data": "y"})])
+        ]
+
+    def test_resp3_dict_shape_is_normalised(self):
+        raw = {b"stream-key": [("1-0", {"data": "x"})]}
+        assert stream_registry._stream_entries(raw) == [
+            ("stream-key", [("1-0", {"data": "x"})])
+        ]
+
+    def test_empty_and_none_yield_nothing(self):
+        assert stream_registry._stream_entries(None) == []
+        assert stream_registry._stream_entries([]) == []
+        assert stream_registry._stream_entries([("s", None)]) == [("s", [])]
+
+
+class _StreamFakeRedis(_FakeRedis):
+    """_FakeRedis plus the stream read get_active_session makes."""
+
+    def __init__(self, meta: dict[str, str], newest):
+        super().__init__(meta)
+        self._newest = newest
+        self.xrevrange = AsyncMock(return_value=newest)
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_reads_last_id_from_the_turn_stream():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1", "user_id": "user-1"},
+        newest=[(b"7-0", {b"data": b"{}"})],
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        session, last_id = await stream_registry.get_active_session(
+            "sess-1", user_id="user-1"
+        )
+
+    assert session is not None
+    assert session.turn_id == "turn-1"
+    assert last_id == "7-0"
+    fake_redis.xrevrange.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_active_session_falls_back_when_the_stream_is_empty():
+    fake_redis = _StreamFakeRedis(
+        {"status": "running", "turn_id": "turn-1"}, newest=None
+    )
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        _session, last_id = await stream_registry.get_active_session("sess-1")
+
+    assert last_id == "0-0"

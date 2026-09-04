@@ -22,6 +22,7 @@ import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
@@ -418,6 +419,11 @@ app.include_router(
     prefix="/api/executions",
 )
 app.include_router(
+    backend.api.features.admin.impersonation_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/copilot",
@@ -454,6 +460,7 @@ app.include_router(
 app.include_router(
     backend.api.features.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
 app.include_router(home_routes.router, prefix="/api")

@@ -44,6 +44,8 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.integrations.credentials_store import is_system_credential
+from backend.monitoring.instrumentation import record_graph_execution
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -1193,7 +1195,97 @@ async def _resolve_expert_execution_tenancy(
     return await get_experts_db().resolve_private_expert_tenancy(user_id, expert_id)
 
 
+async def _enforce_expert_credential_scope(
+    user_id: str,
+    expert_id: str,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]],
+) -> None:
+    """Reject a run that would use credentials this expert was not granted.
+
+    The gate lives here rather than at each caller because every expert-attributed
+    run funnels through ``add_graph_execution`` — schedules, webhook triggers and
+    copilot tool runs alike. Enforcing at creation also means a revoke takes effect
+    on the next run instead of only on newly created schedules.
+
+    System credentials (platform LLM keys) carry no grant and are always allowed;
+    filtering them would stop every expert from running an LLM block.
+    """
+    if not graph_credentials_inputs:
+        return
+    allowed = set(
+        await get_experts_db().expert_allowed_credential_ids(user_id, expert_id)
+    )
+    denied = sorted(
+        {
+            meta.id
+            for meta in graph_credentials_inputs.values()
+            if not is_system_credential(meta.id) and meta.id not in allowed
+        }
+    )
+    if denied:
+        raise ValueError(
+            f"Expert #{expert_id} has not been given access to credentials "
+            f"{', '.join(denied)}. Grant them on the expert's page to let it "
+            f"run this workflow."
+        )
+
+
 async def add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: Optional[GraphInput] = None,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+) -> GraphExecutionWithNodes:
+    """Add a graph execution to the queue, recording the outcome.
+
+    Thin wrapper over :func:`_add_graph_execution` so that every caller of
+    this shared path, not only the legacy v1 route, feeds
+    ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
+    not an execute outcome, and is not counted.
+    """
+    try:
+        result = await _add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            execution_context=execution_context,
+            graph_exec_id=graph_exec_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            bypass_paywall=bypass_paywall,
+        )
+    except GraphValidationError:
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        raise
+    except UserPaywalledError:
+        raise
+    except Exception:
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        raise
+    record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+    return result
+
+
+async def _add_graph_execution(
     graph_id: str,
     user_id: str,
     inputs: Optional[GraphInput] = None,
@@ -1331,6 +1423,9 @@ async def add_graph_execution(
                 user_id, expert_id
             )
             await _enforce_expert_run_budget(user_id, expert_id)
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, graph_credentials_inputs
+            )
 
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None

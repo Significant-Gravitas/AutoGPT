@@ -17,7 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -34,7 +34,7 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import hash_compare_and_set
+from backend.data.redis_helpers import as_str, hash_compare_and_set
 
 from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX
@@ -50,6 +50,7 @@ from .response_model import (
     StreamHeartbeat,
     StreamModeChanged,
     StreamPendingDrained,
+    StreamProviderFailure,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -68,6 +69,40 @@ from .response_model import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 _notification_bus = AsyncRedisNotificationEventBus()
+
+StreamEntries = list[tuple[str, list[tuple[str, dict[str, str]]]]]
+
+
+def _as_text(value: bytes | str | None) -> str:
+    return as_str(value) or ""
+
+
+def _stream_entries(
+    messages: Mapping[Any, Any] | Iterable[Any] | None,
+) -> StreamEntries:
+    """Normalise an XREAD result to ``[(stream, [(id, {field: value})])]``.
+
+    RESP2 answers with a list of ``(stream, entries)`` pairs and RESP3 with a
+    ``{stream: entries}`` mapping; the client here decodes responses, but the
+    library types still allow ``bytes`` and ``None``, so every id, field and
+    value is coerced to ``str`` once, up front.
+    """
+    if not messages:
+        return []
+    pairs = messages.items() if isinstance(messages, Mapping) else messages
+    entries: StreamEntries = []
+    for stream, raw_entries in pairs:
+        decoded: list[tuple[str, dict[str, str]]] = []
+        for msg_id, fields in raw_entries or ():
+            decoded.append(
+                (
+                    _as_text(msg_id),
+                    {_as_text(k): _as_text(v) for k, v in (fields or {}).items()},
+                )
+            )
+        entries.append((_as_text(stream), decoded))
+    return entries
+
 
 # Track background tasks for this pod (just the asyncio.Task reference, not subscribers)
 _local_sessions: dict[str, asyncio.Task] = {}
@@ -544,20 +579,19 @@ async def subscribe_to_session(
 
     replayed_count = 0
     replay_last_id = last_message_id
-    if messages:
-        for _stream_name, stream_messages in messages:
-            for msg_id, msg_data in stream_messages:
-                replay_last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
-                # Note: Redis client uses decode_responses=True, so keys are strings
-                if "data" in msg_data:
-                    try:
-                        chunk_data = orjson.loads(msg_data["data"])
-                        chunk = _reconstruct_chunk(chunk_data)
-                        if chunk:
-                            await subscriber_queue.put(chunk)
-                            replayed_count += 1
-                    except Exception as e:
-                        logger.warning(f"Failed to replay message: {e}")
+    for _stream_name, stream_messages in _stream_entries(messages):
+        for msg_id, msg_data in stream_messages:
+            replay_last_id = msg_id
+            # Note: Redis client uses decode_responses=True, so keys are strings
+            if "data" in msg_data:
+                try:
+                    chunk_data = orjson.loads(msg_data["data"])
+                    chunk = _reconstruct_chunk(chunk_data)
+                    if chunk:
+                        await subscriber_queue.put(chunk)
+                        replayed_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to replay message: {e}")
 
     logger.info(
         f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
@@ -654,13 +688,13 @@ async def _stream_listener(
             # Short timeout prevents frontend timeout (12s) while waiting for heartbeats (15s)
             xread_start = time.perf_counter()
             xread_count += 1
-            messages = await redis.xread(
-                {stream_key: current_id}, block=5000, count=100
+            entries = _stream_entries(
+                await redis.xread({stream_key: current_id}, block=5000, count=100)
             )
             xread_time = (time.perf_counter() - xread_start) * 1000
 
-            if messages:
-                msg_count = sum(len(msgs) for _, msgs in messages)
+            if entries:
+                msg_count = sum(len(msgs) for _, msgs in entries)
                 logger.info(
                     f"[TIMING] xread #{xread_count} returned {msg_count} messages in {xread_time:.1f}ms",
                     extra={
@@ -686,7 +720,7 @@ async def _stream_listener(
                     },
                 )
 
-            if not messages:
+            if not entries:
                 # Timeout - check if session is still running
                 meta_key = _get_session_meta_key(session_id)
                 status = await redis.hget(meta_key, "status")  # type: ignore[misc]
@@ -715,9 +749,9 @@ async def _stream_listener(
                     )
                 continue
 
-            for _stream_name, stream_messages in messages:
+            for _stream_name, stream_messages in entries:
                 for msg_id, msg_data in stream_messages:
-                    current_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
+                    current_id = msg_id
 
                     if "data" not in msg_data:
                         continue
@@ -1131,14 +1165,44 @@ async def get_active_session(
     stream_key = _get_turn_stream_key(session.turn_id)
     last_id = "0-0"
     try:
-        messages = await redis.xrevrange(stream_key, count=1)
-        if messages:
-            msg_id = messages[0][0]
-            last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
+        newest = await redis.xrevrange(stream_key, count=1)
+        if newest:
+            last_id = _as_text(newest[0][0]) or last_id
     except Exception as e:
         logger.warning(f"Failed to get last message ID: {e}")
 
     return session, last_id
+
+
+# Every stream part the registry can rebuild on replay.
+#
+# Turns run in the executor and reach the browser by replay, so a part
+# missing from this map is emitted, published, and then silently dropped --
+# visible only as an "Unknown chunk type" warning. Add new parts here.
+CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
+    ResponseType.START.value: StreamStart,
+    ResponseType.FINISH.value: StreamFinish,
+    ResponseType.START_STEP.value: StreamStartStep,
+    ResponseType.FINISH_STEP.value: StreamFinishStep,
+    ResponseType.TEXT_START.value: StreamTextStart,
+    ResponseType.TEXT_DELTA.value: StreamTextDelta,
+    ResponseType.TEXT_END.value: StreamTextEnd,
+    ResponseType.REASONING_START.value: StreamReasoningStart,
+    ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
+    ResponseType.REASONING_END.value: StreamReasoningEnd,
+    ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
+    ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
+    ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
+    ResponseType.ERROR.value: StreamError,
+    ResponseType.USAGE.value: StreamUsage,
+    ResponseType.HEARTBEAT.value: StreamHeartbeat,
+    ResponseType.STATUS.value: StreamStatus,
+    ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
+    ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
+    ResponseType.MODE_CHANGED.value: StreamModeChanged,
+    ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
+    ResponseType.COMPACTION.value: StreamCompactionProgress,
+}
 
 
 def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
@@ -1150,33 +1214,8 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     Returns:
         Reconstructed response object, or None if unknown type
     """
-    # Map response types to their corresponding classes
-    type_to_class: dict[str, type[StreamBaseResponse]] = {
-        ResponseType.START.value: StreamStart,
-        ResponseType.FINISH.value: StreamFinish,
-        ResponseType.START_STEP.value: StreamStartStep,
-        ResponseType.FINISH_STEP.value: StreamFinishStep,
-        ResponseType.TEXT_START.value: StreamTextStart,
-        ResponseType.TEXT_DELTA.value: StreamTextDelta,
-        ResponseType.TEXT_END.value: StreamTextEnd,
-        ResponseType.REASONING_START.value: StreamReasoningStart,
-        ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
-        ResponseType.REASONING_END.value: StreamReasoningEnd,
-        ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
-        ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
-        ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
-        ResponseType.ERROR.value: StreamError,
-        ResponseType.USAGE.value: StreamUsage,
-        ResponseType.HEARTBEAT.value: StreamHeartbeat,
-        ResponseType.STATUS.value: StreamStatus,
-        ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
-        ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
-        ResponseType.MODE_CHANGED.value: StreamModeChanged,
-        ResponseType.COMPACTION.value: StreamCompactionProgress,
-    }
-
-    chunk_type = chunk_data.get("type")
-    chunk_class = type_to_class.get(chunk_type)  # type: ignore[arg-type]
+    chunk_type = chunk_data.get("type", "")
+    chunk_class = CHUNK_TYPE_TO_CLASS.get(chunk_type)
 
     if chunk_class is None:
         logger.warning(f"Unknown chunk type: {chunk_type}")
