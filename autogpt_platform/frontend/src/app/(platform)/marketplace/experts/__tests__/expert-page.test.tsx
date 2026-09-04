@@ -283,24 +283,28 @@ describe("Marketplace expert page", () => {
     expect(screen.getAllByText("Maria joined your team")).toHaveLength(1);
   });
 
-  test("shows a coming-soon page to signed-out visitors without fetching", async () => {
+  test("shows the profile to signed-out visitors with a way to sign up", async () => {
     mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
-    let templatesRequested = false;
+    let rosterRequested = false;
     server.use(
-      getListExpertTemplatesMockHandler(() => {
-        templatesRequested = true;
-        return [mariaTemplate];
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler(() => {
+        rosterRequested = true;
+        return [];
       }),
     );
 
     renderPage();
 
-    expect(await screen.findByText("Coming soon")).toBeDefined();
     expect(
-      screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
-    ).toBe("/login");
-    expect(screen.queryByRole("heading", { name: "Maria" })).toBeNull();
-    expect(templatesRequested).toBe(false);
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Get started" }).getAttribute("href"),
+    ).toBe("/signup?next=%2Fmarketplace%2Fexperts%2Ftemplate-maria");
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+    expect(screen.queryByText("Coming soon")).toBeNull();
+    expect(rosterRequested).toBe(false);
   });
 
   test("shows the coming-soon page when experts are not enabled yet", async () => {
@@ -309,7 +313,7 @@ describe("Marketplace expert page", () => {
     renderPage();
 
     expect(await screen.findByText("Coming soon")).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Maria" })).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Back to marketplace" })

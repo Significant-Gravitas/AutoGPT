@@ -15,17 +15,35 @@ const SECONDARY_CLASS =
 interface Props {
   expert: Expert;
   hiredExpert: Expert | null;
+  isLoggedIn: boolean;
   isHiring: boolean;
   onHire: () => void;
 }
 
-/** The page's one call to action, sitting in the header beside the name. */
+/** The page's one call to action, sitting in the header beside the name.
+ *  Signed-out visitors get a sign-up prompt that brings them back here. */
 export function ExpertHireActions({
   expert,
   hiredExpert,
+  isLoggedIn,
   isHiring,
   onHire,
 }: Props) {
+  if (!isLoggedIn) {
+    const next = encodeURIComponent(`/marketplace/experts/${expert.id}`);
+    return (
+      <Button
+        as="NextLink"
+        href={`/signup?next=${next}`}
+        variant="primary"
+        size="small"
+        className="w-full sm:w-auto"
+      >
+        Get started
+      </Button>
+    );
+  }
+
   if (hiredExpert) {
     return (
       <div className="flex flex-wrap items-center gap-3">

@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
-import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
@@ -36,9 +35,16 @@ function BackToMarketplaceLink() {
 
 export default function MarketplaceExpertPage() {
   const { expertId } = useParams<{ expertId: string }>();
-  const { isLoggedIn } = useAuth();
-  const { expert, hiredExpert, canHire, isReady, isLoading, isError, refetch } =
-    useExpertPage({ expertId });
+  const {
+    expert,
+    hiredExpert,
+    isLoggedIn,
+    isComingSoon,
+    isReady,
+    isLoading,
+    isError,
+    refetch,
+  } = useExpertPage({ expertId });
   const {
     hire,
     isHiring,
@@ -71,10 +77,10 @@ export default function MarketplaceExpertPage() {
     );
   }
 
-  if (!canHire) {
+  if (isComingSoon) {
     return (
       <main className={MAIN_CLASS}>
-        <ExpertComingSoon isLoggedIn={isLoggedIn} />
+        <ExpertComingSoon />
       </main>
     );
   }
@@ -108,6 +114,7 @@ export default function MarketplaceExpertPage() {
           <ExpertHireActions
             expert={expert}
             hiredExpert={hiredExpert}
+            isLoggedIn={isLoggedIn}
             isHiring={isHiring}
             onHire={hire}
           />

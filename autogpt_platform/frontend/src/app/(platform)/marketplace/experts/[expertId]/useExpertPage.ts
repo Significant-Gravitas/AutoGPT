@@ -11,15 +11,18 @@ interface Args {
 }
 
 /** The template behind a marketplace expert page, plus whether this viewer
- *  can hire it. Templates only exist behind a signed-in session and the
- *  experts flag; without both, the page shows its coming-soon face. */
+ *  can hire it. Templates are public, so a signed-out visitor sees the
+ *  profile with a sign-up prompt; the hired roster and the hire itself need
+ *  a session and the experts flag. Signed in without the flag, the page
+ *  shows its coming-soon face. */
 export function useExpertPage({ expertId }: Args) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const canHire = isLoggedIn && Boolean(enabled);
+  const canView = !isUserLoading && (!isLoggedIn || canHire);
 
   const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[], enabled: canHire },
+    query: { select: (x) => x.data as Expert[], enabled: canView },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: canHire },
@@ -36,9 +39,10 @@ export function useExpertPage({ expertId }: Args) {
   return {
     expert,
     hiredExpert,
-    canHire,
-    isReady: ready,
-    isLoading: canHire && templatesQuery.isLoading,
+    isLoggedIn,
+    isComingSoon: isLoggedIn && !enabled,
+    isReady: !isUserLoading && (!isLoggedIn || ready),
+    isLoading: canView && templatesQuery.isLoading,
     isError: templatesQuery.isError,
     refetch: templatesQuery.refetch,
   };

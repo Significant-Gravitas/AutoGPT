@@ -6237,7 +6237,7 @@
     },
     "/api/experts/templates": {
       "get": {
-        "tags": ["v2", "experts", "experts", "private"],
+        "tags": ["v2", "experts", "experts"],
         "summary": "List Expert Templates",
         "operationId": "list_expert_templates",
         "responses": {
@@ -6252,12 +6252,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/experts/{expert_id}": {
