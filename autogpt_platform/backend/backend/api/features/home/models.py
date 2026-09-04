@@ -123,11 +123,12 @@ class HomeWeekSummary(BaseModel):
 
 
 class HomeWorkActor(BaseModel):
-    # "expert" = a hired expert did it, "autopilot" = the default copilot
-    # assistant, "agent" = a graph run with no expert attribution.
-    kind: Literal["expert", "autopilot", "agent"]
+    # "expert" = a hired expert did it, "workflow" = a library workflow ran on
+    # its own, "autopilot" = the default copilot assistant.
+    kind: Literal["expert", "workflow", "autopilot"]
     name: str
     expert: HomeExpert | None = None
+    link: str | None = None
 
 
 class HomeRecentWorkItem(BaseModel):
@@ -139,19 +140,28 @@ class HomeRecentWorkItem(BaseModel):
     provider: str | None = None
     file_id: str | None = None
     mime_type: str | None = None
+    # The copilot thread the item came out of, when there was one.
+    session_title: str | None = None
+    link: str | None = None
 
 
 class HomeRecentWorkGroup(BaseModel):
+    """Everything one actor did this week: the runs it finished and the
+    durable things it produced."""
+
     actor: HomeWorkActor
-    session_id: str | None = None
-    session_title: str | None = None
-    link: str | None = None
     latest_at: datetime
-    items: list[HomeRecentWorkItem]
+    runs: list[HomeBriefingOutcome] = Field(default_factory=list)
+    items: list[HomeRecentWorkItem] = Field(default_factory=list)
+    # Runs and items past the per-group caps, so the group can say how much
+    # more there was without listing it.
     more_count: int = 0
 
 
 class HomeRecentWork(BaseModel):
+    window_started_at: datetime | None = None
+    completed_count: int = 0
+    failed_count: int = 0
     groups: list[HomeRecentWorkGroup] = Field(default_factory=list)
     total_count: int = 0
 
