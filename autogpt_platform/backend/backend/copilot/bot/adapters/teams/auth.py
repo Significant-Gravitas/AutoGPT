@@ -28,7 +28,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-import httpx
+import httpx2 as httpx
 import jwt
 
 from . import config

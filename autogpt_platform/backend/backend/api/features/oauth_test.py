@@ -19,7 +19,7 @@ import secrets
 import uuid
 from typing import AsyncGenerator
 
-import httpx
+import httpx2 as httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith

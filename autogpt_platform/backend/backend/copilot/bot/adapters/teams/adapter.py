@@ -24,7 +24,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-import httpx
+import httpx2 as httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 

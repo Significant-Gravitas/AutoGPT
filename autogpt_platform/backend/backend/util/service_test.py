@@ -6,7 +6,7 @@ from functools import cached_property
 from typing import Any, Protocol, cast
 from unittest.mock import Mock
 
-import httpx
+import httpx2 as httpx
 import orjson
 import pytest
 from fastapi import FastAPI

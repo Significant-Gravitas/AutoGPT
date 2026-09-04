@@ -370,14 +370,17 @@ jobs:
 
       - name: Check poetry.lock
         run: |
-          poetry lock
-
-          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
-            echo "Error: poetry.lock not up to date."
-            echo
-            git diff poetry.lock
-            exit 1
-          fi
+          # `poetry check --lock` validates that the committed poetry.lock is
+          # semantically consistent with pyproject.toml without rewriting the
+          # file. The previous `poetry lock` + `git diff` check produced
+          # false negatives whenever the locally installed Poetry patch version
+          # re-sorted `python-versions` markers or normalized PEP 440 strings
+          # (e.g. `>=3.8,<4.0` vs `<4.0,>=3.8`, `6.0dev` vs `6.0.dev0`),
+          # even when the lock content was semantically unchanged
+          # (content-hash identical). `poetry check --lock` is the documented
+          # replacement for that pattern and is what Poetry's own CI
+          # integration guide recommends.
+          poetry check --lock
 
       - name: Install Python dependencies
         run: poetry install

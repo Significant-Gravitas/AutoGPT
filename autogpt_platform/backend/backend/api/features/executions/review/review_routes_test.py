@@ -1,7 +1,7 @@
 import datetime
 from typing import AsyncGenerator
 
-import httpx
+import httpx2 as httpx
 import pytest
 import pytest_asyncio
 import pytest_mock

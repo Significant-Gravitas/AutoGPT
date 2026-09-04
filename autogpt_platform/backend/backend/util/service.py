@@ -26,7 +26,12 @@ from typing import (
     overload,
 )
 
-import httpx
+try:
+    import httpx2 as httpx
+    import httpx2  # noqa: F401 — keep the bare module name in scope for pyright
+except ImportError:
+    import httpx
+
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
@@ -589,10 +594,10 @@ def get_service_client(
             self._sync_clients = {}  # For sync clients (no event loop concept)
 
         def _create_sync_client(self) -> httpx.Client:
-            return httpx.Client(
+            return httpx2.Client(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
@@ -600,10 +605,10 @@ def get_service_client(
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
-            return httpx.AsyncClient(
+            return httpx2.AsyncClient(
                 base_url=self.base_url,
                 timeout=call_timeout,
-                limits=httpx.Limits(
+                limits=httpx2.Limits(
                     max_keepalive_connections=200,  # 10x default for async concurrent calls
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
