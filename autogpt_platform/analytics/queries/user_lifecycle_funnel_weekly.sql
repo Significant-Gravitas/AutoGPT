@@ -24,7 +24,8 @@
 --   created_schedule        BIGINT  Created at least one schedule (any time)
 --   used_expert             BIGINT  Talked to or ran an expert (any time)
 --   purchased               BIGINT  Bought credits or a subscription (any time)
---   retained_w4             BIGINT  Did a task in the last 28 days (cohort >= 4 weeks old)
+--   retained_w4             BIGINT  Did a task in their fourth week after signup
+--                                   (days 21-27; cohort >= 4 weeks old)
 --   pct_onboarded, pct_first_task_7d, pct_activated_14d, pct_connected_integration,
 --   pct_created_schedule, pct_used_expert, pct_purchased, pct_retained_w4
 --                                                       FLOAT  share of signups
@@ -49,7 +50,7 @@ WITH cohorts AS (
     COUNT(*) FILTER (WHERE expert_turns_total > 0 OR expert_workflow_runs_total > 0)
                                                                          AS used_expert,
     COUNT(*) FILTER (WHERE purchases_total > 0)                          AS purchased,
-    COUNT(*) FILTER (WHERE tasks_28d > 0)                                AS retained_w4,
+    COUNT(*) FILTER (WHERE tasks_week_4 > 0)                             AS retained_w4,
     MIN(signup_at)                                                       AS cohort_started_at
   FROM analytics.user_lifecycle
   WHERE signup_at >= CURRENT_DATE - INTERVAL '180 days'
