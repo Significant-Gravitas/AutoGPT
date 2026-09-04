@@ -58,7 +58,10 @@ class JUnitResult(unittest.TextTestResult):
         super().addError(test, err)
 
     def addSkip(self, test, reason):
-        self._outcomes[id(test)] = ("skipped", reason)
+        if id(test) in self._started_at:
+            self._outcomes[id(test)] = ("skipped", reason)
+        else:
+            self._append_record(test, 0.0, "skipped", reason)
         super().addSkip(test, reason)
 
     def addExpectedFailure(self, test, err):
