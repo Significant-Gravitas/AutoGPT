@@ -7,6 +7,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import type { HomeRecentWorkItemCategory } from "@/app/api/__generated__/models/homeRecentWorkItemCategory";
 import type { HomeWorkActorKind } from "@/app/api/__generated__/models/homeWorkActorKind";
 
@@ -44,4 +45,20 @@ export function formatWorkTime(
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+export function formatGroupCounts(group: HomeRecentWorkGroup): string {
+  return [
+    countLabel(group.run_count ?? 0, "run"),
+    countLabel(group.file_count ?? 0, "file"),
+    countLabel(group.integration_count ?? 0, "action"),
+    countLabel(group.schedule_count ?? 0, "schedule"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function countLabel(count: number, noun: string): string | null {
+  if (count === 0) return null;
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
