@@ -21589,6 +21589,23 @@
       },
       "HomeRecentWork": {
         "properties": {
+          "window_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Window Started At"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count",
+            "default": 0
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "default": 0
+          },
           "groups": {
             "items": { "$ref": "#/components/schemas/HomeRecentWorkGroup" },
             "type": "array",
@@ -21606,22 +21623,15 @@
       "HomeRecentWorkGroup": {
         "properties": {
           "actor": { "$ref": "#/components/schemas/HomeWorkActor" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "session_title": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Title"
-          },
-          "link": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Link"
-          },
           "latest_at": {
             "type": "string",
             "format": "date-time",
             "title": "Latest At"
+          },
+          "runs": {
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
+            "type": "array",
+            "title": "Runs"
           },
           "items": {
             "items": { "$ref": "#/components/schemas/HomeRecentWorkItem" },
@@ -21635,8 +21645,9 @@
           }
         },
         "type": "object",
-        "required": ["actor", "latest_at", "items"],
-        "title": "HomeRecentWorkGroup"
+        "required": ["actor", "latest_at"],
+        "title": "HomeRecentWorkGroup",
+        "description": "Everything one actor did this week: the runs it finished and the\ndurable things it produced."
       },
       "HomeRecentWorkItem": {
         "properties": {
@@ -21664,6 +21675,14 @@
           "mime_type": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Mime Type"
+          },
+          "session_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Title"
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
           }
         },
         "type": "object",
@@ -21754,7 +21773,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["expert", "autopilot", "agent"],
+            "enum": ["expert", "workflow", "autopilot"],
             "title": "Kind"
           },
           "name": { "type": "string", "title": "Name" },
@@ -21763,6 +21782,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Link"
           }
         },
         "type": "object",

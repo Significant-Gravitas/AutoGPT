@@ -7,9 +7,10 @@ import re
 import secrets
 import time
 from abc import ABC
+from collections.abc import Iterable
 from enum import Enum
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, Iterable, List, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
 
 import anthropic
 import openai
@@ -89,6 +90,11 @@ LLMProviderName = Literal[
     ProviderName.V0,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
+# Providers whose credential use is a model call rather than an action taken
+# on the user's behalf; activity feeds leave these out.
+LLM_PROVIDER_NAMES: frozenset[str] = frozenset(
+    provider.value for provider in get_args(LLMProviderName)
+)
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",
@@ -117,9 +123,9 @@ def AICredentialsField() -> AICredentials:
 
 class LLMResponse(BaseModel):
     raw_response: Any
-    prompt: List[Any]
+    prompt: list[Any]
     response: str
-    tool_calls: Optional[List[ToolContentBlock]] | None
+    tool_calls: list[ToolContentBlock] | None
     prompt_tokens: int
     completion_tokens: int
     cache_read_tokens: int = 0
@@ -1325,7 +1331,7 @@ class AIConversationBlock(AIBlockBase):
             default="",
             advanced=False,
         )
-        messages: List[Any] = SchemaField(
+        messages: list[Any] = SchemaField(
             description="List of messages in the conversation.",
         )
         model: LLMModel = SchemaField(

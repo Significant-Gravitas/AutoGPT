@@ -46,7 +46,7 @@ def compose_briefing(
         )
 
     generated_at = as_utc(persisted.generated_at)
-    anchored = [_outcome(item, expert_by_id) for item in persisted.run_items]
+    anchored = [to_outcome(item, expert_by_id) for item in persisted.run_items]
     anchored_ids = {outcome.id for outcome in anchored}
     fresh = [
         outcome
@@ -143,6 +143,21 @@ def _live_outcomes(
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
 ) -> list[HomeBriefingOutcome]:
+    return [
+        to_outcome(item, expert_by_id)
+        for item in live_run_items(executions, since, now, expert_by_id, agent_by_graph)
+    ]
+
+
+def live_run_items(
+    executions: list[GraphExecutionMeta],
+    since: datetime,
+    now: datetime,
+    expert_by_id: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef],
+) -> list[BriefingRunItem]:
+    """Every run that reached a terminal state inside the window, failures
+    first and most recent first within each status."""
     terminal = [
         execution
         for execution in executions
@@ -157,8 +172,7 @@ def _live_outcomes(
         )
     )
     return [
-        _outcome(_run_item(execution, expert_by_id, agent_by_graph), expert_by_id)
-        for execution in terminal
+        _run_item(execution, expert_by_id, agent_by_graph) for execution in terminal
     ]
 
 
@@ -176,7 +190,7 @@ def _run_item(
     )
 
 
-def _outcome(
+def to_outcome(
     item: BriefingRunItem, expert_by_id: dict[str, Expert]
 ) -> HomeBriefingOutcome:
     failed = item.status == "FAILED"
