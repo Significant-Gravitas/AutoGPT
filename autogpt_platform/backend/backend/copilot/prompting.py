@@ -451,15 +451,17 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 
 # Prepended to the user's message on voice turns only. A voice turn is
-# someone sitting in silence: the reply's first token is a median 13.9 s
-# away, and longer when it opens with a tool call, so the model has to say
-# something before it starts working. Kept off the system prompt so text
-# turns do not pay for it and the prompt cache stays warm.
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
 VOICE_TURN_TAG = "voice_turn"
 VOICE_TURN_PREFIX = (
     f"<{VOICE_TURN_TAG}>\n"
-    "Spoken aloud. Acknowledge in one short sentence before any tool call.\n"
-    f"</{VOICE_TURN_TAG}>\n\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
 )
 
 
