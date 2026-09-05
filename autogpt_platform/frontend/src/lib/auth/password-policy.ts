@@ -1,2 +1,0 @@
-export const AUTH_PASSWORD_MIN_LENGTH = 12;
-export const AUTH_PASSWORD_BCRYPT_COST = 10;
