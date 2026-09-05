@@ -223,6 +223,12 @@ def get_parallel_tool_calls_param(
     return parallel_tool_calls
 
 
+def remaining_attempt_timeout(
+    deadline: float, per_attempt_timeout: float, now: float
+) -> float:
+    return min(deadline - now, per_attempt_timeout)
+
+
 async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LLMModel,
@@ -233,9 +239,13 @@ async def llm_call(
     ollama_host: str = "localhost:11434",
     parallel_tool_calls=None,
     compress_prompt_to_fit: bool = True,
+    timeout_seconds: float | None = None,
 ) -> LLMResponse:
     """Public LLM-call entry point. Wraps the provider dispatch in a hard timeout
     so that no single request can park an executor thread indefinitely."""
+    timeout = (
+        LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
     try:
         return await asyncio.wait_for(
             _llm_call(
@@ -249,12 +259,12 @@ async def llm_call(
                 parallel_tool_calls=parallel_tool_calls,
                 compress_prompt_to_fit=compress_prompt_to_fit,
             ),
-            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except asyncio.TimeoutError as e:
         raise TimeoutError(
             f"LLM request to {llm_model.metadata.provider}/{llm_model.value} "
-            f"exceeded {LLM_REQUEST_TIMEOUT_SECONDS}s and was cancelled."
+            f"exceeded {timeout}s and was cancelled."
         ) from e
 
 
@@ -513,6 +523,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         compress_prompt_to_fit: bool = True,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         """
         Test mocks work only on class functions, this wraps the llm_call function
@@ -528,6 +539,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             tools=tools,
             ollama_host=ollama_host,
             compress_prompt_to_fit=compress_prompt_to_fit,
+            timeout_seconds=timeout_seconds,
         )
 
     async def run(
@@ -575,8 +587,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         error_feedback_message = ""
         llm_model = input_data.model
         total_provider_cost: float | None = None
+        loop = asyncio.get_running_loop()
+        per_attempt_timeout = LLM_REQUEST_TIMEOUT_SECONDS
+        deadline = loop.time() + per_attempt_timeout
 
         for retry_count in range(input_data.retry):
+            attempt_timeout = remaining_attempt_timeout(
+                deadline, per_attempt_timeout, loop.time()
+            )
+            if attempt_timeout <= 0:
+                break
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
@@ -590,6 +610,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
+                    timeout_seconds=attempt_timeout,
                 )
                 response_text = llm_response.response
                 # Accumulate token counts and provider_cost for every attempt

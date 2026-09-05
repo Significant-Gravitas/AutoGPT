@@ -1550,6 +1550,79 @@ class TestLLMRequestTimeout:
             call_count["n"] == 1
         ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
 
+    def test_remaining_attempt_timeout_uses_leftover_budget(self):
+        per_attempt = 10.0
+        deadline = 100.0
+        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=90.0) == 10.0
+        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=94.0) == 6.0
+        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=100.0) == 0.0
+
+    @pytest.mark.asyncio
+    async def test_structured_block_retries_use_remaining_deadline(self, monkeypatch):
+        """A slow-then-malformed first attempt must not get a fresh full timeout.
+
+        The retry loop shares one deadline: each attempt is
+        ``min(remaining, per_attempt_timeout)``.
+        """
+        per_attempt = 0.5
+        first_delay = 0.12
+        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", per_attempt)
+
+        captured_timeouts: list[float] = []
+        real_wait_for = asyncio.wait_for
+
+        async def tracking_wait_for(aw, timeout: float, **kwargs):
+            captured_timeouts.append(timeout)
+            return await real_wait_for(aw, timeout=timeout)
+
+        monkeypatch.setattr(llm.asyncio, "wait_for", tracking_wait_for)
+
+        call_n = {"n": 0}
+
+        def _llm_response(text: str) -> llm.LLMResponse:
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response=text,
+                tool_calls=None,
+                prompt_tokens=1,
+                completion_tokens=1,
+                reasoning=None,
+            )
+
+        async def fake_provider_call(*args, **kwargs):
+            call_n["n"] += 1
+            if call_n["n"] == 1:
+                await asyncio.sleep(first_delay)
+                return _llm_response(
+                    '<json_output id="test123456">{"wrong": "key"}</json_output>'
+                )
+            return _llm_response(
+                '<json_output id="test123456">{"key": "value"}</json_output>'
+            )
+
+        monkeypatch.setattr(llm, "_llm_call", fake_provider_call)
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Hello",
+            expected_format={"key": "value"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=3,
+        )
+
+        with patch("secrets.token_hex", return_value="test123456"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert call_n["n"] == 2
+        assert len(captured_timeouts) == 2
+        assert captured_timeouts[0] <= per_attempt
+        assert captured_timeouts[1] < captured_timeouts[0]
+        assert captured_timeouts[1] <= captured_timeouts[0] - first_delay + 0.05
+        assert captured_timeouts[1] > 0
+
 
 class TestLLMModelMissingHandler:
     """``LLMModel._missing_`` resolves provider-prefixed slugs back to enum
