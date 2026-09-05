@@ -501,6 +501,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Incidents](block-integrations/allquiet/incident_search.md#allquiet-list-incidents) | Searches All Quiet incidents by status, severity, team or text |
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
+| [Create Desktop Sandbox](block-integrations/desktop/sandbox.md#create-desktop-sandbox) | Creates (or reconnects to) an interactive cloud desktop with a live, embeddable stream and a persistent mounted workspace |
+| [Desktop Action](block-integrations/desktop/actions.md#desktop-action) | Performs a computer-use action (mouse, keyboard, scroll, screenshot) on an interactive desktop sandbox |
+| [Desktop Command](block-integrations/desktop/command.md#desktop-command) | Runs a shell command inside an interactive desktop sandbox (DISPLAY is set, so GUI apps can be launched) |
+| [Desktop File](block-integrations/desktop/files.md#desktop-file) | Reads, writes, or lists files inside an interactive desktop sandbox, including its persistent workspace |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
@@ -566,6 +570,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
+| [Stop Desktop Sandbox](block-integrations/desktop/sandbox.md#stop-desktop-sandbox) | Suspends (default) or destroys an interactive desktop sandbox |
 
 ## Media Generation
 
