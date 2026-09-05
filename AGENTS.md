@@ -58,15 +58,16 @@ Scopes: - platform - platform/library - platform/marketplace - backend - backend
 
 ## Commit attribution
 
-For every commit you create in this repository, append a `Co-authored-by:` trailer identifying the large language model and agent platform:
+For every commit you create in this repository, ensure the commit message includes a `Co-authored-by:` trailer identifying the large language model and agent platform:
 
 ```text
 Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
 ```
 
+- Your harness (e.g. Claude Code) may add this trailer automatically. Do not add a duplicate; ensure the resulting trailer identifies both the model and platform.
 - Replace the placeholders with the model name/version reported by your runtime and the agent platform (e.g. Codex, Claude Code, or AutoGPT). Write `unknown` for unavailable model details; do not guess.
 - Use the platform's configured co-author email, or `agent@example.invalid` if none is available.
-- Add one trailer per distinct platform/model pair that contributed to the commit, after a blank line at the end of the commit message. Preserve existing human co-author trailers.
+- Include exactly one trailer per distinct platform/model pair that contributed to the commit, after a blank line at the end of the commit message. Preserve existing human co-author trailers.
 
 ## Pull requests
 
