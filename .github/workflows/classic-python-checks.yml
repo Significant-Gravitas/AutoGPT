@@ -34,6 +34,9 @@ defaults:
     shell: bash
     working-directory: classic
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest

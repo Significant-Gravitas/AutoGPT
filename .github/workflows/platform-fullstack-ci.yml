@@ -26,6 +26,9 @@ defaults:
     shell: bash
     working-directory: autogpt_platform/frontend
 
+permissions:
+  contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest

@@ -21,6 +21,9 @@ on:
       - ".github/workflows/docs-block-sync.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check-docs-sync:
     runs-on: ubuntu-latest
