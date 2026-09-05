@@ -10,6 +10,7 @@ from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
     server_host,
@@ -215,7 +216,14 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        auth_token = creds.access_token.get_secret_value() if creds else None
+        # Building the header from metadata cannot fail, so there is no
+        # "unusable stored row" branch here any more: a credential the server
+        # rejects comes back as a 401 below and is invalidated there.
+        client = (
+            MCPClient(server_url, authorization=mcp_authorization_header(creds))
+            if creds is not None
+            else None
+        )
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's
@@ -235,9 +243,13 @@ class RunMCPToolTool(BaseTool):
         # treated as "unknown, optimistically connected" — the next
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
-            connected = creds is not None
-            if creds is not None:
-                probe_client = MCPClient(server_url, auth_token=auth_token)
+            # `client` is non-None exactly when `creds` is (it is built from
+            # `creds` a few lines up and header construction cannot fail), so
+            # one condition covers both: every stored credential is probed
+            # before we claim "Connected", and an unstored one never is.
+            connected = client is not None
+            if client is not None and creds is not None:
+                probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
@@ -278,7 +290,8 @@ class RunMCPToolTool(BaseTool):
                 server_url, session_id, connected=connected
             )
 
-        client = MCPClient(server_url, auth_token=auth_token)
+        if client is None:
+            client = MCPClient(server_url)
 
         try:
             await client.initialize()
@@ -336,6 +349,14 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+
+        finally:
+            # Same invariant as the probe above and as the block/discovery
+            # paths: an initialized session is a row the server holds until
+            # its timeout sweep, and this is the highest-traffic MCP path in
+            # the product.  `close` is best-effort, bounded, and a no-op when
+            # `initialize` never got far enough to receive a session id.
+            await client.close()
 
     async def _discover_tools(
         self,

@@ -21,6 +21,7 @@ from backend.blocks._base import (
 from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
 )
@@ -172,12 +173,17 @@ class MCPToolBlock(Block):
         server_url: str,
         tool_name: str,
         arguments: dict[str, Any],
-        auth_token: str | None = None,
+        authorization: str | None = None,
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
-        client = MCPClient(server_url, auth_token=auth_token)
-        await client.initialize()
-        result = await client.call_tool(tool_name, arguments)
+        client = MCPClient(server_url, authorization=authorization)
+        try:
+            await client.initialize()
+            result = await client.call_tool(tool_name, arguments)
+        finally:
+            # Without this every execution leaves a session row on the remote
+            # until its own timeout sweep.
+            await client.close()
 
         if result.is_error:
             error_text = ""
@@ -226,9 +232,12 @@ class MCPToolBlock(Block):
         if required:
             missing = required - set(input_data.tool_arguments.keys())
             if missing:
-                yield "error", (
-                    f"Missing required argument(s): {', '.join(sorted(missing))}. "
-                    f"Please fill in all required fields marked with * in the block form."
+                yield (
+                    "error",
+                    (
+                        f"Missing required argument(s): {', '.join(sorted(missing))}. "
+                        f"Please fill in all required fields marked with * in the block form."
+                    ),
                 )
                 return
 
@@ -240,16 +249,16 @@ class MCPToolBlock(Block):
                 user_id, normalize_mcp_url(input_data.server_url)
             )
 
-        auth_token = (
-            credentials.access_token.get_secret_value() if credentials else None
-        )
+        # Built from metadata rather than by re-parsing the secret, so a stored
+        # credential can no longer be misread as carrying a different scheme.
+        authorization = mcp_authorization_header(credentials) if credentials else None
 
         try:
             result = await self._call_mcp_tool(
                 server_url=input_data.server_url,
                 tool_name=input_data.selected_tool,
                 arguments=input_data.tool_arguments,
-                auth_token=auth_token,
+                authorization=authorization,
             )
             yield "result", result
         except MCPClientError as e:

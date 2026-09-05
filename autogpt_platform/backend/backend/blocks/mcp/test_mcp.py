@@ -18,11 +18,7 @@ class TestSSEParsing:
     """Tests for SSE (text/event-stream) response parsing."""
 
     def test_parse_sse_simple(self):
-        sse = (
-            "event: message\n"
-            'data: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n'
-            "\n"
-        )
+        sse = 'event: message\ndata: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n\n'
         body = MCPClient._parse_sse_response(sse)
         assert body["result"] == {"tools": []}
         assert body["id"] == 1
@@ -94,7 +90,7 @@ class TestMCPClient:
         assert headers["Content-Type"] == "application/json"
 
     def test_build_headers_with_auth(self):
-        client = MCPClient("https://mcp.example.com", auth_token="my-token")
+        client = MCPClient("https://mcp.example.com", authorization="Bearer my-token")
         headers = client._build_headers()
         assert headers["Authorization"] == "Bearer my-token"
 
@@ -446,6 +442,33 @@ class TestMCPToolBlock:
         assert result == {"temp": 20}
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_call_mcp_tool_closes_the_session_even_when_the_call_raises(self):
+        """`_call_mcp_tool` wraps its work in `try/finally: await client.close()`.
+
+        Asserted on the raising path because that is the one that leaks: a tool
+        that errors mid-call still left an initialized session for the server
+        to time out on its own.
+        """
+        block = MCPToolBlock()
+
+        async def mock_init(self):
+            return {}
+
+        async def mock_call(self, name, args):
+            raise MCPClientError("Tool not found")
+
+        close_mock = AsyncMock()
+        with (
+            patch.object(MCPClient, "initialize", mock_init),
+            patch.object(MCPClient, "call_tool", mock_call),
+            patch.object(MCPClient, "close", close_mock),
+        ):
+            with pytest.raises(MCPClientError):
+                await block._call_mcp_tool("https://mcp.example.com", "test_tool", {})
+
+        close_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_plain_text(self):
         block = MCPToolBlock()
 
@@ -572,8 +595,8 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
-            captured_tokens.append(auth_token)
+        async def mock_call(server_url, tool_name, arguments, authorization=None):
+            captured_tokens.append(authorization)
             return "ok"
 
         block._call_mcp_tool = mock_call  # type: ignore
@@ -592,7 +615,7 @@ class TestMCPToolBlock:
         ):
             pass
 
-        assert captured_tokens == ["resolved-token"]
+        assert captured_tokens == ["Bearer resolved-token"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_run_without_credentials(self):
@@ -605,8 +628,8 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
-            captured_tokens.append(auth_token)
+        async def mock_call(server_url, tool_name, arguments, authorization=None):
+            captured_tokens.append(authorization)
             return "ok"
 
         block._call_mcp_tool = mock_call  # type: ignore

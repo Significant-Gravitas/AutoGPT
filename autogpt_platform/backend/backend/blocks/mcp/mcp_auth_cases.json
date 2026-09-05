@@ -1,0 +1,88 @@
+{
+  "$comment": [
+    "Shared contract for reading a pasted MCP credential. Asserted by",
+    "backend/backend/blocks/mcp/test_auth_schemes.py and by",
+    "frontend/src/lib/mcp-auth.test.ts, because the two implementations",
+    "(normalize_mcp_authorization and matchSchemePrefix) once disagreed on",
+    "whether the remainder after a scheme word may contain whitespace, and a",
+    "value one side rewrote was read back by the other with the other meaning.",
+    "",
+    "scheme: the explicit scheme a value carries, or null when it is a bare",
+    "credential that gets Bearer for backward compatibility.",
+    "canonical: what the backend stores and sends.",
+    "The frontend skips the canonical assertion for complete-header inputs: it",
+    "deliberately preserves the 'Authorization: ' prefix so the backend can",
+    "reject an unsupported scheme explicitly rather than disguise it."
+  ],
+  "accepted": [
+    { "input": "sk-abc123", "scheme": null, "canonical": "Bearer sk-abc123" },
+    {
+      "input": "Bearer sk-abc123",
+      "scheme": "bearer",
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "BEARER sk-abc123",
+      "scheme": "bearer",
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "  Bearer   sk-abc123  ",
+      "scheme": "bearer",
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "basic dXNlcjpwYXNzd29yZA==",
+      "scheme": "basic",
+      "canonical": "Basic dXNlcjpwYXNzd29yZA=="
+    },
+    {
+      "input": "Bearer orgid api-key",
+      "scheme": "bearer",
+      "canonical": "Bearer orgid api-key"
+    },
+    {
+      "input": "orgid api-key",
+      "scheme": null,
+      "canonical": "Bearer orgid api-key"
+    },
+    {
+      "input": "bearerish-token",
+      "scheme": null,
+      "canonical": "Bearer bearerish-token"
+    },
+    {
+      "input": "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+      "scheme": "basic",
+      "canonical": "Basic dXNlcjpwYXNzd29yZA==",
+      "headerForm": true
+    },
+    {
+      "input": "sk-abc123\n",
+      "scheme": null,
+      "canonical": "Bearer sk-abc123"
+    }
+  ],
+  "rejectedByBackend": [
+    { "input": "", "reason": "blank" },
+    { "input": "   ", "reason": "blank" },
+    { "input": "Bearer", "reason": "scheme word with no credential" },
+    { "input": "Basic", "reason": "scheme word with no credential" },
+    {
+      "input": "Authorization: Digest abc",
+      "reason": "complete header naming an unsupported scheme"
+    },
+    {
+      "input": "sk-abc\nX-Injected: 1",
+      "reason": "interior control character (header injection)"
+    },
+    {
+      "input": "Basic user:password",
+      "reason": "unencoded user:password stored as a working Basic credential"
+    },
+    {
+      "input": "Basic dXNlcjpw YXNz",
+      "reason": "Base64 alphabet contains no space"
+    }
+  ]
+}
