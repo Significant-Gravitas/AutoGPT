@@ -1679,6 +1679,21 @@ def _get_provider_oauth_handler(
     key = provider_key(provider_name)
 
     if key not in HANDLERS_BY_NAME:
+        if key in DEVICE_HANDLERS_BY_NAME:
+            # A device-code provider is a public client with no client secret,
+            # so there is no authorization-code flow to start here. Say which
+            # endpoint to use instead: reaching this branch means a caller
+            # offered an OAuth button for a provider that cannot serve one,
+            # and "does not support OAuth" sent people looking for a missing
+            # handler registration rather than at the caller.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Provider '{key}' authenticates via device code, not "
+                    "OAuth. Use POST "
+                    f"/api/integrations/{key}/device-auth/initiate."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{key}' does not support OAuth",

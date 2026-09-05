@@ -856,6 +856,73 @@ class TestWebhookPingOwnership:
         webhook_manager.trigger_ping.assert_awaited_once()
 
 
+class TestOAuthHandlerResolutionForDeviceProviders:
+    """A device-code provider must not be reported as "does not support OAuth".
+
+    It genuinely has no authorization-code flow — it is a public client with no
+    client secret — but the flat 404 sent people looking for a missing handler
+    registration instead of at the caller that offered an OAuth button for it.
+    """
+
+    # Synthetic keys, so both patches are load-bearing. `HANDLERS_BY_NAME` is
+    # an `SDKAwareHandlersDict` whose `__contains__` reads the module-level
+    # `_handlers_dict` and the SDK registry rather than its own storage, so
+    # `patch.dict` on the facade is inert — patch the backing dict instead.
+    # With a real provider key these tests would pass against the live
+    # registries no matter what the patches said.
+    DEVICE_ONLY_PROVIDER = "test_device_only_provider"
+    UNREGISTERED_PROVIDER = "test_unregistered_provider"
+
+    def test_a_device_code_provider_is_pointed_at_the_device_endpoint(self):
+        from backend.api.features.integrations.router import _get_provider_oauth_handler
+
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {self.DEVICE_ONLY_PROVIDER: MagicMock()},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+
+        assert exc.value.status_code == 400
+        assert "device code" in exc.value.detail
+        # The detail reaches the user as "OAuth error: <detail>", so the path
+        # has to be the one they can actually call — the router is mounted
+        # under /api/integrations.
+        assert (
+            f"/api/integrations/{self.DEVICE_ONLY_PROVIDER}/device-auth/initiate"
+            in exc.value.detail
+        )
+
+    def test_an_unknown_provider_still_reports_no_oauth_support(self):
+        from backend.api.features.integrations.router import _get_provider_oauth_handler
+
+        with (
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                "backend.api.features.integrations.router.DEVICE_HANDLERS_BY_NAME",
+                {},
+                clear=True,
+            ),
+            pytest.raises(fastapi.HTTPException) as exc,
+        ):
+            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+
+        assert exc.value.status_code == 404
+        assert "does not support OAuth" in exc.value.detail
+
+
 class TestDeviceAuthEndpoints:
     """POST /{provider}/device-auth/{initiate,poll}.
 
