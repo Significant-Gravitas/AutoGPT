@@ -78,6 +78,9 @@ export function ArtifactPanelHeader({
   onSourceToggle,
   hasExternalClose = false,
 }: Props) {
+  // An expert is not a workspace file: nothing to download, and "All files"
+  // would strand the user in the wrong tab.
+  const isFile = !artifact.expert;
   // Height matches the chat thread header (36px avatar + py-2 + border) so
   // the two top bars share one seam across the panel split.
   return (
@@ -119,12 +122,16 @@ export function ArtifactPanelHeader({
             <Icon icon={Copy01Icon} size={16} />
           </HeaderButton>
         )}
-        <HeaderButton onClick={onDownload} title="Download">
-          <Icon icon={Download01Icon} size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onOpenFiles} title="All files">
-          <Icon icon={Folder01Icon} size={16} />
-        </HeaderButton>
+        {isFile && (
+          <HeaderButton onClick={onDownload} title="Download">
+            <Icon icon={Download01Icon} size={16} />
+          </HeaderButton>
+        )}
+        {isFile && (
+          <HeaderButton onClick={onOpenFiles} title="All files">
+            <Icon icon={Folder01Icon} size={16} />
+          </HeaderButton>
+        )}
         {!hasExternalClose && (
           <HeaderButton onClick={onClose} title="Close">
             <Icon icon={Cancel01Icon} size={16} />

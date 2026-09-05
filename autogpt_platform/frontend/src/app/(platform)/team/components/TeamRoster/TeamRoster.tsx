@@ -1,87 +1,82 @@
+"use client";
+
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
-import { TEAM_GRID_CLASS } from "../../helpers";
+import { cn } from "@/lib/utils";
+import {
+  SECTION_INSET_CLASS,
+  TEAM_GRID_CLASS,
+  getAutopilotSummary,
+} from "../../helpers";
 import { AutopilotCard } from "../AutopilotCard";
 import { ExpertTeamCardSkeleton } from "../ExpertTeamCardSkeleton";
+import { TeamRosterToolbar } from "./TeamRosterToolbar";
+import { useTeamRosterView } from "./useTeamRosterView";
 
 interface Props {
   isLoading: boolean;
-  podGroups: { pod: ExpertPod; experts: Expert[] }[];
-  ungroupedExperts: Expert[];
+  experts: Expert[];
+  schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
   renderCard: (expert: Expert) => ReactNode;
-}
-
-interface SectionHeaderProps {
-  name: string;
-  count: number;
 }
 
 export function TeamRoster({
   isLoading,
-  podGroups,
-  ungroupedExperts,
+  experts,
+  schedulesForExpert,
   renderCard,
 }: Props) {
-  if (isLoading) {
-    return (
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
-        {[0, 1, 2].map((index) => (
-          <ExpertTeamCardSkeleton key={index} />
-        ))}
-      </div>
-    );
-  }
+  const { query, setQuery, filter, setFilter, isNarrowed, visibleExperts } =
+    useTeamRosterView({ experts, schedulesForExpert });
 
-  if (podGroups.length === 0) {
-    return (
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
-        {ungroupedExperts.map(renderCard)}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      <div className={TEAM_GRID_CLASS}>
-        <AutopilotCard />
-      </div>
-      {podGroups.map((group) => (
-        <section key={group.pod.id} className="space-y-3">
-          <SectionHeader name={group.pod.name} count={group.experts.length} />
-          {group.experts.length > 0 ? (
-            <div className={TEAM_GRID_CLASS}>
-              {group.experts.map(renderCard)}
-            </div>
-          ) : (
-            <Text variant="small" className="text-zinc-500">
-              No experts in this pod yet.
-            </Text>
-          )}
-        </section>
-      ))}
-      {ungroupedExperts.length > 0 ? (
-        <section className="space-y-3">
-          <SectionHeader name="Ungrouped" count={ungroupedExperts.length} />
-          <div className={TEAM_GRID_CLASS}>
-            {ungroupedExperts.map(renderCard)}
-          </div>
-        </section>
-      ) : null}
-    </div>
+  // Autopilot reports on the whole team, so its summary ignores the toolbar.
+  const summary = getAutopilotSummary({ experts, schedulesForExpert });
+  const autopilot = (
+    <AutopilotCard
+      skillCount={summary.skillCount}
+      scheduleCount={summary.scheduleCount}
+      workflowCount={summary.workflowCount}
+    />
   );
-}
 
-function SectionHeader({ name, count }: SectionHeaderProps) {
   return (
-    <div className="flex items-baseline gap-2">
-      <Text variant="h4">{name}</Text>
-      <Text variant="small" className="text-zinc-500">
-        {count} {count === 1 ? "expert" : "experts"}
-      </Text>
-    </div>
+    <section aria-label="Experts" className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Text variant="h5">Experts</Text>
+        <TeamRosterToolbar
+          query={query}
+          onQueryChange={setQuery}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
+      </div>
+
+      {isLoading ? (
+        <div className={TEAM_GRID_CLASS}>
+          {autopilot}
+          {[0, 1, 2].map((index) => (
+            <ExpertTeamCardSkeleton key={index} />
+          ))}
+        </div>
+      ) : (
+        <div className={TEAM_GRID_CLASS}>
+          {/* Autopilot is pinned rather than filtered — it is always on the
+              team, so it stays put unless the roster is being narrowed. */}
+          {isNarrowed ? null : autopilot}
+          {visibleExperts.map(renderCard)}
+        </div>
+      )}
+
+      {!isLoading && isNarrowed && visibleExperts.length === 0 ? (
+        <Text
+          variant="body"
+          className={cn("text-zinc-500", SECTION_INSET_CLASS)}
+        >
+          No experts match that search or filter.
+        </Text>
+      ) : null}
+    </section>
   );
 }
