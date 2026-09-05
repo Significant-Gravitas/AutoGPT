@@ -1607,6 +1607,22 @@ class TestLLMModelMissingHandler:
             )
 
 
+class TestMiniMaxModelMetadata:
+    def test_m3_metadata(self):
+        metadata = llm.LLMModel.MINIMAX_M3.metadata
+        assert metadata.provider == "minimax"
+        assert metadata.context_window == 1_000_000
+        assert metadata.display_name == "MiniMax M3"
+        assert metadata.price_tier == 2
+
+    def test_m2_7_metadata(self):
+        metadata = llm.LLMModel.MINIMAX_M2_7.metadata
+        assert metadata.provider == "minimax"
+        assert metadata.context_window == 204_800
+        assert metadata.display_name == "MiniMax M2.7"
+        assert metadata.price_tier == 1
+
+
 class TestClaude5ModelThreading:
     """The Claude-5 correction only works if ``llm_call`` threads the
     selected model into BOTH token paths: compaction (``compress_context``)

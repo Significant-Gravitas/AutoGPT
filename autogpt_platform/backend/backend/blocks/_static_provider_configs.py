@@ -26,6 +26,7 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "codex": ("Use your ChatGPT plan with Codex App Server", ("oauth2",)),
     "groq": ("Fast LLM inference", ("api_key",)),
     "llama_api": ("Llama model hosting", ("api_key",)),
+    "minimax": ("MiniMax language models", ("api_key",)),
     "ollama": ("Run open-source LLMs locally", ("api_key",)),
     "open_router": ("One API for every LLM", ("api_key",)),
     "openai": ("GPT models and embeddings", ("api_key",)),
