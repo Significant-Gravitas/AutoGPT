@@ -26,6 +26,7 @@ import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -240,8 +241,6 @@ def _expert_computer_block() -> str:
     cacheable system-prompt prefix stays byte-identical.
     """
     try:
-        from backend.copilot.config import ChatConfig
-
         if not ChatConfig().e2b_active:
             return ""
     except Exception as e:

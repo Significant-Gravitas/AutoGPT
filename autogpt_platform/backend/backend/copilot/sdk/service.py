@@ -41,6 +41,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
@@ -4692,6 +4693,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
+            nonlocal e2b_sandbox
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -4701,8 +4703,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     )
                 return None
             try:
-                from backend.blocks.desktop._common import workspace_volume_mounts
-
                 # An expert session runs on the expert's own persistent box;
                 # everything else gets a per-session sandbox.
                 sandbox = await get_or_create_sandbox(
@@ -4714,6 +4714,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
                     expert_id=owner_expert_id,
                 )
+                # Publish the live box before the gather returns: if a sibling
+                # setup leg fails, the finally below still pauses it and
+                # releases the expert's turn slot instead of leaking both.
+                e2b_sandbox = sandbox
             except Exception as e2b_err:
                 logger.error(
                     "[E2B] [%s] Setup failed: %s",

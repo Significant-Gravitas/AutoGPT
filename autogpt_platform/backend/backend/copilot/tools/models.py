@@ -876,8 +876,10 @@ class DesktopStreamToolResponse(ToolResponseBase):
     """Response for start_desktop: an embeddable live desktop stream.
 
     ``desktop_stream`` carries the same shape the desktop blocks emit
-    (kind/url/provider/sandbox_id/requires_auth) so the frontend's
-    DesktopStreamRenderer picks it up wherever tool outputs render.
+    (kind/url/provider/sandbox_id/requires_auth). The copilot chat renders it
+    through DesktopStreamRenderer via ToolResult's ``start_desktop`` card, and
+    every surface that consults the output-renderer registry (block outputs,
+    attachments) embeds it the same way.
     """
 
     type: ResponseType = ResponseType.DESKTOP_STREAM

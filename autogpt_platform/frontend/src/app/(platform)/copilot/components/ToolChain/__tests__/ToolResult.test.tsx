@@ -918,3 +918,44 @@ describe("ToolResult", () => {
     });
   });
 });
+
+describe("ToolResult start_desktop", () => {
+  afterEach(() => cleanup());
+
+  it("embeds the live desktop stream instead of dumping the payload", () => {
+    render(
+      <ToolResult
+        row={row(
+          {
+            type: "desktop_stream",
+            message: "Desktop started.",
+            desktop_stream: {
+              kind: "desktop_stream",
+              url: "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+              provider: "e2b",
+              sandbox_id: "sbx-1",
+            },
+          },
+          "start_desktop",
+        )}
+      />,
+    );
+
+    const frame = screen.getByTitle("Interactive desktop (sbx-1)");
+    expect(frame.getAttribute("src")).toBe(
+      "https://6080-sbx.e2b.app/vnc.html?autoconnect=true",
+    );
+    expect(screen.getByText("Open in new tab")).toBeDefined();
+    expect(screen.queryByText(/"kind"/)).toBeNull();
+  });
+
+  it("falls back to the generic view when the stream is missing", () => {
+    render(
+      <ToolResult
+        row={row({ message: "Failed to start the desktop." }, "start_desktop")}
+      />,
+    );
+    expect(screen.getByText("Failed to start the desktop.")).toBeDefined();
+    expect(screen.queryByTitle(/Interactive desktop/)).toBeNull();
+  });
+});

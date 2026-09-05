@@ -754,7 +754,7 @@ class TestExpertComputerBlock:
         config.e2b_active = True
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
-            patch("backend.copilot.config.ChatConfig", return_value=config),
+            patch(f"{_EC}.ChatConfig", return_value=config),
         ):
             result = await build_expert_context("user-1", "exp-1")
 
@@ -773,7 +773,7 @@ class TestExpertComputerBlock:
         config.e2b_active = False
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
-            patch("backend.copilot.config.ChatConfig", return_value=config),
+            patch(f"{_EC}.ChatConfig", return_value=config),
         ):
             result = await build_expert_context("user-1", "exp-1")
 
@@ -788,7 +788,7 @@ class TestExpertComputerBlock:
         config.e2b_active = True
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
-            patch("backend.copilot.config.ChatConfig", return_value=config),
+            patch(f"{_EC}.ChatConfig", return_value=config),
         ):
             result = await build_expert_context("user-1", None)
 
@@ -801,7 +801,7 @@ class TestExpertComputerBlock:
         with (
             patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
             patch(
-                "backend.copilot.config.ChatConfig",
+                f"{_EC}.ChatConfig",
                 side_effect=RuntimeError("bad env"),
             ),
         ):

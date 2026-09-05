@@ -72,6 +72,7 @@ from typing import Any, Awaitable, Callable, Literal, Mapping
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle, SandboxQuery, SandboxState
 from pydantic import BaseModel, ConfigDict
 
+from backend.blocks.desktop._api import resolve_volume
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,9 @@ _CREATING_SENTINEL = "creating"
 # E2B sandbox metadata that lets an owner find its box without Redis.
 METADATA_OWNER = "autogpt_owner"
 METADATA_KIND = "autogpt_kind"
+# "attached" when the workspace volumes were mounted, "none" when creation had
+# to fall back to a volume-less box — visible in the E2B dashboard and API.
+METADATA_MOUNTS = "autogpt_mounts"
 
 SandboxKind = Literal["shell", "desktop"]
 
@@ -281,20 +285,18 @@ async def _resolve_volume_mounts(
 ) -> dict[str, "AsyncVolume | str"] | None:
     """Build the ``volume_mounts`` mapping (path -> volume) for named volumes.
 
-    Creates each volume if it does not exist yet, otherwise mounts it by name.
-    Returns ``None`` when no volumes are requested; never raises (a failure
-    here just means the sandbox is created without that mount).
+    Creates each volume if it does not exist yet, otherwise mounts it by name
+    (``resolve_volume`` bounds each call).  Volumes resolve concurrently so the
+    creation lock is held for one round-trip, not one per mount.  Returns
+    ``None`` when no volumes are requested; never raises.
     """
     if not volume_mounts:
         return None
-    mounts: dict[str, "AsyncVolume | str"] = {}
-    for path, name in volume_mounts.items():
-        try:
-            mounts[path] = await AsyncVolume.create(name, api_key=api_key)
-        except Exception:
-            # Already exists (or transient) — mount by name.
-            mounts[path] = name
-    return mounts
+    paths = list(volume_mounts)
+    volumes = await asyncio.gather(
+        *(resolve_volume(volume_mounts[path], api_key) for path in paths)
+    )
+    return dict(zip(paths, volumes))
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +339,15 @@ async def _release_turn(owner: SandboxOwner) -> bool:
         )
         return False
     except Exception as exc:
-        logger.warning("[E2B] Could not release active turn for %s: %s", owner, exc)
-        return True
+        # Fail closed: without the counter we cannot know whether another turn
+        # is on the box, and pausing under one severs its command stream. The
+        # lifecycle timeout still pauses the box once it goes idle.
+        logger.warning(
+            "[E2B] Could not release active turn for %s (%s); leaving its box running",
+            owner,
+            exc,
+        )
+        return False
 
 
 async def get_or_create_sandbox(
@@ -373,6 +382,10 @@ async def get_or_create_sandbox(
     owner = SandboxOwner.for_session(session_id, expert_id)
     redis = await get_redis_async()
     key = owner.key("shell")
+    # Boxes E2B still lists but we could not reconnect to (mid-teardown, an
+    # unresumable snapshot). Without this an expert owner would re-find the
+    # same id on every iteration and never fall through to creating a fresh one.
+    failed_ids: set[str] = set()
 
     for _ in range(_MAX_WAIT_ATTEMPTS):
         raw = await redis.get(key)
@@ -381,7 +394,9 @@ async def get_or_create_sandbox(
         if not value and owner.is_expert:
             # Redis is only a cache for an expert's box; E2B is the record.
             value = await find_owned_sandbox_id(owner, "shell", api_key)
-            if value:
+            if value in failed_ids:
+                value = None
+            elif value:
                 await _set_stored_sandbox_id(owner, value)
 
         if value and value != _CREATING_SENTINEL:
@@ -392,6 +407,7 @@ async def get_or_create_sandbox(
                 await _acquire_turn(owner)
                 return sandbox
             # _try_reconnect cleared the key — loop to create a new sandbox.
+            failed_ids.add(value)
             continue
 
         if value == _CREATING_SENTINEL:
@@ -437,7 +453,10 @@ async def get_or_create_sandbox(
                             timeout=timeout,
                             lifecycle=lifecycle,
                             volume_mounts=mounts,
-                            metadata=owner.metadata("shell"),
+                            metadata={
+                                **owner.metadata("shell"),
+                                METADATA_MOUNTS: "attached" if mounts else "none",
+                            },
                         ),
                         timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
                     )
@@ -452,11 +471,17 @@ async def get_or_create_sandbox(
                         owner,
                         exc,
                     )
-                    if mounts is not None:
-                        # A volume problem must not cost the user their shell —
-                        # drop the mounts and retry volume-less.
+                    if (
+                        mounts is not None
+                        and attempt == _SANDBOX_CREATE_MAX_RETRIES - 1
+                    ):
+                        # A volume problem must not cost the user their shell,
+                        # but a transient failure must not cost an expert its
+                        # durable home either: keep the mounts through the
+                        # retries and only make the last attempt volume-less.
                         logger.warning(
-                            "[E2B] Retrying %s without workspace volumes", owner
+                            "[E2B] Final attempt for %s will run without workspace volumes",
+                            owner,
                         )
                         mounts = None
                     if attempt < _SANDBOX_CREATE_MAX_RETRIES:
@@ -614,22 +639,31 @@ async def kill_sandbox(
     session_id: str,
     api_key: str,
 ) -> bool:
-    """Kill the E2B sandbox for *session_id* and clear its Redis entry.
+    """Kill the session's E2B sandboxes (shell and on-demand desktop).
 
-    Only ever touches a *session* sandbox: an expert session has none under
+    Only ever touches *session* sandboxes: an expert session has none under
     its own id, so deleting an expert chat leaves the expert's computer alone
-    (see ``kill_expert_sandboxes`` for the archive path).
+    (see ``kill_expert_sandboxes`` for the archive path).  The desktop is
+    included because nothing else ever stops it: it is deliberately not paused
+    at turn end, so an orphaned one would bill until its timeout and then sit
+    paused forever.
 
-    Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
-    Safe to call even when no sandbox exists for the session.
+    Returns ``True`` if at least one sandbox was found and killed, ``False``
+    otherwise.  Safe to call even when no sandbox exists for the session.
     """
-    return await _act_on_sandbox(
-        SandboxOwner(kind="session", id=session_id),
-        api_key,
-        "kill",
-        lambda sb: sb.kill(),
-        clear_stored_id=True,
-    )
+    owner = SandboxOwner(kind="session", id=session_id)
+    killed = False
+    for sandbox_kind in ("shell", "desktop"):
+        if await _act_on_sandbox(
+            owner,
+            api_key,
+            "kill",
+            lambda sb: sb.kill(),
+            sandbox_kind=sandbox_kind,
+            clear_stored_id=True,
+        ):
+            killed = True
+    return killed
 
 
 async def kill_expert_sandboxes(expert_id: str, api_key: str) -> int:

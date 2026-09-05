@@ -6,6 +6,7 @@ import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -385,6 +386,16 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
     }
     case "bash_exec":
       return <Terminal row={row} />;
+    case "start_desktop": {
+      // The live desktop is the whole point of the tool: embed the stream
+      // instead of letting the payload fall through to a truncated key/value
+      // dump. The same renderer serves block outputs and attachments.
+      const stream = output ? output.desktop_stream : null;
+      if (stream && desktopStreamRenderer.canRender(stream)) {
+        return <>{desktopStreamRenderer.render(stream)}</>;
+      }
+      return null;
+    }
     case "TodoWrite":
       return <TodoList row={row} />;
     case "read_workspace_file":

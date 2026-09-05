@@ -28,6 +28,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
+from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
@@ -119,6 +120,10 @@ from backend.copilot.tools import (
     execute_tool,
     expert_tool_disabled_groups,
     get_available_tools,
+)
+from backend.copilot.tools.e2b_sandbox import (
+    get_or_create_sandbox,
+    pause_sandbox_direct,
 )
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skills import build_skills_context
@@ -1760,9 +1765,6 @@ async def stream_chat_completion_baseline(
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
-            from backend.blocks.desktop._common import workspace_volume_mounts
-            from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
-
             # An expert session runs on the expert's own persistent box;
             # everything else gets a per-session sandbox.
             e2b_sandbox = await get_or_create_sandbox(
@@ -2525,8 +2527,6 @@ async def stream_chat_completion_baseline(
         # cleanup below. An expert's box is left running while another of
         # its turns is still active.
         if e2b_sandbox is not None:
-            from backend.copilot.tools.e2b_sandbox import pause_sandbox_direct
-
             pause_task = asyncio.create_task(
                 pause_sandbox_direct(
                     e2b_sandbox, session_id, expert_id=session.expert_id
