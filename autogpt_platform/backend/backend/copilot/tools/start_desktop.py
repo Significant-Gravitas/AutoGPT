@@ -50,15 +50,12 @@ class StartDesktopTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Start (or resume) an interactive cloud desktop and return a live "
-            "stream the user can watch and control. The desktop shares your "
-            "persistent ~/workspace with bash_exec — files you write there "
-            "appear on the desktop live and vice versa, and persist across "
-            "sessions. In an expert session the desktop is the expert's own "
-            "persistent computer (~/workspace is its home, ~/shared is the "
-            "user's shared workspace, and browser logins persist). It keeps "
-            "running after your turn and suspends itself when idle. Use when a "
-            "task needs a browser or GUI app the user should see."
+            "Start or resume an interactive cloud desktop and return a live "
+            "stream the user can watch and control. It shares your persistent "
+            "~/workspace with bash_exec (in an expert session it is the expert's "
+            "own persistent computer; ~/shared is the user's workspace). Stays "
+            "up after your turn, suspends when idle. Use when a task needs a "
+            "browser or GUI app."
         )
 
     @property
