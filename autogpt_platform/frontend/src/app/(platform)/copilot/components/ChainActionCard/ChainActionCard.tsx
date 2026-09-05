@@ -22,6 +22,9 @@ interface Props {
   mcp: McpConnectorRequest[];
   inputs: InputsRequest[];
   questions: QuestionRequest[];
+  /** A card opted out of auto-sending, so the stack needs a Proceed even with
+   *  no inputs of its own. */
+  manualProceed: boolean;
   isReady: boolean;
   onProceed: () => void;
 }
@@ -36,6 +39,7 @@ export function ChainActionCard({
   mcp,
   inputs,
   questions,
+  manualProceed,
   isReady,
   onProceed,
 }: Props) {
@@ -114,7 +118,7 @@ export function ChainActionCard({
         </div>
       )}
 
-      {hasInputs && !hasQuestions && (
+      {(hasInputs || manualProceed) && !hasQuestions && (
         <Button
           variant="primary"
           size="small"
