@@ -35,7 +35,6 @@ from apscheduler.triggers.cron import CronTrigger
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
-from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -144,26 +143,8 @@ class ScheduleFollowupTool(BaseTool):
             "required": ["message"],
         }
 
-    def activity_event(
-        self,
-        session: ChatSession,
-        result: ToolResponseBase,
-        **kwargs,
-    ) -> ActivityEventDraft | None:
-        if not isinstance(result, ScheduleCreatedResponse):
-            return None
-        message: str = kwargs.get("message") or ""
-        return ActivityEventDraft(
-            category="SCHEDULE",
-            event_type="schedule.created",
-            title=kwargs.get("name") or message[:80] or "Follow-up",
-            schedule_id=result.schedule_id,
-            data={
-                "cron": kwargs.get("cron"),
-                "next_run_time": result.next_run_time,
-                "is_recurring": result.is_recurring,
-            },
-        )
+    # The schedule.created activity event is recorded by the scheduler when
+    # the job is persisted, so it covers every creation path, not just this tool.
 
     async def _execute(
         self,

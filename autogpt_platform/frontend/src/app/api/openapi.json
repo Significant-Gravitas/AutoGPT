@@ -20560,6 +20560,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20741,6 +20749,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20845,6 +20861,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "trigger_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Source"
+          },
+          "trigger_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger Ref"
           },
           "stats": {
             "anyOf": [
