@@ -9,7 +9,7 @@ This guide provides context for coding agents when updating the **autogpt_platfo
 - `autogpt_platform/frontend` – Next.js + Typescript frontend.
 - `autogpt_platform/docker-compose.yml` – development stack.
 
-See `docs/content/platform/getting-started.md` for setup instructions.
+See `docs/platform/getting-started.md` for setup instructions.
 
 ## Code style
 
