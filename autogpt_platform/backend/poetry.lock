@@ -1455,43 +1455,44 @@ pgp = ["gpg"]
 
 [[package]]
 name = "e2b"
-version = "2.15.2"
+version = "2.34.0"
 description = "E2B SDK that give agents cloud environments"
 optional = false
-python-versions = "<4.0,>=3.10"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "e2b-2.15.2-py3-none-any.whl", hash = "sha256:19a56fbdea25974dc81426ed48337eae6cea91d404f5bcf8861a5a2c6e4d982a"},
-    {file = "e2b-2.15.2.tar.gz", hash = "sha256:414379d2421d6827eeb2eb50a4d6b3fdb7d691b39ff73b5ea05ca4b532819831"},
+    {file = "e2b-2.34.0-py3-none-any.whl", hash = "sha256:873323571d18bf633be45e59fc6271410b30dfbc81e8df85e711f4f184c03fea"},
+    {file = "e2b-2.34.0.tar.gz", hash = "sha256:0dcc2694b3ead62e87b3d1070a05f66842dd2fa320fc1d7bd84c8fcfadeaf1b1"},
 ]
 
 [package.dependencies]
 attrs = ">=23.2.0"
-dockerfile-parse = ">=2.0.1,<3.0.0"
-httpcore = ">=1.0.5,<2.0.0"
+dockerfile-parse = ">=2.0.1,<3"
+h2 = ">=4,<5"
+httpcore = ">=1.0.5,<2"
 httpx = ">=0.27.0,<1.0.0"
 packaging = ">=24.1"
 protobuf = ">=4.21.0"
 python-dateutil = ">=2.8.2"
 rich = ">=14.0.0"
 typing-extensions = ">=4.1.0"
-wcmatch = ">=10.1,<11.0"
+wcmatch = ">=10.1,<11"
 
 [[package]]
 name = "e2b-code-interpreter"
-version = "2.4.1"
+version = "2.8.1"
 description = "E2B Code Interpreter - Stateful code execution"
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "e2b_code_interpreter-2.4.1-py3-none-any.whl", hash = "sha256:15d35f025b4a15033e119f2e12e7ac65657ad2b5a013fa9149e74581fbee778a"},
-    {file = "e2b_code_interpreter-2.4.1.tar.gz", hash = "sha256:4b15014ee0d0dfcdc3072e1f409cbb87ca48f48d53d75629b7257e5513b9e7dd"},
+    {file = "e2b_code_interpreter-2.8.1-py3-none-any.whl", hash = "sha256:8449ff1abb507e4c28134c9cbc4e59f76c09fadceab879c8c4031399b31a126a"},
+    {file = "e2b_code_interpreter-2.8.1.tar.gz", hash = "sha256:900bc847a4a6f90a571e0de4112531c79c550fbdb1ec94a1d2b2c9f0d058a674"},
 ]
 
 [package.dependencies]
 attrs = ">=21.3.0"
-e2b = ">=2.7.0,<3.0.0"
+e2b = ">=2.26.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
 
 [[package]]

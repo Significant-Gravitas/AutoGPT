@@ -25400,6 +25400,7 @@
           "browser_act",
           "browser_screenshot",
           "bash_exec",
+          "desktop_stream",
           "web_fetch",
           "web_search",
           "feature_request_search",

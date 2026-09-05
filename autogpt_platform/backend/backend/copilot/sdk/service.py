@@ -4686,6 +4686,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # warm-context, and CLI session restore are all independent network
         # calls. Running them concurrently saves ~500-1000ms vs sequential.
 
+        # Captured outside the closure: `session` is narrowed to ChatSession
+        # here, but that narrowing does not carry into nested functions.
+        owner_expert_id = session.expert_id
+
         async def _setup_e2b():
             """Set up E2B sandbox if configured, return sandbox or None."""
             if not (e2b_api_key := config.active_e2b_api_key):
@@ -4697,12 +4701,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     )
                 return None
             try:
+                from backend.blocks.desktop._common import workspace_volume_mounts
+
+                # An expert session runs on the expert's own persistent box;
+                # everything else gets a per-session sandbox.
                 sandbox = await get_or_create_sandbox(
                     session_id,
                     api_key=e2b_api_key,
                     template=config.e2b_sandbox_template,
                     timeout=config.e2b_sandbox_timeout,
                     on_timeout=config.e2b_sandbox_on_timeout,
+                    volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
+                    expert_id=owner_expert_id,
                 )
             except Exception as e2b_err:
                 logger.error(
@@ -6063,7 +6073,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Use pause_sandbox_direct to skip the Redis lookup and reconnect
         # round-trip — e2b_sandbox is the live object from this turn.
         if e2b_sandbox is not None:
-            task = asyncio.create_task(pause_sandbox_direct(e2b_sandbox, session_id))
+            task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox,
+                    session_id,
+                    expert_id=session.expert_id if session else None,
+                )
+            )
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
 
