@@ -7,6 +7,7 @@ import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
 import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
 import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
   AgentListCard,
   AgentPreviewCard,
@@ -392,7 +393,7 @@ function toolCard(row: ChainRow, output: Record<string, unknown> | null) {
       // dump. The same renderer serves block outputs and attachments.
       const stream = output ? output.desktop_stream : null;
       if (stream && desktopStreamRenderer.canRender(stream)) {
-        return <>{desktopStreamRenderer.render(stream)}</>;
+        return <DesktopStreamCard stream={stream} />;
       }
       return null;
     }
