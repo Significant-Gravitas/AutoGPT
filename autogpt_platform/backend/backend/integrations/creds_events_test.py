@@ -1,6 +1,7 @@
 """Tests for the credentials-changed bus — the cross-process half of invalidation."""
 
 import contextlib
+import logging
 import socket
 import subprocess
 import sys
@@ -16,7 +17,10 @@ from backend.integrations.creds_events import (
     listen_creds_changed,
     publish_creds_changed,
 )
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.creds_manager import (
+    IntegrationCredentialsManager,
+    _invoke_creds_changed_hook,
+)
 
 _USER = "user-creds-events-test"
 
@@ -33,6 +37,27 @@ async def test_publish_spublishes_on_the_broadcast_channel():
     assert command == "SPUBLISH"
     assert channel == f"creds_changed/{CREDS_CHANGED_CHANNEL}"
     assert _USER in message and "github" in message
+
+
+@pytest.mark.asyncio
+async def test_a_dead_redis_does_not_fail_the_credential_write():
+    """The write is already durable by the time we publish, so a broadcast
+    failure must stay non-fatal — loudly, since the fallback is the 60 s TTL."""
+    records: list[logging.LogRecord] = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    bus_logger = logging.getLogger("backend.data.event_bus")
+    bus_logger.addHandler(handler)
+    try:
+        with patch(
+            "backend.data.event_bus.redis.get_redis_async",
+            side_effect=ConnectionError("redis down"),
+        ):
+            await _invoke_creds_changed_hook(_USER, "github")
+    finally:
+        bus_logger.removeHandler(handler)
+
+    assert [r for r in records if r.levelno >= logging.ERROR and r.exc_info]
 
 
 @pytest.mark.asyncio
