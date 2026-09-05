@@ -23,9 +23,10 @@ on:
       - 'classic/poetry.lock'
       - '**.py'
       - '!classic/forge/tests/vcr_cassettes'
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ format('classic-python-checks-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('classic-python-checks-ci-{0}', github.event_name == 'workflow_dispatch' && github.run_id || (github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha)) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
 
 defaults:
