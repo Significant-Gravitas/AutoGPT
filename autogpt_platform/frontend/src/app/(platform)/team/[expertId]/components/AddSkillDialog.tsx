@@ -55,8 +55,8 @@ export function AddSkillDialog({
   onClose,
 }: Props) {
   const [query, setQuery] = useState("");
-  const listRef = useRef<HTMLUListElement>(null);
-  useFitListToDialog(listRef);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const attachList = useFitListToDialog(listRef);
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? skills.filter(
@@ -125,7 +125,7 @@ export function AddSkillDialog({
                 </Text>
               ) : (
                 <ul
-                  ref={listRef}
+                  ref={attachList}
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Library skills"
                 >
@@ -166,7 +166,7 @@ export function AddSkillDialog({
                 </Text>
               ) : (
                 <ul
-                  ref={listRef}
+                  ref={attachList}
                   className="flex flex-col gap-2 overflow-y-auto pr-1"
                   aria-label="Marketplace skills"
                 >

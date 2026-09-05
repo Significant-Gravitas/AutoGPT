@@ -149,7 +149,7 @@ export default function ExpertDetailPage() {
               <TabsLineTrigger
                 key={tab.value}
                 value={tab.value}
-                className="gap-1.5 px-2.5 py-2 text-[13px] leading-5 data-[state=active]:text-zinc-900"
+                className="gap-1.5 px-2.5 py-2 text-xs leading-5 data-[state=active]:text-zinc-900"
               >
                 <Icon icon={tab.icon} size={14} />
                 {tab.label}

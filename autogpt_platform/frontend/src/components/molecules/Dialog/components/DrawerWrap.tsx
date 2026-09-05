@@ -22,6 +22,7 @@ export function DrawerWrap({
   testId,
   handleClose,
   isForceOpen,
+  className,
 }: Props) {
   const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
@@ -42,7 +43,7 @@ export function DrawerWrap({
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
         aria-describedby={undefined}
-        className={drawerStyles.content}
+        className={cn(drawerStyles.content, className)}
         data-testid={testId}
         onInteractOutside={handleClose}
       >

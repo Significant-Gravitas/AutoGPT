@@ -101,7 +101,11 @@ export function ExpertSummaryCard({
   );
 }
 
-function ActivityStatus({ isActive }: { isActive: boolean }) {
+interface ActivityStatusProps {
+  isActive: boolean;
+}
+
+function ActivityStatus({ isActive }: ActivityStatusProps) {
   return (
     <span className="flex items-center gap-1.5">
       <span

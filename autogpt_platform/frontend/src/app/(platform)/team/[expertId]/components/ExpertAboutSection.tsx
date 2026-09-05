@@ -36,8 +36,8 @@ interface ProfileEntryProps {
 function ProfileEntry({ label, value }: ProfileEntryProps) {
   return (
     <div>
-      <dt className="text-xs font-medium text-zinc-900">{label}</dt>
-      <dd className="mt-1 whitespace-pre-line text-xs text-zinc-600">
+      <dt className="text-sm font-medium text-zinc-900">{label}</dt>
+      <dd className="mt-1 whitespace-pre-line text-sm text-zinc-600">
         {value || "Not set yet."}
       </dd>
     </div>

@@ -8,10 +8,8 @@ import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
-import {
-  ExpertWorkflowActions,
-  ExpertWorkflowRunButton,
-} from "./ExpertWorkflowActions";
+import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
+import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
 import { WorkflowChain } from "./WorkflowChain";
 import { WorkflowCredentialStack } from "./WorkflowCredentialStack";

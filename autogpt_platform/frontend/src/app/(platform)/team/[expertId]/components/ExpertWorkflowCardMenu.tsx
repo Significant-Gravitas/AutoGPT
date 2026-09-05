@@ -113,7 +113,7 @@ export function ExpertWorkflowCardMenu({
             if (!open && !isRemoving) setIsRemoveOpen(false);
           },
         }}
-        styling={{ maxWidth: "28rem", maxHeight: "60vh" }}
+        className="max-h-[60vh] max-w-md"
         title={`Remove ${name}?`}
       >
         <Dialog.Content>

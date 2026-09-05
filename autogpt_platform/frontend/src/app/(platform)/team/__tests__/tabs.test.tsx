@@ -100,10 +100,7 @@ describe("TeamPage tabs", () => {
       created_at: new Date("2026-08-14T00:00:00Z"),
     };
     server.use(
-      getListExpertsMockHandler([
-        makeExpert({ pod_id: "pod-growth" } as Partial<Expert>),
-        lee,
-      ]),
+      getListExpertsMockHandler([makeExpert({ pod_id: "pod-growth" }), lee]),
       getListExpertPodsMockHandler([growth]),
     );
 
@@ -183,7 +180,7 @@ describe("TeamRoster toolbar", () => {
       id: "expert-lee",
       name: "Lee",
       schedules_paused_at: new Date("2026-08-20T10:00:00Z"),
-    } as Partial<Expert>);
+    });
     server.use(getListExpertsMockHandler([maria, pausedLee]));
 
     render(<TeamPage />);
@@ -214,12 +211,12 @@ describe("AutopilotCard", () => {
           schedule_id: null,
         },
       ],
-    } as Partial<Expert>);
+    });
     // Lee shares Copywriting with Maria, so the team has three skills, not four.
     const skilledLee = makeExpert({
       ...lee,
       skills: ["Copywriting", "Analytics"],
-    } as Partial<Expert>);
+    });
     server.use(
       getListExpertsMockHandler([scheduledMaria, skilledLee]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([

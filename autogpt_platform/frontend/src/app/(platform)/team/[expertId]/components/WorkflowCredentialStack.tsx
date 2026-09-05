@@ -2,6 +2,7 @@
 
 import { ExpertWorkflowChainItem } from "@/app/api/__generated__/models/expertWorkflowChainItem";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { cn } from "@/lib/utils";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { toDisplayName } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 
@@ -51,11 +52,11 @@ export function WorkflowCredentialStack({ providers }: Props) {
         <span
           key={provider}
           role="listitem"
-          className="flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white ring-2 ring-white"
-          style={{
-            marginLeft: index === 0 ? 0 : -8,
-            zIndex: visible.length - index,
-          }}
+          className={cn(
+            "flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-white ring-2 ring-white",
+            index > 0 && "-ml-2",
+            ["z-30", "z-20", "z-10"][index],
+          )}
         >
           <IntegrationLogo
             provider={provider}
@@ -67,8 +68,7 @@ export function WorkflowCredentialStack({ providers }: Props) {
       {hidden > 0 ? (
         <span
           role="listitem"
-          className="flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[11px] font-medium text-zinc-600 ring-2 ring-white"
-          style={{ marginLeft: -8 }}
+          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[11px] font-medium text-zinc-600 ring-2 ring-white"
           aria-label={`${hidden} more`}
         >
           +{hidden}
