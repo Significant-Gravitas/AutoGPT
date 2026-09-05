@@ -330,7 +330,8 @@ export function ConnectionPicker({
         {canConnectChatGPT && (
           <div
             className={cn(
-              showMaxUpgrade && "mt-4 border-t border-zinc-200 pt-4",
+              "mt-4",
+              showMaxUpgrade && "border-t border-zinc-200 pt-4",
             )}
           >
             <SectionLabel>Add a connection</SectionLabel>
