@@ -46,7 +46,7 @@ export function RecentWork({ dashboard, className }: Props) {
           description="Runs, files, integrations and schedules from your experts and workflows will appear here."
         />
       ) : (
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-zinc-200">
           {briefing.narrative ? (
             <Text
               variant="body"

@@ -72,6 +72,18 @@ const recentWork: HomeRecentWork = {
           cost_cents: 42,
           link: "/library/agents/lib-2?activeTab=runs&activeItem=run-1",
         },
+        {
+          id: "run-3",
+          status: "completed",
+          title: "Newsletter draft is ready",
+          summary: "Drafted the September newsletter from last week's notes.",
+          expert: maria,
+          agent_name: "Newsletter Writer",
+          occurred_at: NOW,
+          duration_seconds: 300,
+          cost_cents: 12,
+          link: "/library/agents/lib-3?activeTab=runs&activeItem=run-3",
+        },
       ],
       items: [
         {
@@ -93,7 +105,9 @@ const recentWork: HomeRecentWork = {
           occurred_at: NOW,
         },
       ],
-      more_count: 6,
+      run_count: 3,
+      file_count: 2,
+      schedule_count: 1,
     },
     {
       actor: {
@@ -125,7 +139,8 @@ const recentWork: HomeRecentWork = {
           provider: "google",
         },
       ],
-      more_count: 0,
+      run_count: 1,
+      integration_count: 1,
     },
     {
       actor: { kind: "autopilot", name: "Autopilot", link: "/copilot" },
@@ -141,7 +156,7 @@ const recentWork: HomeRecentWork = {
           link: "/copilot?sessionId=session-2",
         },
       ],
-      more_count: 0,
+      file_count: 1,
     },
   ],
 };
@@ -206,12 +221,22 @@ test("groups the week's runs and deliverables by who did them", async () => {
     within(mariaGroup).getByText("2026-08-28-code-review-metrics.md"),
   ).toBeDefined();
   expect(within(mariaGroup).getByText("persian.sh blog draft")).toBeDefined();
-  expect(within(mariaGroup).getByText("Plus 6 more")).toBeDefined();
+  expect(
+    within(mariaGroup).getByText("3 runs · 2 files · 1 schedule"),
+  ).toBeDefined();
+  // Only the first run tells its story; later completed runs are one line.
+  expect(
+    within(mariaGroup).getByText("Newsletter draft is ready"),
+  ).toBeDefined();
+  expect(
+    within(mariaGroup).queryByText(/Drafted the September newsletter/),
+  ).toBeNull();
 
   const workflowGroup = screen.getByRole("article", {
     name: "Release Note Generator",
   });
   expect(within(workflowGroup).getByText("Workflow")).toBeDefined();
+  expect(within(workflowGroup).getByText("1 run · 1 action")).toBeDefined();
   expect(within(workflowGroup).getByText("Failed")).toBeDefined();
   expect(
     within(workflowGroup).getByText("Release notes could not be generated"),

@@ -110,13 +110,16 @@ def compose_recent_work(
 def _compose_group(found: _Bucket) -> HomeRecentWorkGroup:
     # Runs arrive failures-first then newest-first; events arrive newest-first.
     # Both orders are worth keeping, so the caps slice rather than re-sort.
+    categories = [item.category for item in found.items]
     return HomeRecentWorkGroup(
         actor=found.actor,
         latest_at=found.latest_at or datetime.min.replace(tzinfo=timezone.utc),
         runs=found.runs[:_MAX_RUNS_PER_GROUP],
         items=found.items[:_MAX_ITEMS_PER_GROUP],
-        more_count=max(0, len(found.runs) - _MAX_RUNS_PER_GROUP)
-        + max(0, len(found.items) - _MAX_ITEMS_PER_GROUP),
+        run_count=len(found.runs),
+        file_count=categories.count("file"),
+        integration_count=categories.count("integration"),
+        schedule_count=categories.count("schedule"),
     )
 
 

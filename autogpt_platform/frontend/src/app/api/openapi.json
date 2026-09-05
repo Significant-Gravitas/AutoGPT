@@ -21638,9 +21638,24 @@
             "type": "array",
             "title": "Items"
           },
-          "more_count": {
+          "run_count": {
             "type": "integer",
-            "title": "More Count",
+            "title": "Run Count",
+            "default": 0
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
+          },
+          "integration_count": {
+            "type": "integer",
+            "title": "Integration Count",
+            "default": 0
+          },
+          "schedule_count": {
+            "type": "integer",
+            "title": "Schedule Count",
             "default": 0
           }
         },
