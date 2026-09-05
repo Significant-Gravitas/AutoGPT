@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from backend.data import redis_client
 from backend.data.event_bus import (
     AsyncRedisEventBus,
     RedisEventBus,
@@ -81,23 +82,9 @@ def test_assert_no_wildcard_guard():
 # Live SSUBSCRIBE round-trip; skipped when no cluster is reachable.
 
 
-def _has_live_cluster() -> bool:
-    from backend.data import redis_client
-
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 - any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
-
-
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip SSUBSCRIBE integration",
 )
 async def test_ssubscribe_end_to_end_async():
@@ -137,7 +124,7 @@ async def test_ssubscribe_end_to_end_async():
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip execution-bus integration",
 )
 async def test_execution_bus_listen_and_listen_graph_both_deliver():

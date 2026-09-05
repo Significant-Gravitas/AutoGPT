@@ -242,20 +242,8 @@ async def test_disconnect_async_no_cached_client_is_noop() -> None:
 # Skipped when no cluster is reachable so CI without docker doesn't flap.
 
 
-def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip the test
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
-
-
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 def test_sharded_pubsub_end_to_end_sync() -> None:
@@ -291,7 +279,7 @@ def test_sharded_pubsub_end_to_end_sync() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 async def test_sharded_spublish_end_to_end_async() -> None:
@@ -551,7 +539,7 @@ def _channels_on_distinct_shards(n: int = 3) -> list[str]:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
@@ -567,7 +555,7 @@ def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
@@ -618,7 +606,7 @@ def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
@@ -656,7 +644,7 @@ def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
 
 
 @pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_reconnect_after_forced_disconnect() -> None:
