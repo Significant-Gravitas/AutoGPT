@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 class ContinueRunBlockTool(BaseTool):
     """Tool for continuing a block execution after human review approval."""
 
+    # Returns execute_block's result, same as run_block.
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "continue_run_block"
