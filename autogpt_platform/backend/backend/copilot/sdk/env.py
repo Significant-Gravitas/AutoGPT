@@ -212,8 +212,7 @@ def build_sdk_env(
     return env
 
 
-# What the CLI assumes any Claude model's window to be once the 1M branches
-# are gated off; above this the kill-switch has to come off to raise anything.
+# What the CLI assumes any Claude model's window to be once 1M is gated off.
 _CLI_DEFAULT_CONTEXT_WINDOW = 200_000
 
 

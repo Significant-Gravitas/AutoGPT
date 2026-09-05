@@ -19,7 +19,7 @@ autogpt-libs = { path = "../autogpt_libs", develop = true }
 bcrypt = "^5.0.0"
 bleach = { extras = ["css"], version = "^6.2.0" }
 cachetools = "^5.5.0"
-claude-agent-sdk = "^0.2.146"  # 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 strips the context-management beta, which OpenRouter rejects and which is still experimental in every CLI bundled so far. The context window and the compaction trigger are pinned by us, not inherited from the CLI: see ChatConfig.claude_agent_context_window and sdk/env.py. See sdk_compat_test.py.
+claude-agent-sdk = "^0.2.146"  # 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 strips the context-management beta, which OpenRouter rejects. See sdk_compat_test.py.
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"

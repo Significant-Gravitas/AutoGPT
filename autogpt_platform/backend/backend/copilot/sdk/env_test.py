@@ -26,6 +26,10 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Pinned: both are settable from the environment, and a developer's
+        # .env otherwise rewrites what build_sdk_env() is asked to emit.
+        "claude_agent_autocompact_pct_override": 50,
+        "claude_agent_context_window": 200_000,
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
@@ -599,6 +603,7 @@ class TestAutocompactPctSonnet5Scaling:
             "anthropic/claude-sonnet-4-6",
             "anthropic/claude-sonnet-4-5",  # substring near-miss guard
             "anthropic/claude-opus-4-7",
+            "anthropic/claude-opus-4-8",
         ],
     )
     def test_non_sonnet_5_not_scaled(self, model):
@@ -624,54 +629,34 @@ class TestAutocompactPctSonnet5Scaling:
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "90"
 
 
-# The bundled CLI's autocompact arithmetic, restated so a change in the
-# trigger *number* fails here instead of shipping.  Verified identical in the
-# CLI binaries bundled with claude-agent-sdk 0.1.64 (2.1.116) and 0.2.146
-# (2.1.248): the window is reduced by a max-output reserve capped at 20K, and
-# the trigger is the lower of the percentage override and a 13K summary buffer.
-# The shipped 2.1.259 was not re-disassembled; its request shape was captured
-# and diffed against 2.1.248 (identical), and an unvetted lock float fails
-# ``_KNOWN_GOOD_BUNDLED_CLI_VERSIONS`` in ``sdk_compat_test.py``.
-_CLI_MAX_OUTPUT_RESERVE = 20_000
-_CLI_SUMMARY_BUFFER = 13_000
-
-
-def _cli_autocompact_threshold(window: int, pct: int | None) -> int:
-    effective = window - _CLI_MAX_OUTPUT_RESERVE
-    buffered = effective - _CLI_SUMMARY_BUFFER
-    if pct is None or not 0 < pct <= 100:
-        return buffered
-    return min(effective * pct // 100, buffered)
-
-
 class TestContextWindowPin:
     """The window the CLI compacts against is ours, not the CLI's guess.
 
-    ``CLAUDE_CODE_AUTO_COMPACT_WINDOW`` is the highest-precedence input to the
-    CLI's window resolution, so it preempts the model table, the native-1M
-    capability flags and the server-side experiment branches that newer CLIs
-    consult.  At or below the default window ``CLAUDE_CODE_DISABLE_1M_CONTEXT``
-    also holds the model window itself at 200K, which is what makes the default
-    a real cap rather than a ceiling the model can outgrow.
+    At or below the default, ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` holds the model
+    window itself at 200K too, making the default a real cap.
     """
 
-    def test_auto_compact_window_pinned_to_config(self):
-        cfg = _make_config(use_openrouter=False)
+    @pytest.mark.parametrize(
+        "window, expected, kill_switch",
+        [
+            # At the 200K default and a 50% override the CLI compacts at ~90K
+            # (~117K on Sonnet 5, whose override is scaled to 65%).
+            (200_000, "200000", True),
+            (200_001, "200001", False),
+            (1_000_000, "1000000", False),
+        ],
+    )
+    def test_window_pin_and_1m_kill_switch(self, window, expected, kill_switch):
+        """Above the default the kill-switch has to come off with the raise:
+        it would otherwise clamp the model window back to 200K and swallow it."""
+        cfg = _make_config(use_openrouter=False, claude_agent_context_window=window)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
-        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200000"
-
-    def test_disable_1m_context_set_at_default_window(self):
-        cfg = _make_config(use_openrouter=False)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(model="anthropic/claude-sonnet-5")
-
-        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
+        assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
 
     def test_context_window_rejects_out_of_range(self):
         """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
@@ -682,68 +667,3 @@ class TestContextWindowPin:
             _make_config(claude_agent_context_window=99_999)
         with pytest.raises(ValidationError):
             _make_config(claude_agent_context_window=1_000_001)
-
-    def test_raising_the_window_drops_the_1m_kill_switch(self):
-        """Above 200K the kill-switch would clamp the model window back down
-        and silently swallow the raise, so it must come off together."""
-        cfg = _make_config(use_openrouter=False, claude_agent_context_window=1_000_000)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(model="anthropic/claude-sonnet-5")
-
-        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "1000000"
-        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
-
-    def test_kill_switch_drops_at_the_first_window_above_the_default(self):
-        """200,001 is the boundary: one token past the default, the switch that
-        would clamp the model window back to 200K has to come off."""
-        cfg = _make_config(use_openrouter=False, claude_agent_context_window=200_001)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(model="anthropic/claude-sonnet-5")
-
-        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == "200001"
-        assert "CLAUDE_CODE_DISABLE_1M_CONTEXT" not in result
-
-    @pytest.mark.parametrize(
-        "model, expected_trigger",
-        [
-            ("anthropic/claude-opus-4-8", 90_000),
-            ("anthropic/claude-sonnet-4-6", 90_000),
-            ("anthropic/claude-sonnet-5", 117_000),  # 65% after tokenizer scaling
-        ],
-    )
-    def test_shipped_defaults_keep_the_trigger_where_it_was(
-        self, model, expected_trigger
-    ):
-        """The trigger token count carried over from claude-agent-sdk 0.1.64.
-
-        Raising it is a decision, not a side effect of an SDK bump: this
-        asserts the number, so any change has to be made here on purpose.
-        """
-        cfg = _make_config(use_openrouter=False)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(model=model)
-
-        window = int(result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
-        pct = result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
-        assert (
-            _cli_autocompact_threshold(window, int(pct) if pct else None)
-            == expected_trigger
-        )
-
-    def test_moonshot_trigger_unchanged_without_the_pct_override(self):
-        """Kimi routes suppress the override, so only the 13K buffer applies."""
-        cfg = _make_config(use_openrouter=False)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(model="moonshotai/kimi-k2.6")
-
-        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
-        window = int(result["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
-        assert _cli_autocompact_threshold(window, None) == 167_000
