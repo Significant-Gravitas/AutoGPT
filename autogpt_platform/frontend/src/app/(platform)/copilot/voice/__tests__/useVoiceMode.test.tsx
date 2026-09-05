@@ -426,6 +426,33 @@ describe("useVoiceMode", () => {
     vi.useRealTimers();
   });
 
+  it("speaks the pre-tool line without waiting for the tool chain", async () => {
+    // The acknowledgement and the tool calls share one message, so there is
+    // no message boundary to flush on. Holding it means silence for as long
+    // as the tools run — which was 27-36s in practice.
+    vi.useFakeTimers();
+    const view = render({});
+    await enable(view);
+    await speak();
+
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Great question — let me look that up.", "a1"),
+        isStreaming: true,
+      });
+    });
+    const beforeWait = spoken.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1200);
+    });
+
+    expect(spoken.slice(beforeWait)).toEqual([
+      "Great question — let me look that up.",
+    ]);
+    vi.useRealTimers();
+  });
+
   it("shuts itself down when the flag goes off", async () => {
     const view = render({});
     await enable(view);

@@ -33,6 +33,13 @@ const MAX_SESSION_MS = 5 * 60 * 1000;
  * runs longer than this, and giving up mid-turn strands the reply unspoken.
  */
 const REPLY_SILENCE_MS = 90_000;
+/**
+ * A sentence at the very end of the buffer is held back in case the next
+ * delta turns "3." into "3.5". If no more text arrives for this long the
+ * turn has moved on to tool calls, and holding it means silence for as long
+ * as the tools take — so say it.
+ */
+const TEXT_SETTLED_MS = 800;
 
 interface Args {
   enabled: boolean;
@@ -272,7 +279,8 @@ export function useVoiceMode({
     const full = last.parts
       .map((part) => (part.type === "text" ? part.text : ""))
       .join("");
-    chunkBuffer.current += reader.current.read(last.id, full);
+    const added = reader.current.read(last.id, full);
+    chunkBuffer.current += added;
 
     // Only the first chunk races the clock; later ones read better long.
     const minChars = spokeThisTurn.current ? LATER_CHUNK_MIN_CHARS : 0;
@@ -283,6 +291,20 @@ export function useVoiceMode({
     );
     chunkBuffer.current = rest;
     chunks.forEach(speak);
+
+    // Only new text restarts the wait; tool parts keep arriving and would
+    // otherwise hold the pending sentence back for the whole tool chain.
+    if (added) armTextSettledFlush();
+  }
+
+  /** Speak whatever is pending once the model stops adding to it. */
+  function armTextSettledFlush() {
+    setTimer("textSettled", TEXT_SETTLED_MS, () => {
+      if (!chunkBuffer.current) return;
+      const { chunks } = takeSpeakableChunks(chunkBuffer.current, true);
+      chunkBuffer.current = "";
+      chunks.forEach(speak);
+    });
   }
 
   function finishReply() {
@@ -350,7 +372,10 @@ export function useVoiceMode({
     } else {
       clearTimer("silence");
     }
-    if (next === "listening" || next === "off") clearTimer("reply");
+    if (next === "listening" || next === "off") {
+      clearTimer("reply");
+      clearTimer("textSettled");
+    }
   }
 
   function player(): SpeechPlayer {
