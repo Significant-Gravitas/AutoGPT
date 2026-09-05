@@ -20,6 +20,9 @@ export interface ChainActionEntry {
   /** This card's reply must be reviewed before it is sent, so the chain owes
    *  it a Proceed even when it asks for nothing but credentials. */
   manualProceed?: boolean;
+  /** A sign-in completed on this card during this page life. The chain sends
+   *  only when one has, so a chat reloaded from history stays silent. */
+  justConnected?: boolean;
   /** Credentials this card needs. The chain merges every entry's request
    *  into the single connectors table it renders underneath itself. */
   connectors?: ConnectorRequest;
