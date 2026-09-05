@@ -85,7 +85,7 @@ class DesktopFileBlock(Block):
                 ("path", "/home/user/workspace/notes.txt"),
                 ("cost_meter", lambda v: v["provider"] == "e2b"),
             ],
-            test_mock={"file_op": lambda *args, **kwargs: ("hello", None)},
+            test_mock={"file_op": lambda *args, **kwargs: ("hello", None, (8, 8.0))},
         )
 
     async def file_op(
@@ -95,16 +95,17 @@ class DesktopFileBlock(Block):
         operation: FileOperation,
         path: str,
         content: str,
-    ) -> tuple[Optional[str], Optional[list[str]]]:
+    ) -> tuple[Optional[str], Optional[list[str]], Optional[tuple[int, float]]]:
         session = await DesktopSession.connect(sandbox_id, api_key)
+        resources = await session.resources()
         if operation == FileOperation.READ:
             data = await session.sandbox.files.read(path)
-            return data, None
+            return data, None, resources
         if operation == FileOperation.WRITE:
             await session.sandbox.files.write(path, content)
-            return None, None
+            return None, None, resources
         entries = await session.sandbox.files.list(path)
-        return None, [entry.name for entry in entries]
+        return None, [entry.name for entry in entries], resources
 
     async def run(
         self,
@@ -115,7 +116,7 @@ class DesktopFileBlock(Block):
     ) -> BlockOutput:
         start = time.monotonic()
         try:
-            content, entries = await self.file_op(
+            content, entries, resources = await self.file_op(
                 api_key=credentials.api_key.get_secret_value(),
                 sandbox_id=input_data.sandbox_id,
                 operation=input_data.operation,
@@ -128,7 +129,7 @@ class DesktopFileBlock(Block):
                 yield "entries", entries
             yield "path", input_data.path
             yield "cost_meter", build_cost_meter(
-                input_data.sandbox_id, time.monotonic() - start
+                input_data.sandbox_id, time.monotonic() - start, resources
             ).model_dump()
         except Exception as e:
             yield "error", str(e)

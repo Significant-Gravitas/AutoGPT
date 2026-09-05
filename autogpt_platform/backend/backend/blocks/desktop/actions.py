@@ -135,19 +135,27 @@ class DesktopActionBlock(Block):
                 ("cost_meter", lambda v: v["provider"] == "e2b"),
             ],
             test_mock={
-                "perform_action": lambda *args, **kwargs: ("Performed move", None)
+                "perform_action": lambda *args, **kwargs: (
+                    "Performed move",
+                    None,
+                    (8, 8.0),
+                )
             },
         )
 
     async def perform_action(
         self, api_key: str, input_data: Input
-    ) -> tuple[str, Optional[str]]:
+    ) -> tuple[str, Optional[str], Optional[tuple[int, float]]]:
         session = await DesktopSession.connect(input_data.sandbox_id, api_key)
         await self._dispatch(session, input_data)
         screenshot = None
         if input_data.screenshot_after or input_data.action == DesktopAction.SCREENSHOT:
             screenshot = await session.screenshot_base64()
-        return f"Performed {input_data.action.value}", screenshot
+        return (
+            f"Performed {input_data.action.value}",
+            screenshot,
+            await session.resources(),
+        )
 
     async def _dispatch(self, session: DesktopSession, input_data: Input) -> None:
         action = input_data.action
@@ -188,7 +196,7 @@ class DesktopActionBlock(Block):
     ) -> BlockOutput:
         start = time.monotonic()
         try:
-            result, screenshot_b64 = await self.perform_action(
+            result, screenshot_b64, resources = await self.perform_action(
                 credentials.api_key.get_secret_value(), input_data
             )
             yield "result", result
@@ -200,7 +208,7 @@ class DesktopActionBlock(Block):
                 )
                 yield "screenshot", stored
             yield "cost_meter", build_cost_meter(
-                input_data.sandbox_id, time.monotonic() - start
+                input_data.sandbox_id, time.monotonic() - start, resources
             ).model_dump()
         except Exception as e:
             yield "error", str(e)
