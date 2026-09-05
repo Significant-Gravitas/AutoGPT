@@ -226,12 +226,15 @@ onboarding AS (
   FROM platform."UserOnboarding"
 ),
 integrations AS (
+  -- Credentials the user owns personally; team- and org-owned ones are
+  -- attributed to their owner, not to whoever created them.
   SELECT
-    "createdByUserId"                                                    AS user_id,
+    "ownerId"                                                            AS user_id,
     COUNT(*)                                                             AS integrations_connected_total,
     COUNT(DISTINCT "provider")                                           AS integration_providers_connected,
     MIN("createdAt")                                                     AS first_integration_connected_at
   FROM platform."IntegrationCredential"
+  WHERE "ownerType" = 'USER'
   GROUP BY 1
 ),
 assembled AS (
