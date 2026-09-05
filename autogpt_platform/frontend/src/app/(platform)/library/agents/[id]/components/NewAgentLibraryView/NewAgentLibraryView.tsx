@@ -48,6 +48,7 @@ export function NewAgentLibraryView() {
     selectedTriggerKind,
     retryTriggerLists,
     sidebarLoading,
+    sidebarHasError,
     activeTab,
     setActiveTab,
     handleSelectRun,
@@ -262,6 +263,7 @@ export function NewAgentLibraryView() {
                   className="w-full"
                   disabled={isNewAgentTaskDisabled({
                     sidebarLoading,
+                    sidebarHasError,
                     isTemplateLoading,
                     activeTab,
                   })}

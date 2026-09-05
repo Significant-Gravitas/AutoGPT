@@ -4,9 +4,16 @@ import {
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
+  getGetV2ListTriggerAgentsMockHandler422,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
-import { getGetV1ListGraphExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
-import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListGraphExecutionsMockHandler,
+  getGetV1ListGraphExecutionsMockHandler422,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import {
+  getGetV1ListExecutionSchedulesForAGraphMockHandler,
+  getGetV1ListExecutionSchedulesForAGraphMockHandler422,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import {
   getGetV2GetASpecificPresetMockHandler,
   getGetV2GetASpecificPresetResponseMock,
@@ -172,6 +179,36 @@ describe("Library agent view — trigger agents", () => {
     mockToast.mockClear();
     mockUseGetFlag.mockReturnValue(true);
   });
+
+  test.each([
+    ["run history", getGetV1ListGraphExecutionsMockHandler422],
+    ["schedules", getGetV1ListExecutionSchedulesForAGraphMockHandler422],
+    ["presets", getGetV2ListPresetsMockHandler422],
+    ["trigger agents", getGetV2ListTriggerAgentsMockHandler422],
+  ])(
+    "keeps new agent tasks available when %s fails",
+    async (_name, errorHandler) => {
+      server.use(
+        ...baseHandlers({ input_schema: {}, credentials_input_schema: {} }),
+        emptyPresetsHandler,
+        emptySchedulesHandler,
+        getGetV2ListTriggerAgentsMockHandler([]),
+      );
+      server.use(errorHandler());
+
+      renderWithInitialParams(<NewAgentLibraryView />);
+
+      await screen.findByText(/when retrieving data/i);
+      const newTaskButton = screen.getByRole("button", {
+        name: "New agent task",
+      });
+      await waitFor(() => {
+        expect(newTaskButton.hasAttribute("disabled")).toBe(false);
+      });
+      await userEvent.click(newTaskButton);
+      expect(await screen.findByRole("dialog")).toBeDefined();
+    },
+  );
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
     server.use(

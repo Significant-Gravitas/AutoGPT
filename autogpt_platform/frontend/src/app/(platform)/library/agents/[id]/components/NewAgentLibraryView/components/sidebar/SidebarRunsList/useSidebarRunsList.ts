@@ -49,6 +49,7 @@ type Args = {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 };
 
@@ -135,6 +136,11 @@ export function useSidebarRunsList({
     schedulesQuery.isStale ||
     presetsQuery.isStale ||
     (triggerAgentsEnabled && triggerAgentsQuery.isStale);
+  const error =
+    schedulesQuery.error ||
+    runsQuery.error ||
+    presetsQuery.error ||
+    (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -151,13 +157,14 @@ export function useSidebarRunsList({
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange && !stale) {
+    if (onCountsChange && (!stale || error)) {
       onCountsChange({
         runsCount,
         schedulesCount,
         templatesCount,
         triggersCount,
         loading,
+        hasError: !!error,
       });
     }
   }, [
@@ -168,6 +175,7 @@ export function useSidebarRunsList({
     triggersCount,
     loading,
     stale,
+    error,
   ]);
 
   useEffect(() => {
@@ -210,11 +218,7 @@ export function useSidebarRunsList({
     templates,
     triggers,
     triggerAgents,
-    error:
-      schedulesQuery.error ||
-      runsQuery.error ||
-      presetsQuery.error ||
-      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
+    error,
     loading,
     runsQuery,
     tabValue,
