@@ -64,6 +64,21 @@ SCHEDULER_JOBS = Gauge(
     labelnames=["job_type", "status"],
 )
 
+# Every Stripe SDK call, by resource/method and how it ended. Stripe applies
+# its rate limit per account rather than per endpoint, so the rate_limited
+# outcome is worth alerting on regardless of which call path produced it.
+STRIPE_REQUESTS = Counter(
+    "autogpt_stripe_requests_total",
+    "Stripe API requests by resource, method and outcome",
+    labelnames=["resource", "method", "outcome"],
+)
+
+STRIPE_REQUEST_DURATION = Histogram(
+    "autogpt_stripe_request_duration_seconds",
+    "Stripe API request duration in seconds",
+    labelnames=["resource", "method"],
+)
+
 DATABASE_QUERIES = Histogram(
     "autogpt_database_query_duration_seconds",
     "Duration of database queries in seconds",
@@ -263,6 +278,13 @@ def update_websocket_connections(user_id: str, delta: int):
         WEBSOCKET_CONNECTIONS.inc(delta)
     else:
         WEBSOCKET_CONNECTIONS.dec(abs(delta))
+
+
+def record_stripe_request(resource: str, method: str, outcome: str, duration: float):
+    """Record one Stripe API call. ``outcome`` is one of ok / rate_limited /
+    connection_error / timeout / api_error (see backend.data.stripe_client)."""
+    STRIPE_REQUESTS.labels(resource=resource, method=method, outcome=outcome).inc()
+    STRIPE_REQUEST_DURATION.labels(resource=resource, method=method).observe(duration)
 
 
 def record_database_query(operation: str, table: str, duration: float):
