@@ -40,6 +40,34 @@ describe("Transaction history activity and states", () => {
     },
   );
 
+  it("renders direct block usage outside an agent run", async () => {
+    server.use(
+      http.get("*/api/credits/transactions", () =>
+        HttpResponse.json({
+          transactions: [
+            {
+              ...topUp,
+              transaction_type: "USAGE",
+              activity_type: "block_usage",
+              description: "Block usage",
+              amount: -12,
+            },
+          ],
+          next_cursor: null,
+        }),
+      ),
+    );
+    render(<TransactionHistoryCard />);
+    expect(await screen.findByText("Direct block usage")).toBeDefined();
+    expect(screen.getByText("Outside an agent run")).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: /details for Direct block usage/i }),
+    );
+    expect(
+      screen.getByText("A paid block call without an associated agent run."),
+    ).toBeDefined();
+  });
+
   it("uses the conversation destination for Autopilot tool use, never a library route", async () => {
     server.use(
       http.get("*/api/credits/transactions", () =>
