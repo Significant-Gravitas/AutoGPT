@@ -7,7 +7,11 @@ import {
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useOnboardingWizardStore } from "../../store";
-import { hasLinkedSubscription, linkedModelsSentence } from "./helpers";
+import {
+  hasLinkedSubscription,
+  linkedModelsSentence,
+  linkedSubscriptionName,
+} from "./helpers";
 
 export function useConnectStep() {
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
@@ -37,9 +41,11 @@ export function useConnectStep() {
 
   return {
     connect,
+    finishConnection: nextStep,
     isConnecting: isPending,
     skip: nextStep,
     isAlreadyLinked: hasLinkedSubscription(offers),
+    linkedSubscription: linkedSubscriptionName(offers),
     models: linkedModelsSentence(providers),
   };
 }

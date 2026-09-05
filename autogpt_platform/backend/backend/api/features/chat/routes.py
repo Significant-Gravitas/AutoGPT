@@ -598,8 +598,8 @@ class SetDefaultTransportRequest(BaseModel):
     """The connection new chats should start on.
 
     ``auth_provider: null`` clears the choice and hands the decision back to
-    the server. Sending ``codex`` requires naming the credential, so the
-    default keeps pointing at one account rather than "whichever ChatGPT".
+    the server. A user-backed provider requires naming the credential, so the
+    default keeps pointing at one account rather than whichever account exists.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -637,7 +637,7 @@ async def set_default_chat_transport(
         )
     except InvalidDefaultChatRoute as e:
         raise HTTPException(
-            status_code=404 if e.detail == "codex_credential_not_found" else 422,
+            status_code=404 if e.detail.endswith("_credential_not_found") else 422,
             detail=e.detail,
         ) from e
     return ChatTransportsResponse(transports=transports)
@@ -654,10 +654,10 @@ async def _resolve_new_session_llm_route(
         await enforce_codex_access_http(user_id)
 
     if request is not None and request.builder_graph_id is not None:
-        if auth_provider == "codex" or credential_id is not None:
+        if auth_provider != "platform" or credential_id is not None:
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{auth_provider}_builder_session_unsupported",
             )
         if not is_deployment_chat_available():
             raise HTTPException(
@@ -677,10 +677,10 @@ async def _resolve_new_session_llm_route(
                     status_code=422,
                     detail="codex_credential_not_allowed",
                 )
-            if auth_provider == "codex" and credential_id is None:
+            if auth_provider != "platform" and credential_id is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="codex_credential_required",
+                    detail=f"{auth_provider}_credential_required",
                 )
             selected_route = next(
                 (
@@ -693,10 +693,10 @@ async def _resolve_new_session_llm_route(
                 None,
             )
             if selected_route is None:
-                if auth_provider == "codex":
+                if auth_provider != "platform":
                     raise HTTPException(
                         status_code=404,
-                        detail="codex_credential_not_found",
+                        detail=f"{auth_provider}_credential_not_found",
                     )
                 raise HTTPException(
                     status_code=503,
@@ -793,10 +793,10 @@ async def create_session(
     )
 
     if builder_graph_id:
-        if llm_auth_provider == "codex":
+        if llm_auth_provider != "platform":
             raise HTTPException(
                 status_code=422,
-                detail="codex_builder_session_unsupported",
+                detail=f"{llm_auth_provider}_builder_session_unsupported",
             )
         session = await get_or_create_builder_session(
             user_id,
@@ -951,8 +951,11 @@ async def change_session_connection_route(
 
     if auth_provider == "platform" and credential_id is not None:
         raise HTTPException(status_code=422, detail="codex_credential_not_allowed")
-    if auth_provider == "codex" and credential_id is None:
-        raise HTTPException(status_code=422, detail="codex_credential_required")
+    if auth_provider != "platform" and credential_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{auth_provider}_credential_required",
+        )
 
     transports = await get_chat_transports(user_id)
     target = next(
@@ -968,8 +971,11 @@ async def change_session_connection_route(
     if target is None:
         # Same shapes the session-creation path uses, so a client that already
         # handles them does not need a second vocabulary for the same refusals.
-        if auth_provider == "codex":
-            raise HTTPException(status_code=404, detail="codex_credential_not_found")
+        if auth_provider != "platform":
+            raise HTTPException(
+                status_code=404,
+                detail=f"{auth_provider}_credential_not_found",
+            )
         raise HTTPException(status_code=503, detail="chat_transport_not_configured")
 
     changed = await update_session_llm_route(
@@ -1541,23 +1547,6 @@ async def stream_chat_post(
         request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
     """
-    # The Advanced tier is a paid capability, and it was only enforced where
-    # the picker decides what to grey out. A client that skips the picker and
-    # posts model="advanced" was served it, on our credits. Checked first,
-    # before the session is touched or the message stored: a turn we are going
-    # to refuse should leave nothing behind.
-    if request.model == "advanced":
-        try:
-            entitled = await advanced_tier_entitled(user_id)
-        except EntitlementUnavailable:
-            # Not knowing is not permission. The picker stays generous when
-            # the lookup is down; spending does not.
-            raise HTTPException(
-                status_code=503, detail="advanced_tier_unavailable"
-            ) from None
-        if not entitled:
-            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
-
     import time
 
     stream_start_time = time.perf_counter()
@@ -1574,6 +1563,22 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_writable_session(session_id, user_id)
+
+    # Microsoft 365 Copilot owns its model choice and ignores AutoGPT's tier.
+    # Every other route can spend platform-gated premium inference, so a client
+    # that skips the picker still has to hold the Advanced entitlement.
+    if (
+        request.model == "advanced"
+        and session.metadata.llm_auth_provider != "microsoft_365_copilot"
+    ):
+        try:
+            entitled = await advanced_tier_entitled(user_id)
+        except EntitlementUnavailable:
+            raise HTTPException(
+                status_code=503, detail="advanced_tier_unavailable"
+            ) from None
+        if not entitled:
+            raise HTTPException(status_code=403, detail="advanced_tier_not_entitled")
 
     # Fire-and-forget; per-user Redis dedup inside the helper provides
     # cross-process / cross-restart idempotency. Same pattern as

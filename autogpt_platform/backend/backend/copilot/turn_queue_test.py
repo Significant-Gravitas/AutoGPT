@@ -464,6 +464,41 @@ async def test_promotion_uses_current_codex_route_not_stale_platform_tier() -> N
 
 
 @pytest.mark.asyncio
+async def test_microsoft_promotion_skips_platform_billing_gates() -> None:
+    head = _mock_session()
+    head.metadata.llm_auth_provider = "microsoft_365_copilot"
+    head.metadata.llm_credential_id = "cred-microsoft"
+    pending = _pyd_message(metadata={"model": "advanced"})
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(return_value=pending)
+    dispatch_turn_mock = AsyncMock()
+    platform_gate = AsyncMock(
+        side_effect=AssertionError("platform billing gate checked for Microsoft")
+    )
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "is_user_paywalled", new=platform_gate),
+        patch.object(turn_queue, "advanced_tier_entitled", new=platform_gate),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value=True)
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatch_turn_mock),
+    ):
+        promoted = await turn_queue.dispatch_next_for_user("u1")
+
+    assert promoted is True
+    platform_gate.assert_not_awaited()
+    assert (
+        dispatch_turn_mock.await_args.kwargs["llm_auth_provider"]
+        == "microsoft_365_copilot"
+    )
+
+
+@pytest.mark.asyncio
 async def test_codex_dispatch_leaves_queued_when_user_lacks_access() -> None:
     head = _mock_session()
     head.metadata.llm_auth_provider = "codex"

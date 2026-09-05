@@ -26,8 +26,17 @@ from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.microsoft_365_copilot.service import (
+    stream_chat_completion_microsoft_365,
+)
+from backend.integrations.oauth.microsoft_365_copilot import (
+    Microsoft365CopilotDeviceAuthHandler,
+)
+from backend.integrations.providers import ProviderName
 from backend.util.decorator import error_logged
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -577,6 +586,45 @@ class CoPilotProcessor:
                     raise RuntimeError("codex_credential_not_found") from None
                 stream_fn = sdk_service.stream_chat_completion_sdk
                 log.info("Using Claude SDK with Codex subscription transport")
+            elif entry.llm_auth_provider == "microsoft_365_copilot":
+                if entry.user_id is None:
+                    raise RuntimeError("microsoft_365_copilot_user_required")
+                if entry.llm_credential_id is None:
+                    raise RuntimeError("microsoft_365_copilot_credential_required")
+                try:
+                    credential_lease = (
+                        await IntegrationCredentialsManager().acquire_lease(
+                            entry.user_id,
+                            entry.llm_credential_id,
+                        )
+                    )
+                    credentials = credential_lease.credentials
+                    required_scopes = set(
+                        Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES
+                    )
+                    if (
+                        not isinstance(credentials, OAuth2Credentials)
+                        or credentials.provider != ProviderName.MICROSOFT_365_COPILOT
+                        or not required_scopes.issubset(credentials.scopes)
+                    ):
+                        raise ValueError("invalid Microsoft 365 Copilot credential")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    if credential_lease is not None:
+                        await credential_lease.release()
+                        credential_lease = None
+                    # Only a missing or unusable credential is "not found";
+                    # a refresh failure or lock contention on a valid account
+                    # keeps its own cause so it is not reported as missing.
+                    code = (
+                        "microsoft_365_copilot_credential_not_found"
+                        if isinstance(error, ValueError)
+                        else "microsoft_365_copilot_credential_unavailable"
+                    )
+                    raise RuntimeError(code) from error
+                stream_fn = cast(Callable, stream_chat_completion_microsoft_365)
+                log.info("Using Microsoft 365 Copilot Chat API transport")
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
@@ -700,7 +748,7 @@ class CoPilotProcessor:
                             f"Failed to checkpoint Codex credential: {release_err}"
                         )
                     except Exception as release_err:
-                        log.error(f"Failed to release Codex credential: {release_err}")
+                        log.error(f"Failed to release chat credential: {release_err}")
             finally:
                 try:
                     await stream_registry.mark_session_completed(

@@ -15368,6 +15368,11 @@
       "AIConnectionOffer": {
         "properties": {
           "offer_id": { "type": "string", "title": "Offer Id" },
+          "auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
+            "title": "Auth Provider"
+          },
           "provider_family": { "type": "string", "title": "Provider Family" },
           "display_name": { "type": "string", "title": "Display Name" },
           "auth_method": { "type": "string", "title": "Auth Method" },
@@ -15402,6 +15407,7 @@
         "type": "object",
         "required": [
           "offer_id",
+          "auth_provider",
           "provider_family",
           "display_name",
           "auth_method",
@@ -17325,7 +17331,7 @@
         "properties": {
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider"
           },
           "llm_credential_id": {
@@ -17383,13 +17389,18 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
           "llm_credential_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Llm Credential Id"
+          },
+          "llm_provider_session_ids": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Llm Provider Session Ids"
           },
           "builder_graph_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -17474,7 +17485,7 @@
         "properties": {
           "auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Auth Provider"
           },
           "credential_id": {
@@ -18336,7 +18347,7 @@
           },
           "llm_auth_provider": {
             "type": "string",
-            "enum": ["platform", "codex"],
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
             "title": "Llm Auth Provider",
             "default": "platform"
           },
@@ -18378,6 +18389,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -26017,6 +26029,7 @@
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
+              "llm_provider_session_ids": {},
               "kind": "normal"
             }
           },
@@ -26080,7 +26093,10 @@
         "properties": {
           "auth_provider": {
             "anyOf": [
-              { "type": "string", "enum": ["platform", "codex"] },
+              {
+                "type": "string",
+                "enum": ["platform", "codex", "microsoft_365_copilot"]
+              },
               { "type": "null" }
             ],
             "title": "Auth Provider"
@@ -26096,7 +26112,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SetDefaultTransportRequest",
-        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. Sending ``codex`` requires naming the credential, so the\ndefault keeps pointing at one account rather than \"whichever ChatGPT\"."
+        "description": "The connection new chats should start on.\n\n``auth_provider: null`` clears the choice and hands the decision back to\nthe server. A user-backed provider requires naming the credential, so the\ndefault keeps pointing at one account rather than whichever account exists."
       },
       "SetGraphActiveVersion": {
         "properties": {
