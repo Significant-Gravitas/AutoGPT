@@ -31,10 +31,9 @@ _LARGE_OUTPUT_THRESHOLD = 80_000
 # to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
 _PREVIEW_CHARS = 95_000
 
-# Threshold and budget used when AUTOPILOT_DELEGATION is on.  The largest block
-# schema in the registry is ~34K chars, so the 80K trigger above has never once
-# fired on the reads that fill AutoPilot's transcript.  The budget is derived
-# from the trigger so a digest can never be larger than the output it replaces.
+# Threshold and budget for the digest, which fires when AUTOPILOT_DELEGATION is
+# on and the tool opts in.  The budget is derived from the trigger so a digest
+# can never be larger than the output it replaces.
 _DIGEST_THRESHOLD = 8_000
 _DIGEST_PREVIEW_CHARS = _DIGEST_THRESHOLD // 4
 _OUTLINE_SCALAR_CHARS = 120
@@ -87,8 +86,11 @@ async def _persist_and_summarize(
     if digest:
         indexed = _index_json(raw_output)
         if indexed is not None:
-            body, data, offsets = indexed
-            outline = _outline(data, offsets, _DIGEST_PREVIEW_CHARS)
+            body, _, offsets = indexed
+            # Summarised for display only: the file keeps the real bytes, so a
+            # window read still yields them.
+            summarized = json.loads(_summarize_binary_fields(body))
+            outline = _outline(summarized, offsets, _DIGEST_PREVIEW_CHARS)
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
@@ -109,8 +111,14 @@ async def _persist_and_summarize(
         return raw_output  # fall back to normal truncation
 
     total = len(body)
+    sandbox = (
+        f"To process the file in the sandbox/working dir, use "
+        f"read_workspace_file("
+        f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
+        f"first, then use bash_exec to work with the local copy."
+    )
     if outline:
-        shape, preview = "outline", outline
+        fmt, preview = ' format="outline"', outline
         # A flat length= larger than the file makes one "narrow" read pull
         # everything back, which is how a digest ends up costing more.
         retrieval = (
@@ -119,26 +127,20 @@ async def _persist_and_summarize(
             f"node's exact window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
             f"length=<length>) returns it and nothing else."
+            f"\n{sandbox}"
         )
     else:
-        shape, preview = "excerpt", truncate(
-            _summarize_binary_fields(body), _PREVIEW_CHARS
-        )
+        fmt, preview = "", truncate(_summarize_binary_fields(body), _PREVIEW_CHARS)
         retrieval = (
             f"\nFull output ({total:,} chars) saved to workspace. "
             f"Use read_workspace_file("
             f'path="{file_path}", offset=<char_offset>, length=50000) '
             f"to read any section. "
+            f"{sandbox}"
         )
-    retrieval += (
-        f"\nTo process the file in the sandbox/working dir, use "
-        f"read_workspace_file("
-        f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
-        f"first, then use bash_exec to work with the local copy."
-    )
     return (
         f"<tool-output-truncated total_chars={total} "
-        f'workspace_path="{file_path}" format="{shape}">\n'
+        f'workspace_path="{file_path}"{fmt}>\n'
         f"{preview}\n"
         f"{retrieval}\n"
         f"</tool-output-truncated>"
@@ -239,7 +241,10 @@ def _render_outline(
                 )
                 queue.append((child, value))
             else:
-                parts.append(f"{key}={_scalar(value, scalar_chars)}")
+                # `message` is the tool's own instruction to the model; the cut
+                # lands mid-sentence and drops the half that constrains it.
+                cap = None if key == "message" else scalar_chars
+                parts.append(f"{key}={_scalar(value, cap)}")
         braces = "{}" if is_map else "[]"
         line = f"{path}: {braces[0]}{', '.join(parts)}{braces[1]}"
         if len(line) + 1 > budget - used:
@@ -256,9 +261,9 @@ def _render_outline(
     return "\n".join(lines)
 
 
-def _scalar(value: Any, limit: int) -> str:
+def _scalar(value: Any, limit: int | None) -> str:
     text = json.dumps(value, ensure_ascii=False)
-    return text if len(text) <= limit else text[: limit - 1] + "…"
+    return text if limit is None or len(text) <= limit else text[: limit - 1] + "…"
 
 
 async def _record_activity(
@@ -289,6 +294,10 @@ async def _record_activity(
 
 class BaseTool:
     """Base class for all chat tools."""
+
+    # Opt-in for the digest: an outline is only readable back in windows, so a
+    # tool whose bulk is one long text (a guide, a docs page) must not set it.
+    digest_large_output: bool = False
 
     @property
     def name(self) -> str:
@@ -389,7 +398,8 @@ class BaseTool:
             # Consult the flag only once the output could plausibly be digested,
             # so the common small-output path stays a pure local check.
             digest = (
-                len(raw_output) > _DIGEST_THRESHOLD
+                self.digest_large_output
+                and len(raw_output) > _DIGEST_THRESHOLD
                 and user_id is not None
                 and await is_feature_enabled(
                     Flag.AUTOPILOT_DELEGATION, user_id, default=False

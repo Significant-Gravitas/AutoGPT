@@ -115,6 +115,8 @@ def parse_time_expression(
 class AgentOutputTool(BaseTool):
     """Tool for retrieving execution outputs from user's library agents."""
 
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "view_agent_output"

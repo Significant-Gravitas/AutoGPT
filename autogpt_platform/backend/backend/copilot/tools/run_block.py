@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 class RunBlockTool(BaseTool):
     """Tool for executing a block and returning its outputs."""
 
+    digest_large_output = True
+
     @property
     def name(self) -> str:
         return "run_block"

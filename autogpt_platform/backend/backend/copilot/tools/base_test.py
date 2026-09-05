@@ -1,5 +1,6 @@
 """Tests for BaseTool large-output persistence in execute()."""
 
+import base64
 import json
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,6 +22,10 @@ from backend.copilot.tools.models import (
     BlockDetailsResponse,
     ResponseType,
     ToolResponseBase,
+)
+from backend.copilot.tools.workspace_files import (
+    ReadWorkspaceFileTool,
+    WorkspaceFileContentResponse,
 )
 
 
@@ -102,6 +107,20 @@ class TestPersistAndSummarize:
             result = await _persist_and_summarize(raw, "user-1", "session-1", "tc-fail")
 
         assert result == raw  # unchanged — fallback to normal truncation
+
+    @pytest.mark.asyncio
+    async def test_the_excerpt_envelope_is_unchanged_from_before_the_digest(self):
+        """Flag off has to be byte-identical above 80K too, which is what the
+        "safe to merge dark" claim rests on."""
+        db_patch, mgr_patch = _workspace_patches(AsyncMock())
+        with db_patch, mgr_patch:
+            result = await _persist_and_summarize(
+                "A" * 200_000, "user-1", "session-1", "tc-123"
+            )
+
+        assert 'workspace_path="tool-outputs/tc-123.json">' in result
+        assert "format=" not in result
+        assert "to read any section. To process the file" in result
 
 
 # ---------------------------------------------------------------------------
@@ -213,9 +232,16 @@ class TestSummarizeBinaryFields:
 class _SchemaOutputTool(_HugeOutputTool):
     """Returns a block-details payload, which is what the digest exists for."""
 
+    digest_large_output = True
+
+    def __init__(self, output_size: int, message: str = "Block details.", **field):
+        super().__init__(output_size)
+        self._message = message
+        self._field = field
+
     async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
         return BlockDetailsResponse(
-            message="Block 'Wide Block' details.",
+            message=self._message,
             block=BlockDetails(
                 id="b-1",
                 name="Wide Block",
@@ -225,12 +251,46 @@ class _SchemaOutputTool(_HugeOutputTool):
                         f"field_{i}": {
                             "type": "string",
                             "description": "d" * (self._output_size // 40),
+                            **self._field,
                         }
                         for i in range(40)
                     },
                     "required": ["field_0"],
                 },
             ),
+        )
+
+
+class _BinaryOutputTool(_HugeOutputTool):
+    """Returns base64 payload: 1K of it tells the model nothing its size doesn't."""
+
+    digest_large_output = True
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return WorkspaceFileContentResponse(
+            file_id="f-1",
+            name="shot.png",
+            path="tool-outputs/shot.png",
+            mime_type="image/png",
+            content_base64="A" * self._output_size,
+            message="Screenshot captured.",
+        )
+
+
+class _RetrievalTool(ReadWorkspaceFileTool):
+    """The real retrieval tool with only the workspace read stubbed out."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
+        return WorkspaceFileContentResponse(
+            file_id="f-1",
+            name="tc-digest.json",
+            path="tool-outputs/tc-digest.json",
+            mime_type="text/plain",
+            content_base64=base64.b64encode(self._text.encode()).decode(),
+            message=f"Read chars 0-{len(self._text)} of {len(self._text):,} total",
         )
 
 
@@ -309,6 +369,58 @@ class TestDigestThreshold:
             exclude_none=True
         )
         assert len(str(result.output)) < len(written)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_that_does_not_opt_in_is_never_digested(self):
+        """An outline is only readable back in windows, so a tool whose bulk is
+        one long text (the building guide, a docs page) must not be digested."""
+        tool = _HugeOutputTool(output_size=_DIGEST_THRESHOLD * 4)
+        assert tool.digest_large_output is False
+        result = await _execute_with_flag(tool, flag_on=True)
+        expected = (await tool._execute("user-1", MagicMock())).model_dump_json(
+            exclude_none=True
+        )
+        assert result.output == expected
+
+    @pytest.mark.asyncio
+    async def test_a_retrieved_window_is_never_digested(self):
+        """The way back must fit through the door: base64 pushes any window
+        over ~5.8K past the trigger, and digesting it returns base64, not text."""
+        text = "R" * (_DIGEST_THRESHOLD * 2)
+        result = await _execute_with_flag(_RetrievalTool(text), flag_on=True)
+        payload = json.loads(str(result.output))
+        assert base64.b64decode(payload["content_base64"]).decode() == text
+
+    @pytest.mark.asyncio
+    async def test_the_outline_summarizes_binary_fields_instead_of_quoting_them(self):
+        """1K of base64 is worth nothing to the model; its size is."""
+        tool = _BinaryOutputTool(output_size=_DIGEST_THRESHOLD * 2)
+        result = await _execute_with_flag(tool, flag_on=True)
+        output = str(result.output)
+        assert "<binary, ~12,000 bytes>" in output
+        assert "AAAAAAAA" not in output
+
+    @pytest.mark.asyncio
+    async def test_the_outline_keeps_the_message_whole(self):
+        """`message` carries the tool's own instruction to the model — on
+        run_block, that credentials must not go in input_data."""
+        message = "Block 'Wide Block' details. " + "Do not fabricate credentials. " * 8
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3, message=message)
+        result = await _execute_with_flag(tool, flag_on=True)
+        assert message in str(result.output)
+
+    @pytest.mark.asyncio
+    async def test_the_persisted_text_is_the_text_the_offsets_index(self):
+        """pydantic and json.dumps disagree on float exponents, so persisting
+        the pydantic serialisation would shift every later window by a char."""
+        manager = AsyncMock()
+        tool = _SchemaOutputTool(output_size=_DIGEST_THRESHOLD * 3, default=1e-7)
+        result = await _execute_with_flag(tool, flag_on=True, manager=manager)
+        written = manager.write_file.await_args.kwargs["content"].decode()
+        window = re.search(r"required=\[…1 items @(\d+)\+(\d+)\]", str(result.output))
+        assert window, result.output
+        start, length = int(window[1]), int(window[2])
+        assert json.loads(written[start : start + length]) == ["field_0"]
 
     @pytest.mark.asyncio
     async def test_a_small_output_never_consults_the_flag(self):
