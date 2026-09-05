@@ -22,10 +22,13 @@ readonly STOCK_DOCKER_STOP_TIMEOUT=10
 readonly SHUTDOWN_MARGIN_SECONDS=1
 readonly MAX_CLEAN_STOP_SECONDS=$((STOCK_DOCKER_STOP_TIMEOUT - SHUTDOWN_MARGIN_SECONDS))
 readonly TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-2700}"
+readonly SCAN_COMPLETION_FILE="${SMOKE_SCAN_COMPLETION_FILE:-}"
 readonly SAFE_PLATFORM="${SMOKE_PLATFORM//\//-}"
 readonly RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${SAFE_PLATFORM}-${RANDOM}"
 readonly RUN_CONTAINER_NAME="autogpt-single-smoke-${RUN_TOKEN}"
 readonly NEGATIVE_CONTAINER_NAME="${RUN_CONTAINER_NAME}-negative"
+readonly SMOKE_STARTED_SECONDS=${SECONDS}
+SMOKE_LAST_TIMING_SECONDS=${SMOKE_STARTED_SECONDS}
 HEADERS_FILE="$(mktemp)"
 readonly HEADERS_FILE
 AUTH_COOKIE_FILE="$(mktemp)"
@@ -34,40 +37,172 @@ readonly AUTH_COOKIE_FILE
 CONTAINER_NAME="${RUN_CONTAINER_NAME}"
 DATA_VOLUME=
 
+record_timing() {
+  local phase="$1"
+  local now=${SECONDS}
+  printf 'single-container smoke timing: phase=%s duration=%ss elapsed=%ss\n' \
+    "${phase}" \
+    "$((now - SMOKE_LAST_TIMING_SECONDS))" \
+    "$((now - SMOKE_STARTED_SECONDS))"
+  SMOKE_LAST_TIMING_SECONDS=${now}
+}
+
+record_boot_milestones() {
+  local phase="$1"
+  local started_at
+  local health_history
+  local container_logs
+  local line
+  local milestone
+  local timestamp
+
+  if ! started_at="$(
+    docker inspect --format '{{.State.StartedAt}}' "${CONTAINER_NAME}"
+  )"; then
+    echo "could not record ${phase} container start time" >&2
+    return 0
+  fi
+  printf 'single-container boot milestone: phase=%s container-started-at=%s\n' \
+    "${phase}" "${started_at}"
+
+  if health_history="$(
+    docker inspect --format '{{json .State.Health.Log}}' "${CONTAINER_NAME}"
+  )"; then
+    if ! jq -r --arg phase "${phase}" \
+      '.[] | "single-container boot milestone: phase=\($phase) docker-health start=\(.Start) end=\(.End) exit=\(.ExitCode)"' \
+      <<<"${health_history}"; then
+      echo "could not format ${phase} Docker health milestones" >&2
+    fi
+  else
+    echo "could not record ${phase} Docker health milestones" >&2
+  fi
+
+  if ! container_logs="$(
+    docker logs --timestamps --since "${started_at}" "${CONTAINER_NAME}" 2>&1
+  )"; then
+    echo "could not record ${phase} appliance milestones" >&2
+    return 0
+  fi
+  # Raw service logs and Docker health output can contain request or provider
+  # data and stay private. A matching line selects a fixed event name; none of
+  # the original log content is emitted.
+  while IFS= read -r line; do
+    milestone=
+    case "${line}" in
+      *"[single-container] starting process supervisor"*) milestone=supervisor-start ;;
+      *"[single-container] initializing PostgreSQL data directory"*) milestone=postgres-init ;;
+      *"[single-container] PostgreSQL is ready"*) milestone=postgres-ready ;;
+      *"[single-container] Valkey node "*" is ready"*) milestone=valkey-node-ready ;;
+      *"[single-container] RabbitMQ is ready"*) milestone=rabbitmq-ready ;;
+      *"[single-container] FalkorDB is ready"*) milestone=falkordb-ready ;;
+      *"[single-container] forming three-node Valkey cluster"*) milestone=valkey-cluster-forming ;;
+      *"[single-container] Valkey cluster is ready"*) milestone=valkey-cluster-ready ;;
+      *"[single-container] Valkey cluster is already healthy"*) milestone=valkey-cluster-already-healthy ;;
+      *"[single-container] Valkey cluster recovered"*) milestone=valkey-cluster-recovered ;;
+      *"[single-container] RabbitMQ application user is present"*) milestone=rabbitmq-user-ready ;;
+      *"[single-container] ensuring platform database schemas exist"*) milestone=database-schemas-start ;;
+      *"[single-container] applying Prisma migrations"*) milestone=prisma-migrations-start ;;
+      *"[single-container] configuring least-privilege frontend database role"*) milestone=frontend-role-start ;;
+      *"[single-container] bootstrap complete"*) milestone=bootstrap-complete ;;
+      *"[single-container] starting database-manager"*) milestone=database-manager-start ;;
+      *"[single-container] starting scheduler"*) milestone=scheduler-start ;;
+      *"[single-container] starting batch-executor"*) milestone=batch-executor-start ;;
+      *"[single-container] starting notification"*) milestone=notification-start ;;
+      *"[single-container] starting executor"*) milestone=executor-start ;;
+      *"[single-container] starting copilot-executor"*) milestone=copilot-executor-start ;;
+      *"[single-container] starting copilot-bot"*) milestone=copilot-bot-start ;;
+      *"[single-container] starting platform-linking-manager"*) milestone=platform-linking-manager-start ;;
+      *"[single-container] starting websocket"*) milestone=websocket-start ;;
+      *"[single-container] starting rest"*) milestone=rest-start ;;
+      *"[single-container] starting next"*) milestone=next-start ;;
+      *"[single-container] starting nginx"*) milestone=nginx-start ;;
+      *"[single-container] watchdog armed after initial healthy state"*) milestone=watchdog-armed ;;
+    esac
+    [[ -n "${milestone}" ]] || continue
+    timestamp="${line%% *}"
+    if [[ ! "${timestamp}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
+      timestamp=unknown
+    fi
+    printf 'single-container boot milestone: phase=%s at=%s event=%s\n' \
+      "${phase}" "${timestamp}" "${milestone}"
+  done <<<"${container_logs}"
+}
+
 diagnostics() {
   if docker container inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
-    docker inspect --format '{{json .State}}' "${CONTAINER_NAME}" || true
-    docker logs --timestamps --tail 2000 "${CONTAINER_NAME}" || true
+    if ! docker inspect --format '{{json .State}}' "${CONTAINER_NAME}"; then
+      echo "could not inspect ${CONTAINER_NAME}" >&2
+    fi
+    if ! docker logs --timestamps --tail 2000 "${CONTAINER_NAME}"; then
+      echo "could not read logs for ${CONTAINER_NAME}" >&2
+    fi
   fi
 }
 
 cleanup() {
   local result=$?
+  local cleanup_failed=0
   local container
+  local container_id
+  local volume_name
   trap - EXIT INT TERM
   if ((result != 0)); then
     diagnostics
   fi
   for container in "${CONTAINER_NAME}" "${NEGATIVE_CONTAINER_NAME}"; do
-    if docker container inspect "${container}" >/dev/null 2>&1; then
-      docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${container}" >/dev/null 2>&1 || true
-      docker rm --force --volumes "${container}" >/dev/null 2>&1 || true
+    if ! container_id="$(
+      docker container ls --all --quiet --filter "name=^/${container}$"
+    )"; then
+      echo "could not determine whether ${container} needs cleanup" >&2
+      cleanup_failed=1
+      continue
+    fi
+    if [[ -n "${container_id}" ]]; then
+      if ! docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${container}" >/dev/null 2>&1; then
+        echo "could not stop ${container} during cleanup" >&2
+        cleanup_failed=1
+      fi
+      if ! docker rm --force --volumes "${container}" >/dev/null 2>&1; then
+        echo "could not remove ${container} during cleanup" >&2
+        cleanup_failed=1
+      fi
     fi
   done
-  if [[ -n "${DATA_VOLUME}" ]] && docker volume inspect "${DATA_VOLUME}" >/dev/null 2>&1; then
-    docker volume rm "${DATA_VOLUME}" >/dev/null 2>&1 || true
+  if [[ -n "${DATA_VOLUME}" ]]; then
+    if ! volume_name="$(
+      docker volume ls --quiet --filter "name=^${DATA_VOLUME}$"
+    )"; then
+      echo "could not determine whether ${DATA_VOLUME} needs cleanup" >&2
+      cleanup_failed=1
+    elif [[ -n "${volume_name}" ]]; then
+      if ! docker volume rm "${DATA_VOLUME}" >/dev/null 2>&1; then
+        echo "could not remove ${DATA_VOLUME} during cleanup" >&2
+        cleanup_failed=1
+      fi
+    fi
   fi
-  rm -f "${HEADERS_FILE}" "${AUTH_COOKIE_FILE}"
+  if ! rm -f "${HEADERS_FILE}" "${AUTH_COOKIE_FILE}"; then
+    echo "could not remove single-container smoke temporary files" >&2
+    cleanup_failed=1
+  fi
+  if ((result == 0 && cleanup_failed != 0)); then
+    result=1
+  fi
   exit "${result}"
 }
 
 assert_clean_stop() {
   local reason="$1"
-  local started elapsed exit_code
-  # Integer SECONDS truncates at both ends, so a real 8.9s stop reads as 8.
+  local started finished_at finished_epoch elapsed exit_code
   started="${EPOCHREALTIME}"
   docker stop --timeout "${STOCK_DOCKER_STOP_TIMEOUT}" "${CONTAINER_NAME}" >/dev/null
-  elapsed="$(awk -v a="${started}" -v b="${EPOCHREALTIME}" 'BEGIN { printf "%.2f", b - a }')"
+  finished_at="$(docker inspect --format '{{.State.FinishedAt}}' "${CONTAINER_NAME}")"
+  finished_epoch="$(date --date="${finished_at}" +%s.%N)"
+  awk -v a="${started}" -v b="${finished_epoch}" 'BEGIN { exit !(b >= a) }' || {
+    echo "container finish timestamp precedes the stop request ${reason}" >&2
+    return 1
+  }
+  elapsed="$(awk -v a="${started}" -v b="${finished_epoch}" 'BEGIN { printf "%.2f", b - a }')"
   exit_code="$(docker inspect --format '{{.State.ExitCode}}' "${CONTAINER_NAME}")"
   [[ "${exit_code}" == 0 ]] || {
     echo "container did not exit cleanly ${reason}: exit ${exit_code} after" \
@@ -104,12 +239,17 @@ wait_for_healthy() {
   local state
   local health
   local exit_code
+  local state_record
   while ((SECONDS < deadline)); do
-    read -r state health exit_code < <(
+    if ! state_record="$(
       docker inspect \
         --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}} {{.State.ExitCode}}' \
         "${CONTAINER_NAME}"
-    )
+    )"; then
+      echo "could not inspect container state while waiting for health" >&2
+      return 1
+    fi
+    read -r state health exit_code <<<"${state_record}"
     case "${state}:${health}" in
       running:healthy)
         if appliance_is_healthy_and_armed; then
@@ -121,7 +261,7 @@ wait_for_healthy() {
         return 1
         ;;
     esac
-    sleep 10
+    sleep 1
   done
   echo "container did not become healthy within ${TIMEOUT_SECONDS}s" >&2
   return 1
@@ -133,12 +273,17 @@ wait_for_automatic_restart() {
   local state
   local health
   local restart_count
+  local state_record
   while ((SECONDS < deadline)); do
-    read -r state health restart_count < <(
+    if ! state_record="$(
       docker inspect \
         --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}} {{.RestartCount}}' \
         "${CONTAINER_NAME}"
-    )
+    )"; then
+      echo "could not inspect container state while waiting for restart" >&2
+      return 1
+    fi
+    read -r state health restart_count <<<"${state_record}"
     if [[ "${state}:${health}" == running:healthy ]] &&
       ((restart_count >= minimum_restart_count)) &&
       appliance_is_healthy_and_armed; then
@@ -150,10 +295,83 @@ wait_for_automatic_restart() {
         return 1
         ;;
     esac
-    sleep 10
+    sleep 1
   done
   echo "container did not automatically restart and become healthy" >&2
   return 1
+}
+
+wait_for_concurrent_scans() {
+  if [[ -z "${SCAN_COMPLETION_FILE}" ]]; then
+    return 0
+  fi
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while ((SECONDS < deadline)); do
+    if [[ -f "${SCAN_COMPLETION_FILE}" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "concurrent image scans did not complete within ${TIMEOUT_SECONDS}s" >&2
+  return 1
+}
+
+count_container_log_evidence() {
+  local expected="$1"
+  local container_logs
+  local count=0
+  local line
+  if ! container_logs="$(docker logs "${CONTAINER_NAME}" 2>&1)"; then
+    echo "could not read container logs while counting watchdog evidence" >&2
+    return 1
+  fi
+  while IFS= read -r line; do
+    if [[ "${line}" == *"${expected}"* ]]; then
+      count=$((count + 1))
+    fi
+  done <<<"${container_logs}"
+  printf '%s\n' "${count}"
+}
+
+wait_for_new_container_log_evidence() {
+  local expected="$1"
+  local previous_count="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local current_count
+  if [[ ! "${previous_count}" =~ ^[0-9]+$ ]]; then
+    echo "previous watchdog evidence count is invalid" >&2
+    return 1
+  fi
+  while ((SECONDS < deadline)); do
+    if ! current_count="$(count_container_log_evidence "${expected}")"; then
+      return 1
+    fi
+    if [[ ! "${current_count}" =~ ^[0-9]+$ ]]; then
+      echo "watchdog evidence count is invalid" >&2
+      return 1
+    fi
+    if ((current_count > previous_count)); then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "container log did not report new watchdog evidence: ${expected}" >&2
+  return 1
+}
+
+force_watchdog_check() {
+  local watchdog_pid="$1"
+  local expected="$2"
+  local previous_count
+  if ! previous_count="$(count_container_log_evidence "${expected}")"; then
+    return 1
+  fi
+  if [[ ! "${previous_count}" =~ ^[0-9]+$ ]]; then
+    echo "watchdog evidence count is invalid before forced check" >&2
+    return 1
+  fi
+  docker exec "${CONTAINER_NAME}" kill -USR1 "${watchdog_pid}"
+  wait_for_new_container_log_evidence "${expected}" "${previous_count}"
 }
 
 runtime_config_hash() {
@@ -233,6 +451,24 @@ assert_pinned_topology_environment() {
   done
 }
 
+assert_command_rejected_with() {
+  local accepted_message="$1"
+  local expected_message="$2"
+  shift 2
+  local output
+
+  if output="$("$@" 2>&1)"; then
+    echo "${accepted_message}" >&2
+    return 1
+  fi
+  if [[ "${output,,}" != *"${expected_message,,}"* ]]; then
+    echo "negative isolation probe failed for an unexpected reason" >&2
+    echo "expected error containing: ${expected_message}" >&2
+    printf '%s\n' "${output}" >&2
+    return 1
+  fi
+}
+
 assert_frontend_database_isolation() {
   local next_pid
   local nginx_pid
@@ -241,6 +477,7 @@ assert_frontend_database_isolation() {
   local nginx_uid
   local rest_uid
   local assertions
+  local frontend_role_passwordless
 
   next_pid="$(
     docker exec "${CONTAINER_NAME}" \
@@ -412,29 +649,28 @@ SQL
     printf 'database privilege assertions:\n%s\n' "${assertions}" >&2
     return 1
   }
-  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+  assert_command_rejected_with \
+    "frontend database role can assume postgres" \
+    'permission denied to set role "postgres"' \
+    docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
     /usr/bin/env -i \
     PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
     PGHOST=/run/postgresql \
     PGDATABASE=postgres \
     PGUSER=autogpt_frontend \
     psql --no-psqlrc --set=ON_ERROR_STOP=1 \
-    --command='SET ROLE postgres' >/dev/null 2>&1; then
-    echo "frontend database role can assume postgres" >&2
-    return 1
-  fi
+    --command='SET ROLE postgres'
 
-  if docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
+  assert_command_rejected_with \
+    "nginx operating-system user can access Valkey without authentication" \
+    "noauth authentication required" \
+    docker exec --user autogpt_proxy "${CONTAINER_NAME}" \
     /usr/bin/env -i \
     PATH=/usr/bin:/bin \
     /app/autogpt_platform/backend/.venv/bin/python \
-    /opt/autogpt/single-container/probe.py redis --port 17000 \
-    >/dev/null 2>&1; then
-    echo "nginx operating-system user can access Valkey without authentication" >&2
-    return 1
-  fi
+    /opt/autogpt/single-container/probe.py redis --port 17000
 
-  [[ "$(
+  frontend_role_passwordless="$(
     docker exec --user postgres "${CONTAINER_NAME}" \
       /usr/bin/env -i \
       PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
@@ -443,32 +679,32 @@ SQL
       PGUSER=postgres \
       psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 \
       --command="SELECT rolpassword IS NULL FROM pg_catalog.pg_authid WHERE rolname = 'autogpt_frontend'"
-  )" == t ]] || {
+  )"
+  [[ "${frontend_role_passwordless}" == t ]] || {
     echo "frontend database role unexpectedly has a password" >&2
     return 1
   }
 
-  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+  assert_command_rejected_with \
+    "frontend operating-system user can authenticate as postgres" \
+    'peer authentication failed for user "postgres"' \
+    docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
     /usr/bin/env -i \
     PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
     PGHOST=/run/postgresql \
     PGDATABASE=postgres \
     PGUSER=postgres \
     psql --no-psqlrc --set=ON_ERROR_STOP=1 \
-    --command='SELECT 1' >/dev/null 2>&1; then
-    echo "frontend operating-system user can authenticate as postgres" >&2
-    return 1
-  fi
+    --command='SELECT 1'
 
-  if docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
+  assert_command_rejected_with \
+    "frontend operating-system user can access Valkey without authentication" \
+    "noauth authentication required" \
+    docker exec --user autogpt_frontend "${CONTAINER_NAME}" \
     /usr/bin/env -i \
     PATH=/usr/bin:/bin \
     /app/autogpt_platform/backend/.venv/bin/python \
-    /opt/autogpt/single-container/probe.py redis --port 17000 \
-    >/dev/null 2>&1; then
-    echo "frontend operating-system user can access Valkey without authentication" >&2
-    return 1
-  fi
+    /opt/autogpt/single-container/probe.py redis --port 17000
 
   docker exec "${CONTAINER_NAME}" \
     curl --fail --silent --show-error --max-time 30 \
@@ -609,6 +845,7 @@ assert_request_tokens_absent_from_logs() {
   local sentinel=AUTOGPT_LOG_SENTINEL_6f2b3cb87e9a
   local websocket_key=dGhlIHNhbXBsZSBub25jZQ== # pragma: allowlist secret # gitleaks:allow
   local websocket_status
+  local container_logs
 
   curl --fail --silent --show-error --max-time 30 \
     "${PUBLIC_URL}/_agpt/health?token=${sentinel}" >/dev/null
@@ -629,9 +866,11 @@ assert_request_tokens_absent_from_logs() {
     return 1
   }
   sleep 2
-  # Do not use grep -q here: with pipefail an early grep exit can SIGPIPE
-  # `docker logs` and accidentally turn a positive match into a false result.
-  if docker logs "${CONTAINER_NAME}" 2>&1 | grep -F "${sentinel}" >/dev/null; then
+  if ! container_logs="$(docker logs "${CONTAINER_NAME}" 2>&1)"; then
+    echo "could not inspect container logs for request-token leakage" >&2
+    return 1
+  fi
+  if [[ "${container_logs}" == *"${sentinel}"* ]]; then
     echo "request token sentinel leaked into container logs" >&2
     return 1
   fi
@@ -667,11 +906,15 @@ assert_runtime_config_mode() {
 }
 
 assert_prisma_cli_is_prebundled() {
+  local container_logs
   docker exec "${CONTAINER_NAME}" \
     /usr/bin/test -f \
     /opt/prisma-python/binaries/node_modules/prisma/build/index.js
-  if docker logs "${CONTAINER_NAME}" 2>&1 | \
-    grep -F "Installing Prisma CLI" >/dev/null; then
+  if ! container_logs="$(docker logs "${CONTAINER_NAME}" 2>&1)"; then
+    echo "could not inspect container logs for runtime Prisma installation" >&2
+    return 1
+  fi
+  if [[ "${container_logs}" == *"Installing Prisma CLI"* ]]; then
     echo "Prisma CLI was installed during container startup" >&2
     return 1
   fi
@@ -680,27 +923,36 @@ assert_prisma_cli_is_prebundled() {
 assert_falkordb_binary_contract() {
   local linkage
   local listeners
+  local published_port
   linkage="$(
     docker exec "${CONTAINER_NAME}" /bin/bash -Eeuo pipefail -c '
       ldd /opt/falkordb/redis-server
       ldd /opt/falkordb/falkordb.so
     '
   )"
-  if grep -F "not found" <<<"${linkage}" >/dev/null; then
+  if [[ "${linkage}" == *"not found"* ]]; then
     echo "FalkorDB has an unresolved shared-library dependency" >&2
     return 1
   fi
 
   listeners="$(docker exec "${CONTAINER_NAME}" ss -lnt)"
-  grep -Eq '127\.0\.0\.1:6380([[:space:]]|$)' <<<"${listeners}" || {
+  [[ "${listeners}" =~ 127\.0\.0\.1:6380([[:space:]]|$) ]] || {
     echo "FalkorDB is not listening on the private loopback address" >&2
     return 1
   }
-  if grep -Eq '(0\.0\.0\.0|\[::\]):6380([[:space:]]|$)' <<<"${listeners}"; then
+  if [[ "${listeners}" =~ (0\.0\.0\.0|\[::\]):6380([[:space:]]|$) ]]; then
     echo "FalkorDB is listening on a public container interface" >&2
     return 1
   fi
-  if [[ -n "$(docker port "${CONTAINER_NAME}" 6380 2>/dev/null)" ]]; then
+  if ! published_port="$(
+    docker inspect \
+      --format '{{with index .NetworkSettings.Ports "6380/tcp"}}{{json .}}{{end}}' \
+      "${CONTAINER_NAME}"
+  )"; then
+    echo "could not inspect Docker port bindings for FalkorDB" >&2
+    return 1
+  fi
+  if [[ -n "${published_port}" ]]; then
     echo "FalkorDB port 6380 is published by Docker" >&2
     return 1
   fi
@@ -776,17 +1028,19 @@ wait_for_falkordb_restart() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local current_pid
   while ((SECONDS < deadline)); do
-    current_pid="$(
+    if ! current_pid="$(
       docker exec "${CONTAINER_NAME}" \
         supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
-        pid state:falkordb 2>/dev/null || true
-    )"
+        pid state:falkordb 2>/dev/null
+    )"; then
+      current_pid=""
+    fi
     if [[ "${current_pid}" =~ ^[0-9]+$ ]] &&
       [[ "${current_pid}" != "${previous_pid}" ]] &&
       appliance_is_healthy_and_armed; then
       return 0
     fi
-    sleep 5
+    sleep 1
   done
   echo "FalkorDB did not restart and return the container to healthy" >&2
   return 1
@@ -852,7 +1106,6 @@ assert_unsupported_email_verification_rejected() {
   else
     status=$?
   fi
-  docker rm --force --volumes "${NEGATIVE_CONTAINER_NAME}" >/dev/null 2>&1 || true
   ((status != 0)) || {
     echo "image accepted unsupported email verification" >&2
     return 1
@@ -861,9 +1114,8 @@ assert_unsupported_email_verification_rejected() {
     echo "email-verification rejection probe timed out" >&2
     return 1
   }
-  grep -Fq \
-    "email verification is not supported by the single-container distribution" \
-    <<<"${output}" || {
+  [[ "${output}" == \
+    *"email verification is not supported by the single-container distribution"* ]] || {
     echo "unsupported email verification failed without an actionable error" >&2
     return 1
   }
@@ -872,12 +1124,15 @@ assert_unsupported_email_verification_rejected() {
 # Phase one deliberately supplies no environment, port, volume, entrypoint, or
 # command override. This is the CI proof for literal `docker run IMAGE`.
 assert_unsupported_email_verification_rejected
+record_timing "unsupported-config-rejection"
 docker run --detach \
   --platform "${SMOKE_PLATFORM}" \
   --name "${CONTAINER_NAME}" \
   "${SMOKE_IMAGE}" >/dev/null
 discover_data_volume
 wait_for_healthy
+record_boot_milestones "initial-appliance-boot"
+record_timing "initial-appliance-boot"
 assert_codex_runtime_contract
 assert_prisma_cli_is_prebundled
 assert_falkordb_binary_contract
@@ -891,8 +1146,10 @@ first_hash="$(runtime_config_hash)"
 assert_runtime_config_mode
 assert_frontend_database_isolation
 
+record_timing "phase-one-contracts"
 assert_clean_stop "after docker stop"
 docker rm "${CONTAINER_NAME}" >/dev/null
+record_timing "phase-one-clean-stop"
 
 # A persistent user config must not be able to move internal listeners or bind
 # them publicly. Environment-pinned topology has higher Pydantic precedence.
@@ -909,8 +1166,11 @@ docker run --detach \
   --volume "${DATA_VOLUME}:/data" \
   "${SMOKE_IMAGE}" >/dev/null
 wait_for_healthy
+record_boot_milestones "replacement-appliance-boot"
+record_timing "replacement-appliance-boot"
 
-[[ "$(runtime_config_hash)" == "${first_hash}" ]] || {
+replacement_config_hash="$(runtime_config_hash)"
+[[ "${replacement_config_hash}" == "${first_hash}" ]] || {
   echo "runtime config changed across container replacement" >&2
   exit 1
 }
@@ -929,6 +1189,7 @@ assert_redirect http://127.0.0.1:3300/copilot \
 assert_prefixed_backend_redirect
 assert_internal_tooling_is_private
 assert_request_tokens_absent_from_logs
+record_timing "phase-two-contracts"
 
 falkordb_pid="$(
   docker exec "${CONTAINER_NAME}" \
@@ -941,8 +1202,11 @@ falkordb_restart_count="$(
 )"
 docker exec "${CONTAINER_NAME}" kill -TERM "${falkordb_pid}"
 wait_for_falkordb_restart "${falkordb_pid}"
-[[ "$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}")" == \
-  "${falkordb_restart_count}" ]] || {
+record_timing "falkordb-process-recovery"
+current_restart_count="$(
+  docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}"
+)"
+[[ "${current_restart_count}" == "${falkordb_restart_count}" ]] || {
   echo "FalkorDB recovery unexpectedly restarted the whole container" >&2
   exit 1
 }
@@ -950,12 +1214,40 @@ assert_memory_contract verify
 wait_for_healthy
 
 restart_count="$(docker inspect --format '{{.RestartCount}}' "${CONTAINER_NAME}")"
+watchdog_pid="$(
+  docker exec "${CONTAINER_NAME}" \
+    supervisorctl -c /opt/autogpt/single-container/supervisor/supervisord.conf \
+    pid runtime:watchdog
+)"
+[[ "${watchdog_pid}" =~ ^[0-9]+$ ]] || {
+  echo "watchdog PID is invalid before forced health checks" >&2
+  exit 1
+}
+# Reset the failure counter and the 30-second timer while every service is
+# healthy, then prove each accelerated failure before requesting the next one.
+force_watchdog_check \
+  "${watchdog_pid}" \
+  "watchdog health check passed trigger=forced"
+record_timing "watchdog-forced-check-arm"
+
 docker exec "${CONTAINER_NAME}" \
   supervisorctl \
   -c /opt/autogpt/single-container/supervisor/supervisord.conf \
   stop runtime:nginx >/dev/null
+force_watchdog_check \
+  "${watchdog_pid}" \
+  "watchdog health failure 1/3 trigger=forced"
+force_watchdog_check \
+  "${watchdog_pid}" \
+  "watchdog health failure 2/3 trigger=forced"
+force_watchdog_check \
+  "${watchdog_pid}" \
+  "watchdog health failure 3/3 trigger=forced"
 wait_for_automatic_restart "$((restart_count + 1))"
-[[ "$(runtime_config_hash)" == "${first_hash}" ]] || {
+record_boot_milestones "automatic-appliance-restart"
+record_timing "automatic-appliance-restart"
+restarted_config_hash="$(runtime_config_hash)"
+[[ "${restarted_config_hash}" == "${first_hash}" ]] || {
   echo "runtime config changed across automatic Docker restart" >&2
   exit 1
 }
@@ -967,5 +1259,11 @@ assert_memory_contract cleanup
 
 assert_clean_stop "after the restart test"
 docker rm "${CONTAINER_NAME}" >/dev/null
+record_timing "post-restart-contracts-and-clean-stop"
+# Trivy scans the immutable image, independently of either runtime container.
+# Synchronizing here preserves foreground scan failure/report propagation
+# without holding phase one open before the replacement and restart checks.
+wait_for_concurrent_scans
+record_timing "final-scan-sync"
 
 echo "single-container smoke test passed for ${SMOKE_PLATFORM}"
