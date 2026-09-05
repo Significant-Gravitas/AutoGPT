@@ -12,7 +12,7 @@ import base64
 import secrets
 import shlex
 import string
-from typing import Literal, Optional
+from typing import Literal, Mapping, Optional
 
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
@@ -20,6 +20,9 @@ from pydantic import BaseModel
 DESKTOP_TEMPLATE = "desktop"
 HOME_PATH = "/home/user"
 WORKSPACE_PATH = "/home/user/workspace"
+# Where an expert's own computer sees its owning user's shared workspace. The
+# expert's durable home is WORKSPACE_PATH, same as everyone else's.
+SHARED_PATH = "/home/user/shared"
 # Standard XFCE user dirs redirected into the volume so a person's natural
 # desktop activity (browser downloads, files saved to the desktop) persists.
 PERSISTENT_HOME_DIRS = ("Downloads", "Desktop", "Documents")
@@ -67,6 +70,10 @@ class PersistenceInfo(BaseModel):
     volume_mounted: bool = False
     volume_name: Optional[str] = None
     warning: Optional[str] = None
+    # Every mount path that was attached (WORKSPACE_PATH plus, for an expert's
+    # computer, SHARED_PATH). ``volume_mounted``/``volume_name`` describe the
+    # WORKSPACE_PATH mount specifically.
+    mounted_paths: list[str] = []
 
 
 def map_key(key: str) -> str:
@@ -88,16 +95,26 @@ class DesktopSession:
         timeout_seconds: int,
         width: int,
         height: int,
-        volume_name: Optional[str],
+        volume_mounts: Optional[Mapping[str, str]] = None,
         template: str = DESKTOP_TEMPLATE,
+        metadata: Optional[Mapping[str, str]] = None,
     ) -> tuple["DesktopSession", PersistenceInfo]:
-        sandbox, persistence = await _create_sandbox_with_volume(
-            volume_name, api_key, timeout_seconds, template
+        """Create a desktop sandbox.
+
+        *volume_mounts* maps mount paths to durable volume names (see
+        ``workspace_volume_mounts``); *metadata* is stamped on the sandbox so
+        its owner can find it again through the E2B API if the cached id is
+        lost.
+        """
+        sandbox, persistence = await _create_sandbox_with_volumes(
+            volume_mounts, api_key, timeout_seconds, template, metadata
         )
         session = cls(sandbox)
         await session.ensure_display(width, height)
+        if persistence.mounted_paths:
+            paths = " ".join(shlex.quote(p) for p in persistence.mounted_paths)
+            await session.run_command(f"mkdir -p {paths}")
         if persistence.volume_mounted:
-            await session.run_command(f"mkdir -p {shlex.quote(WORKSPACE_PATH)}")
             await session.ensure_persistent_home()
         return session, persistence
 
@@ -179,7 +196,10 @@ class DesktopSession:
         )
 
     async def is_workspace_mounted(self) -> bool:
-        return await self._check(f"mountpoint -q {shlex.quote(WORKSPACE_PATH)}")
+        return await self.is_mounted(WORKSPACE_PATH)
+
+    async def is_mounted(self, path: str) -> bool:
+        return await self._check(f"mountpoint -q {shlex.quote(path)}")
 
     async def ensure_persistent_home(self) -> None:
         """Redirect the standard user dirs into the mounted volume.
@@ -243,37 +263,48 @@ class DesktopSession:
         raise TimeoutError(f"Timed out waiting for: {command.split()[0]}")
 
 
-def _sandbox_create_kwargs(api_key: str, timeout_seconds: int, template: str) -> dict:
-    return {
+def _sandbox_create_kwargs(
+    api_key: str,
+    timeout_seconds: int,
+    template: str,
+    metadata: Optional[Mapping[str, str]] = None,
+) -> dict:
+    kwargs: dict = {
         "template": template,
         "api_key": api_key,
         "timeout": timeout_seconds,
         "lifecycle": SandboxLifecycle(on_timeout="pause", auto_resume=True),
     }
+    if metadata:
+        kwargs["metadata"] = dict(metadata)
+    return kwargs
 
 
-async def _create_sandbox_with_volume(
-    volume_name: Optional[str],
+async def _resolve_volume(volume_name: str, api_key: str) -> "AsyncVolume | str":
+    try:
+        return await AsyncVolume.create(volume_name, api_key=api_key)
+    except Exception:
+        # Creation fails when the volume already exists; mount by name instead.
+        return volume_name
+
+
+async def _create_sandbox_with_volumes(
+    volume_mounts: Optional[Mapping[str, str]],
     api_key: str,
     timeout_seconds: int,
     template: str = DESKTOP_TEMPLATE,
+    metadata: Optional[Mapping[str, str]] = None,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:
-    kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template)
-    if not volume_name:
+    kwargs = _sandbox_create_kwargs(api_key, timeout_seconds, template, metadata)
+    if not volume_mounts:
         return await AsyncSandbox.create(**kwargs), PersistenceInfo()
 
-    volume: AsyncVolume | str
+    mounts = {
+        path: await _resolve_volume(name, api_key)
+        for path, name in volume_mounts.items()
+    }
     try:
-        volume = await AsyncVolume.create(volume_name, api_key=api_key)
-    except Exception:
-        # Creation fails when the volume already exists; mount by name instead.
-        volume = volume_name
-
-    try:
-        sandbox = await AsyncSandbox.create(
-            **kwargs, volume_mounts={WORKSPACE_PATH: volume}
-        )
-        return sandbox, PersistenceInfo(volume_mounted=True, volume_name=volume_name)
+        sandbox = await AsyncSandbox.create(**kwargs, volume_mounts=mounts)
     except Exception as mount_error:
         sandbox = await AsyncSandbox.create(**kwargs)
         return sandbox, PersistenceInfo(
@@ -282,3 +313,8 @@ async def _create_sandbox_with_volume(
                 f"using suspend/resume persistence only: {mount_error}"
             )
         )
+    return sandbox, PersistenceInfo(
+        volume_mounted=WORKSPACE_PATH in volume_mounts,
+        volume_name=volume_mounts.get(WORKSPACE_PATH),
+        mounted_paths=list(volume_mounts),
+    )

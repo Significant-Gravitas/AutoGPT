@@ -39,7 +39,7 @@ async def main() -> None:
         timeout_seconds=300,
         width=1280,
         height=720,
-        volume_name=VOLUME_NAME,
+        volume_mounts={WORKSPACE_PATH: VOLUME_NAME},
     )
     timed("cold_start_ready", t, timings)
     print(f"  sandbox_id={session.sandbox_id}")
@@ -87,7 +87,7 @@ async def main() -> None:
                 timeout_seconds=120,
                 width=1024,
                 height=768,
-                volume_name=VOLUME_NAME,
+                volume_mounts={WORKSPACE_PATH: VOLUME_NAME},
             )
             try:
                 cross = await other.sandbox.files.read(TEST_FILE)

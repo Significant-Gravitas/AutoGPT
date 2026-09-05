@@ -140,7 +140,7 @@ class CreateDesktopSandboxBlock(Block):
                 timeout_seconds=timeout_minutes * 60,
                 width=width,
                 height=height,
-                volume_name=volume_name,
+                volume_mounts={WORKSPACE_PATH: volume_name} if volume_name else None,
             )
         stream = await session.start_stream()
         return session.sandbox_id, stream, persistence
