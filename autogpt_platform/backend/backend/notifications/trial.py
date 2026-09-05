@@ -1,7 +1,7 @@
 """Trial notices use accepted terms and current subscription state."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import stripe
@@ -20,6 +20,7 @@ from backend.notifications.lifecycle_plan import format_amount
 from backend.notifications.queue import queue_trial_delivery
 
 logger = logging.getLogger(__name__)
+TRIAL_REMINDER_WINDOW = timedelta(days=3)
 
 TrialNoticeKind = Literal[
     "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
@@ -117,11 +118,17 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
 
 
 async def trial_notice_is_current(user_id: str, data: TrialUpdateData) -> bool:
+    return await trial_notice_disposition(user_id, data) == "current"
+
+
+async def trial_notice_disposition(
+    user_id: str, data: TrialUpdateData
+) -> Literal["current", "suppressed", "obsolete"]:
     if not data.notice_key:
-        return False
+        return "obsolete"
     trial = await credit_db().get_subscription_trial(user_id)
     if trial is None or trial.subscription_id is None:
-        return False
+        return "obsolete"
     current = dict(
         await stripe_call(stripe.Subscription.retrieve_async, trial.subscription_id)
     )
@@ -129,27 +136,28 @@ async def trial_notice_is_current(user_id: str, data: TrialUpdateData) -> bool:
         not _owns_subscription(trial, current)
         or current.get("id") != trial.subscription_id
     ):
-        return False
+        return "obsolete"
     await credit_db().sync_subscription_from_stripe(current)
     trial = await credit_db().get_subscription_trial(user_id)
     if (
         trial is None
         or trial.consumed_at is None
+        or trial.ends_at is None
         or trial.subscription_id != current.get("id")
         or (current.get("metadata") or {}).get("trial_checkout_attempt")
         != str(trial.checkout_attempt)
     ):
-        return False
+        return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
-        return False
+        return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name)
     if data.model_copy(update={"notice_key": None}) != expected:
-        return False
+        return "obsolete"
     if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
         current.get("cancel_at_period_end")
     ):
-        return False
-    return _notice_applies(trial, data.kind, current)
+        return "suppressed"
+    return "current" if _notice_applies(trial, data.kind, current) else "suppressed"
 
 
 def _owns_subscription(trial: TrialState, current: dict) -> bool:
@@ -217,7 +225,10 @@ def trial_notice_data(
 def _notice_applies(trial: TrialState, kind: TrialNoticeKind, current: dict) -> bool:
     status = current.get("status")
     trial_end = current.get("trial_end") or 0
-    in_trial = status == "trialing" and trial_end > datetime.now(UTC).timestamp()
+    now = datetime.now(UTC).timestamp()
+    in_trial = status == "trialing" and trial_end > now
+    if kind == "ending" and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds():
+        return False
     if kind in ("started", "ending", "resumed"):
         return (
             in_trial

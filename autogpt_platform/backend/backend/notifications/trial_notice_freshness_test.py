@@ -3,7 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.trial_notifications import ClaimedTrialDelivery
 from backend.notifications import trial as notices
+from backend.notifications import trial_delivery as delivery_worker
 from backend.notifications import trial_test as fixtures
 
 trial = fixtures.trial
@@ -128,3 +130,37 @@ async def test_state_change_during_refresh_does_not_send_old_welcome(trial):
         ),
     ):
         assert not await notices.trial_notice_is_current(trial.user_id, data)
+
+
+@pytest.mark.asyncio
+async def test_delivery_marks_changed_terms_obsolete_without_sending(trial):
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    data.notice_key = notices.trial_notice_key(trial, "started")
+    data.ends_label = "Obsolete end date"
+    delivery = ClaimedTrialDelivery(
+        id="notice-stale",
+        trial_id=trial.id,
+        user_id=trial.user_id,
+        payload=data,
+        attempts=1,
+        lease_token="lease",
+        created_at=datetime.now(UTC),
+    )
+    database = MagicMock(
+        get_subscription_trial=AsyncMock(return_value=trial),
+        sync_subscription_from_stripe=AsyncMock(),
+        finish_trial_notification=AsyncMock(return_value=True),
+    )
+    sender = MagicMock(send=AsyncMock())
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(delivery_worker, "credit_db", return_value=database),
+        patch.object(
+            notices, "stripe_call", AsyncMock(return_value=subscription(trial))
+        ),
+    ):
+        await delivery_worker._deliver_claimed(delivery, sender)
+    sender.send.assert_not_awaited()
+    database.finish_trial_notification.assert_awaited_once_with(
+        "notice-stale", "lease", "obsolete", None
+    )

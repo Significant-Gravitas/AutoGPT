@@ -62,7 +62,7 @@ def boundaries(delivery):
         patch.object(worker, "TrialEmailSender", return_value=sender),
         patch.object(worker, "recover_missing_trial_notices", AsyncMock()),
         patch.object(
-            worker, "trial_notice_is_current", AsyncMock(return_value=True)
+            worker, "trial_notice_disposition", AsyncMock(return_value="current")
         ) as current,
     ):
         yield db, sender, current
@@ -123,9 +123,9 @@ async def test_provider_lookup_failure_defers_instead_of_blind_resend(
 
 
 @pytest.mark.asyncio
-async def test_stale_notice_is_suppressed(boundaries):
+async def test_temporarily_inapplicable_notice_is_suppressed(boundaries):
     db, sender, current = boundaries
-    current.return_value = False
+    current.return_value = "suppressed"
     assert await deliver()
     sender.send.assert_not_awaited()
     db.finish_trial_notification.assert_awaited_once_with(

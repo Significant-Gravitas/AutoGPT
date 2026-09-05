@@ -175,6 +175,15 @@ def test_canceled_trial_suppresses_late_ending_reminder(trial):
     assert notices._notice_applies(trial, "canceled", raw)
 
 
+def test_ending_reminder_waits_for_current_reminder_window(trial):
+    raw = {
+        "status": "trialing",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert not notices._notice_applies(trial, "ending", raw)
+
+
 def test_failed_conversion_suppresses_paid_confirmation(trial):
     assert not notices._notice_applies(trial, "converted", {"status": "past_due"})
 

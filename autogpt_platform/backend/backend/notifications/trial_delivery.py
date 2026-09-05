@@ -2,12 +2,15 @@
 
 import asyncio
 import logging
-from typing import Literal
 
 from backend.data.db_accessors import credit_db
-from backend.data.trial_notifications import ClaimedTrialDelivery, TrialDeliveryMessage
+from backend.data.trial_notifications import (
+    ClaimedTrialDelivery,
+    TrialDeliveryFinishStatus,
+    TrialDeliveryMessage,
+)
 from backend.notifications.queue import queue_trial_delivery
-from backend.notifications.trial import trial_notice_is_current
+from backend.notifications.trial import trial_notice_disposition
 from backend.notifications.trial_postmark import TrialEmailSender
 from backend.notifications.trial_recovery import recover_missing_trial_notices
 from backend.util.clients import get_database_manager_async_client
@@ -40,8 +43,9 @@ async def _deliver_claimed(
         if accepted:
             await _finish(delivery, "accepted", accepted)
             return
-    if not await trial_notice_is_current(delivery.user_id, delivery.payload):
-        await _finish(delivery, "suppressed")
+    disposition = await trial_notice_disposition(delivery.user_id, delivery.payload)
+    if disposition != "current":
+        await _finish(delivery, disposition)
         return
     db = get_database_manager_async_client(should_retry=False)
     preference = await db.get_user_notification_preference(delivery.user_id)
@@ -54,7 +58,7 @@ async def _deliver_claimed(
 
 async def _finish(
     delivery: ClaimedTrialDelivery,
-    status: Literal["accepted", "suppressed"],
+    status: TrialDeliveryFinishStatus,
     message_id: str | None = None,
 ) -> None:
     finished = await credit_db().finish_trial_notification(

@@ -1,7 +1,7 @@
 """Repair missing notice intents after a saved state change or a missed webhook."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import stripe
 
@@ -9,7 +9,11 @@ from backend.data.db_accessors import credit_db
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import TrialState
 from backend.data.trial_notification_recovery import TrialNoticeCandidate
-from backend.notifications.trial import TrialNoticeKind, notify_trial
+from backend.notifications.trial import (
+    TRIAL_REMINDER_WINDOW,
+    TrialNoticeKind,
+    notify_trial,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,6 @@ def due_trial_notices(trial: TrialState, now: datetime) -> list[TrialNoticeKind]
     kinds: list[TrialNoticeKind] = ["started"]
     if trial.notification_revision > 0:
         kinds.append("resumed")
-    if trial.ends_at <= now + timedelta(days=3):
+    if trial.ends_at <= now + TRIAL_REMINDER_WINDOW:
         kinds.append("ending")
     return kinds

@@ -50,6 +50,9 @@ async def get_trial_notice_candidates(after_id: str = "") -> list[TrialNoticeCan
               WHERE expected.applies AND NOT EXISTS (
                 SELECT 1 FROM {schema_prefix}"TrialNotificationDelivery" d
                 WHERE d."idempotencyKey" = 'trial:' || t."id" || ':' || expected.suffix
+                  AND (d."status" <> 'suppressed'
+                    OR d."providerMessageId" IS NOT NULL OR d."acceptedAt" IS NOT NULL
+                    OR d."leaseToken" IS NOT NULL OR d."leaseExpiresAt" IS NOT NULL)
               )
             )
           )

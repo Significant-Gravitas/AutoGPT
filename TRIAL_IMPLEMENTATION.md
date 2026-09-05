@@ -544,3 +544,78 @@ and [subscription payment-source precedence](https://docs.stripe.com/api/subscri
   explicitly approved live rollout. Enrollment remains off.
 
 Stripe reference: [billing-card and SetupIntent event types](https://docs.stripe.com/api/events/types).
+
+## Recoverable email suppression and transport checkpoint
+
+- Confirmed that a temporarily suppressed trial notice was terminal even when
+  its card/subscription state became applicable again. Recovery now discovers
+  eligible suppressed notices and atomically rearms their original outbox row.
+  It preserves payload, semantic identity, provider identity guards, and the
+  cumulative attempt count. Concurrent requests cannot overwrite accepted work
+  or an owned lease. Exhausted suppression recovery becomes a visible failure;
+  it never resets the eight-attempt limit.
+- Delivery now distinguishes temporary suppression from an obsolete immutable
+  payload, ownership, checkout attempt, date, or revision. Obsolete messages stay
+  terminal, while temporarily inapplicable messages can be rechecked. Provider
+  acceptance reconciliation still precedes another send on retries. The boolean
+  freshness interface used by existing notification code remains compatible.
+- Added `20260905031000_trial_notice_obsolete_state`, explicitly expanding the
+  existing database CHECK constraint. It preserves all prior allowed states and
+  data. As with the prior local index check, only this migration SQL was applied
+  to the pinned disposable database; no migration-history baseline was invented.
+  Deploying the migration and compatible database/notification services before
+  enabling enrollment remains a staging/rollout requirement.
+- Reproduced four database and two worker/timing expected failures before fixes,
+  then removed every expected-failure marker. A new RPC integration test uses
+  the actual generated DatabaseManager endpoint models and verifies payload
+  round-tripping, reactivation, obsolete completion, and rejection of an unknown
+  status. FastAPI guidance informed the typed service-boundary validation.
+- An outdated reminder event can no longer send outside the current three-day
+  reminder window. Delivery applicability and Python recovery share that window;
+  the database candidate selection uses the same three-day policy.
+- Real transport validation used an isolated RabbitMQ 4.1.4 container on
+  `127.0.0.1:15772`, an actual DatabaseManager HTTP service on
+  `127.0.0.1:18044`, the production notification consumer acknowledgment method,
+  and the real trial delivery callback. The consumer had no direct database
+  connection and used actual RPC. Stripe reads/updates used only the owned test
+  subscription. The sole substituted boundary was an in-process recording
+  sender: no Postmark request or external email was made by this transport test.
+- A queued welcome was suppressed while the test trial was canceled. Removing
+  cancellation made it applicable, and the actual producer reactivated the same
+  notice. It was recorded once at cumulative attempt 2; two duplicate broker
+  wakeups did not record another send. Payload and ID stayed unchanged. A separate
+  outdated-payload notice crossed RPC into `obsolete` without being sent. The
+  original welcome ID is `f0028744-e5d7-44fc-8530-ccfff43a6133`; its local recording
+  identifier is explicitly not a real provider acceptance.
+- Cleanup restored the original test cancellation and email-verification setting.
+  The user remains TRIAL with balance 300 and the original consumption/end dates;
+  notification revision is now 3 because the test canceled/resumed/canceled.
+  The database service stopped, and all broker queues/unacknowledged counts were
+  zero before stopping the task-owned broker. Docker reports it stopped with exit
+  137 and `OOMKilled=false`; logs show SIGTERM and stopped message stores. This is
+  not a claim that broker graceful-shutdown/restart behavior is fully validated.
+  The stopped broker and local test records are retained for follow-up evidence.
+- Final local checks: **315 selected billing/trial/database/RPC tests** (including
+  all **44 disposable database cases**) and all **230 notification tests** passed.
+  Whole-backend formatting, generated Prisma stubs, pyright, and `git diff --check`
+  passed. Existing dependency/test warnings remain; no gates or suppressions were
+  relaxed. CI at preceding head `6f342300ea91598d08b7dbf4228135587da99b2f` finished
+  with no pending or failed checks; this checkpoint still needs its own CI/review.
+- Rendered all seven trial messages locally to
+  `/private/tmp/autogpt-trial-email.xROhx7/rendered/index.html`. Their $50/month,
+  seven-day values remain fixtures. These are generated HTML/text previews, not
+  a completed desktop/mobile/email-client visual review.
+- Postmark identity was checked read-only: server 15280758, AutoGPT Platform,
+  DeliveryType Live. A proposed validation using `POSTMARK_API_TEST` was rejected
+  by auto-review because it would transfer rendered contents and metadata to an
+  external destination without explicit approval. That command did not execute,
+  and it was not retried or bypassed. Real metadata lookup, provider acceptance,
+  inbox delivery, and provider-reconciliation recovery remain unverified. User
+  approval for those transfers and a test inbox address have been requested.
+- Remaining work includes visual/email-client QA, approved provider/inbox tests,
+  failed-delivery operational recovery and retention, broker/service restart and
+  deployment behavior, hosted 3DS/declines, trial freshness and concurrent/in-flight
+  spend guarantees, final offer/conversion choices, configuration, staging, and the
+  explicitly approved live rollout. Enrollment remains off; nothing is live.
+
+Postmark reference: [documented email testing modes](https://postmarkapp.com/support/article/1213-best-practices-for-testing-your-emails-through-postmark).

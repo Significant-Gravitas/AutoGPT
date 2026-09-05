@@ -15,6 +15,7 @@ from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 MAX_DELIVERY_ATTEMPTS = 8
+TrialDeliveryFinishStatus = Literal["accepted", "suppressed", "obsolete"]
 
 
 class TrialDeliveryMessage(BaseModel):
@@ -38,6 +39,10 @@ class ClaimedTrialDelivery(BaseModel):
 
 class DeliveryID(BaseModel):
     id: str
+
+
+class ReactivatedDelivery(BaseModel):
+    status: Literal["pending", "failed"]
 
 
 async def enqueue_trial_notification(
@@ -66,7 +71,28 @@ async def enqueue_trial_notification(
         )
     if row.trialId != trial_id or row.userId != user_id:
         raise ValueError("Trial notice key belongs to another enrollment")
+    if row.status == "suppressed":
+        await _reactivate_suppressed_notification(row.id)
     return TrialNotificationReceipt(id=row.id, created=False)
+
+
+async def _reactivate_suppressed_notification(delivery_id: str) -> None:
+    rows = await query_raw_with_schema(
+        'UPDATE {schema_prefix}"TrialNotificationDelivery" SET '
+        "\"status\" = CASE WHEN \"attempts\" >= $2 THEN 'failed' ELSE 'pending' END, "
+        '"lastError" = CASE WHEN "attempts" >= $2 THEN \'suppression_recovery_attempts_exhausted\' ELSE NULL END, '
+        '"nextAttemptAt" = NOW(), "nextWakeAt" = NOW(), "updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "status" = \'suppressed\' '
+        'AND "providerMessageId" IS NULL AND "acceptedAt" IS NULL '
+        'AND "leaseToken" IS NULL AND "leaseExpiresAt" IS NULL RETURNING "status"',
+        delivery_id,
+        MAX_DELIVERY_ATTEMPTS,
+        model=ReactivatedDelivery,
+    )
+    if rows and rows[0].status == "failed":
+        logger.error(
+            f"Trial notice {delivery_id} exhausted suppression recovery attempts"
+        )
 
 
 async def claim_trial_notification(delivery_id: str) -> ClaimedTrialDelivery | None:
@@ -91,7 +117,7 @@ async def claim_trial_notification(delivery_id: str) -> ClaimedTrialDelivery | N
 async def finish_trial_notification(
     delivery_id: str,
     lease_token: str,
-    status: Literal["accepted", "suppressed"],
+    status: TrialDeliveryFinishStatus,
     provider_message_id: str | None = None,
 ) -> bool:
     if status == "accepted" and not provider_message_id:
