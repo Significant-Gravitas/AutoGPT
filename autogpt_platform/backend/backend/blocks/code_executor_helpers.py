@@ -75,7 +75,11 @@ def build_variable_injection(
     _validate_keys(variables)
 
     try:
-        serialized = json.dumps(variables)
+        # Use ensure_ascii=True so emoji / surrogate pairs become ASCII escapes (\uXXXX)
+        # and the env var value is always strict-UTF-8 encodable. Without this, a
+        # lone surrogate (e.g. "\ud83c" from Notion) makes os.environ.__setitem__
+        # raise UnicodeEncodeError: 'utf-8' codec can't encode surrogates (Python 3.13).
+        serialized = json.dumps(variables, ensure_ascii=True)
     except (TypeError, ValueError) as e:
         bad_keys = [k for k, v in variables.items() if not _is_json_serializable(v)]
         raise ValueError(
