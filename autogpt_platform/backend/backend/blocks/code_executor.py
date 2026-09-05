@@ -12,6 +12,10 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.code_executor_desktop import (
+    create_desktop_sandbox,
+    kill_desktop_sandbox,
+)
 from backend.blocks.code_executor_helpers import (
     ProgrammingLanguage,
     build_variable_injection,
@@ -146,16 +150,16 @@ class BaseE2BExecutorMixin:
             if sandbox_id:
                 # Connect to existing sandbox (ExecuteCodeStepBlock case)
                 sandbox = await AsyncSandbox.connect(
-                    sandbox_id=sandbox_id, api_key=api_key
+                    sandbox_id=sandbox_id, api_key=api_key, timeout=timeout
                 )
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(
                     api_key=api_key, template=template_id, timeout=timeout
                 )
-                if setup_commands:
-                    for cmd in setup_commands:
-                        await sandbox.commands.run(cmd)
+            if setup_commands:
+                for cmd in setup_commands:
+                    await sandbox.commands.run(cmd)
 
             # Capture timestamp before execution to scope file extraction
             start_timestamp = None
@@ -433,7 +437,22 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         )
 
         timeout: int = SchemaField(
-            description="Execution timeout in seconds", default=300
+            description=(
+                "Sandbox lifetime in seconds. Choose enough time to run setup and "
+                "test through the live URL."
+            ),
+            default=300,
+        )
+
+        enable_live_view: bool = SchemaField(
+            description=(
+                "Start an interactive desktop preview and return live_url. Requires a custom "
+                "template_id containing both the desktop and code interpreter. "
+                "Use the returned sandbox_id with Execute Code Step to work in "
+                "the same environment. The preview ends when the sandbox stops."
+            ),
+            default=False,
+            advanced=False,
         )
 
         template_id: str = SchemaField(
@@ -448,6 +467,12 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
 
     class Output(BlockSchemaOutput):
         sandbox_id: str = SchemaField(description="ID of the sandbox instance")
+        live_url: str = SchemaField(
+            description=(
+                "Authenticated desktop URL, returned when live view is enabled. "
+                "Anyone with this URL can view and control the desktop while the sandbox runs."
+            )
+        )
         response: str = SchemaField(
             title="Text Result",
             description="Text result (if any) of the setup code execution",
@@ -462,7 +487,8 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             id="ff0861c9-1726-4aec-9e5b-bf53f3622112",
             description=(
                 "Instantiate a sandbox environment with internet access "
-                "in which you can execute code with the Execute Code Step block."
+                "in which you can execute code with the Execute Code Step block. "
+                "Optionally enable a live desktop preview and return its viewing URL."
             ),
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=InstantiateCodeSandboxBlock.Input,
@@ -487,7 +513,17 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        desktop_id = None
+        setup_complete = False
         try:
+            if input_data.enable_live_view:
+                desktop_id, live_url = await create_desktop_sandbox(
+                    credentials.api_key.get_secret_value(),
+                    input_data.template_id,
+                    input_data.timeout,
+                )
+                yield "live_url", live_url
+
             _, text_output, stdout, stderr, sandbox_id, _ = await self.execute_code(
                 api_key=credentials.api_key.get_secret_value(),
                 code=input_data.setup_code,
@@ -495,11 +531,13 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                sandbox_id=desktop_id,
             )
-            if sandbox_id:
-                yield "sandbox_id", sandbox_id
-            else:
+            setup_complete = bool(sandbox_id)
+            if not sandbox_id:
                 yield "error", "Sandbox ID not found"
+            else:
+                yield "sandbox_id", sandbox_id
 
             if text_output:
                 yield "response", text_output
@@ -509,6 +547,11 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 yield "stderr_logs", stderr
         except Exception as e:
             yield "error", str(e)
+        finally:
+            if desktop_id and not setup_complete:
+                await kill_desktop_sandbox(
+                    credentials.api_key.get_secret_value(), desktop_id
+                )
 
 
 class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
@@ -543,6 +586,17 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
         dispose_sandbox: bool = SchemaField(
             description="Whether to dispose of the sandbox after executing this code.",
             default=False,
+        )
+
+        timeout: Optional[int] = SchemaField(
+            description=(
+                "Sandbox lifetime in seconds from the start of this step. Set this "
+                "to leave time for manual testing through a live URL. If omitted, "
+                "E2B's default lifetime applies."
+            ),
+            default=None,
+            ge=1,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -594,6 +648,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
                 language=input_data.language,
                 sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
+                timeout=input_data.timeout,
             )
 
             # Determine result object shape & filter out empty formats
