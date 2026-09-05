@@ -60,12 +60,10 @@ class TestStartDesktop:
 
         with (
             patch(
-                "backend.copilot.tools.start_desktop.get_redis_async",
+                "backend.copilot.computer.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
@@ -106,12 +104,10 @@ class TestStartDesktop:
 
         with (
             patch(
-                "backend.copilot.tools.start_desktop.get_redis_async",
+                "backend.copilot.computer.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
@@ -137,12 +133,10 @@ class TestStartDesktop:
 
         with (
             patch(
-                "backend.copilot.tools.start_desktop.get_redis_async",
+                "backend.copilot.computer.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"
@@ -170,11 +164,11 @@ class TestExpertDesktop:
         mock_config.e2b_desktop_template = "desktop"
         return (
             patch(
-                "backend.copilot.tools.start_desktop.get_redis_async",
+                "backend.copilot.computer.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch(
-                "backend.copilot.tools.start_desktop.find_owned_sandbox_id",
+                "backend.copilot.computer.find_owned_sandbox_id",
                 new=AsyncMock(return_value=found),
             ),
         )
@@ -187,9 +181,7 @@ class TestExpertDesktop:
         redis = _make_redis(stored=None)
 
         with (
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             redis_patch, find_patch = self._patches(
@@ -235,9 +227,7 @@ class TestExpertDesktop:
         redis = _make_redis(stored=None)
 
         with (
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             redis_patch, find_patch = self._patches(
@@ -268,13 +258,11 @@ class TestExpertDesktop:
 
         with (
             patch(
-                "backend.copilot.tools.start_desktop.get_redis_async",
+                "backend.copilot.computer.get_redis_async",
                 new=AsyncMock(return_value=redis),
             ),
             patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_sandbox,
-            patch(
-                "backend.copilot.tools.start_desktop.DesktopSession"
-            ) as mock_session_cls,
+            patch("backend.copilot.computer.DesktopSession") as mock_session_cls,
             patch("backend.copilot.tools.start_desktop.chat_config") as mock_config,
         ):
             mock_config.active_e2b_api_key = "e2b_test_key"

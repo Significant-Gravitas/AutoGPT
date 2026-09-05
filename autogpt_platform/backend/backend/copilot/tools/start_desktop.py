@@ -11,7 +11,9 @@ resumed in about a second on the next call.
 The owner is the session — or, in an expert session, the expert itself, so
 the desktop is the expert's own persistent computer: the same box (browser
 profile, logins, installed apps and all) comes back for every chat,
-delegation and scheduled run that happens as that expert.
+delegation and scheduled run that happens as that expert.  The expert page's
+Computer tab and the copilot side panel open the very same box through
+``backend.copilot.computer``.
 
 Both the desktop and the owner's bash sandbox mount the SAME durable volumes
 (see ``workspace_volume_mounts``): ``/home/user/workspace`` is the owner's
@@ -25,19 +27,15 @@ downloads and saved files persist too.
 import logging
 from typing import Any
 
-from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH, DesktopSession
-from backend.blocks.desktop._common import workspace_volume_mounts
+from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.copilot.computer import computer_owner, mounts_for, open_desktop
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
-from backend.copilot.tools.e2b_sandbox import SandboxOwner, find_owned_sandbox_id
-from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
 from .models import DesktopStreamToolResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
-
-_DESKTOP_RESOLUTION = (1280, 720)
 
 
 class StartDesktopTool(BaseTool):
@@ -83,13 +81,11 @@ class StartDesktopTool(BaseTool):
             )
 
         expert_id = session.expert_id if session else None
-        owner = SandboxOwner.for_session(session_id, expert_id)
-        mounts = workspace_volume_mounts(user_id, expert_id) if user_id else {}
+        owner = computer_owner(session_id, expert_id)
         try:
-            desktop, created, shared = await _get_or_create_desktop(
-                owner, api_key, mounts
+            stream, created, shared = await open_desktop(
+                owner, mounts_for(user_id, expert_id), api_key
             )
-            stream = await desktop.start_stream()
         except Exception as exc:
             logger.error("[E2B] start_desktop failed: %s", exc, exc_info=True)
             return ErrorResponse(
@@ -129,37 +125,3 @@ def _build_message(created: bool, shared: bool, *, expert: bool = False) -> str:
         f"stream. It stays up after this turn and suspends itself when idle; "
         f"calling start_desktop again resumes it with state intact. {files}"
     )
-
-
-async def _get_or_create_desktop(
-    owner: SandboxOwner, api_key: str, mounts: dict[str, str]
-) -> tuple[DesktopSession, bool, bool]:
-    """Return (desktop, created, shared) — resuming the owner's desktop if one exists."""
-    redis = await get_redis_async()
-    key = owner.key("desktop")
-    raw = await redis.get(key)
-    sandbox_id = raw.decode() if isinstance(raw, bytes) else raw
-    if not sandbox_id:
-        # An expert's desktop outlives the Redis cache; E2B metadata is the record.
-        sandbox_id = await find_owned_sandbox_id(owner, "desktop", api_key)
-    if sandbox_id:
-        try:
-            desktop = await DesktopSession.connect(sandbox_id, api_key)
-            await desktop.ensure_display(*_DESKTOP_RESOLUTION)
-            await redis.set(key, sandbox_id, ex=owner.ttl)
-            return desktop, False, await desktop.is_workspace_mounted()
-        except Exception as exc:
-            logger.warning("[E2B] Desktop %.12s reconnect failed: %s", sandbox_id, exc)
-            await redis.delete(key)
-
-    desktop, persistence = await DesktopSession.create(
-        api_key=api_key,
-        timeout_seconds=chat_config.e2b_desktop_timeout,
-        width=_DESKTOP_RESOLUTION[0],
-        height=_DESKTOP_RESOLUTION[1],
-        volume_mounts=mounts or None,
-        template=chat_config.e2b_desktop_template,
-        metadata=owner.metadata("desktop"),
-    )
-    await redis.set(key, desktop.sandbox_id, ex=owner.ttl)
-    return desktop, True, persistence.volume_mounted

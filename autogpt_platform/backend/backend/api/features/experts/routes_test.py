@@ -1582,3 +1582,89 @@ def test_assign_pod_unknown_pod_returns_404(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Expert or pod not found"
+
+
+# --- Computer -----------------------------------------------------------------
+
+
+def test_get_expert_computer_describes_the_experts_boxes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    from backend.copilot.computer import ComputerInfo
+
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    describe = mocker.patch(
+        "backend.api.features.experts.routes.describe_computer",
+        new_callable=AsyncMock,
+        return_value=ComputerInfo(
+            owner_kind="expert", owner_id="expert-1", e2b_active=True
+        ),
+    )
+
+    response = client.get("/experts/expert-1/computer")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owner_kind"] == "expert" and body["owner_id"] == "expert-1"
+    owner, mounts = describe.await_args.args
+    assert owner.kind == "expert" and owner.id == "expert-1"
+    assert set(mounts) == {"/home/user/workspace", "/home/user/shared"}
+
+
+def test_get_expert_computer_unknown_expert_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    assert client.get("/experts/nope/computer").status_code == 404
+
+
+def test_start_expert_desktop_returns_the_stream(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.blocks.desktop._api import DesktopStream
+
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    open_desktop = mocker.patch(
+        "backend.api.features.experts.routes.open_desktop",
+        new_callable=AsyncMock,
+        return_value=(
+            DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
+            True,
+            True,
+        ),
+    )
+
+    response = client.post("/experts/expert-1/computer/desktop")
+
+    assert response.status_code == 200
+    assert response.json()["url"].startswith("https://6080-sbx.e2b.app")
+    owner = open_desktop.await_args.args[0]
+    assert owner.kind == "expert" and owner.id == "expert-1"
+
+
+def test_start_expert_desktop_without_e2b_is_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = None
+    assert client.post("/experts/expert-1/computer/desktop").status_code == 503

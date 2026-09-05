@@ -4224,6 +4224,45 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/computer": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session Computer",
+        "description": "The computer behind this chat.\n\nA plain chat has its own boxes; a chat that runs as a hired expert reports\nthe expert's persistent computer instead. Listing never wakes a paused box.",
+        "operationId": "getV2GetSessionComputer",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ComputerInfo" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/connection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
@@ -4274,6 +4313,47 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/desktop": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Start Session Desktop",
+        "description": "Start or resume the desktop behind this chat and return its live stream.\n\nSame box the ``start_desktop`` tool uses from inside a turn, so the side\npanel and the model always look at one screen.",
+        "operationId": "postV2StartSessionDesktop",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopStream" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "The desktop could not be started" },
+          "503": { "description": "E2B is not configured" }
         }
       }
     },
@@ -6489,6 +6569,86 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/computer": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Computer",
+        "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "operationId": "get_expert_computer",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ComputerInfo" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/computer/desktop": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Start Expert Desktop",
+        "description": "Start or resume the expert's desktop and return its live stream.\n\nThis is the same box the expert's next ``start_desktop`` turn reconnects\nto, so what the user does here is what the expert sees.",
+        "operationId": "start_expert_desktop",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopStream" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "The desktop could not be started" },
+          "503": { "description": "E2B is not configured" }
         }
       }
     },
@@ -17766,6 +17926,49 @@
         "required": ["uuid"],
         "title": "CommunitySummary"
       },
+      "ComputerInfo": {
+        "properties": {
+          "owner_kind": {
+            "type": "string",
+            "enum": ["session", "expert"],
+            "title": "Owner Kind"
+          },
+          "owner_id": { "type": "string", "title": "Owner Id" },
+          "e2b_active": { "type": "boolean", "title": "E2B Active" },
+          "shell": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SandboxSummary" },
+              { "type": "null" }
+            ]
+          },
+          "desktop": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SandboxSummary" },
+              { "type": "null" }
+            ]
+          },
+          "mounts": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Mounts",
+            "default": {}
+          },
+          "workspace_path": {
+            "type": "string",
+            "title": "Workspace Path",
+            "default": "/home/user/workspace"
+          },
+          "shared_path": {
+            "type": "string",
+            "title": "Shared Path",
+            "default": "/home/user/shared"
+          }
+        },
+        "type": "object",
+        "required": ["owner_kind", "owner_id", "e2b_active"],
+        "title": "ComputerInfo",
+        "description": "The owner's computer: its boxes and the volumes they mount."
+      },
       "ConfirmLinkRequest": {
         "properties": {
           "telegram_auth": {
@@ -18744,6 +18947,32 @@
         "required": ["edge_uuid", "reason", "new_status"],
         "title": "DemotionSummary",
         "description": "One line per demoted RELATES_TO edge."
+      },
+      "DesktopStream": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "desktop_stream",
+            "title": "Kind",
+            "default": "desktop_stream"
+          },
+          "url": { "type": "string", "title": "Url" },
+          "provider": {
+            "type": "string",
+            "const": "e2b",
+            "title": "Provider",
+            "default": "e2b"
+          },
+          "sandbox_id": { "type": "string", "title": "Sandbox Id" },
+          "requires_auth": {
+            "type": "boolean",
+            "title": "Requires Auth",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["url", "sandbox_id"],
+        "title": "DesktopStream"
       },
       "DeviceAuthInitiateResponse": {
         "properties": {
@@ -25629,6 +25858,43 @@
         "required": ["executions", "total"],
         "title": "RunningExecutionsListResponse",
         "description": "Response model for list of running executions"
+      },
+      "SandboxSummary": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["shell", "desktop"],
+            "title": "Kind"
+          },
+          "sandbox_id": { "type": "string", "title": "Sandbox Id" },
+          "state": {
+            "type": "string",
+            "enum": ["running", "paused"],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "cpu_count": { "type": "integer", "title": "Cpu Count" },
+          "memory_mb": { "type": "integer", "title": "Memory Mb" },
+          "template_id": { "type": "string", "title": "Template Id" },
+          "mounts_attached": { "type": "boolean", "title": "Mounts Attached" }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "sandbox_id",
+          "state",
+          "started_at",
+          "cpu_count",
+          "memory_mb",
+          "template_id",
+          "mounts_attached"
+        ],
+        "title": "SandboxSummary",
+        "description": "One of the owner's sandboxes as E2B reports it, without waking it."
       },
       "ScheduleCleanupRequest": {
         "properties": {

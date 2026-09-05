@@ -69,7 +69,14 @@ import logging
 import math
 from typing import Any, Awaitable, Callable, Literal, Mapping
 
-from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle, SandboxQuery, SandboxState
+from e2b import (
+    AsyncSandbox,
+    AsyncVolume,
+    SandboxInfo,
+    SandboxLifecycle,
+    SandboxQuery,
+    SandboxState,
+)
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
@@ -215,19 +222,15 @@ async def _clear_stored_sandbox_id(
     await redis.delete(owner.key(sandbox_kind))
 
 
-async def find_owned_sandbox_id(
+async def list_owned_sandboxes(
     owner: SandboxOwner, sandbox_kind: SandboxKind, api_key: str
-) -> str | None:
-    """Recover an expert's box through the E2B API when Redis has forgotten it.
+) -> list[SandboxInfo]:
+    """The owner's boxes of one kind as E2B lists them, newest first.
 
-    Session sandboxes are Redis-only: losing that key just means a fresh
-    scratch sandbox, which is not worth a control-plane round-trip.  For an
-    expert the box *is* the state, so we query E2B by the owner metadata every
-    sandbox is stamped with, preferring a running box over a paused one and
-    the newest of several (a lost creation race can leave duplicates).
+    A running box sorts before a paused one.  Listing never connects, so a
+    paused box stays paused — connecting is what auto-resume reacts to.
+    Returns ``[]`` on any API failure so callers degrade to "nothing found".
     """
-    if not owner.is_expert:
-        return None
     try:
         paginator = AsyncSandbox.list(
             query=SandboxQuery(
@@ -244,12 +247,30 @@ async def find_owned_sandbox_id(
         logger.warning(
             "[E2B] Metadata lookup for %s %s failed: %s", owner, sandbox_kind, exc
         )
-        return None
-    if not infos:
-        return None
+        return []
     infos = sorted(infos, key=lambda info: info.started_at, reverse=True)
     running = [info for info in infos if info.state == SandboxState.RUNNING]
-    chosen = (running or infos)[0]
+    paused = [info for info in infos if info.state != SandboxState.RUNNING]
+    return running + paused
+
+
+async def find_owned_sandbox_id(
+    owner: SandboxOwner, sandbox_kind: SandboxKind, api_key: str
+) -> str | None:
+    """Recover an expert's box through the E2B API when Redis has forgotten it.
+
+    Session sandboxes are Redis-only: losing that key just means a fresh
+    scratch sandbox, which is not worth a control-plane round-trip.  For an
+    expert the box *is* the state, so we query E2B by the owner metadata every
+    sandbox is stamped with, preferring a running box over a paused one and
+    the newest of several (a lost creation race can leave duplicates).
+    """
+    if not owner.is_expert:
+        return None
+    infos = await list_owned_sandboxes(owner, sandbox_kind, api_key)
+    if not infos:
+        return None
+    chosen = infos[0]
     if len(infos) > 1:
         logger.warning(
             "[E2B] %s has %d %s sandboxes; using %.12s",
