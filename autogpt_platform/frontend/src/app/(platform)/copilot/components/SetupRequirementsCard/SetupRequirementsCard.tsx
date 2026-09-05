@@ -101,6 +101,7 @@ export function SetupRequirementsCard({
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -147,8 +148,15 @@ export function SetupRequirementsCard({
   const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
   const hasUserActionableInputs = isEditMode && needsInputs;
+  // A trigger card's message carries the account its webhook registers under,
+  // which the backend requires the user to have picked — so neither auto path
+  // may send it, and the chain gives it a Proceed instead.
+  const needsManualPick = isTriggerMode;
   const canAutoDismiss =
-    needsCredentials && alreadyConnected && !hasUserActionableInputs;
+    needsCredentials &&
+    alreadyConnected &&
+    !hasUserActionableInputs &&
+    !needsManualPick;
   // Inside a chain this card renders no Proceed of its own — the chain only
   // renders one for inputs/questions — so a completed sign-in is the sole "go"
   // signal; without this the chain stalls after the user connects. It must be
@@ -158,7 +166,8 @@ export function SetupRequirementsCard({
     Boolean(chainActions) &&
     justConnected &&
     isAllCredsComplete &&
-    !hasUserActionableInputs;
+    !hasUserActionableInputs &&
+    !needsManualPick;
 
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
@@ -201,6 +210,7 @@ export function SetupRequirementsCard({
     chainActions.register({
       id: actionId,
       ready: canRun,
+      manualProceed: needsManualPick,
       buildMessage: () => buildProceedMessage(),
       onSent: markSent,
       connectors: needsCredentials
@@ -249,7 +259,7 @@ export function SetupRequirementsCard({
   }
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(

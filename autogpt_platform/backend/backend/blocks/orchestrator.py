@@ -882,6 +882,7 @@ class OrchestratorBlock(Block):
         input_data: Input,
         current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
+        execution_context: "ExecutionContext | None" = None,
     ) -> Any:
         """
         Attempt a single LLM call with tool validation.
@@ -891,6 +892,7 @@ class OrchestratorBlock(Block):
         resp = await llm.llm_call(
             compress_prompt_to_fit=input_data.conversation_compaction,
             credentials=credentials,
+            execution_context=execution_context,
             llm_model=input_data.model,
             prompt=current_prompt,
             max_tokens=input_data.max_tokens,
@@ -2159,7 +2161,11 @@ class OrchestratorBlock(Block):
         for _ in range(max_attempts):
             try:
                 response = await self._attempt_llm_call_with_validation(
-                    credentials, input_data, current_prompt, tool_functions
+                    credentials,
+                    input_data,
+                    current_prompt,
+                    tool_functions,
+                    execution_context,
                 )
                 break
 
