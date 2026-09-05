@@ -71,11 +71,14 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "start_desktop",
     "browser_act",
     "browser_navigate",
     "browser_screenshot",
+    "confirm_expert_change",
+    "confirm_expert_soul_update",
     "connect_integration",
     "continue_run_block",
     "create_agent",
@@ -83,6 +86,7 @@ ToolName = Literal[
     "create_folder",
     "customize_agent",
     "decompose_goal",
+    "delegate_to_expert",
     "delete_folder",
     "delete_preset",
     "delete_schedule",
@@ -99,12 +103,15 @@ ToolName = Literal[
     "get_mcp_guide",
     "get_platform_info",
     "get_sub_session_result",
+    "handoff_to_expert",
+    "hire_expert",
     "list_agent_triggers",
     "list_chat_platform_channels",
     "list_folders",
     "list_presets",
     "list_schedules",
     "list_skills",
+    "list_team",
     "list_workspace_files",
     "memory_forget_confirm",
     "memory_forget_search",
@@ -113,6 +120,7 @@ ToolName = Literal[
     "move_agents_to_folder",
     "move_folder",
     "post_to_chat_platform",
+    "raise_expert",
     "read_skill",
     "read_workspace_file",
     "run_agent",
@@ -124,6 +132,8 @@ ToolName = Literal[
     "search_feature_requests",
     "setup_agent_webhook_trigger",
     "store_skill",
+    "update_expert",
+    "update_expert_soul",
     "update_folder",
     "update_preset",
     "validate_agent_graph",
@@ -146,7 +156,7 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset()
 """Tool names accepted only for backwards compatibility with saved graphs.
 
 These names are intentionally absent from ``ToolName`` and

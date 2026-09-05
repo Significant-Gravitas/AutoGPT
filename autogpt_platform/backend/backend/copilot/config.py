@@ -56,6 +56,7 @@ _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 _DEFAULT_FAST_ADVANCED_MODEL = "anthropic/claude-opus-4-8"
 
 TransportName = Literal["subscription", "openrouter", "direct_anthropic", "local"]
+CopilotLlmAuthProvider = Literal["platform", "codex"]
 
 
 class TransportProfile(BaseModel):
@@ -184,7 +185,7 @@ CopilotMode = Literal["fast", "extended_thinking"]
 #   default to Opus today).
 # None means no preference — falls through to LD per-user targeting, then config.
 # Using tier names instead of model names keeps the contract model-agnostic.
-CopilotLlmModel = Literal["standard", "advanced"]
+CopilotLLMModel = Literal["standard", "advanced"]
 
 
 class ChatConfig(BaseSettings):
@@ -193,7 +194,7 @@ class ChatConfig(BaseSettings):
     # Chat model tiers — a 2×2 of (path, tier).  ``path`` = ``CopilotMode``
     # (``"fast"`` → baseline OpenAI-compat / any OpenRouter model;
     # ``"extended_thinking"`` → Claude Agent SDK, Anthropic-only CLI).
-    # ``tier`` = ``CopilotLlmModel`` (``"standard"`` / ``"advanced"``).
+    # ``tier`` = ``CopilotLLMModel`` (``"standard"`` / ``"advanced"``).
     # Each cell has its own config so the two paths can evolve
     # independently (cheap provider on baseline, Anthropic on SDK) at each
     # tier without conflating one path's needs with the other's constraint.
@@ -434,6 +435,17 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="Context window the SDK subprocess is held to, in tokens "
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
+        "raise it on a route that really serves 1M — past the provider's real "
+        "window the compaction trigger never fires (at 1M on Moonshot it lands "
+        "at 967K against Kimi's 262,144).",
+    )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
         ge=0,
@@ -503,13 +515,12 @@ class ChatConfig(BaseSettings):
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
     claude_agent_cross_user_prompt_cache: bool = Field(
-        default=True,
-        description="Enable cross-user prompt caching via SystemPromptPreset. "
-        "The Claude Code default prompt becomes a cacheable prefix shared "
-        "across all users, and our custom prompt is appended after it. "
+        default=False,
+        description="Include the Claude Code default prompt as a cacheable prefix "
+        "shared across all users, with our custom prompt appended after it. "
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
-        "from the prefix. Set to False to fall back to passing the system "
-        "prompt as a raw string.",
+        "from the prefix. Set to True to opt in. When False, our system prompt "
+        "is passed as a raw string and replaces the Claude Code default prompt.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",

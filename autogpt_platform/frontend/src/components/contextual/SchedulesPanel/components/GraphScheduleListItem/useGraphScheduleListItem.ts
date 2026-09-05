@@ -1,7 +1,7 @@
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -23,14 +23,15 @@ export function useGraphScheduleListItem({ schedule }: Args) {
   const nextRunDate = schedule.next_run_time
     ? new Date(schedule.next_run_time)
     : null;
-  const nextRunLabel =
+  const nextRunRelative =
     nextRunDate && !Number.isNaN(nextRunDate.valueOf())
-      ? `Next ${formatDistanceToNow(nextRunDate, { addSuffix: true })}`
-      : "Pending";
+      ? formatDistanceToNow(nextRunDate, { addSuffix: true })
+      : null;
+  const nextRunLabel = nextRunRelative ? `Next ${nextRunRelative}` : "Pending";
   const nextRunTitle = nextRunDate ? nextRunDate.toString() : undefined;
 
   const recurrenceLabel = schedule.cron
-    ? safeHumanizeCron(schedule.cron)
+    ? safeHumanizeCronExpression(schedule.cron)
     : "Runs once";
 
   const agentLabel = schedule.agent_name || schedule.name || "Scheduled agent";
@@ -69,6 +70,7 @@ export function useGraphScheduleListItem({ schedule }: Args) {
 
   return {
     nextRunLabel,
+    nextRunRelative,
     nextRunTitle,
     recurrenceLabel,
     agentLabel,
@@ -82,12 +84,4 @@ export function useGraphScheduleListItem({ schedule }: Args) {
     openView,
     closeView,
   };
-}
-
-function safeHumanizeCron(cron: string): string {
-  try {
-    return humanizeCronExpression(cron);
-  } catch {
-    return cron;
-  }
 }

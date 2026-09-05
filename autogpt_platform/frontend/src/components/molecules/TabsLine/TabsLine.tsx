@@ -41,12 +41,17 @@ interface TabsLineListProps
    * aligns flush with the list's left edge. Defaults to `false`.
    */
   flush?: boolean;
+  /**
+   * Overrides the active-tab underline colour, for surfaces that want a
+   * neutral accent instead of the default purple.
+   */
+  indicatorClassName?: string;
 }
 
 const TabsLineList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsLineListProps
->(({ className, flush = false, ...props }, ref) => {
+>(({ className, flush = false, indicatorClassName, ...props }, ref) => {
   const { activeTabElement } = useTabsLine();
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -69,7 +74,10 @@ const TabsLineList = React.forwardRef<
       />
       {activeTabElement && (
         <div
-          className="transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out"
+          className={cn(
+            "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
+            indicatorClassName,
+          )}
           style={{
             left: activeTabElement.offsetLeft,
             width: activeTabElement.offsetWidth,
@@ -135,7 +143,11 @@ const TabsLineContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
+      // Radix marks inactive panels with the `hidden` attribute, but the UA
+      // rule behind it is weaker than any author display utility — a panel
+      // styled `flex`/`grid` stays laid out and keeps stealing space from the
+      // active one. The data-state variant is specific enough to win.
+      "mt-4 data-[state=inactive]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2",
       className,
     )}
     {...props}

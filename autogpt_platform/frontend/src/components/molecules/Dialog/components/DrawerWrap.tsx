@@ -1,11 +1,12 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { X } from "@phosphor-icons/react";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
 import { drawerStyles, modalStyles } from "./styles";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -21,6 +22,7 @@ export function DrawerWrap({
   testId,
   handleClose,
   isForceOpen,
+  className,
 }: Props) {
   const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
@@ -32,7 +34,7 @@ export function DrawerWrap({
       onClick={handleClose}
       className="!focus-visible:ring-0 p-0"
     >
-      <X width="1.5rem" />
+      <Icon icon={Cancel01Icon} width="1.5rem" />
     </Button>
   );
 
@@ -41,7 +43,7 @@ export function DrawerWrap({
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
         aria-describedby={undefined}
-        className={drawerStyles.content}
+        className={cn(drawerStyles.content, className)}
         data-testid={testId}
         onInteractOutside={handleClose}
       >

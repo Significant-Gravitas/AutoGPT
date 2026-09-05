@@ -14,19 +14,26 @@ import {
   getGetV2GetUserProfileMockHandler401,
   getPostV2UpdateUserProfileMockHandler200,
   getPostV2UpdateUserProfileMockHandler422,
-  getPostV2UploadSubmissionMediaMockHandler200,
-  getPostV2UploadSubmissionMediaMockHandler401,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 
 import SettingsProfilePage from "../page";
 
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockUseAuth = vi.hoisted(() => vi.fn());
 const toastSpy = vi.hoisted(() => vi.fn());
+const uploadAvatarSpy = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: mockUseAuth,
 }));
+
+vi.mock("@/lib/direct-upload", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/direct-upload")>();
+  return {
+    ...actual,
+    uploadSubmissionMediaDirect: uploadAvatarSpy,
+  };
+});
 
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
   const actual =
@@ -52,7 +59,7 @@ function makeProfile(overrides: Partial<ProfileDetails> = {}): ProfileDetails {
 }
 
 function authenticate() {
-  mockUseSupabase.mockReturnValue({
+  mockUseAuth.mockReturnValue({
     user: {
       id: "user-1",
       email: "user@example.com",
@@ -63,7 +70,6 @@ function authenticate() {
     },
     isLoggedIn: true,
     isUserLoading: false,
-    supabase: {},
   });
 }
 
@@ -597,11 +603,9 @@ describe("SettingsProfilePage - save & discard", () => {
 
 describe("SettingsProfilePage - avatar upload", () => {
   test("uploading an avatar updates the form state", async () => {
-    server.use(
-      getGetV2GetUserProfileMockHandler200(makeProfile()),
-      getPostV2UploadSubmissionMediaMockHandler200(
-        "https://cdn.example.com/uploaded.png",
-      ),
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    uploadAvatarSpy.mockResolvedValueOnce(
+      "https://cdn.example.com/uploaded.png",
     );
 
     render(<SettingsProfilePage />);
@@ -628,10 +632,8 @@ describe("SettingsProfilePage - avatar upload", () => {
   });
 
   test("upload error surfaces a destructive toast", async () => {
-    server.use(
-      getGetV2GetUserProfileMockHandler200(makeProfile()),
-      getPostV2UploadSubmissionMediaMockHandler401(),
-    );
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    uploadAvatarSpy.mockRejectedValueOnce(new Error("Unauthorized"));
 
     render(<SettingsProfilePage />);
 
@@ -652,15 +654,41 @@ describe("SettingsProfilePage - avatar upload", () => {
       );
     });
   });
+
+  test("rejects an oversized avatar before uploading and explains the limit", async () => {
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    toastSpy.mockClear();
+    uploadAvatarSpy.mockClear();
+
+    render(<SettingsProfilePage />);
+
+    await screen.findByLabelText(/display name/i);
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const bigFile = new File(["x"], "avatar.png", { type: "image/png" });
+    Object.defineProperty(bigFile, "size", { value: 51 * 1024 * 1024 });
+    fireEvent.change(fileInput, { target: { files: [bigFile] } });
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File too large",
+          variant: "destructive",
+        }),
+      );
+    });
+    expect(uploadAvatarSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("SettingsProfilePage - skeleton & nullish profile fields", () => {
   test("renders the skeleton on first render before the user resolves", () => {
-    mockUseSupabase.mockReturnValue({
+    mockUseAuth.mockReturnValue({
       user: null,
       isLoggedIn: false,
       isUserLoading: true,
-      supabase: {},
     });
 
     const { container } = render(<SettingsProfilePage />);

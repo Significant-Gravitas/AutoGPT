@@ -25,6 +25,7 @@ const TYPE_LABELS: Record<CredentialType, string> = {
   oauth2: "OAuth",
   user_password: "User/Password",
   host_scoped: "Host-scoped",
+  device_code: "Device auth",
 };
 
 export function typeBadgeLabel(type: CredentialType): string {
@@ -43,6 +44,7 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   d_id: "D-ID",
   ideogram: "Ideogram",
   jina: "Jina",
+  linkedin: "LinkedIn",
   mcp: "MCP",
   twitter: "X",
   zerobounce: "ZeroBounce",
@@ -69,7 +71,7 @@ export function formatMaskedValue(credential: CredentialView): string {
   return "Configured";
 }
 
-function stripProviderPrefix(title: string, provider: string): string {
+export function stripProviderPrefix(title: string, provider: string): string {
   // The row already lives under the provider group, so any leading
   // ``<ProviderName>: `` in the per-credential title doubles up.  Strip
   // it generically (case-insensitive) so e.g. ``"MCP: mcp.sentry.dev"``
@@ -80,6 +82,49 @@ function stripProviderPrefix(title: string, provider: string): string {
   return title.toLowerCase().startsWith(prefix.toLowerCase())
     ? title.slice(prefix.length)
     : title;
+}
+
+const MCP_PROVIDER = "mcp";
+
+// Labels that route the request rather than name the service behind it.
+const MCP_HOST_NOISE = new Set(["mcp", "api", "www", "server"]);
+
+function toHostname(value: string): string | null {
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return url.hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function mcpServiceName(value: string): string | null {
+  const host = toHostname(value);
+  if (!host) return null;
+  // Drop the TLD, then the routing noise, so ``mcp.sentry.dev`` reads as the
+  // service a person recognises rather than the URL we happen to call.
+  const name = host
+    .split(".")
+    .filter(Boolean)
+    .slice(0, -1)
+    .find((label) => !MCP_HOST_NOISE.has(label));
+  return name ? formatProviderName(name) : null;
+}
+
+// The credential's own name, said the way a person would. MCP credentials are
+// titled after the server URL, which is the one case where the stored title is
+// an address rather than a name.
+export function formatCredentialName(title: string, provider: string): string {
+  const stripped = stripProviderPrefix(title, provider);
+  if (provider !== MCP_PROVIDER) return stripped;
+  return mcpServiceName(stripped) ?? stripped;
+}
+
+// Where the credential comes from, for the line under its name.
+export function formatCredentialSource(provider: string): string {
+  return provider === MCP_PROVIDER
+    ? "MCP server"
+    : formatProviderName(provider);
 }
 
 function toCredentialView(cred: CredentialsMetaResponse): CredentialView {
@@ -100,9 +145,11 @@ export function groupCredentialsByProvider(
 ): ProviderGroupView[] {
   const byProvider = new Map<string, CredentialView[]>();
   for (const cred of credentials) {
-    const list = byProvider.get(cred.provider) ?? [];
+    const displayProvider =
+      cred.provider === "codex" ? "openai" : cred.provider;
+    const list = byProvider.get(displayProvider) ?? [];
     list.push(toCredentialView(cred));
-    byProvider.set(cred.provider, list);
+    byProvider.set(displayProvider, list);
   }
 
   const groups: ProviderGroupView[] = [];

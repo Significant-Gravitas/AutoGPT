@@ -4,12 +4,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { PlusIcon } from "@phosphor-icons/react";
 import { NEW_SCHEDULED_TASK_PROMPT } from "../guidedPrompts";
 import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
 import { useSchedulesPanel } from "./useSchedulesPanel";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onGuidedPrompt: (prompt: string) => void;
@@ -38,7 +39,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
             onClick={() => onGuidedPrompt(NEW_SCHEDULED_TASK_PROMPT)}
             data-testid="schedule-new-button"
           >
-            <PlusIcon className="mr-1 h-4 w-4" />
+            <Icon icon={PlusSignIcon} className="mr-1 h-4 w-4" />
             New scheduled task
           </Button>
         </div>

@@ -1,5 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { CalendarDotsIcon } from "@phosphor-icons/react";
+import { Calendar03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function EmptyFollowups() {
   return (
@@ -8,7 +9,7 @@ export function EmptyFollowups() {
       data-testid="followups-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-50">
-        <CalendarDotsIcon size={24} className="text-yellow-700" />
+        <Icon icon={Calendar03Icon} size={24} className="text-yellow-700" />
       </div>
       <Text variant="h4" className="text-zinc-900">
         Nothing scheduled yet

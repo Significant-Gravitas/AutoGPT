@@ -1,5 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
-import { BookOpenIcon } from "@phosphor-icons/react";
+import { BookOpen01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function EmptySkills() {
   return (
@@ -8,7 +9,7 @@ export function EmptySkills() {
       data-testid="skills-empty"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
-        <BookOpenIcon size={24} className="text-violet-700" />
+        <Icon icon={BookOpen01Icon} size={24} className="text-violet-700" />
       </div>
       <Text variant="h4" className="text-zinc-900">
         No skills yet

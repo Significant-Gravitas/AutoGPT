@@ -4,10 +4,11 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { cn } from "@/lib/utils";
-import { ChatCircle, X } from "@phosphor-icons/react";
 import { useRef } from "react";
 import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
+import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   className?: string;
@@ -136,7 +137,11 @@ export function BuilderChatPanel({ className }: Props) {
             : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
         )}
       >
-        {isOpen ? <X size={20} /> : <ChatCircle size={22} weight="fill" />}
+        {isOpen ? (
+          <Icon icon={Cancel01Icon} size={20} />
+        ) : (
+          <Icon icon={BubbleChatIcon} size={22} />
+        )}
       </button>
     </div>
   );

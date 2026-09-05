@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from typing import Any, Optional
 
 import httpx
@@ -25,12 +26,14 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.web.async_client import AsyncWebClient
 
+from backend.copilot.bot import threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
     FileAttachment,
     MessageCallback,
     MessageContext,
+    MessageHistoryEntry,
     PostedRef,
     WebhookAdapter,
     read_verified_webhook_body,
@@ -46,7 +49,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import commands, config, oauth, signing
+from . import commands, config, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
@@ -69,6 +72,19 @@ _CHANNEL_ID_RE = re.compile(r"^[CGD][A-Z0-9]{7,}$")
 # change / rotation) stops being used within this window on EVERY replica — the
 # OAuth callback only evicts the replica that handled it.
 _CLIENT_CACHE_TTL_SECONDS = 15 * 60
+
+# Allowlisted @-mentions are stashed behind this while the text is escaped,
+# then swapped for live <@Uid> tokens (see _render). Input NULs are stripped
+# first, so every NUL pair is a placeholder whatever the id alphabet.
+_MENTION_STASH_RE = re.compile(r"\x00([^\x00]+)\x00")
+
+# Floor for the canonical chunk size when escaping expands a chunk past the
+# message cap (worst case ~5x, so this keeps the wire text well under it).
+_MIN_FLUSH_AT = 200
+
+# The display-name cache now collects every author of every summoned thread;
+# a hard cap keeps a long-lived pod bounded (and lets renames surface).
+_USER_NAME_CACHE_MAX = 10_000
 
 
 class SlackAdapter(WebhookAdapter):
@@ -235,11 +251,14 @@ class SlackAdapter(WebhookAdapter):
             )
         elif (
             event_type == "message"
-            and channel_type == "channel"
+            and channel_type in ("channel", "group")
             and event.get("thread_ts")
+            and not await self._also_arrives_as_mention(event, team_id)
         ):
             # Reply in a channel thread without an @mention — the handler checks
-            # thread-subscription state and ignores it if it isn't ours.
+            # thread-subscription state and ignores it if it isn't ours. Slack
+            # types private channels "group" (needs groups:history to arrive);
+            # multi-person DMs ("mpim") are deliberately not handled.
             ctx = await self._build_context(event, team_id, bot_mentioned=False)
         if ctx is None:
             return
@@ -247,6 +266,32 @@ class SlackAdapter(WebhookAdapter):
             await self._on_message_callback(ctx, self)
         except Exception:
             logger.exception("Slack event handler failed")
+
+    async def _also_arrives_as_mention(
+        self, event: dict[str, Any], team_id: Optional[str]
+    ) -> bool:
+        """True when this ``message`` event is a copy of an ``app_mention``.
+
+        Slack delivers both for a single @mention, and we subscribe to both.
+        In a thread we don't own the duplicate is dropped for us (the handler
+        ignores the un-mentioned copy), but in a thread we DO own both copies
+        pass the subscription gate and the turn runs twice — two model calls,
+        two replies. Take the ``app_mention`` copy, which carries
+        ``bot_mentioned=True``, and drop this one.
+
+        An unresolvable identity answers False: a duplicate turn is a much
+        smaller failure than silently swallowing the user's message.
+        """
+        team = event.get("team") or team_id
+        if not team:
+            return False
+        bot_user_id = await self._bot_user_id_for(team)
+        if not bot_user_id:
+            return False
+        return any(
+            m.group(1) == bot_user_id
+            for m in _USER_MENTION_RE.finditer(event.get("text") or "")
+        )
 
     async def _build_context(
         self,
@@ -275,6 +320,18 @@ class SlackAdapter(WebhookAdapter):
             channel_type = "channel"
         target_channel_id = _encode_target(team, channel, thread_ts)
 
+        # An @mention into an existing thread carries the thread's prior human
+        # messages so the model has context for the conversation above it.
+        thread_history: tuple[MessageHistoryEntry, ...] = ()
+        if bot_mentioned and thread_ts and not is_dm:
+            thread_history = await self._thread_history(
+                team=team,
+                channel=channel,
+                thread_ts=thread_ts,
+                target_id=target_channel_id,
+                exclude_ts=ts,
+            )
+
         attachments, skipped = await self._extract_attachments(team, event)
         return MessageContext(
             platform="slack",
@@ -287,10 +344,45 @@ class SlackAdapter(WebhookAdapter):
             username=await self._user_display_name(team, user),
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
+            thread_history=thread_history,
             mentionable_users=await self._collect_mentionable_users(team, text),
             attachments=attachments,
             skipped_attachments=skipped,
         )
+
+    async def _thread_history(
+        self,
+        *,
+        team: str,
+        channel: str,
+        thread_ts: str,
+        target_id: str,
+        exclude_ts: str,
+    ) -> tuple[MessageHistoryEntry, ...]:
+        # Optional context must never cost the user their turn: EVERYTHING in
+        # here (the Redis gate included) answers without history on failure
+        # rather than dropping the message.
+        try:
+            # The handler only folds history in for a thread the bot doesn't
+            # own (its own threads' turns already live in the session), so
+            # don't pay for a fetch it would discard.
+            if await threads.is_subscribed(self.platform_name, target_id):
+                return ()
+            client = await self._client_for(team)
+            if client is None:
+                return ()
+            return await history.fetch_thread_history(
+                client,
+                channel=channel,
+                thread_ts=thread_ts,
+                exclude_ts=exclude_ts,
+                bot_user_id=await self._bot_user_id_for(team),
+                display_name=lambda uid: self._user_display_name(team, uid),
+                strip_mentions=lambda text: self._strip_mentions(team, text),
+            )
+        except Exception:
+            logger.warning("Slack thread history failed; skipping", exc_info=True)
+            return ()
 
     async def _extract_attachments(
         self, team_id: str, event: dict[str, Any]
@@ -330,13 +422,54 @@ class SlackAdapter(WebhookAdapter):
     # -- Outbound --
 
     def _render(self, text: str, mentionable_users: tuple[tuple[str, str], ...]) -> str:
-        # Allowlisted @-mentions → <@Uid> (the allowlist IS Slack's ping
-        # safety — non-allowlisted names stay plain and never ping), then
-        # localize CommonMark → mrkdwn.
-        rendered, _pinged = resolve_mentions(
-            text, mentionable_users, lambda _name, uid: f"<@{uid}>"
+        # Match @names on the canonical text (display names are raw, and
+        # to_mrkdwn would escape & < > in both), stash the hits behind NUL
+        # placeholders that survive the escaping, then swap in live <@Uid>
+        # tokens. Anything else shaped like <@Uid> or <!channel> arrives
+        # escaped, so only allowlisted names ever ping.
+        resolved, _pinged = resolve_mentions(
+            text.replace("\x00", ""),
+            mentionable_users,
+            lambda _name, uid: f"\x00{uid}\x00",
         )
-        return self.localize_markup(rendered)
+        rendered = self.localize_markup(resolved)
+        # Inside an emitted <url|label> link a mention token would nest angle
+        # brackets and truncate the label at Slack's first ">" — give a stashed
+        # mention there its plain @name instead. Links are the only <...>
+        # constructs at this point.
+        names = {uid: name for name, uid in mentionable_users}
+        rendered = re.sub(
+            r"<[^<>]*>",
+            lambda link: _MENTION_STASH_RE.sub(
+                lambda p: f"@{names.get(p.group(1), p.group(1))}", link.group(0)
+            ),
+            rendered,
+        )
+        return _MENTION_STASH_RE.sub(r"<@\1>", rendered)
+
+    async def _post_rendered(
+        self,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: Optional[str],
+        text: str,
+        mentionable_users: tuple[tuple[str, str], ...],
+        flush_at: int = config.CHUNK_FLUSH_AT,
+    ) -> None:
+        """Render and post ``text``, re-splitting the canonical text whenever
+        escaping expands the wire text past the message cap — Slack counts the
+        escaped characters, and the upstream flush budget counts canonical
+        ones."""
+        rendered = self._render(text, mentionable_users)
+        if len(rendered) <= config.MAX_MESSAGE_LENGTH or flush_at <= _MIN_FLUSH_AT:
+            await client.chat_postMessage(
+                channel=channel, text=rendered, thread_ts=thread_ts
+            )
+            return
+        for chunk in iter_chunks(text, flush_at // 2):
+            await self._post_rendered(
+                client, channel, thread_ts, chunk, mentionable_users, flush_at // 2
+            )
 
     async def send_message(
         self,
@@ -348,11 +481,7 @@ class SlackAdapter(WebhookAdapter):
         client = await self._client_for(team)
         if client is None:
             return
-        await client.chat_postMessage(
-            channel=channel,
-            text=self._render(text, mentionable_users),
-            thread_ts=thread_ts,
-        )
+        await self._post_rendered(client, channel, thread_ts, text, mentionable_users)
 
     async def send_reply(
         self,
@@ -365,10 +494,8 @@ class SlackAdapter(WebhookAdapter):
         client = await self._client_for(team)
         if client is None:
             return
-        await client.chat_postMessage(
-            channel=channel,
-            text=self._render(text, mentionable_users),
-            thread_ts=thread_ts or reply_to_message_id,
+        await self._post_rendered(
+            client, channel, thread_ts or reply_to_message_id, text, mentionable_users
         )
 
     async def send_link(
@@ -511,18 +638,47 @@ class SlackAdapter(WebhookAdapter):
         """Post ``text`` chunked under the message cap; return the first ts.
 
         Later chunks thread off the first so a long post stays one conversation.
+
+        Raises only if the *first* chunk fails — once anything is delivered, a
+        later-chunk failure stops the send and keeps the partial result rather
+        than discarding what already posted, because the caller reports the
+        whole post as failed and a retry would duplicate the delivered chunks
+        (mirrors Discord's ``_send_chunked``). ``first_ts`` can't stand in for
+        "nothing sent yet": it starts non-None when posting into a thread.
         """
         client = await self._client_for(team_id)
         if client is None:
             return None
         first_ts = thread_ts
-        for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
-            resp = await client.chat_postMessage(
-                channel=channel, text=chunk, thread_ts=first_ts
-            )
+        posted = False
+        for rendered in self._localized_chunks(text, config.CHUNK_FLUSH_AT):
+            try:
+                resp = await client.chat_postMessage(
+                    channel=channel, text=rendered, thread_ts=first_ts
+                )
+            except Exception:
+                # SlackApiError for API failures, raw transport errors
+                # otherwise — a partial send must survive either.
+                if not posted:
+                    raise
+                logger.exception("Dropping trailing Slack chunk after partial send")
+                break
+            posted = True
             if first_ts is None:
                 first_ts = resp.get("ts")
         return first_ts
+
+    def _localized_chunks(self, text: str, flush_at: int) -> Iterator[str]:
+        """Chunk the canonical markdown, then localize each chunk, so a cut
+        never bisects an escaped entity or a <url|label> link. Slack counts the
+        escaped wire text, so a chunk that expands past the cap is re-split
+        smaller instead of being cut after escaping."""
+        for chunk in iter_chunks(text, flush_at):
+            rendered = self.localize_markup(chunk)
+            if len(rendered) <= config.MAX_MESSAGE_LENGTH or flush_at <= _MIN_FLUSH_AT:
+                yield rendered
+            else:
+                yield from self._localized_chunks(chunk, flush_at // 2)
 
     async def _permalink(self, team_id: str, channel: str, ts: str) -> Optional[str]:
         client = await self._client_for(team_id)
@@ -554,6 +710,8 @@ class SlackAdapter(WebhookAdapter):
                 )
                 # Only cache a real resolution — a transient API failure must not
                 # poison the cache with the raw id (mirrors _bot_user_id_for).
+                if len(self._user_name_cache) >= _USER_NAME_CACHE_MAX:
+                    self._user_name_cache.clear()
                 self._user_name_cache[cache_key] = name
                 return name
             except Exception:

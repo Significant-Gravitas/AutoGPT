@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { FolderSimplePlusIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,6 +10,8 @@ import { useArtifactsFolders } from "../../useArtifactsFolders";
 import { DeleteFolderDialog } from "./DeleteFolderDialog";
 import { FolderFormDialog } from "./FolderFormDialog";
 import { WorkspaceFolder } from "./WorkspaceFolder";
+import { FolderAddIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onSelectFolder: (folderId: string) => void;
@@ -68,7 +69,7 @@ export function WorkspaceFolders({ onSelectFolder }: Props) {
           onClick={() => setIsCreateOpen(true)}
           data-testid="create-folder-button"
         >
-          <FolderSimplePlusIcon size={18} />
+          <Icon icon={FolderAddIcon} size={18} />
           New folder
         </Button>
       </div>

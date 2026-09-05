@@ -8,7 +8,7 @@ from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
     AICredentialsField,
-    LlmModel,
+    LLMModel,
     ModelMetadata,
 )
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
@@ -26,11 +26,10 @@ from backend.sdk import (
 logger = logging.getLogger(__name__)
 
 
-class StagehandRecommendedLlmModel(str, Enum):
-    """
-    This is subset of LLModel from autogpt_platform/backend/backend/blocks/llm.py
-
-    It contains only the models recommended by Stagehand
+class StagehandRecommendedLLMModel(str, Enum):
+    """A subset of ``LLMModel`` (canonical home:
+    ``backend/data/llm_registry/llm_models.py``, re-exported from
+    ``blocks/llm.py``) containing only the models recommended by Stagehand.
     """
 
     # OpenAI
@@ -47,7 +46,7 @@ class StagehandRecommendedLlmModel(str, Enum):
         Returns the provider name for the model in the required format for Stagehand:
         provider/model_name
         """
-        model_metadata = MODEL_METADATA[LlmModel(self.value)]
+        model_metadata = MODEL_METADATA[LLMModel(self.value)]
         model_name = self.value
 
         if len(model_name.split("/")) == 1 and not self.value.startswith(
@@ -63,19 +62,19 @@ class StagehandRecommendedLlmModel(str, Enum):
 
     @property
     def provider(self) -> str:
-        return MODEL_METADATA[LlmModel(self.value)].provider
+        return MODEL_METADATA[LLMModel(self.value)].provider
 
     @property
     def metadata(self) -> ModelMetadata:
-        return MODEL_METADATA[LlmModel(self.value)]
+        return MODEL_METADATA[LLMModel(self.value)]
 
     @property
     def context_window(self) -> int:
-        return MODEL_METADATA[LlmModel(self.value)].context_window
+        return MODEL_METADATA[LLMModel(self.value)].context_window
 
     @property
     def max_output_tokens(self) -> int | None:
-        return MODEL_METADATA[LlmModel(self.value)].max_output_tokens
+        return MODEL_METADATA[LLMModel(self.value)].max_output_tokens
 
 
 class StagehandObserveBlock(Block):
@@ -90,10 +89,10 @@ class StagehandObserveBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -173,10 +172,10 @@ class StagehandActBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()
@@ -269,10 +268,10 @@ class StagehandExtractBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
         model_credentials: AICredentials = AICredentialsField()

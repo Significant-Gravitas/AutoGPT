@@ -26,6 +26,10 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Pinned: both are settable from the environment, and a developer's
+        # .env otherwise rewrites what build_sdk_env() is asked to emit.
+        "claude_agent_autocompact_pct_override": 50,
+        "claude_agent_context_window": 200_000,
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
@@ -503,6 +507,77 @@ class TestBuildSdkEnvLocalTransportGuard:
             ):
                 build_sdk_env()
 
+    def test_codex_override_runs_sdk_under_local_transport(self):
+        cfg = _make_config(
+            use_local=True,
+            api_key="ollama",
+            base_url="http://host.docker.internal:11434/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                codex_gateway_url="http://127.0.0.1:43210/",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:43210"
+        assert result["ANTHROPIC_AUTH_TOKEN"] == "loopback-capability"
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert result["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+        assert {"127.0.0.1", "localhost", "::1"} <= set(result["NO_PROXY"].split(","))
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+
+class TestBuildSdkEnvCodexGateway:
+    def test_codex_override_preserves_existing_no_proxy_hosts(self):
+        cfg = _make_config(use_openrouter=False)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch.dict(
+                "backend.copilot.sdk.env.os.environ",
+                {
+                    "NO_PROXY": "internal.example,metadata.internal,localhost",
+                },
+                clear=True,
+            ),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                codex_gateway_url="http://localhost:43210",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert set(result["NO_PROXY"].split(",")) == {
+            "internal.example",
+            "metadata.internal",
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+        assert result["no_proxy"] == result["NO_PROXY"]
+
+    def test_codex_override_requires_url_and_token_together(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="must be provided together"):
+                build_sdk_env(codex_gateway_url="http://127.0.0.1:43210")
+
+    def test_codex_override_rejects_non_loopback_url(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            with pytest.raises(ValueError, match="loopback HTTP URL"):
+                build_sdk_env(
+                    codex_gateway_url="https://example.com",
+                    codex_gateway_token="must-not-leak",
+                )
+
 
 class TestAutocompactPctSonnet5Scaling:
     """Sonnet 5's trigger percentage is scaled by the ~1.3x tokenizer
@@ -528,6 +603,7 @@ class TestAutocompactPctSonnet5Scaling:
             "anthropic/claude-sonnet-4-6",
             "anthropic/claude-sonnet-4-5",  # substring near-miss guard
             "anthropic/claude-opus-4-7",
+            "anthropic/claude-opus-4-8",
         ],
     )
     def test_non_sonnet_5_not_scaled(self, model):
@@ -554,16 +630,40 @@ class TestAutocompactPctSonnet5Scaling:
 
 
 class TestContextWindowPin:
-    """CLAUDE_CODE_DISABLE_1M_CONTEXT pins the CLI's perceived window at
-    200K: 1M context is GA (not beta-gated) on Sonnet 4.6+/5, so the
-    experimental-betas flag alone no longer prevents a future CLI from
-    silently moving the autocompact trigger to ~500K."""
+    """The window the CLI compacts against is ours, not the CLI's guess.
 
-    def test_disable_1m_context_set_in_all_modes(self):
-        cfg = _make_config(use_openrouter=False)
+    At or below the default, ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` holds the model
+    window itself at 200K too, making the default a real cap.
+    """
+
+    @pytest.mark.parametrize(
+        "window, expected, kill_switch",
+        [
+            # At the 200K default and a 50% override the CLI compacts at ~90K
+            # (~117K on Sonnet 5, whose override is scaled to 65%).
+            (200_000, "200000", True),
+            (200_001, "200001", False),
+            (1_000_000, "1000000", False),
+        ],
+    )
+    def test_window_pin_and_1m_kill_switch(self, window, expected, kill_switch):
+        """Above the default the kill-switch has to come off with the raise:
+        it would otherwise clamp the model window back to 200K and swallow it."""
+        cfg = _make_config(use_openrouter=False, claude_agent_context_window=window)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
-        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
+        assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
+
+    def test_context_window_rejects_out_of_range(self):
+        """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
+        a typo'd env var and the CLI's own clamps."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=99_999)
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=1_000_001)

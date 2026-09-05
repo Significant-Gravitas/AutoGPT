@@ -1,12 +1,16 @@
 """Tests for the admin memory inspector routes."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote
 
 import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from redis.exceptions import ResponseError
+
+from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.copilot.graphiti.client import derive_memory_group_id
 
 from .memory_admin_routes import router as memory_admin_router
 
@@ -33,6 +37,28 @@ def _driver_returning(*query_results) -> AsyncMock:
     driver.execute_query.side_effect = [(r, None, None) for r in query_results]
     driver.close = AsyncMock()
     return driver
+
+
+def _expert(
+    expert_id: str,
+) -> Expert:
+    return Expert(
+        id=expert_id,
+        name="Memory Expert",
+        avatar_url=None,
+        role="Researcher",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="Keep this expert's memory isolated.",
+        voice_preferences="",
+        boundaries="",
+        protected_soul_rules=list(PROTECTED_SOUL_RULES),
+        is_template=False,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[],
+    )
 
 
 class TestOverview:
@@ -118,6 +144,358 @@ class TestOverview:
         driver.close.assert_awaited_once()
 
 
+class TestExpertMemoryScope:
+    def test_invalid_autopilot_scope_is_400_before_driver(self) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid memory owner"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": "invalid memory owner"}
+        open_driver.assert_not_called()
+
+    def test_invalid_expert_scope_is_400_before_driver(self) -> None:
+        expert_id = "expert-owned"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid expert memory scope"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
+
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": "invalid expert memory scope"}
+        open_driver.assert_not_called()
+
+    def test_owned_expert_opens_exact_server_derived_group(self) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning(
+            [{"c": 1}], [{"c": 2}], [{"c": 3}], [{"c": 4}], [{"c": 5}]
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/overview")
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] == expert_id
+        assert resp.json()["group_id"] == expected_group
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_called_once_with(expected_group)
+
+    def test_owned_expert_graph_uses_expert_group(self) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([], [], [])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] == expert_id
+        assert resp.json()["group_id"] == expected_group
+        open_driver.assert_called_once_with(expected_group)
+
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
+    def test_unowned_expert_is_404_before_driver(self, endpoint: str) -> None:
+        expert_id = "expert-owned-by-another-user"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
+
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "Expert not found"}
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_not_called()
+
+    @pytest.mark.parametrize("endpoint", ["entities", "facts", "communities"])
+    def test_owned_expert_list_uses_server_derived_group(self, endpoint: str) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
+
+        assert resp.status_code == 200
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+        open_driver.assert_called_once_with(expected_group)
+
+    @pytest.mark.parametrize("endpoint", ["entities", "facts", "communities"])
+    def test_list_without_expert_id_remains_autopilot(self, endpoint: str) -> None:
+        driver = _driver_returning([])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/{endpoint}")
+
+        assert resp.status_code == 200
+        get_expert.assert_not_awaited()
+        open_driver.assert_called_once_with("user_abc")
+
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
+    def test_overlong_expert_id_is_422_before_lookup_or_driver(
+        self, endpoint: str
+    ) -> None:
+        expert_id = "x" * 129
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
+
+        assert resp.status_code == 422
+        get_expert.assert_not_awaited()
+        open_driver.assert_not_called()
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_account_routes_ignore_expert_id_query_param(self, endpoint: str) -> None:
+        """Scope is path-structural now — a stray ``?expert_id=`` on an
+        account route is an unknown query param and must not switch the
+        response to an expert graph."""
+        driver = (
+            _driver_returning(
+                [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+            )
+            if endpoint == "overview"
+            else _driver_returning([], [], [])
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}", params={"expert_id": "expert-owned"}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] is None
+        assert resp.json()["group_id"] == "user_abc"
+        get_expert.assert_not_awaited()
+        open_driver.assert_called_once_with("user_abc")
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_raw_group_id_query_cannot_select_memory_scope(self, endpoint: str) -> None:
+        driver = (
+            _driver_returning(
+                [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+            )
+            if endpoint == "overview"
+            else _driver_returning([], [], [])
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver) as open_driver,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/{endpoint}",
+                params={"group_id": "expert_attacker_controlled"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["expert_id"] is None
+        assert resp.json()["group_id"] == "user_abc"
+        get_expert.assert_not_awaited()
+        open_driver.assert_called_once_with("user_abc")
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_max_length_expert_id_reaches_owned_scope_lookup(
+        self, endpoint: str
+    ) -> None:
+        expert_id = "x" * 128
+        driver = (
+            _driver_returning(
+                [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+            )
+            if endpoint == "overview"
+            else _driver_returning([], [], [])
+        )
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
+
+        assert resp.status_code == 200
+        get_expert.assert_awaited_once_with("abc", expert_id, include_workflows=False)
+
+    @pytest.mark.parametrize("endpoint", ["overview", "graph"])
+    def test_failed_cross_user_expert_scope_is_audited(
+        self, mock_jwt_admin, endpoint: str
+    ) -> None:
+        expert_id = "missing-expert"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/{endpoint}")
+
+        assert resp.status_code == 404
+        open_driver.assert_not_called()
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert f"scope expert {expert_id!r}" in message
+        assert "group None" not in message
+
+    def test_failed_expert_scope_escapes_control_chars_in_audit(
+        self, mock_jwt_admin
+    ) -> None:
+        expert_id = "missing\nforged-record"
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(
+                f"/admin/memory/abc/experts/{quote(expert_id, safe='')}/overview"
+            )
+
+        assert resp.status_code == 404
+        open_driver.assert_not_called()
+        message = audit_log.call_args.args[0]
+        assert "missing\\nforged-record" in message
+        assert "\n" not in message
+
+    def test_failed_cross_user_autopilot_scope_is_audited(self, mock_jwt_admin) -> None:
+        with (
+            patch(
+                f"{_MOCK_MODULE}.derive_memory_group_id",
+                side_effect=ValueError("invalid memory owner"),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 400
+        open_driver.assert_not_called()
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "scope AutoPilot" in message
+        assert "group None" not in message
+
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
+    def test_non_admin_expert_request_never_reaches_lookup_or_driver(
+        self, mock_jwt_user, endpoint: str
+    ) -> None:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(),
+            ) as get_expert,
+            patch(f"{_MOCK_MODULE}._open_driver") as open_driver,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/expert-owned/{endpoint}")
+
+        assert resp.status_code == 403
+        get_expert.assert_not_awaited()
+        open_driver.assert_not_called()
+
+    def test_cross_user_expert_audit_records_resolved_scope(
+        self, mock_jwt_admin
+    ) -> None:
+        expert_id = "expert-owned"
+        expected_group = derive_memory_group_id("abc", expert_id)
+        driver = _driver_returning([], [], [])
+        with (
+            patch(
+                f"{_MOCK_MODULE}.experts_db.get_expert",
+                new=AsyncMock(return_value=_expert(expert_id)),
+            ),
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get(f"/admin/memory/abc/experts/{expert_id}/graph")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert expert_id in message
+        assert expected_group in message
+
+    def test_cross_user_autopilot_audit_records_resolved_scope(
+        self, mock_jwt_admin
+    ) -> None:
+        driver = _driver_returning(
+            [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}], [{"c": 0}]
+        )
+        with (
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/overview")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "AutoPilot (group user_abc)" in message
+
+
 class TestListEntities:
     def test_returns_entity_summaries(self) -> None:
         driver = _driver_returning(
@@ -133,6 +511,21 @@ class TestListEntities:
         assert len(items) == 2
         assert items[0]["name"] == "Alice"
         assert items[1]["summary"] is None
+
+    def test_cross_user_audit_includes_autopilot_group(self, mock_jwt_admin) -> None:
+        driver = _driver_returning([])
+        with (
+            patch(f"{_MOCK_MODULE}._open_driver", return_value=driver),
+            patch(f"{_MOCK_MODULE}.logger.info") as audit_log,
+        ):
+            resp = client.get("/admin/memory/abc/entities")
+
+        assert resp.status_code == 200
+        audit_log.assert_called_once()
+        message = audit_log.call_args.args[0]
+        assert mock_jwt_admin["user_id"] in message
+        assert "AutoPilot (group user_abc)" in message
+        assert "group None" not in message
 
     def test_limit_above_cap_rejected_with_422(self) -> None:
         """The entities route caps ``limit`` at 10000 via FastAPI Query
@@ -251,11 +644,12 @@ class TestRebuildCommunitiesPolling:
         scheduler.schedule_immediate_community_rebuild = AsyncMock(
             return_value={"scheduled": True, "job_id": "x", "kind": "rebuild"}
         )
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 202
@@ -276,13 +670,13 @@ class TestRebuildCommunitiesPolling:
             side_effect=RuntimeError("scheduler unreachable")
         )
         mark_errored = AsyncMock()
-        with patch(
-            f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler
-        ), patch(
-            f"{_MOCK_MODULE}.write_initial_status",
-            new=_make_fake_initial_status("rebuild"),
-        ), patch(
-            f"{_MOCK_MODULE}.mark_errored", mark_errored
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client", return_value=scheduler),
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status",
+                new=_make_fake_initial_status("rebuild"),
+            ),
+            patch(f"{_MOCK_MODULE}.mark_errored", mark_errored),
         ):
             resp = client.post("/admin/memory/abc/communities/rebuild")
         assert resp.status_code == 500
@@ -291,6 +685,44 @@ class TestRebuildCommunitiesPolling:
         # stuck on 'queued' for a job the scheduler never picked up.
         mark_errored.assert_awaited_once()
         assert mark_errored.call_args.kwargs["kind"] == "rebuild"
+
+
+class TestNoExpertScopedMaintenance:
+    """Maintenance is account-only by construction.
+
+    The expert scope is structural (``/experts/{expert_id}/...``) and
+    only the five read endpoints exist under it — there is no path at
+    which a maintenance job could be aimed at an expert graph.
+    """
+
+    @pytest.mark.parametrize(
+        "suffix",
+        ["dream", "ratification", "nightly", "communities/rebuild"],
+    )
+    def test_maintenance_posts_do_not_exist_under_expert_scope(
+        self, suffix: str
+    ) -> None:
+        with (
+            patch(f"{_MOCK_MODULE}.get_scheduler_client") as get_scheduler,
+            patch(
+                f"{_MOCK_MODULE}.write_initial_status", new=AsyncMock()
+            ) as write_status,
+        ):
+            resp = client.post(f"/admin/memory/abc/experts/expert-owned/{suffix}")
+
+        assert resp.status_code == 404
+        get_scheduler.assert_not_called()
+        write_status.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "endpoint", ["overview", "graph", "entities", "facts", "communities"]
+    )
+    def test_expert_read_paths_reject_post(self, endpoint: str) -> None:
+        with patch(f"{_MOCK_MODULE}.get_scheduler_client") as get_scheduler:
+            resp = client.post(f"/admin/memory/abc/experts/expert-owned/{endpoint}")
+
+        assert resp.status_code == 405
+        get_scheduler.assert_not_called()
 
 
 class TestTriggerStatusGetEndpoints:
@@ -375,6 +807,7 @@ class TestAdminGating:
             "/admin/memory/abc/entities",
             "/admin/memory/abc/facts",
             "/admin/memory/abc/communities",
+            "/admin/memory/abc/graph",
         ]:
             resp = client.get(path)
             assert resp.status_code == 403, path

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 
 import stripe
-from prisma.enums import CreditTransactionType, OnboardingStep
+from prisma.enums import CreditTransactionType
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -21,6 +21,8 @@ from backend.data.credit import (
 )
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
+from backend.data.onboarding_steps import OnboardingStep
+from backend.data.stripe_client import stripe_call
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
@@ -403,7 +405,10 @@ class OrgCreditModel(UserCreditBase):
         organization_id: str | None = None,
         **kwargs,
     ):
-        await top_up_org_credits(self._org_id, amount, user_id=user_id)
+        # Org-level billing has no payment path yet. Until top_up_intent and
+        # fulfill_checkout exist, no caller may add to the org balance here;
+        # promotional grants go through grant_credits explicitly.
+        raise NotImplementedError("Org-level Stripe top-up not yet implemented")
 
     async def grant_credits(
         self,
@@ -453,12 +458,10 @@ class OrgCreditModel(UserCreditBase):
         if not org or not org.stripeCustomerId:
             return []
 
-        from fastapi.concurrency import run_in_threadpool
-
         limit = max(1, min(limit, 100))
         try:
-            invoices = await run_in_threadpool(
-                stripe.Invoice.list,
+            invoices = await stripe_call(
+                stripe.Invoice.list_async,
                 customer=org.stripeCustomerId,
                 limit=limit,
             )

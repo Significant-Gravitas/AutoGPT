@@ -208,6 +208,7 @@ describe("useOAuthConnect — popup window lifecycle", () => {
         data: {
           login_url: "https://github.com/login/oauth",
           state_token: "state-token",
+          cancel_url: "/api/oauth/pending/cancel",
         },
       } as never;
     });
@@ -225,6 +226,7 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       "https://github.com/login/oauth",
       expect.objectContaining({
         stateToken: "state-token",
+        cancelUrl: "/api/oauth/pending/cancel",
         preOpenedWindow: fakeWindow,
         useCrossOriginListeners: true,
       }),
@@ -405,5 +407,119 @@ describe("useOAuthConnect — popup window lifecycle", () => {
       },
     });
     await first;
+  });
+});
+
+describe("useOAuthConnect — login request shape", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  async function connectWith(args: {
+    scopes?: string[];
+    credentialID?: string;
+  }) {
+    await setupSuccessfulPopup();
+    await mockInitiateOk();
+    const { postV1ExchangeOauthCodeForTokens } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(postV1ExchangeOauthCodeForTokens).mockResolvedValue({
+      status: 200,
+      data: { id: "cred-1" },
+    } as never);
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({ provider: "github", onSuccess: vi.fn(), ...args }),
+    );
+    await result.current.connect();
+
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    return vi.mocked(getV1InitiateOauthFlow).mock.calls[0];
+  }
+
+  it("sends no query at all for a provider-level connect", async () => {
+    // The four existing callers pass no scopes; they must be unaffected.
+    expect(await connectWith({})).toEqual(["github", undefined]);
+  });
+
+  it("omits the query for an empty scope list", async () => {
+    expect(await connectWith({ scopes: [] })).toEqual(["github", undefined]);
+  });
+
+  it("joins scopes with commas, as the endpoint parses them", async () => {
+    expect(await connectWith({ scopes: ["repo", "read:org"] })).toEqual([
+      "github",
+      { scopes: "repo,read:org" },
+    ]);
+  });
+
+  it("carries the upgrade target alongside the scopes", async () => {
+    expect(
+      await connectWith({ scopes: ["repo"], credentialID: "cred-old" }),
+    ).toEqual(["github", { scopes: "repo", credential_id: "cred-old" }]);
+  });
+
+  it("does not retry a 404 that is not about the upgrade target", async () => {
+    await setupSuccessfulPopup();
+    const { getV1InitiateOauthFlow } = await import(
+      "@/app/api/__generated__/endpoints/integrations/integrations"
+    );
+    vi.mocked(getV1InitiateOauthFlow).mockRejectedValue(
+      makeApiError(404, { detail: "Provider 'foo' does not support OAuth" }),
+    );
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({
+        provider: "foo",
+        onSuccess: vi.fn(),
+        scopes: ["repo"],
+        credentialID: "cred-1",
+      }),
+    );
+    await result.current.connect();
+
+    // That 404 is raised before the endpoint reads the upgrade target, so
+    // re-sending without it fails identically.
+    expect(vi.mocked(getV1InitiateOauthFlow)).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries without the upgrade target when the backend 404s it", async () => {
+    await setupSuccessfulPopup();
+    const { getV1InitiateOauthFlow, postV1ExchangeOauthCodeForTokens } =
+      await import(
+        "@/app/api/__generated__/endpoints/integrations/integrations"
+      );
+    vi.mocked(getV1InitiateOauthFlow)
+      .mockRejectedValueOnce(
+        makeApiError(404, { detail: "Credential to upgrade not found" }),
+      )
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          login_url: "https://github.com/login/oauth",
+          state_token: "state-token",
+        },
+      } as never);
+    vi.mocked(postV1ExchangeOauthCodeForTokens).mockResolvedValue({
+      status: 200,
+      data: { id: "cred-1" },
+    } as never);
+
+    const { result } = renderHook(() =>
+      useOAuthConnect({
+        provider: "github",
+        onSuccess: vi.fn(),
+        scopes: ["repo"],
+        credentialID: "deleted-in-another-tab",
+      }),
+    );
+    await result.current.connect();
+
+    // A stale id must degrade to a fresh grant, not a dead Connect button.
+    expect(vi.mocked(getV1InitiateOauthFlow).mock.calls).toEqual([
+      ["github", { scopes: "repo", credential_id: "deleted-in-another-tab" }],
+      ["github", { scopes: "repo" }],
+    ]);
   });
 });

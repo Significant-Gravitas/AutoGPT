@@ -73,28 +73,31 @@ class TestResolveBaselineModel:
     Baseline reads the ``fast_*_model`` cells of the (path, tier) matrix
     and never falls through to the SDK-side ``thinking_*_model`` cells.
     Without a user_id (so no LD context) the resolver returns the
-    ``ChatConfig`` static default; per-user overrides are exercised in
-    ``copilot/model_router_test.py``.
+    ``ChatConfig`` static default stamped ``source="env"``; per-user
+    overrides are exercised in ``copilot/model_router_test.py``.
     """
 
     @pytest.mark.asyncio
     async def test_advanced_tier_selects_fast_advanced_model(self):
-        assert (
-            await _resolve_baseline_model("advanced", None)
-            == config.fast_advanced_model
+        assert await _resolve_baseline_model("advanced", None) == (
+            config.fast_advanced_model,
+            "env",
         )
 
     @pytest.mark.asyncio
     async def test_standard_tier_selects_fast_standard_model(self):
-        assert (
-            await _resolve_baseline_model("standard", None)
-            == config.fast_standard_model
+        assert await _resolve_baseline_model("standard", None) == (
+            config.fast_standard_model,
+            "env",
         )
 
     @pytest.mark.asyncio
     async def test_none_tier_selects_fast_standard_model(self):
         """Baseline users without a tier get the fast-standard default."""
-        assert await _resolve_baseline_model(None, None) == config.fast_standard_model
+        assert await _resolve_baseline_model(None, None) == (
+            config.fast_standard_model,
+            "env",
+        )
 
     def test_fast_standard_default_is_sonnet(self):
         """Shipped default: Sonnet on the baseline standard cell — the

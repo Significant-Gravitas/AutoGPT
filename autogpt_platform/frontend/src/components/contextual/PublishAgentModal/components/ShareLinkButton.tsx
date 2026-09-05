@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, LinkIcon } from "@phosphor-icons/react";
-
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { Link01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   url: string;
@@ -36,9 +36,9 @@ export function ShareLinkButton({ url }: Props) {
       onClick={handleCopy}
       leftIcon={
         copied ? (
-          <CheckIcon size={14} weight="bold" />
+          <Icon icon={Tick02Icon} size={14} />
         ) : (
-          <LinkIcon size={14} weight="bold" />
+          <Icon icon={Link01Icon} size={14} />
         )
       }
       className="w-full sm:w-auto"

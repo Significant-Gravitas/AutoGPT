@@ -18,12 +18,8 @@ from backend.data.graph import (
     get_sub_graphs,
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
-from backend.data.notifications import (
-    AgentApprovalData,
-    AgentRejectionData,
-    NotificationEventModel,
-)
-from backend.notifications.notifications import queue_notification_async
+from backend.data.notifications import NotificationEventModel, VerdictData
+from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
 
@@ -31,6 +27,7 @@ from . import exceptions as store_exceptions
 from . import model as store_model
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
+from .store_listing_versions import installable_store_version_where
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -347,20 +344,27 @@ async def get_store_agent_details(
 
 @overload
 async def get_available_graph(
-    store_listing_version_id: str, hide_nodes: Literal[False]
+    store_listing_version_id: str,
+    hide_nodes: Literal[False],
+    include_subgraphs: bool = False,
 ) -> GraphModel: ...
 
 
 @overload
 async def get_available_graph(
-    store_listing_version_id: str, hide_nodes: Literal[True] = True
+    store_listing_version_id: str,
+    hide_nodes: Literal[True] = True,
+    include_subgraphs: bool = False,
 ) -> GraphModelWithoutNodes: ...
 
 
 async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: bool = True,
+    include_subgraphs: bool = False,
 ) -> GraphModelWithoutNodes | GraphModel:
+    """``include_subgraphs`` is required for a complete
+    `credentials_input_schema`, which aggregates sub-graph credentials too."""
     try:
         # Get avaialble, non-deleted store listing version
         store_listing_version = (
@@ -380,7 +384,12 @@ async def get_available_graph(
             )
 
         return (GraphModelWithoutNodes if hide_nodes else GraphModel).from_db(
-            store_listing_version.AgentGraph
+            store_listing_version.AgentGraph,
+            sub_graphs=(
+                await get_sub_graphs(store_listing_version.AgentGraph)
+                if include_subgraphs
+                else None
+            ),
         )
 
     except Exception as e:
@@ -1393,9 +1402,16 @@ async def get_my_agents(
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
-    """Get agent using the version ID and store listing version ID."""
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    """Get the graph behind a store listing version, for public download.
+
+    Unauthenticated endpoint: the installable-listing check below *is* the
+    authorization, so `get_graph()` is told to skip its own (it would deny).
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            **installable_store_version_where(),
+        }
     )
 
     if not slv:
@@ -1408,6 +1424,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
         version=slv.agentGraphVersion,
         user_id=None,
         for_export=True,
+        skip_access_check=True,
     )
     if not graph:
         raise NotFoundError(
@@ -1699,62 +1716,52 @@ async def _send_submission_review_notification(
 
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
+    reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
+    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
+    reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%B')}"
+
     if is_approved:
         store_agent = await prisma.models.StoreAgent.prisma().find_first_or_raise(
             where={"listing_version_id": reviewed_listing_version.id}
         )
-
-        # Send approval notification
-        creator_username = store_agent.creator_username
-        notification_data = AgentApprovalData(
-            agent_name=reviewed_listing_version.name,
-            graph_id=reviewed_listing_version.agentGraphId,
-            graph_version=reviewed_listing_version.agentGraphVersion,
-            reviewer_name=(
-                reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-            ),
-            reviewer_email=(reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL),
-            comments=external_comments,
-            reviewed_at=(
-                reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
-            ),
-            store_url=(
-                f"{base_url}/marketplace/agent/{creator_username}/{store_agent.slug}"
-            ),
+        store_url = (
+            f"{base_url}/marketplace/agent/{store_agent.creator_username}/"
+            f"{store_agent.slug}"
         )
-
-        notification_event = NotificationEventModel[AgentApprovalData](
-            user_id=creator_user_id,
-            type=prisma.enums.NotificationType.AGENT_APPROVED,
-            data=notification_data,
+        notification_data = VerdictData(
+            outcome="approved",
+            agent_name=reviewed_listing_version.name,
+            version=reviewed_listing_version.version,
+            reviewer_name=reviewer_name,
+            reviewed_at_label=reviewed_at_label,
+            comments=external_comments or "",
+            store_url=store_url,
+            share_url=store_url,
         )
     else:
-        # Send rejection notification
+        # "Changes requested", not "rejected": the old framing told creators to
+        # leave, this one tells them how to get in.
         graph_id = reviewed_listing_version.agentGraphId
-        notification_data = AgentRejectionData(
+        notification_data = VerdictData(
+            outcome="changes",
             agent_name=reviewed_listing_version.name,
-            graph_id=reviewed_listing_version.agentGraphId,
-            graph_version=reviewed_listing_version.agentGraphVersion,
-            reviewer_name=(
-                reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-            ),
-            reviewer_email=(reviewer.email if reviewer else DEFAULT_ADMIN_EMAIL),
-            comments=external_comments,
-            reviewed_at=reviewed_listing_version.reviewedAt
-            or datetime.now(tz=timezone.utc),
+            version=reviewed_listing_version.version,
+            reviewer_name=reviewer_name,
+            reviewed_at_label=reviewed_at_label,
+            comments=external_comments or "",
             resubmit_url=f"{base_url}/build?flowID={graph_id}",
         )
 
-        notification_event = NotificationEventModel[AgentRejectionData](
-            user_id=creator_user_id,
-            type=prisma.enums.NotificationType.AGENT_REJECTED,
-            data=notification_data,
-        )
+    notification_event = NotificationEventModel[VerdictData](
+        user_id=creator_user_id,
+        type=prisma.enums.NotificationType.VERDICT,
+        data=notification_data,
+    )
 
     # Queue the notification for immediate sending
     await queue_notification_async(notification_event)
     logger.info(
-        f"Queued {'approval' if is_approved else 'rejection'} notification "
+        f"Queued {'approved' if is_approved else 'changes-requested'} verdict "
         f"for agent '{reviewed_listing_version.name}' of user #{creator_user_id}"
     )
 

@@ -41,6 +41,7 @@ from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .base import BaseTool
 from .models import (
+    DelegatedExpertInfo,
     ErrorResponse,
     SubSessionStatusResponse,
     ToolResponseBase,
@@ -97,7 +98,10 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    "description": ("Continue/queue-into a prior sub; empty = new."),
+                    "description": (
+                        "Continue or queue into a prior sub; empty = new. "
+                        "Cheaper when the follow-up builds on what it read."
+                    ),
                     "default": "",
                 },
                 "wait_for_result": {
@@ -151,6 +155,45 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            if owned.expert_id != session.expert_id:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} is not "
+                        "in the current memory scope. Leave empty to start a "
+                        "fresh sub for this assistant."
+                    ),
+                    session_id=session.session_id,
+                )
+            # Subs are created as automations below, so only a sub may be
+            # resumed as one. Otherwise this tool would run a model-authored
+            # prompt inside an interactive session the caller happens to own,
+            # under an origin the staffing guard lets through.
+            #
+            # Positively `interactive` only, never "not automation": a session
+            # persisted before `origin` existed reads back as None, and any
+            # sub started before this deploy holds one of those. Refusing them
+            # would break live sub-sessions to close a hole they never opened
+            # — the staffing guard is where an unknown origin fails closed
+            # instead. Same call as `blocks/autopilot.py` on resume.
+            if owned.metadata.origin == "interactive":
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} was "
+                        "started by a person, not by a previous run_sub_session "
+                        "call. Leave empty to start a fresh sub for this "
+                        "session."
+                    ),
+                    session_id=session.session_id,
+                )
+            if (
+                owned.metadata.llm_auth_provider != session.metadata.llm_auth_provider
+                or owned.metadata.llm_credential_id
+                != session.metadata.llm_credential_id
+            ):
+                return ErrorResponse(
+                    message="codex_session_route_mismatch",
+                    session_id=session.session_id,
+                )
             inner_session_id = sub_session_param
         else:
             new_session = await create_chat_session(
@@ -158,6 +201,15 @@ class RunSubSessionTool(BaseTool):
                 dry_run=session.dry_run,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                llm_auth_provider=session.metadata.llm_auth_provider,
+                llm_credential_id=session.metadata.llm_credential_id,
+                expert_id=session.expert_id,
+                # A sub is machine-driven whatever opened it: its prompt is
+                # written by the parent model, not typed by the user, and no
+                # tool restriction applies to it. Inheriting an "interactive"
+                # origin would put the staffing tools one hop away from the
+                # gate that refuses them directly.
+                origin="automation",
             )
             inner_session_id = new_session.session_id
 
@@ -190,6 +242,30 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+
+
+def apply_delegated_expert(
+    response: SubSessionStatusResponse,
+    expert: DelegatedExpertInfo | None,
+) -> SubSessionStatusResponse:
+    """Re-badge a sub-session response as a named teammate's delegated run.
+
+    Only sets the ``expert`` field for the ToolChain card; the message text
+    is already correct when the caller passed ``actor=expert.name`` into
+    ``response_from_outcome`` up front. The ``replace`` below is a fallback
+    for callers that built the message with the default "Sub-AutoPilot"
+    wording and only learn the delegate's identity afterwards — it is a
+    no-op once the message was built with the right actor. No-op entirely
+    for same-scope subs.
+    """
+    if expert is None:
+        return response
+    return response.model_copy(
+        update={
+            "message": response.message.replace("Sub-AutoPilot", expert.name),
+            "expert": expert,
+        }
+    )
 
 
 def _sub_session_link(inner_session_id: str | None) -> str | None:
@@ -321,15 +397,21 @@ def response_from_outcome(
     parent_session_id: str | None,
     elapsed: float,
     workspace_files: list[WorkspaceFileInfoData] | None = None,
+    actor: str = "Sub-AutoPilot",
 ) -> SubSessionStatusResponse:
     """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
-    ``completed`` surfaces the aggregated response text + tool calls, plus a
-    manifest of any workspace files the sub wrote (SECRT-2377). Pass
-    ``workspace_files`` to supply the authoritative listing from the sub's
-    session; when omitted, the files are mined from ``result.tool_calls`` as a
-    fallback.
+    ``actor`` names who ran the turn in the human-readable message — the
+    default ``"Sub-AutoPilot"`` for a same-scope sub, or the delegate's name
+    when the caller already knows it (e.g. ``delegate_to_expert``), so the
+    message is built correctly once instead of via a post-hoc string
+    substitution against this function's own wording.
+
+    ``completed`` surfaces the aggregated response text, plus a manifest of
+    any workspace files the sub wrote (SECRT-2377). Pass ``workspace_files``
+    to supply the authoritative listing from the sub's session; when omitted,
+    the files are mined from ``result.tool_calls`` as a fallback.
     ``failed`` returns the error marker with the same handles.
     ``running`` returns just the polling handles so the agent can resume.
     ``queued`` means the target session already had a turn in flight; the
@@ -357,7 +439,7 @@ def response_from_outcome(
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
-                f"Sub-AutoPilot is still running after {elapsed:.0f}s."
+                f"{actor} is still running after {elapsed:.0f}s."
                 f"{f' Watch live at {link}.' if link else ''} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
@@ -387,7 +469,7 @@ def response_from_outcome(
 
     if outcome == "failed":
         return SubSessionStatusResponse(
-            message="Sub-AutoPilot failed. See the sub's transcript for details.",
+            message=f"{actor} failed. See the sub's transcript for details.",
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
@@ -400,7 +482,7 @@ def response_from_outcome(
     # fall back to mining the tool-call log when it's unavailable.
     if workspace_files is None:
         workspace_files = _workspace_files_from_tool_calls(result.tool_calls)
-    message = f"Sub-AutoPilot completed.{f' View at {link}.' if link else ''}"
+    message = f"{actor} completed.{f' View at {link}.' if link else ''}"
     if workspace_files:
         # The sub may have put its real output in files and only summarised in
         # `response`. Flag the files explicitly so the parent reads them rather
@@ -417,7 +499,7 @@ def response_from_outcome(
         sub_autopilot_session_id=inner_session_id,
         sub_autopilot_session_link=link,
         response=result.response_text,
-        tool_calls=[tc.model_dump() for tc in result.tool_calls],
+        sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
     )

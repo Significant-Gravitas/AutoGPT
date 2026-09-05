@@ -126,7 +126,7 @@ export function AvatarImage({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={normalizedSrc}
-        alt={alt || "Avatar image"}
+        alt={alt ?? "Avatar image"}
         className={cn("h-full w-full object-cover", className)}
         width={computedWidth}
         height={computedHeight}
@@ -147,8 +147,9 @@ export function AvatarImage({
 
   return (
     <Image
+      {...rest}
       src={normalizedSrc}
-      alt={alt || "Avatar image"}
+      alt={alt ?? "Avatar image"}
       className={cn("h-full w-full object-cover", className)}
       width={fill ? undefined : computedWidth}
       height={fill ? undefined : computedHeight}
@@ -164,35 +165,53 @@ export function AvatarImage({
 
 export type AvatarFallbackProps = React.HTMLAttributes<HTMLSpanElement> & {
   size?: number;
+  /**
+   * Fills the whole box instead of drawing a circle inside it, so a wrapper
+   * with a smaller radius can clip the marble to a rounded square.
+   */
+  square?: boolean;
 };
 
 export function AvatarFallback({
   className,
   children,
   size: _size, // accepted for API compatibility; currently not used
+  square = false,
   ...props
 }: AvatarFallbackProps): JSX.Element | null {
   const { isLoaded, hasImage } = useAvatarContext();
   const show = !isLoaded || !hasImage;
   if (!show) return null;
   const computedSize = _size || getAvatarSizeFromClassName(className) || 40;
+  const hasCustomFallback = typeof children !== "string" && children != null;
+  // Trim the seed so call sites with padded names render the same gradient
   const name =
-    typeof children === "string" && children.trim() ? children : "User";
+    typeof children === "string" && children.trim() ? children.trim() : "User";
   return (
     <span
+      // decorative gradient — hide from AT so the marble's unnamed role="img"
+      // svg doesn't surface as an axe violation
+      aria-hidden="true"
       className={cn(
-        "flex h-full w-full items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        // absolute so the fallback overlays (not flows beside) the image while it loads;
+        // svg stretched to fill so the marble always matches the avatar size
+        "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-lg text-neutral-600",
+        !hasCustomFallback && "[&>svg]:h-full [&>svg]:w-full",
         className,
       )}
       {...props}
     >
-      <BoringAvatar
-        size={computedSize}
-        name={name}
-        variant="marble"
-        colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
-        square={false}
-      />
+      {hasCustomFallback ? (
+        children
+      ) : (
+        <BoringAvatar
+          size={computedSize}
+          name={name}
+          variant="marble"
+          colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+          square={square}
+        />
+      )}
     </span>
   );
 }

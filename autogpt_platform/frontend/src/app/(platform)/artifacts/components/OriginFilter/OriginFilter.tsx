@@ -1,14 +1,15 @@
 "use client";
 
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
-import {
-  ListBulletsIcon,
-  SparkleIcon,
-  UploadSimpleIcon,
-  type Icon,
-} from "@phosphor-icons/react";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 import type { OriginFilter as OriginFilterValue } from "../../useArtifactsPage";
+import {
+  LeftToRightListBulletIcon,
+  SparklesIcon,
+  Upload03Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 interface Props {
   value: OriginFilterValue;
@@ -18,13 +19,13 @@ interface Props {
 interface Option {
   value: OriginFilterValue;
   label: string;
-  Icon: Icon;
+  icon: IconSvgElement;
 }
 
 const OPTIONS: Option[] = [
-  { value: "all", label: "All", Icon: ListBulletsIcon },
-  { value: "uploaded", label: "Uploaded", Icon: UploadSimpleIcon },
-  { value: "generated", label: "Generated", Icon: SparkleIcon },
+  { value: "all", label: "All", icon: LeftToRightListBulletIcon },
+  { value: "uploaded", label: "Uploaded", icon: Upload03Icon },
+  { value: "generated", label: "Generated", icon: SparklesIcon },
 ];
 
 const snappySpring: Transition = {
@@ -63,7 +64,7 @@ interface OriginTabProps {
 }
 
 function OriginTab({ option, active, onClick }: OriginTabProps) {
-  const { label, Icon } = option;
+  const { label, icon } = option;
   return (
     <button
       type="button"
@@ -85,6 +86,7 @@ function OriginTab({ option, active, onClick }: OriginTabProps) {
       ) : null}
       <span className="relative z-10 flex items-center gap-1.5">
         <Icon
+          icon={icon}
           size={14}
           className={cn(
             "transition-transform duration-300",

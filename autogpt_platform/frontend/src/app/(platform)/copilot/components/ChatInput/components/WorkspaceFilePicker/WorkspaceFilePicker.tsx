@@ -4,9 +4,10 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useWorkspaceFilePicker } from "./useWorkspaceFilePicker";
 import { WorkspaceFileList } from "./WorkspaceFileList";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   isOpen: boolean;
@@ -41,7 +42,8 @@ export function WorkspaceFilePicker({ isOpen, onClose, onConfirm }: Props) {
       <Dialog.Content>
         <div className="flex flex-col gap-3">
           <div className="relative flex items-center">
-            <MagnifyingGlassIcon
+            <Icon
+              icon={Search01Icon}
               width={18}
               height={18}
               className="absolute left-4 top-1/2 z-20 -translate-y-1/2 text-zinc-500"

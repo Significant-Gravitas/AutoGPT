@@ -6,12 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.experts import experts_db
 from backend.api.features.library.triggers import (
     delete_preset_with_webhook_cleanup,
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
@@ -24,12 +25,16 @@ def _graph():
     graph.id = "graph-1"
     graph.version = 1
     graph.webhook_input_node = node
+    graph.organization_id = "shared-org"
+    graph.team_id = "shared-team"
     return graph
 
 
-def _patches(*, graph, webhook=..., feedback=None, preset=None):
+def _patches(*, graph, webhook=..., feedback=None, preset=None, graph_expert=None):
     """Patch triggers.py's collaborators. ``webhook=...`` defaults to a stub
-    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection."""
+    webhook; pass ``webhook=None`` + ``feedback`` to exercise the rejection.
+    ``graph_expert`` is what ``resolve_expert_for_graph`` would return — the
+    setup path must never call it (asserted via the returned mock)."""
     new_webhook = MagicMock(id="wh-1") if webhook is ... else webhook
     return (
         patch(f"{_PATH}.get_graph", new=AsyncMock(return_value=graph)),
@@ -39,10 +44,14 @@ def _patches(*, graph, webhook=..., feedback=None, preset=None):
             new=AsyncMock(return_value=(new_webhook, feedback)),
         ),
         patch(f"{_PATH}.db.create_preset", new=AsyncMock(return_value=preset)),
+        patch(
+            f"{_PATH}.experts_db.resolve_expert_for_graph",
+            new=AsyncMock(return_value=graph_expert),
+        ),
     )
 
 
-async def _setup():
+async def _setup(*, expert_id: str | None = None):
     return await setup_triggered_preset(
         user_id=_USER,
         graph_id="graph-1",
@@ -51,23 +60,189 @@ async def _setup():
         description="",
         trigger_config={"repo": "owner/repo"},
         agent_credentials={},
+        expert_id=expert_id,
     )
 
 
 @pytest.mark.asyncio
 async def test_creates_preset_on_success():
     preset = MagicMock(id="preset-1")
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=_graph(), preset=preset)
-    with p_graph, p_creds, p_webhook, p_create as create_mock:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset
+    )
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         result = await _setup()
     assert result is preset
     create_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
+async def test_expert_trigger_is_created_in_personal_scope():
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_create as create_mock,
+        p_webhook as webhook_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        result = await _setup(expert_id="expert-1")
+
+    assert result is preset
+    assert webhook_mock.await_args.kwargs["organization_id"] == "personal-org"
+    assert webhook_mock.await_args.kwargs["team_id"] == "personal-team"
+    assert create_mock.await_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_maps_inaccessible_expert_to_not_found():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(side_effect=experts_db.ExpertNotFoundError("expert-1")),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Expert #expert-1 not found"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_propagates_transient_tenancy_failure():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(side_effect=RuntimeError("database unavailable")),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_webhook as webhook_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+            ),
+        ),
+    ):
+        with pytest.raises(MissingConfigError, match="still being set up"):
+            await _setup(expert_id="expert-1")
+
+    webhook_mock.assert_not_awaited()
+    create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_setup_prefers_session_expert_over_graph_match():
+    """A trigger created inside an expert chat requests that expert directly,
+    short-circuiting the graph-match fallback."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert as expert_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await _setup(expert_id="expert-session")
+    assert create_mock.call_args.kwargs["expert_id"] == "expert-session"
+    expert_mock.assert_not_awaited()  # short-circuited by the session expert
+
+
+@pytest.mark.asyncio
+async def test_setup_supplied_session_expert_never_graph_reattributes():
+    """A supplied session expert goes straight to the private-tenancy guard.
+    Even when it has become invalid, this layer must not silently replace
+    Expert A with a graph match for Expert B — it fails closed instead."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert as expert_mock,
+        p_create as create_mock,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertNotFoundError("expert-archived")
+            ),
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Expert #expert-archived not found"):
+            await _setup(expert_id="expert-archived")
+    create_mock.assert_not_awaited()
+    expert_mock.assert_not_awaited()  # no graph-match re-attribution
+
+
+@pytest.mark.asyncio
+async def test_setup_without_expert_creates_unattributed_preset():
+    """``expert_id=None`` means exactly that: an AutoPilot copilot session
+    must get an unattributed preset it can manage from its own scope, so this
+    layer never infers an expert from the graph. Callers that want graph-match
+    attribution (the HTTP route) resolve it themselves before calling in."""
+    preset = MagicMock(id="preset-1")
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
+        graph=_graph(), preset=preset, graph_expert="expert-graph"
+    )
+    with (
+        p_graph,
+        p_creds,
+        p_webhook,
+        p_expert as expert_mock,
+        p_create as create_mock,
+    ):
+        await _setup()
+    assert create_mock.call_args.kwargs["expert_id"] is None
+    expert_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_graph_not_found_raises():
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=None)
-    with p_graph, p_creds, p_webhook, p_create:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=None)
+    with p_graph, p_creds, p_webhook, p_create, p_expert:
         with pytest.raises(NotFoundError):
             await _setup()
 
@@ -76,18 +251,18 @@ async def test_graph_not_found_raises():
 async def test_no_webhook_node_raises():
     graph = _graph()
     graph.webhook_input_node = None
-    p_graph, p_creds, p_webhook, p_create = _patches(graph=graph)
-    with p_graph, p_creds, p_webhook, p_create:
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    with p_graph, p_creds, p_webhook, p_create, p_expert:
         with pytest.raises(InvalidInputError):
             await _setup()
 
 
 @pytest.mark.asyncio
 async def test_webhook_setup_rejected_raises():
-    p_graph, p_creds, p_webhook, p_create = _patches(
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(
         graph=_graph(), webhook=None, feedback="no enabled events"
     )
-    with p_graph, p_creds, p_webhook, p_create as create_mock:
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
         with pytest.raises(InvalidInputError, match="no enabled events"):
             await _setup()
     create_mock.assert_not_awaited()
@@ -96,12 +271,21 @@ async def test_webhook_setup_rejected_raises():
 # ---- update_triggered_preset ----
 
 
-def _preset(*, webhook_id=None):
+def _preset(
+    *,
+    webhook_id=None,
+    expert_id=None,
+    organization_id="shared-org",
+    team_id="shared-team",
+):
     preset = MagicMock()
     preset.id = "preset-1"
     preset.graph_id = "graph-1"
     preset.graph_version = 1
     preset.webhook_id = webhook_id
+    preset.expert_id = expert_id
+    preset.organization_id = organization_id
+    preset.team_id = team_id
     return preset
 
 
@@ -158,6 +342,78 @@ async def test_update_reconfigure_reregisters_and_prunes_old():
     m["setup"].assert_awaited_once()
     m["set_webhook"].assert_awaited_once()
     m["prune"].assert_awaited_once_with(_USER, "wh-old")
+
+
+@pytest.mark.asyncio
+async def test_update_expert_trigger_keeps_personal_scope():
+    current = _preset(
+        webhook_id="wh-old",
+        expert_id="expert-1",
+        organization_id="personal-org",
+        team_id="personal-team",
+    )
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+
+    assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
+    assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
+
+
+@pytest.mark.asyncio
+async def test_update_legacy_expert_trigger_rehomes_through_new_webhook():
+    current = _preset(webhook_id="wh-old", expert_id="expert-1")
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(return_value=("personal-org", "personal-team")),
+        ),
+    ):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
+
+    assert m["setup"].await_args.kwargs["organization_id"] == "personal-org"
+    assert m["setup"].await_args.kwargs["team_id"] == "personal-team"
+    m["set_webhook"].assert_awaited_once_with(_USER, "preset-1", "wh-new")
+
+
+@pytest.mark.asyncio
+async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
+    current = _preset(webhook_id="wh-old", expert_id="expert-1")
+    with (
+        _update_patches(current=current) as m,
+        patch(
+            f"{_PATH}.experts_db.resolve_private_expert_tenancy",
+            new=AsyncMock(
+                side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
+            ),
+        ),
+    ):
+        with pytest.raises(MissingConfigError, match="still being set up"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"repo": "owner/repo"},
+                credentials={},
+            )
+
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
 
 
 @pytest.mark.asyncio

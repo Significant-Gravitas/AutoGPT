@@ -6,21 +6,23 @@ import {
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  BookOpenIcon,
-  PaintBrushIcon,
-  LightningIcon,
-  ListChecksIcon,
-  SpinnerGapIcon,
-} from "@phosphor-icons/react";
 import { useState } from "react";
 import type { SuggestionTheme } from "../../helpers";
+import {
+  BookOpen01Icon,
+  CheckListIcon,
+  FlashIcon,
+  Loading03Icon,
+  PaintBrush01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-const THEME_ICONS: Record<string, typeof BookOpenIcon> = {
-  Learn: BookOpenIcon,
-  Create: PaintBrushIcon,
-  Automate: LightningIcon,
-  Organize: ListChecksIcon,
+const THEME_ICONS: Record<string, IconSvgElement> = {
+  Learn: BookOpen01Icon,
+  Create: PaintBrush01Icon,
+  Automate: FlashIcon,
+  Organize: CheckListIcon,
 };
 
 interface Props {
@@ -47,7 +49,7 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
       {themes.map((theme) => {
-        const Icon = THEME_ICONS[theme.name];
+        const themeIcon = THEME_ICONS[theme.name];
         return (
           <Popover
             key={theme.name}
@@ -62,7 +64,7 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                 disabled={disabled || loadingPrompt !== null}
                 className="shrink-0 gap-2 !border-neutral-200 !bg-white px-3 py-2 text-[.9rem]"
               >
-                {Icon && <Icon size={16} weight="regular" />}
+                {themeIcon && <Icon icon={themeIcon} size={16} />}
                 {theme.name}
               </Button>
             </PopoverTrigger>
@@ -78,9 +80,9 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                     >
                       {loadingPrompt === `${theme.name}:${prompt}` ? (
                         <span className="flex items-center gap-2">
-                          <SpinnerGapIcon
+                          <Icon
+                            icon={Loading03Icon}
                             className="h-4 w-4 animate-spin"
-                            weight="bold"
                           />
                           {prompt}
                         </span>

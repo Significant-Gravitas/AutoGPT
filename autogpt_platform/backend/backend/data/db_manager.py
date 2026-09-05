@@ -2,6 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import credentials as expert_credentials
+from backend.api.features.experts import experts_db
+from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -14,6 +17,8 @@ from backend.api.features.library.db import (
     get_folder_tree,
     get_library_agent,
     get_library_agent_by_graph_id,
+    get_library_agent_id_by_graph_id,
+    get_library_agent_refs_by_graph_ids,
     get_preset,
     get_root_agent_summaries,
     list_folders,
@@ -30,7 +35,7 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team
+from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     get_embedding_stats,
@@ -48,6 +53,18 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data.activity_event import create_activity_event
+from backend.data.alerts import (
+    count_alerts_sent_since,
+    get_briefing_alert_conditions,
+    get_pending_alert_conditions,
+    get_users_with_matured_alerts,
+    mark_alert_conditions_briefed,
+    mark_alert_conditions_deferred,
+    mark_alert_conditions_sent,
+    raise_alert_condition,
+    resolve_alert_condition,
+)
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
     get_marketplace_graphs_for_monitoring,
@@ -57,8 +74,23 @@ from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
 )
+from backend.data.briefing import (
+    create_briefing,
+    get_briefing_for_date,
+    get_latest_briefings,
+    mark_briefing_delivered,
+    update_briefing_content,
+)
+from backend.data.briefing_data import (
+    count_active_agents,
+    count_scheduled_agents,
+    get_agent_period_stats,
+    get_briefing_credit_balance,
+    get_top_scored_runs,
+)
 from backend.data.credit import (
     UsageTransactionMetadata,
+    get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
 )
@@ -84,7 +116,6 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.generate_data import get_user_execution_summary_data
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -100,18 +131,10 @@ from backend.data.human_review import (
     delete_review_by_node_exec_id,
     get_or_create_human_review,
     get_pending_reviews_for_execution,
+    get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
-)
-from backend.data.notifications import (
-    clear_all_user_notification_batches,
-    create_or_add_to_user_notification_batch,
-    empty_user_notification_batch,
-    get_all_batches_by_type,
-    get_user_notification_batch,
-    get_user_notification_oldest_message_in_batch,
-    remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
@@ -130,13 +153,21 @@ from backend.data.understanding import (
     upsert_business_understanding,
 )
 from backend.data.user import (
+    claim_welcome_email,
     get_active_user_ids_in_timerange,
+    get_auth_user_flag_fields,
+    get_billing_email_recipient,
+    get_briefing_candidate,
+    get_briefing_candidates,
     get_user_by_id,
     get_user_credentials,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
     get_user_notification_preference,
+    get_user_subscription_tier,
+    release_welcome_email,
+    set_last_briefing_at,
     set_user_credentials,
     update_user_integrations,
 )
@@ -305,6 +336,10 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    get_user_subscription_tier = _(get_user_subscription_tier)
+    # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
+    # full LaunchDarkly context — see backend/util/feature_flag.py.
+    get_auth_user_flag_fields = _(get_auth_user_flag_fields)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
@@ -322,26 +357,16 @@ class DatabaseManager(AppService):
     delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
     get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_pending_reviews_for_user = _(get_pending_reviews_for_user)
     get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
-    # ============ Notifications ============ #
-    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
-    create_or_add_to_user_notification_batch = _(
-        create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = _(empty_user_notification_batch)
-    remove_notifications_from_batch = _(remove_notifications_from_batch)
-    get_all_batches_by_type = _(get_all_batches_by_type)
-    get_user_notification_batch = _(get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = _(
-        get_user_notification_oldest_message_in_batch
-    )
-
     # ============ Library ============ #
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    get_library_agent_id_by_graph_id = _(get_library_agent_id_by_graph_id)
+    get_library_agent_refs_by_graph_ids = _(get_library_agent_refs_by_graph_ids)
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
@@ -385,8 +410,20 @@ class DatabaseManager(AppService):
     cleanup_orphaned_embeddings = _(cleanup_orphaned_embeddings)
     unified_hybrid_search = _(unified_hybrid_search)
 
-    # ============ Summary Data ============ #
-    get_user_execution_summary_data = _(get_user_execution_summary_data)
+    # ============ Alerts ============ #
+    raise_alert_condition = _(raise_alert_condition)
+    resolve_alert_condition = _(resolve_alert_condition)
+    # The notification service drives the Alert and Briefing passes from here;
+    # it owns no Prisma connection of its own.
+    get_users_with_matured_alerts = _(get_users_with_matured_alerts)
+    get_pending_alert_conditions = _(get_pending_alert_conditions)
+    count_alerts_sent_since = _(count_alerts_sent_since)
+    mark_alert_conditions_sent = _(mark_alert_conditions_sent)
+    mark_alert_conditions_deferred = _(mark_alert_conditions_deferred)
+    get_briefing_alert_conditions = _(get_briefing_alert_conditions)
+    mark_alert_conditions_briefed = _(mark_alert_conditions_briefed)
+    count_scheduled_agents = _(count_scheduled_agents)
+    get_recent_daily_spend = _(get_recent_daily_spend)
 
     # ============ Chat Sharing ============ #
     # Exposed so the run_agent tool (running in the CoPilotExecutor
@@ -416,6 +453,9 @@ class DatabaseManager(AppService):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = _(log_platform_cost)
 
+    # ============ Activity Events ============ #
+    create_activity_event = _(create_activity_event)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -436,6 +476,7 @@ class DatabaseManager(AppService):
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
+    resolve_default_tenancy = _(resolve_default_tenancy)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -471,6 +512,28 @@ class DatabaseManager(AppService):
     mark_guild_left = _(bot_analytics_db.mark_guild_left)
     sync_guild_presence = _(bot_analytics_db.sync_guild_presence)
 
+    # ============ Experts ============ #
+    # Exposed so the Prisma-less copilot executor can resolve expert
+    # identity/team context via db_accessors.experts_db().
+    get_expert = _(experts_db.get_expert)
+    expert_row_exists = _(experts_db.expert_row_exists)
+    resolve_attributable_expert = _(experts_db.resolve_attributable_expert)
+    list_experts = _(experts_db.list_experts)
+    resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
+    enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
+    update_soul = _(experts_db.update_soul)
+    update_soul_if_current = _(experts_db.update_soul_if_current)
+    update_soul_fields = _(experts_db.update_soul_fields)
+    update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
+    # Hire / raise from the copilot chat tools, plus the counts their
+    # preview step uses to refuse a change that could never land.
+    list_templates = _(experts_db.list_templates)
+    hire_expert = _(experts_db.hire_expert)
+    create_raised_expert = _(experts_db.create_raised_expert)
+    count_active_experts = _(experts_db.count_active_experts)
+    count_raised_experts = _(experts_db.count_raised_experts)
+
     # ============ CoPilot Chat Sessions ============ #
     # NOTE: no eager-load `get_chat_session` here — callers go through
     # `get_chat_messages_paginated` (with `limit=MAX_LOADED_CHAT_MESSAGES`) so
@@ -482,14 +545,20 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    set_session_pending_question = _(chat_db.set_session_pending_question)
+    clear_session_pending_question = _(chat_db.clear_session_pending_question)
+    get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
     get_user_session_count = _(chat_db.get_user_session_count)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
+    update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -499,7 +568,35 @@ class DatabaseManager(AppService):
     update_chat_session_status = _(chat_db.update_chat_session_status)
     get_chat_session_status = _(chat_db.get_chat_session_status)
     get_latest_user_message_in_session = _(chat_db.get_latest_user_message_in_session)
-    add_chat_message = _(chat_db.add_chat_message)
+
+    # ============ Morning Briefing ============ #
+    # Exposed so the Prisma-less scheduler process can compose, store and
+    # post a briefing via db_accessors / the DatabaseManager RPC.
+    append_plain_session_message = _(chat_db.append_plain_session_message)
+    create_briefing = _(create_briefing)
+    get_briefing_for_date = _(get_briefing_for_date)
+    get_latest_briefings = _(get_latest_briefings)
+    mark_briefing_delivered = _(mark_briefing_delivered)
+
+    # ============ Briefing / Alert engine (notification service) ============ #
+    # These run in the NotificationManager process, which owns no Prisma
+    # connection, so every read goes through this RPC surface.
+    get_agent_period_stats = _(get_agent_period_stats)
+    get_top_scored_runs = _(get_top_scored_runs)
+    count_active_agents = _(count_active_agents)
+    get_briefing_credit_balance = _(get_briefing_credit_balance)
+    get_briefing_candidates = _(get_briefing_candidates)
+    get_briefing_candidate = _(get_briefing_candidate)
+    set_last_briefing_at = _(set_last_briefing_at)
+
+    # ============ Billing emails ============ #
+    # The lifecycle handlers run in the REST API on a Stripe webhook *and* in
+    # the notification service when the welcome comes off the work queue. That
+    # second process has no Prisma connection, so these cross the RPC.
+    get_billing_email_recipient = _(get_billing_email_recipient)
+    claim_welcome_email = _(claim_welcome_email)
+    release_welcome_email = _(release_welcome_email)
+    update_briefing_content = _(update_briefing_content)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -543,10 +640,32 @@ class DatabaseManagerClient(AppServiceClient):
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
 
+    # Alerts
+    raise_alert_condition = _(d.raise_alert_condition)
+    resolve_alert_condition = _(d.resolve_alert_condition)
+    count_scheduled_agents = _(d.count_scheduled_agents)
+    get_recent_daily_spend = _(d.get_recent_daily_spend)
+
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
     validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+
+    # Expert run posts (executor completion hook)
+    append_expert_run_message = _(d.append_expert_run_message)
+    get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
+
+    # Activity events (executor completion hook)
+    create_activity_event = _(d.create_activity_event)
+
+    # Morning briefing (scheduler cron; runs Prisma-less)
+    append_plain_session_message = _(d.append_plain_session_message)
+    create_briefing = _(d.create_briefing)
+    get_briefing_for_date = _(d.get_briefing_for_date)
+    get_latest_briefings = _(d.get_latest_briefings)
+    mark_briefing_delivered = _(d.mark_briefing_delivered)
+    update_briefing_content = _(d.update_briefing_content)
+    get_library_agent_refs_by_graph_ids = _(d.get_library_agent_refs_by_graph_ids)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -597,6 +716,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    get_user_subscription_tier = d.get_user_subscription_tier
+    get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_user_credentials = d.get_user_credentials
@@ -608,6 +729,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
     get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_pending_reviews_for_user = d.get_pending_reviews_for_user
     get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status
 
@@ -617,21 +739,44 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_email_verification = d.get_user_email_verification
     get_user_notification_preference = d.get_user_notification_preference
 
-    # ============ Notifications ============ #
-    clear_all_user_notification_batches = d.clear_all_user_notification_batches
-    create_or_add_to_user_notification_batch = (
-        d.create_or_add_to_user_notification_batch
-    )
-    empty_user_notification_batch = d.empty_user_notification_batch
-    remove_notifications_from_batch = d.remove_notifications_from_batch
-    get_all_batches_by_type = d.get_all_batches_by_type
-    get_user_notification_batch = d.get_user_notification_batch
-    get_user_notification_oldest_message_in_batch = (
-        d.get_user_notification_oldest_message_in_batch
-    )
+    # ============ Alerts ============ #
+    raise_alert_condition = d.raise_alert_condition
+    resolve_alert_condition = d.resolve_alert_condition
+    count_scheduled_agents = d.count_scheduled_agents
+    get_recent_daily_spend = d.get_recent_daily_spend
+
+    # ============ Briefing / Alert engine (notification service) ============ #
+    # The NotificationManager owns no Prisma connection, so its scheduled
+    # passes read and write exclusively through these.
+    get_users_with_matured_alerts = d.get_users_with_matured_alerts
+    get_pending_alert_conditions = d.get_pending_alert_conditions
+    count_alerts_sent_since = d.count_alerts_sent_since
+    mark_alert_conditions_sent = d.mark_alert_conditions_sent
+    mark_alert_conditions_deferred = d.mark_alert_conditions_deferred
+    get_briefing_alert_conditions = d.get_briefing_alert_conditions
+    mark_alert_conditions_briefed = d.mark_alert_conditions_briefed
+    get_agent_period_stats = d.get_agent_period_stats
+    get_top_scored_runs = d.get_top_scored_runs
+    count_active_agents = d.count_active_agents
+    get_briefing_credit_balance = d.get_briefing_credit_balance
+    get_briefing_candidates = d.get_briefing_candidates
+    get_briefing_candidate = d.get_briefing_candidate
+    set_last_briefing_at = d.set_last_briefing_at
+    get_billing_email_recipient = d.get_billing_email_recipient
+    claim_welcome_email = d.claim_welcome_email
+    release_welcome_email = d.release_welcome_email
+
+    # ============ Morning Briefing ============ #
+    append_plain_session_message = d.append_plain_session_message
+    create_briefing = d.create_briefing
+    get_briefing_for_date = d.get_briefing_for_date
+    get_latest_briefings = d.get_latest_briefings
+    mark_briefing_delivered = d.mark_briefing_delivered
+    update_briefing_content = d.update_briefing_content
 
     # ============ Library ============ #
     list_library_agents = d.list_library_agents
+    get_library_agent_refs_by_graph_ids = d.get_library_agent_refs_by_graph_ids
     add_store_agent_to_library = d.add_store_agent_to_library
     create_graph_in_library = d.create_graph_in_library
     create_library_agent = d.create_library_agent
@@ -674,9 +819,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Search ============ #
     unified_hybrid_search = d.unified_hybrid_search
 
-    # ============ Summary Data ============ #
-    get_user_execution_summary_data = d.get_user_execution_summary_data
-
     # ============ Chat Sharing ============ #
     link_new_execution_to_chat_share = d.link_new_execution_to_chat_share
 
@@ -707,6 +849,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = d.log_platform_cost
 
+    # ============ Activity Events ============ #
+    create_activity_event = d.create_activity_event
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
     delete_push_subscription = d.delete_push_subscription
@@ -720,6 +865,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
+    resolve_default_tenancy = d.resolve_default_tenancy
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -749,6 +895,24 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     mark_guild_left = d.mark_guild_left
     sync_guild_presence = d.sync_guild_presence
 
+    # ============ Experts ============ #
+    get_expert = d.get_expert
+    expert_row_exists = d.expert_row_exists
+    resolve_attributable_expert = d.resolve_attributable_expert
+    list_experts = d.list_experts
+    resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
+    enforce_expert_run_budget = d.enforce_expert_run_budget
+    expert_allowed_credential_ids = d.expert_allowed_credential_ids
+    update_soul = d.update_soul
+    update_soul_if_current = d.update_soul_if_current
+    update_soul_fields = d.update_soul_fields
+    update_soul_fields_if_current = d.update_soul_fields_if_current
+    list_templates = d.list_templates
+    hire_expert = d.hire_expert
+    create_raised_expert = d.create_raised_expert
+    count_active_experts = d.count_active_experts
+    count_raised_experts = d.count_raised_experts
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session_metadata = d.get_chat_session_metadata
     get_chat_messages_paginated = d.get_chat_messages_paginated
@@ -756,14 +920,21 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    append_expert_run_message = d.append_expert_run_message
+    get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
+    set_session_pending_question = d.set_session_pending_question
+    clear_session_pending_question = d.clear_session_pending_question
+    get_sessions_with_pending_question = d.get_sessions_with_pending_question
     get_user_session_count = d.get_user_session_count
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_message_content_by_sequence = d.update_message_content_by_sequence
+    update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
+    update_chat_session_llm_route = d.update_chat_session_llm_route
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status

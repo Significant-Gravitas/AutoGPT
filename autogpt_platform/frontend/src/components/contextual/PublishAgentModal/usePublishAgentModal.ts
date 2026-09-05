@@ -13,7 +13,7 @@ import { okData } from "@/app/api/helpers";
 import type { MyUnpublishedAgent } from "@/app/api/__generated__/models/myUnpublishedAgent";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -72,7 +72,7 @@ export function usePublishAgentModal({
 
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   // Fetch agent data for pre-populating form when agent is pre-selected
   const { data: myAgents } = useGetV2GetMyAgents(undefined, {

@@ -6,12 +6,13 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useLibraryUploadAgentDialog } from "../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
 import AgentUploadTab from "./components/AgentUploadTab/AgentUploadTab";
 import ExternalWorkflowTab from "./components/ExternalWorkflowTab/ExternalWorkflowTab";
 import { useExternalWorkflowTab } from "./components/ExternalWorkflowTab/useExternalWorkflowTab";
+import { Upload03Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function LibraryImportDialog() {
   const [isOpen, setIsOpen] = useState(false);
@@ -43,7 +44,7 @@ export default function LibraryImportDialog() {
           className="h-[2.78rem] w-full md:w-[10rem]"
           size="small"
         >
-          <UploadSimpleIcon width={18} height={18} />
+          <Icon icon={Upload03Icon} width={18} height={18} />
           <span>Import</span>
         </Button>
       </Dialog.Trigger>

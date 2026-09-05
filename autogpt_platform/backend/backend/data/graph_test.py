@@ -1,27 +1,34 @@
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import fastapi.exceptions
 import prisma
 import pytest
+from prisma.enums import SubmissionStatus
+from prisma.models import AgentGraph, LibraryAgent, User
 from pytest_snapshot.plugin import Snapshot
 
+import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
 from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LlmModel
+from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.graph import (
+    SUBMITTED_TO_MARKETPLACE,
     Graph,
     GraphModel,
     Link,
     Node,
     NodeModel,
     get_graph,
+    get_graph_settings,
+    graph_in_library_filter,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
@@ -29,6 +36,7 @@ from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -404,12 +412,13 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         categories=[],
     )
 
-    # First we check the graph an not be accessed by a different user
+    # First we check the graph can not be accessed by a different user
+    other_user = await create_test_user(alt_user=True)
     with pytest.raises(fastapi.exceptions.HTTPException) as exc_info:
         await server.agent_server.test_get_graph(
             created_graph.id,
             created_graph.version,
-            "3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+            other_user.id,
         )
     assert exc_info.value.status_code == 404
     assert "Graph" in str(exc_info.value.detail)
@@ -430,19 +439,30 @@ async def test_access_store_listing_graph(server: SpinTestServer):
 
     assert slv_id is not None
 
-    admin_user = await create_test_user(alt_user=True)
     await server.agent_server.test_review_store_listing(
         store.ReviewSubmissionRequest(
             store_listing_version_id=slv_id,
             is_approved=True,
             comments="Test comments",
         ),
-        user_id=admin_user.id,
+        user_id=other_user.id,
     )
 
-    # Now we check the graph can be accessed by a user that does not own the graph
+    # An approved listing on its own grants nothing: without a library entry
+    # the non-owner still can't read the graph.
+    with pytest.raises(fastapi.exceptions.HTTPException) as exc_info:
+        await server.agent_server.test_get_graph(
+            created_graph.id, created_graph.version, other_user.id
+        )
+    assert exc_info.value.status_code == 404
+
+    # Adding it to their library is what unlocks it — and the install itself
+    # has to work without prior access to the graph.
+    await library_db.add_store_agent_to_library(
+        store_listing_version_id=slv_id, user_id=other_user.id
+    )
     got_graph = await server.agent_server.test_get_graph(
-        created_graph.id, created_graph.version, "3e53486c-cf57-477e-ba2a-cb02dc828e1b"
+        created_graph.id, created_graph.version, other_user.id
     )
     assert got_graph is not None
 
@@ -947,115 +967,263 @@ def test_mcp_credential_combine_no_discriminator_values():
 
 # --------------- get_graph access-control truth table --------------- #
 #
-# Full matrix of access scenarios for get_graph() and get_graph_as_admin().
-# Access priority: ownership > marketplace APPROVED > library membership.
-# Library is version-specific. get_graph_as_admin bypasses everything.
+# Access: owner, OR (in library AND submitted). "Submitted" is any status but
+# DRAFT. Archiving hides an agent, it does not revoke it, so only isDeleted
+# ends membership. get_graph_as_admin() and skip_access_check=True bypass it.
 #
-# | User     | Owns? | Marketplace | Library          | Version | Result  | Test
+# | User     | Owns? | Submitted   | Library          | Version | Result  | Test
 # |----------|-------|-------------|------------------|---------|---------|-----
-# | regular  | yes   | any         | any              | v1      | ACCESS  | test_get_graph_library_not_queried_when_owned
-# | regular  | no    | APPROVED    | any              | v1      | ACCESS  | test_get_graph_non_owner_approved_marketplace_agent
-# | regular  | no    | not listed  | active, same ver | v1      | ACCESS  | test_get_graph_library_member_can_access_unpublished
-# | regular  | no    | not listed  | active, diff ver | v2      | DENIED  | test_get_graph_library_wrong_version_denied
-# | regular  | no    | not listed  | deleted          | v1      | DENIED  | test_get_graph_deleted_library_agent_denied
-# | regular  | no    | not listed  | archived         | v1      | DENIED  | test_get_graph_archived_library_agent_denied
-# | regular  | no    | not listed  | not present      | v1      | DENIED  | test_get_graph_non_owner_pending_not_in_library_denied
-# | regular  | no    | PENDING     | active v1        | v2      | DENIED  | test_library_v1_does_not_grant_access_to_pending_v2
-# | regular  | no    | not listed  | null AgentGraph  | v1      | DENIED  | test_get_graph_library_with_null_agent_graph_denied
-# | anon     | no    | not listed  | -                | v1      | DENIED  | test_get_graph_library_fallback_not_used_for_anonymous
-# | anon     | no    | APPROVED    | -                | v1      | ACCESS  | test_get_graph_anonymous_approved_marketplace_access
+# | regular  | yes   | any         | any              | v1      | ACCESS  | test_get_graph_access_matrix / test_get_graph_library_not_queried_when_owned
+# | regular  | no    | yes         | active, same ver | v1      | ACCESS  | test_get_graph_access_matrix
+# | regular  | no    | yes         | not present      | v1      | DENIED  | test_get_graph_access_matrix / test_get_graph_submitted_but_not_in_library_denied
+# | regular  | no    | no          | active, same ver | v1      | DENIED  | test_get_graph_access_matrix / test_get_graph_in_library_but_never_submitted_denied
+# | regular  | no    | no          | not present      | v1      | DENIED  | test_get_graph_access_matrix
+# | regular  | no    | yes         | active, diff ver | v2      | DENIED  | test_get_graph_library_wrong_version_denied
+# | regular  | no    | yes         | deleted          | v1      | DENIED  | test_get_graph_deleted_library_agent_denied
+# | regular  | no    | yes         | archived         | v1      | ACCESS  | test_get_graph_archived_library_agent_allowed
+# | regular  | no    | yes         | null AgentGraph  | v1      | DENIED  | test_get_graph_library_with_null_agent_graph_denied
+# | anon     | no    | yes         | -                | v1      | DENIED  | test_get_graph_anonymous_denied_for_submitted_graph
 # | admin*   | no    | PENDING     | -                | v2      | ACCESS  | test_admin_can_access_pending_v2_via_get_graph_as_admin
 #
+# | regular  | no    | v1 only     | active, v1 + v2  | none    | v1      | test_get_graph_version_none_ignores_unsubmitted_newer_version
+# | regular  | no    | v1 + v2     | active, v1 + v2  | none    | v2      | test_get_graph_version_none_picks_latest_submitted_version
+#
 # Efficiency (no unnecessary queries):
-# | regular  | yes   | -           | -                | v1      | no mkt/lib | test_get_graph_library_not_queried_when_owned
-# | regular  | no    | APPROVED    | -                | v1      | no lib     | test_get_graph_library_not_queried_when_marketplace_approved
+# | regular  | yes   | -           | -                | v1      | no lib  | test_get_graph_library_not_queried_when_owned
+# | anon     | -     | -           | -                | v1      | no query| test_get_graph_anonymous_denied_for_submitted_graph
 #
 # * = via get_graph_as_admin (admin-only routes)
 
 
-def _make_mock_db_graph(user_id: str = "owner-user-id") -> MagicMock:
+def _make_mock_db_graph(user_id: str = "owner-user-id", version: int = 1) -> MagicMock:
     graph = MagicMock()
     graph.userId = user_id
     graph.id = "graph-id"
-    graph.version = 1
+    graph.version = version
     graph.Nodes = []
     return graph
 
 
+class _LibraryRow:
+    """A LibraryAgent row as far as the access check is concerned."""
+
+    def __init__(
+        self,
+        *,
+        user_id: str,
+        graph_id: str,
+        version: int,
+        submitted: bool,
+        is_deleted: bool = False,
+        is_archived: bool = False,
+        agent_graph: MagicMock | None = None,
+    ) -> None:
+        self.userId = user_id
+        self.agentGraphId = graph_id
+        self.agentGraphVersion = version
+        self.submitted = submitted
+        self.isDeleted = is_deleted
+        self.isArchived = is_archived
+        self.AgentGraph = agent_graph
+
+
+def _library_row_matches(row: _LibraryRow, where: dict[str, Any]) -> bool:
+    """Evaluate `graph_in_library_filter()`'s where-clause against a row.
+
+    Raises on any operator it doesn't implement, so a rewritten predicate
+    can't silently keep passing here without this matcher being updated too.
+    """
+    for key, expected in where.items():
+        if key == "AgentGraph":
+            some = expected["is"]["StoreListingVersions"]["some"]
+            statuses = set(some["submissionStatus"]["in"])
+            assert statuses == {
+                SubmissionStatus.PENDING,
+                SubmissionStatus.APPROVED,
+                SubmissionStatus.REJECTED,
+            }, f"unexpected submitted-status set: {statuses}"
+            if not row.submitted:
+                return False
+        elif isinstance(expected, (str, int, bool)):
+            if getattr(row, key) != expected:
+                return False
+        else:
+            raise AssertionError(
+                f"matcher does not support where clause {key}={expected!r}"
+            )
+    return True
+
+
+def _fake_graph_db(
+    *,
+    owner_id: str,
+    library_rows: list[_LibraryRow],
+) -> tuple[MagicMock, MagicMock]:
+    """Build AgentGraph/LibraryAgent prisma doubles that honour their where-clause.
+
+    The graph always exists and is owned by `owner_id`, so denial can only
+    come from the where-clause — never from a missing row.
+    """
+    db_graph = _make_mock_db_graph(owner_id)
+
+    async def find_first_graph(**kwargs: Any) -> MagicMock | None:
+        where = kwargs["where"]
+        if where.get("id") != db_graph.id:
+            return None
+        if "version" in where and where["version"] != db_graph.version:
+            return None
+        if "userId" in where and where["userId"] != owner_id:
+            return None
+        return db_graph
+
+    async def find_first_library(**kwargs: Any) -> _LibraryRow | None:
+        matches = [
+            row for row in library_rows if _library_row_matches(row, kwargs["where"])
+        ]
+        order = kwargs["order"]["agentGraphVersion"]
+        assert order in ("asc", "desc"), f"unsupported order {order!r}"
+        matches.sort(key=lambda row: row.agentGraphVersion, reverse=order == "desc")
+        return matches[0] if matches else None
+
+    ag_prisma = MagicMock()
+    ag_prisma.return_value.find_first = AsyncMock(side_effect=find_first_graph)
+    lib_prisma = MagicMock()
+    lib_prisma.return_value.find_first = AsyncMock(side_effect=find_first_library)
+    return ag_prisma, lib_prisma
+
+
+# Every combination of (owner / not) x (in library / not) x (submitted / not).
+@pytest.mark.parametrize(
+    ("is_owner", "in_library", "submitted", "expect_access"),
+    [
+        (True, True, True, True),
+        (True, True, False, True),
+        (True, False, True, True),
+        (True, False, False, True),
+        (False, True, True, True),
+        (False, True, False, False),
+        (False, False, True, False),
+        (False, False, False, False),
+    ],
+)
 @pytest.mark.asyncio
-async def test_get_graph_non_owner_approved_marketplace_agent() -> None:
-    """A non-owner should be able to access a graph that has an APPROVED
-    marketplace listing.  This is the normal marketplace download flow."""
+async def test_get_graph_access_matrix(
+    is_owner: bool, in_library: bool, submitted: bool, expect_access: bool
+) -> None:
     owner_id = "owner-user-id"
-    requester_id = "different-user-id"
+    requester_id = owner_id if is_owner else "different-user-id"
     graph_id = "graph-id"
-    mock_graph = _make_mock_db_graph(owner_id)
     mock_graph_model = MagicMock(name="GraphModel")
 
-    mock_listing = MagicMock()
-    mock_listing.AgentGraph = mock_graph
+    library_rows = (
+        [
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=submitted,
+                agent_graph=_make_mock_db_graph(owner_id),
+            )
+        ]
+        if in_library
+        else []
+    )
+    ag_prisma, lib_prisma = _fake_graph_db(owner_id=owner_id, library_rows=library_rows)
 
     with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
         patch(
             "backend.data.graph.GraphModel.from_db",
             return_value=mock_graph_model,
         ),
     ):
-        # First lookup (owned graph) returns None — requester != owner
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Marketplace fallback finds an APPROVED listing
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=mock_listing)
+        result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=requester_id,
-        )
-
-    assert result is not None, "Non-owner should access APPROVED marketplace agent"
+    assert (result is not None) is expect_access, (
+        f"owner={is_owner} in_library={in_library} submitted={submitted} "
+        f"should {'grant' if expect_access else 'deny'} access"
+    )
 
 
 @pytest.mark.asyncio
-async def test_get_graph_non_owner_pending_not_in_library_denied() -> None:
-    """A non-owner with no library membership and no APPROVED marketplace
-    listing must be denied access."""
+async def test_get_graph_in_library_but_never_submitted_denied() -> None:
+    """The graph version sits in the user's library but was never submitted to
+    the marketplace. Library membership alone must not grant access."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=False,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
+
+    assert result is None, "Library membership without a submission must be denied"
+
+    lib_where = lib_prisma.return_value.find_first.await_args.kwargs["where"]
+    assert lib_where["userId"] == requester_id
+    assert lib_where["agentGraphId"] == graph_id
+    assert lib_where["agentGraphVersion"] == 1
+    assert lib_where["isDeleted"] is False
+    assert "isArchived" not in lib_where, "archiving hides, it does not revoke"
+    # The submission requirement must be part of the same query, so the two
+    # halves can never resolve to different graph versions.
+    submitted_statuses = set(
+        lib_where["AgentGraph"]["is"]["StoreListingVersions"]["some"][
+            "submissionStatus"
+        ]["in"]
+    )
+    assert SubmissionStatus.DRAFT not in submitted_statuses
+
+
+@pytest.mark.asyncio
+async def test_get_graph_submitted_but_not_in_library_denied() -> None:
+    """The graph version was submitted to (and approved on) the marketplace,
+    but the user never added it to their library. Denied."""
     requester_id = "different-user-id"
     graph_id = "graph-id"
 
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            # Submitted, in *someone else's* library — not the requester's.
+            _LibraryRow(
+                user_id="some-other-user-id",
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
+
     with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
     ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+        result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=requester_id,
-        )
-
-    assert (
-        result is None
-    ), "User without ownership, marketplace, or library access must be denied"
-
-
-# --------------- Library membership grants graph access --------------- #
-# "You added it, you keep it" — product decision from SECRT-2167.
+    assert result is None, "A marketplace listing alone must not grant graph access"
 
 
 @pytest.mark.asyncio
-async def test_get_graph_library_member_can_access_unpublished() -> None:
-    """A user who has the agent in their library should be able to access it
-    even if it's no longer published in the marketplace."""
+async def test_get_graph_library_member_can_access_submitted_agent() -> None:
+    """A user who downloaded a marketplace agent keeps access to that version
+    even after the listing is taken down — the submission still happened."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
     mock_graph = _make_mock_db_graph("original-creator-id")
@@ -1066,9 +1234,6 @@ async def test_get_graph_library_member_can_access_unpublished() -> None:
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
@@ -1077,9 +1242,7 @@ async def test_get_graph_library_member_can_access_unpublished() -> None:
     ):
         # Not owned
         mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Not in marketplace (unpublished)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # But IS in user's library
+        # In the user's library, and the version was submitted
         mock_lib_prisma.return_value.find_first = AsyncMock(
             return_value=mock_library_agent
         )
@@ -1090,9 +1253,9 @@ async def test_get_graph_library_member_can_access_unpublished() -> None:
             user_id=requester_id,
         )
 
-    assert result is mock_graph_model, "Library member should access unpublished agent"
+    assert result is mock_graph_model, "Library member should access submitted agent"
 
-    # Verify library query filters on non-deleted, non-archived
+    # Verify library query filters on non-deleted (archived stays readable)
     lib_call = mock_lib_prisma.return_value.find_first
     lib_call.assert_awaited_once()
     assert lib_call.await_args is not None
@@ -1100,102 +1263,276 @@ async def test_get_graph_library_member_can_access_unpublished() -> None:
     assert lib_where["userId"] == requester_id
     assert lib_where["agentGraphId"] == graph_id
     assert lib_where["isDeleted"] is False
-    assert lib_where["isArchived"] is False
+    assert "isArchived" not in lib_where
 
 
 @pytest.mark.asyncio
 async def test_get_graph_deleted_library_agent_denied() -> None:
     """If the user soft-deleted the agent from their library, they should
-    NOT get access via the library fallback."""
+    NOT get access, even though the version was submitted."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
 
-    with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
-    ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Library query returns None because isDeleted=False filter excludes it
-        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                is_deleted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=requester_id,
-        )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
 
     assert result is None, "Deleted library agent should not grant graph access"
 
 
 @pytest.mark.asyncio
-async def test_get_graph_anonymous_approved_marketplace_access() -> None:
-    """Anonymous users (user_id=None) should still access APPROVED marketplace
-    agents — the marketplace fallback doesn't require authentication."""
+async def test_get_graph_archived_library_agent_allowed() -> None:
+    """Archiving is a display state, not a revocation: tidying an agent out of
+    the library view must not cost the user run history, forking, scheduling
+    or webhook presets. `isDeleted` is what ends membership."""
+    requester_id = "library-user-id"
     graph_id = "graph-id"
-    mock_graph = _make_mock_db_graph("creator-id")
     mock_graph_model = MagicMock(name="GraphModel")
 
-    mock_listing = MagicMock()
-    mock_listing.AgentGraph = mock_graph
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                is_archived=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
 
     with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
         patch(
             "backend.data.graph.GraphModel.from_db",
             return_value=mock_graph_model,
         ),
     ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=mock_listing)
+        result = await get_graph(graph_id=graph_id, version=1, user_id=requester_id)
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=None,
-        )
-
-    assert (
-        result is mock_graph_model
-    ), "Anonymous user should access APPROVED marketplace agent"
+    assert result is mock_graph_model, "Archiving must not revoke graph access"
 
 
 @pytest.mark.asyncio
-async def test_get_graph_library_fallback_not_used_for_anonymous() -> None:
-    """Anonymous requests (user_id=None) must not trigger the library
-    fallback — there's no user to check library membership for."""
+async def test_get_graph_anonymous_denied_for_submitted_graph() -> None:
+    """Anonymous callers (user_id=None) have no library, so they can never
+    satisfy the access rule — not even for a graph that is on the marketplace
+    and in someone's library. The public download path goes through
+    `store.db.get_agent()` instead.
+
+    Neither table is touched: with no user and no team there is nothing to
+    match on, so both lookups are skipped rather than run and discarded.
+    """
     graph_id = "graph-id"
+
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id="some-other-user-id",
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(graph_id=graph_id, version=1, user_id=None)
+
+    assert result is None, "Anonymous callers must not reach a graph via get_graph"
+    ag_prisma.return_value.find_first.assert_not_called()
+    lib_prisma.return_value.find_first.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_graph_skip_access_check_bypasses_library_lookup() -> None:
+    """`skip_access_check=True` fetches the row directly. Callers that use it
+    (the executor, the marketplace install/download paths) have authorized the
+    read themselves, so the library rule must not be applied on top."""
+    graph_id = "graph-id"
+    mock_graph = _make_mock_db_graph("original-creator-id")
+    mock_graph_model = MagicMock(name="GraphModel")
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.GraphModel.from_db",
+            return_value=mock_graph_model,
+        ),
     ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
+        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=mock_graph)
 
         result = await get_graph(
             graph_id=graph_id,
             version=1,
-            user_id=None,
+            user_id="unrelated-user-id",
+            skip_access_check=True,
         )
 
-    assert result is None
-    # Library should never be queried for anonymous users
+    assert result is mock_graph_model
+    ag_where = mock_ag_prisma.return_value.find_first.await_args.kwargs["where"]
+    assert "userId" not in ag_where, "skip_access_check must not scope by owner"
     mock_lib_prisma.return_value.find_first.assert_not_called()
 
 
 @pytest.mark.asyncio
+async def test_get_graph_skip_access_check_denies_missing_graph_despite_library() -> (
+    None
+):
+    """The flag must gate the library branch itself, not just the owner scope:
+    a caller that authorized its own read gets the row or nothing, never a
+    second chance through someone's library."""
+    requester_id = "library-user-id"
+    missing_graph_id = "other-graph-id"
+
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=missing_graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(
+            graph_id=missing_graph_id,
+            version=1,
+            user_id=requester_id,
+            skip_access_check=True,
+        )
+
+    assert result is None, "skip_access_check must not fall back to the library"
+    lib_prisma.return_value.find_first.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_graph_version_none_ignores_unsubmitted_newer_version() -> None:
+    """Why the two halves are one joined query: with no version pinned, a newer
+    never-submitted library row must not shadow the submitted one — separate
+    queries would resolve the membership and the submission to different
+    versions and grant access to v2."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    submitted_v1 = _make_mock_db_graph("original-creator-id", version=1)
+
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=2,
+                submitted=False,
+                agent_graph=_make_mock_db_graph("original-creator-id", version=2),
+            ),
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=submitted_v1,
+            ),
+        ],
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+        patch("backend.data.graph.GraphModel.from_db") as mock_from_db,
+    ):
+        result = await get_graph(graph_id=graph_id, version=None, user_id=requester_id)
+
+    assert result is mock_from_db.return_value
+    assert (
+        mock_from_db.call_args.args[0] is submitted_v1
+    ), "version=None must resolve to the submitted version, not the newest row"
+    lib_where = lib_prisma.return_value.find_first.await_args.kwargs["where"]
+    assert "agentGraphVersion" not in lib_where
+
+
+@pytest.mark.asyncio
+async def test_get_graph_version_none_picks_latest_submitted_version() -> None:
+    """With several submitted versions in the library and no version pinned,
+    the newest wins — same as the owner path's `order={"version": "desc"}`."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    submitted_v2 = _make_mock_db_graph("original-creator-id", version=2)
+
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id", version=1),
+            ),
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=2,
+                submitted=True,
+                agent_graph=submitted_v2,
+            ),
+        ],
+    )
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+        patch("backend.data.graph.GraphModel.from_db") as mock_from_db,
+    ):
+        result = await get_graph(graph_id=graph_id, version=None, user_id=requester_id)
+
+    assert result is mock_from_db.return_value
+    assert mock_from_db.call_args.args[0] is submitted_v2
+
+
+def test_submitted_to_marketplace_is_every_status_but_draft() -> None:
+    """A new `SubmissionStatus` member has to be triaged by hand: silently
+    inheriting "submitted" would grant its holders read access to the graph."""
+    assert set(SUBMITTED_TO_MARKETPLACE) == set(SubmissionStatus) - {
+        SubmissionStatus.DRAFT
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_graph_library_not_queried_when_owned() -> None:
-    """If the user owns the graph, the library fallback should NOT be
+    """If the user owns the graph, the library lookup should NOT be
     triggered — ownership is sufficient."""
     owner_id = "owner-user-id"
     graph_id = "graph-id"
@@ -1204,9 +1541,6 @@ async def test_get_graph_library_not_queried_when_owned() -> None:
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
@@ -1223,74 +1557,7 @@ async def test_get_graph_library_not_queried_when_owned() -> None:
         )
 
     assert result is mock_graph_model
-    # Neither marketplace nor library should be queried
-    mock_slv_prisma.return_value.find_first.assert_not_called()
     mock_lib_prisma.return_value.find_first.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_get_graph_library_not_queried_when_marketplace_approved() -> None:
-    """If the graph is APPROVED in the marketplace, the library fallback
-    should NOT be triggered — marketplace access is sufficient."""
-    requester_id = "different-user-id"
-    graph_id = "graph-id"
-    mock_graph = _make_mock_db_graph("original-creator-id")
-    mock_graph_model = MagicMock(name="GraphModel")
-
-    mock_listing = MagicMock()
-    mock_listing.AgentGraph = mock_graph
-
-    with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
-        patch(
-            "backend.data.graph.GraphModel.from_db",
-            return_value=mock_graph_model,
-        ),
-    ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=mock_listing)
-
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=requester_id,
-        )
-
-    assert result is mock_graph_model
-    # Library should not be queried — marketplace was sufficient
-    mock_lib_prisma.return_value.find_first.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_get_graph_archived_library_agent_denied() -> None:
-    """If the user archived the agent in their library, they should
-    NOT get access via the library fallback."""
-    requester_id = "library-user-id"
-    graph_id = "graph-id"
-
-    with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
-    ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Library query returns None because isArchived=False filter excludes it
-        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
-
-        result = await get_graph(
-            graph_id=graph_id,
-            version=1,
-            user_id=requester_id,
-        )
-
-    assert result is None, "Archived library agent should not grant graph access"
 
 
 @pytest.mark.asyncio
@@ -1305,13 +1572,9 @@ async def test_get_graph_library_with_null_agent_graph_denied() -> None:
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
     ):
         mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
         mock_lib_prisma.return_value.find_first = AsyncMock(
             return_value=mock_library_agent
         )
@@ -1329,36 +1592,34 @@ async def test_get_graph_library_with_null_agent_graph_denied() -> None:
 
 @pytest.mark.asyncio
 async def test_get_graph_library_wrong_version_denied() -> None:
-    """Having version 1 in your library must NOT grant access to version 2."""
+    """Having version 1 in your library must NOT grant access to version 2,
+    even when both versions were submitted to the marketplace."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
 
-    with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
-    ):
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Library has version 1 but we're requesting version 2 —
-        # the where clause includes agentGraphVersion so this returns None
-        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=2,
-            user_id=requester_id,
-        )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(graph_id=graph_id, version=2, user_id=requester_id)
 
     assert (
         result is None
     ), "Library agent for version 1 must not grant access to version 2"
-    # Verify version was included in the library query
-    lib_call = mock_lib_prisma.return_value.find_first
-    lib_call.assert_called_once()
-    lib_where = lib_call.call_args.kwargs["where"]
+    lib_where = lib_prisma.return_value.find_first.await_args.kwargs["where"]
     assert lib_where["agentGraphVersion"] == 2
 
 
@@ -1369,25 +1630,24 @@ async def test_library_v1_does_not_grant_access_to_pending_v2() -> None:
     requester_id = "regular-user-id"
     graph_id = "graph-id"
 
-    with (
-        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
-        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
-    ):
-        # Not owned
-        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # v2 is not APPROVED in marketplace
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Library has v1 but not v2 — version filter excludes it
-        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+    ag_prisma, lib_prisma = _fake_graph_db(
+        owner_id="original-creator-id",
+        library_rows=[
+            _LibraryRow(
+                user_id=requester_id,
+                graph_id=graph_id,
+                version=1,
+                submitted=True,
+                agent_graph=_make_mock_db_graph("original-creator-id"),
+            )
+        ],
+    )
 
-        result = await get_graph(
-            graph_id=graph_id,
-            version=2,
-            user_id=requester_id,
-        )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma", ag_prisma),
+        patch("backend.data.graph.LibraryAgent.prisma", lib_prisma),
+    ):
+        result = await get_graph(graph_id=graph_id, version=2, user_id=requester_id)
 
     assert result is None, "Regular user with v1 in library must not access pending v2"
 
@@ -1427,9 +1687,20 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 # --------------- execution permission truth table --------------- #
 #
 # validate_graph_execution_permissions() has two gates:
-# 1. Accessible graph: owner OR exact-version library entry OR marketplace-published
-# 2. Runnable graph: exact-version library entry OR owner fallback to any live
-#    library entry for the graph OR sub-graph exception
+# 1. Accessible graph: owner OR the exact version is READABLE from the library
+#    (in library AND submitted -- the same graph_in_library_filter() the read
+#    path uses) OR marketplace-published
+# 2. Runnable graph: that readable entry OR owner fallback to any live library
+#    entry for the graph OR sub-graph exception
+#
+# Both library lookups are issued in one asyncio.gather, so LibraryAgent
+# find_first is awaited twice on every call: [0] is the strict read predicate,
+# [1] the loose owner fallback. The fallback is only consulted for owners --
+# reading it for a non-owner would grant cross-version execution.
+#
+# INVARIANT: gate 1 must never be looser than get_graph()'s read rule. The one
+# exception is SECRT-1125 -- a marketplace-published graph runs as a sub-agent
+# without read, so the caller can't reconstruct a non-public graph from it.
 #
 # Desired owner behavior differs from non-owners:
 # owners should be allowed to run a new version when some non-archived/non-deleted
@@ -1438,11 +1709,12 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 #
 # | User     | Owns? | Marketplace | Library state                | is_sub_graph | Result   | Test
 # |----------|-------|-------------|------------------------------|--------------|----------|-----
-# | regular  | no    | no          | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
+# | regular  | no    | submitted   | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
+# | regular  | no    | no          | exact version, NEVER submitted| false        | DENY acc | test_validate_graph_execution_permissions_library_member_never_submitted_denied
 # | owner    | yes   | no          | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_owner_same_version_in_library_allowed
 # | owner    | yes   | no          | previous version present     | false        | ALLOW    | test_validate_graph_execution_permissions_owner_previous_library_version_allowed
 # | owner    | yes   | no          | none present                 | false        | DENY lib | test_validate_graph_execution_permissions_owner_without_library_denied
-# | owner    | yes   | no          | only archived/deleted older  | false        | DENY lib | test_validate_graph_execution_permissions_owner_previous_archived_library_version_denied
+# | owner    | yes   | no          | only archived older          | false        | ALLOW    | test_validate_graph_execution_permissions_owner_previous_archived_library_version_allowed
 # | regular  | no    | yes         | none present                 | false        | DENY lib | test_validate_graph_execution_permissions_marketplace_graph_not_in_library_denied
 # | admin    | no    | no          | none present                 | false        | DENY acc | test_validate_graph_execution_permissions_admin_without_library_or_marketplace_denied
 # | regular  | no    | yes         | none present                 | true         | ALLOW    | test_validate_graph_execution_permissions_marketplace_sub_graph_without_library_allowed
@@ -1478,8 +1750,50 @@ async def test_validate_graph_execution_permissions_library_member_same_version_
         )
 
     mock_is_published.assert_not_awaited()
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
+    # The alignment itself: execute queries the read gate's own predicate, so
+    # it cannot be looser than read. Everything the read tests prove about
+    # graph_in_library_filter() therefore holds here too.
+    assert lib_where == graph_in_library_filter(requester_id, graph_id, graph_version)
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_library_member_never_submitted_denied() -> (
+    None
+):
+    """Library membership alone does not grant execution: the version must also
+    have been submitted. Execution is never more permissive than read, so a
+    version the user cannot open is a version they cannot run."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    graph_version = 2
+    mock_graph = MagicMock(userId="creator-user-id")
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_is_published,
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
+        # graph_in_library_filter() requires a submission, so an unsubmitted
+        # row is simply not found.
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        with pytest.raises(GraphNotAccessibleError):
+            await validate_graph_execution_permissions(
+                user_id=requester_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            )
+
+    mock_is_published.assert_awaited_once_with(graph_id, graph_version)
 
 
 @pytest.mark.asyncio
@@ -1510,7 +1824,9 @@ async def test_validate_graph_execution_permissions_owner_same_version_in_librar
         )
 
     mock_is_published.assert_not_awaited()
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
 
 
@@ -1596,14 +1912,15 @@ async def test_validate_graph_execution_permissions_owner_without_library_denied
         "userId": requester_id,
         "agentGraphId": graph_id,
         "isDeleted": False,
-        "isArchived": False,
-    }
+    }, "archiving hides an agent, it must not revoke the owner's run rights"
 
 
 @pytest.mark.asyncio
-async def test_validate_graph_execution_permissions_owner_previous_archived_library_version_denied() -> (
+async def test_validate_graph_execution_permissions_owner_previous_archived_library_version_allowed() -> (
     None
 ):
+    """An owner whose only remaining library entry is archived can still run a
+    new version: the fallback query must not filter on isArchived."""
     requester_id = "owner-user-id"
     graph_id = "graph-id"
     graph_version = 2
@@ -1619,14 +1936,15 @@ async def test_validate_graph_execution_permissions_owner_previous_archived_libr
         ) as mock_is_published,
     ):
         mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
-        mock_lib_prisma.return_value.find_first = AsyncMock(side_effect=[None, None])
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[None, MagicMock(name="ArchivedLibraryAgent")]
+        )
 
-        with pytest.raises(GraphNotInLibraryError):
-            await validate_graph_execution_permissions(
-                user_id=requester_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-            )
+        await validate_graph_execution_permissions(
+            user_id=requester_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+        )
 
     mock_is_published.assert_not_awaited()
     assert mock_lib_prisma.return_value.find_first.await_count == 2
@@ -1641,8 +1959,43 @@ async def test_validate_graph_execution_permissions_owner_previous_archived_libr
         "userId": requester_id,
         "agentGraphId": graph_id,
         "isDeleted": False,
-        "isArchived": False,
-    }
+    }, "archiving hides an agent, it must not revoke the owner's run rights"
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_non_owner_other_version_denied() -> (
+    None
+):
+    """The owner fallback is fetched for everyone but must be read only for
+    owners. A non-owner holding a live entry for a *different* version of a
+    marketplace graph stays version-specific and is denied."""
+    requester_id = "library-user-id"
+    graph_id = "graph-id"
+    graph_version = 2
+    mock_graph = MagicMock(userId="creator-user-id")
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(return_value=mock_graph)
+        # Strict predicate misses this version; the loose fallback finds the
+        # user's entry for another version of the same graph.
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[None, MagicMock(name="OtherVersionLibraryAgent")]
+        )
+
+        with pytest.raises(GraphNotInLibraryError):
+            await validate_graph_execution_permissions(
+                user_id=requester_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            )
 
 
 @pytest.mark.asyncio
@@ -1799,8 +2152,82 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
             )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
-    lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
+    lib_where = mock_lib_prisma.return_value.find_first.await_args_list[0].kwargs[
+        "where"
+    ]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+# ============================================================================
+# Tests for get_graph_settings version resolution (real DB)
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "running_version, expected_session_id, expected_safe_mode",
+    [
+        (1, "settings-v1", True),
+        (2, "settings-v2", False),
+        (3, "settings-v1", True),
+    ],
+    ids=[
+        "live-version-keeps-its-own-settings",
+        "archived-version-keeps-its-own-settings",
+        "version-without-an-entry-falls-back-to-the-live-one",
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_settings_resolves_against_the_running_version(
+    server: SpinTestServer,
+    running_version: int,
+    expected_session_id: str,
+    expected_safe_mode: bool,
+) -> None:
+    """An archived entry must not override the version actually running."""
+    user_id = f"graph-settings-{uuid4()}"
+    graph_id = str(uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"{user_id}@example.com", "name": "Settings Test"}
+    )
+    try:
+        for version in (1, 2, 3):
+            await AgentGraph.prisma().create(
+                data={
+                    "id": graph_id,
+                    "version": version,
+                    "name": f"Settings Test v{version}",
+                    "description": "test",
+                    "userId": user_id,
+                    "isActive": version == 3,
+                }
+            )
+        for version, archived, safe_mode in ((1, False, True), (2, True, False)):
+            await LibraryAgent.prisma().create(
+                data={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version,
+                    "isArchived": archived,
+                    "isCreatedByUser": True,
+                    "settings": SafeJson(
+                        {
+                            "sensitive_action_safe_mode": safe_mode,
+                            "builder_chat_session_id": f"settings-v{version}",
+                        }
+                    ),
+                }
+            )
+
+        settings = await get_graph_settings(
+            user_id=user_id, graph_id=graph_id, graph_version=running_version
+        )
+
+        assert settings.builder_chat_session_id == expected_session_id
+        assert settings.sensitive_action_safe_mode is expected_safe_mode
+    finally:
+        await LibraryAgent.prisma().delete_many(where={"userId": user_id})
+        await AgentGraph.prisma().delete_many(where={"id": graph_id})
+        await User.prisma().delete_many(where={"id": user_id})
 
 
 # ============================================================================
@@ -2184,7 +2611,7 @@ async def test_migrate_llm_models_uses_schema_prefix_placeholder():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     for call in mock_execute.await_args_list:
         query_template = call.args[0]
@@ -2202,7 +2629,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     values (e.g. ``anthropic/claude-sonnet-4-20250514``) to the family-aware
     replacement, not let them fall through to the global ``fallback`` model.
 
-    ``LlmModel._missing_`` accepts prefixed inputs at write time, so historical
+    ``LLMModel._missing_`` accepts prefixed inputs at write time, so historical
     rows may carry either the bare or prefixed form."""
     bare_legacy_value = "claude-sonnet-4-20250514"
     expected_replacement = LEGACY_MODEL_MAPPINGS[bare_legacy_value].value
@@ -2212,7 +2639,7 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     # Targeted query has 5 SQL params ($1..$5), so its call has 6 positional
     # args: (query, [path], replacement, block_id, path, stored_value).
@@ -2244,7 +2671,7 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "backend.data.graph.execute_raw_with_schema",
         new_callable=AsyncMock,
     ) as mock_execute:
-        await migrate_llm_models(next(iter(LlmModel)))
+        await migrate_llm_models(next(iter(LLMModel)))
 
     queries = [call.args[0] for call in mock_execute.await_args_list]
     assert any(
@@ -2373,3 +2800,380 @@ async def test_get_graph_without_org_keeps_strict_ownership(mocker):
     where = mock_client.find_first.call_args.kwargs["where"]
     assert where["userId"] == "u-1"
     assert "AND" not in where
+
+
+# ============================================================================
+# Tests for discriminated credentials aggregation (codex transport hotfix)
+#
+# A node that has not pinned its discriminator still resolves it at execution
+# time: blocks/_base.py builds `self.input_schema(**input_default)`, so pydantic
+# fills the schema default. Aggregation must resolve it the same way, or the
+# graph advertises credentials the node can never actually use.
+#
+# The fallback is scoped to fields whose credential TYPE depends on the
+# discriminator (discriminator_type_mapping). For those, the un-discriminated
+# union is a cross-product that asserts invalid pairs — e.g. (codex, api_key)
+# and (openai, oauth2) — neither of which exists. For mapping-only
+# discriminators the type set is a singleton, so the union is faithful and is
+# deliberately left alone: its aggregated slot key is load-bearing for
+# persisted preset and schedule credentials.
+# ============================================================================
+
+CODEX_CODEGEN_BLOCK_ID = "86a2a099-30df-47b4-b7e4-34ae5f83e0d5"
+AI_STRUCTURED_RESPONSE_BLOCK_ID = "ed55ac19-356e-4243-a6cb-bc599e9b716f"
+
+
+def _graph_with(nodes: list[NodeModel]) -> GraphModel:
+    from datetime import datetime, timezone
+
+    return GraphModel(
+        id="agg-graph",
+        version=1,
+        name="Aggregation",
+        description="",
+        user_id="u-1",
+        created_at=datetime.now(timezone.utc),
+        nodes=nodes,
+        links=[],
+    )
+
+
+def _node(node_id: str, block_id: str, input_default: dict[str, Any]) -> NodeModel:
+    return NodeModel(
+        id=node_id,
+        block_id=block_id,
+        input_default=input_default,
+        graph_id="agg-graph",
+        graph_version=1,
+    )
+
+
+def _slots(graph: GraphModel) -> dict[str, tuple[set[str], set[str], bool]]:
+    schema = graph.credentials_input_schema
+    required = set(schema["required"])
+    return {
+        key: (
+            {getattr(p, "value", p) for p in prop["credentials_provider"]},
+            set(prop["credentials_types"]),
+            key in required,
+        )
+        for key, prop in schema["properties"].items()
+    }
+
+
+def test_codegen_without_transport_resolves_to_schema_default():
+    """The discriminator defaults to openai_api, so the slot must be OpenAI
+    only. Advertising codex here let a non-entitled user see a required
+    credential for a plan-gated provider they cannot connect."""
+    graph = _graph_with([_node("n1", CODEX_CODEGEN_BLOCK_ID, {"prompt": "hi"})])
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_codegen_with_linked_transport_does_not_assume_schema_default():
+    graph = _graph_with([_node("n1", CODEX_CODEGEN_BLOCK_ID, {"prompt": "hi"})])
+    graph.links = [
+        Link(
+            source_id="source",
+            sink_id="n1",
+            source_name="value",
+            sink_name="transport",
+        )
+    ]
+
+    assert _slots(graph) == {
+        "codex-openai_api_key-oauth2_credentials": (
+            {"codex", "openai"},
+            {"api_key", "oauth2"},
+            True,
+        )
+    }
+
+
+def test_codegen_with_explicit_openai_transport_matches_default_case():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "openai_api"},
+            )
+        ]
+    )
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_codegen_with_codex_transport_yields_codex_slot():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            )
+        ]
+    )
+
+    assert _slots(graph) == {"codex_oauth2_credentials": ({"codex"}, {"oauth2"}, True)}
+
+
+def test_autopilot_codex_credentials_slot_is_not_required():
+    """AutoPilot's codex_credentials declares default=None, so the graph must
+    not demand it — the block falls back to the platform transport."""
+    graph = _graph_with([_node("n1", AUTOPILOT_BLOCK_ID, {"prompt": "hi"})])
+
+    assert _slots(graph) == {"codex_oauth2_credentials": ({"codex"}, {"oauth2"}, False)}
+
+
+def test_codex_transport_node_merges_with_autopilot_codex_slot():
+    """Both resolve to (codex, oauth2), so they share one slot instead of
+    presenting the user two separate codex rows."""
+    graph = _graph_with(
+        [
+            _node("n1", AUTOPILOT_BLOCK_ID, {"prompt": "hi"}),
+            _node(
+                "n2",
+                CODEX_CODEGEN_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            ),
+        ]
+    )
+
+    slots = _slots(graph)
+    assert list(slots) == ["codex_oauth2_credentials"]
+    # Required because the CodeGen node requires it, even though AutoPilot's is optional.
+    assert slots["codex_oauth2_credentials"] == ({"codex"}, {"oauth2"}, True)
+
+
+def test_llm_block_union_is_left_intact_without_model():
+    """Regression guard: mapping-only discriminators keep their union slot key.
+    Persisted preset/schedule credentials are keyed by this name, so collapsing
+    it would silently orphan them."""
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with([_node("n1", AITextGeneratorBlock().id, {"prompt": "hi"})])
+
+    slots = _slots(graph)
+    assert list(slots) == [
+        "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
+    ]
+    providers, types, required = slots[list(slots)[0]]
+    assert len(providers) == 8
+    assert types == {"api_key"}
+    assert required is True
+
+
+def test_llm_block_with_model_discriminates_normally():
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    graph = _graph_with(
+        [_node("n1", AITextGeneratorBlock().id, {"prompt": "hi", "model": "gpt-4o"})]
+    )
+
+    assert _slots(graph) == {
+        "openai_api_key_credentials": ({"openai"}, {"api_key"}, True)
+    }
+
+
+def test_only_known_blocks_use_discriminator_type_mapping():
+    """Guard on the fallback's trigger condition. If a new block adds
+    discriminator_type_mapping, it silently inherits schema-default
+    discrimination — this test forces that to be a conscious decision."""
+    from backend.blocks import load_all_blocks
+
+    users = set()
+    construction_failures: list[str] = []
+    for block_cls in load_all_blocks().values():
+        try:
+            block = block_cls()
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check, so the assertion below could pass while a new
+            # block quietly adopts schema-default discrimination.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        rendered = block.input_schema.get_credentials_fields()
+        for name, info in block.input_schema.get_credentials_fields_info().items():
+            if name in rendered and info.discriminator_type_mapping:
+                users.add((block.name, name))
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+    assert users == {("CodeGenerationBlock", "credentials")}
+
+
+def test_graph_credential_slots_agree_with_executor_defaults():
+    """The graph schema must not advertise a provider the executor cannot
+    select. For every discriminated credentials field, the providers offered
+    for an unpinned node must be reachable from the block's own default."""
+    from backend.blocks import load_all_blocks
+
+    construction_failures: list[str] = []
+    for block_cls in load_all_blocks().values():
+        try:
+            block = block_cls()
+        except Exception as e:
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        rendered = block.input_schema.get_credentials_fields()
+        info = block.input_schema.get_credentials_fields_info()
+        for name in rendered:
+            field = info[name]
+            if not field.discriminator_type_mapping:
+                continue
+            default = block.input_schema.jsonschema()["properties"][
+                field.discriminator
+            ].get("default")
+            expected = field.discriminate(default)
+            graph = _graph_with([_node("n1", block.id, {})])
+            for providers, types, _ in _slots(graph).values():
+                assert providers == {
+                    getattr(p, "value", p) for p in expected.provider
+                }, f"{block.name}.{name} advertises unreachable providers"
+                assert types == set(expected.supported_types)
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+
+
+def test_unmapped_discriminator_value_contributes_no_credential():
+    """AutoPilot's `platform` transport is deliberately absent from
+    `discriminator_mapping` because it needs no credential. Discriminating on
+    it raises ("is not supported. It may have been deprecated"), and this runs
+    inside the `credentials_input_schema` computed_field — so an unguarded
+    call crashed schema generation for any graph containing a node saved with
+    the default transport."""
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "platform"},
+            )
+        ]
+    )
+
+    slots = _slots(graph)
+
+    # The node asks for nothing, so it adds no credential slot at all.
+    assert slots == {}
+
+
+def test_unmapped_discriminator_on_a_required_credential_still_raises():
+    """The skip above is scoped to optional credentials fields on purpose.
+
+    A node pinned to a model since removed from the catalog also lands on an
+    unmapped discriminator value, but there the credential is required and the
+    node is simply broken. `discriminate()` raising is what surfaces the
+    actionable "may have been deprecated" message; skipping would drop the
+    slot silently, and the run form would never ask for the key.
+    """
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AI_STRUCTURED_RESPONSE_BLOCK_ID,
+                {"prompt": "hi", "model": "a-model-that-was-retired"},
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="may have been deprecated"):
+        _slots(graph)
+
+
+def test_mapped_discriminator_value_still_yields_its_slot():
+    graph = _graph_with(
+        [
+            _node(
+                "n1",
+                AUTOPILOT_BLOCK_ID,
+                {"prompt": "hi", "transport": "codex_app_server"},
+            )
+        ]
+    )
+
+    providers = {p for providers, _, _ in _slots(graph).values() for p in providers}
+
+    assert providers == {"codex"}
+
+
+# ============================================================================
+# Tests for the credentials-discriminator dependency check
+# (a node saved before a block gained a discriminator carries a credential
+# and no discriminator value — that shape must stay valid)
+# ============================================================================
+
+
+_LEGACY_CODEX_META = {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "provider": "codex",
+    "type": "oauth2",
+    "title": "My ChatGPT",
+}
+
+
+def _autopilot_graph(input_default: dict) -> Graph:
+    """Build a 1-node AutoPilot graph with whatever input shape the test pins."""
+    node = Node(
+        id="00000000-0000-0000-0000-0000000000a1",
+        block_id=AUTOPILOT_BLOCK_ID,
+        input_default=input_default,
+    )
+    return Graph(
+        id="autopilot-graph",
+        name="Test",
+        description="Test",
+        nodes=[node],
+        links=[],
+    )
+
+
+@pytest.mark.parametrize("for_run", [False, True])
+def test_legacy_autopilot_node_without_transport_is_valid(for_run: bool):
+    """Every AutoPilot node saved before `transport` existed has a codex
+    connection and no transport. Making `codex_credentials` depend on
+    `transport` turned that shape into "Requires transport to be set" — a 400
+    on save *and* on execute, naming a field the user's exported JSON does not
+    contain. The startup backfill only repairs rows already in the database,
+    so imports and older API clients would have stayed broken permanently.
+
+    Both fields are optional, so "unset" is a legal state and the block
+    decides what it means (an attached connection is the choice).
+    """
+    graph = _autopilot_graph(
+        {"prompt": "do a thing", "codex_credentials": _LEGACY_CODEX_META}
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=for_run)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors
+
+
+@pytest.mark.parametrize(
+    "transport", [AutoPilotTransport.PLATFORM, AutoPilotTransport.CODEX_APP_SERVER]
+)
+def test_autopilot_node_with_an_explicit_transport_is_valid(
+    transport: AutoPilotTransport,
+):
+    """The migrated shape keeps validating, on both branches."""
+    graph = _autopilot_graph(
+        {
+            "prompt": "do a thing",
+            "transport": transport.value,
+            "codex_credentials": _LEGACY_CODEX_META,
+        }
+    )
+
+    errors = GraphModel._validate_graph_get_errors(graph, for_run=True)
+
+    assert errors.get(graph.nodes[0].id, {}) == {}, errors

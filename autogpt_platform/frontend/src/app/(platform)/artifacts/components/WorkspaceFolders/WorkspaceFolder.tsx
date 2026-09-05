@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { FolderIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { FILE_DRAG_MIME } from "./drag";
 import { FOLDER_STYLE } from "./folder-constants";
+import {
+  Delete02Icon,
+  Folder01Icon,
+  PencilIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   id: string;
@@ -74,7 +79,7 @@ export function WorkspaceFolder({
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface}`}
       >
-        <FolderIcon size={22} weight="fill" className={style.icon} />
+        <Icon icon={Folder01Icon} size={22} className={style.icon} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
@@ -100,7 +105,7 @@ export function WorkspaceFolder({
           }}
           className="h-9 w-9 !p-2 text-zinc-500 hover:text-zinc-800"
         >
-          <PencilSimpleIcon size={16} />
+          <Icon icon={PencilIcon} size={16} />
         </Button>
         <Button
           variant="icon"
@@ -112,7 +117,7 @@ export function WorkspaceFolder({
           }}
           className="h-9 w-9 !p-2 text-zinc-500 hover:text-red-600"
         >
-          <TrashIcon size={16} />
+          <Icon icon={Delete02Icon} size={16} />
         </Button>
       </div>
     </div>

@@ -194,7 +194,8 @@ export type CredentialsType =
   | "api_key"
   | "oauth2"
   | "user_password"
-  | "host_scoped";
+  | "host_scoped"
+  | "device_code";
 
 export type Credentials =
   | APIKeyCredentials
@@ -220,6 +221,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: Record<string, CredentialsProviderName>;
+  discriminator_type_mapping?: Record<string, CredentialsType[]>;
   discriminator_values?: any[];
   secret?: boolean;
 };
@@ -441,6 +443,12 @@ export type Graph = GraphMeta & {
       }
   );
 
+export type SkippedWebhookPreset = {
+  id: string;
+  name: string;
+  pinned_version: number;
+};
+
 export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
@@ -600,6 +608,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  LAST_RUN = "lastRunAt",
 }
 
 /* *** CREDENTIALS *** */
@@ -683,28 +692,32 @@ export type HostScopedCredentials = BaseCredentials & {
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
-  | "AGENT_RUN"
-  | "ZERO_BALANCE"
-  | "LOW_BALANCE"
-  | "BLOCK_EXECUTION_FAILED"
-  | "CONTINUOUS_AGENT_ERROR"
-  | "DAILY_SUMMARY"
-  | "WEEKLY_SUMMARY"
-  | "MONTHLY_SUMMARY"
-  | "AGENT_APPROVED"
-  | "AGENT_REJECTED";
+  | "BRIEFING"
+  | "ALERT"
+  | "VERDICT"
+  | "OPS"
+  | "SUBSCRIPTION_WELCOME"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_FINAL_NOTICE"
+  | "SUBSCRIPTION_CANCELLED"
+  | "SUBSCRIPTION_RESUMED"
+  | "SUBSCRIPTION_ENDED";
 
-// Mirror of backend/backend/data/notifications.py:NotificationPreference
+export type BriefingFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "OFF";
+
+// Mirror of backend/backend/data/notifications.py:NotificationPreferenceDTO.
+// A volume knob rather than a checkbox list: billing and account messages are
+// service mail and are not represented here.
 export type NotificationPreferenceDTO = {
   email: string;
-  preferences: { [key in NotificationType]: boolean };
+  briefing_frequency: BriefingFrequency;
+  alerts_enabled: boolean;
+  store_verdicts_enabled: boolean;
   daily_limit: number;
 };
 
 export type NotificationPreference = NotificationPreferenceDTO & {
   user_id: UserID;
-  emails_sent_today: number;
-  last_reset_date: Date;
 };
 
 /* Mirror of backend/data/integrations.py:Webhook */
@@ -872,16 +885,16 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   // First Wins
-  | "VISIT_COPILOT"
+  | "ONBOARDING_COMPLETE"
   | "GET_RESULTS"
-  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_VISIT" // deprecated: never set
   | "MARKETPLACE_ADD_AGENT"
-  | "MARKETPLACE_RUN_AGENT"
-  | "BUILDER_SAVE_AGENT"
+  | "LIBRARY_RUN_AGENT"
+  | "BUILDER_SAVE_AGENT" // deprecated: never set
   // Consistency Challenge
-  | "RE_RUN_AGENT"
+  | "RE_RUN_AGENT" // deprecated: never set
   | "SCHEDULE_AGENT"
-  | "RUN_AGENTS"
+  | "RUN_AGENTS" // deprecated: never set
   | "RUN_3_DAYS"
   // The Pro Playground
   | "TRIGGER_WEBHOOK"
@@ -889,13 +902,24 @@ export type OnboardingStep =
   | "RUN_AGENTS_100"
   // No longer used but tracked
   | "BUILDER_OPEN"
-  | "BUILDER_RUN_AGENT";
+  | "BUILDER_RUN_AGENT"
+  // Copilot home first-run: capability-cards modal completed or skipped
+  | "CAPABILITY_CARDS"
+  // First-visit intro card for a tab, dismissed however the user chose
+  | "AGENTS_TAB_INTRO"
+  | "MARKETPLACE_TAB_INTRO"
+  | "BUILD_TAB_INTRO";
 
 export interface UserOnboarding {
-  completedSteps: OnboardingStep[];
+  // Plain string[] so legacy step names from existing rows pass through.
+  // Validation against the active set lives on the completion endpoint via
+  // `PostV1CompleteOnboardingStepStep` (the generated literal union).
+  completedSteps: string[];
   walletShown: boolean;
+  // Typed enum: `notified` is written back via PATCH /onboarding, which now
+  // validates step names against OnboardingStep at the boundary.
   notified: OnboardingStep[];
-  rewardedFor: OnboardingStep[];
+  rewardedFor: string[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
@@ -910,6 +934,9 @@ export interface UserOnboarding {
 export interface OnboardingNotificationPayload {
   type: "onboarding";
   event: "step_completed" | "increment_runs";
+  // Typed enum: notifications only fire on fresh completions, so `step` is
+  // always a current OnboardingStep (or null for `increment_runs`). Legacy step
+  // names live only in stored rows, never in emitted notifications.
   step: OnboardingStep | null;
 }
 

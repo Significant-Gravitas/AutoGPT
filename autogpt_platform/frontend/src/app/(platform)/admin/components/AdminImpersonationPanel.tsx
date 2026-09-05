@@ -1,13 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { UserMinus, UserCheck, CreditCard } from "@phosphor-icons/react";
 import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { useAdminImpersonation } from "./useAdminImpersonation";
 import { useGetV1GetUserCredits } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  CreditCardIcon,
+  UserCheck01Icon,
+  UserRemove01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AdminImpersonationPanel() {
   const [userIdInput, setUserIdInput] = useState("");
@@ -15,6 +20,7 @@ export function AdminImpersonationPanel() {
   const {
     isImpersonating,
     impersonatedUserId,
+    isStarting,
     startImpersonating,
     stopImpersonating,
   } = useAdminImpersonation();
@@ -26,10 +32,11 @@ export function AdminImpersonationPanel() {
     error: creditsError,
   } = useGetV1GetUserCredits();
 
-  function handleStartImpersonation() {
+  async function handleStartImpersonation() {
     setError("");
 
-    if (!userIdInput.trim()) {
+    const trimmed = userIdInput.trim();
+    if (!trimmed) {
       setError("Please enter a valid user ID");
       return;
     }
@@ -37,19 +44,15 @@ export function AdminImpersonationPanel() {
     // Basic UUID validation
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(userIdInput.trim())) {
+    if (!uuidRegex.test(trimmed)) {
       setError("Please enter a valid UUID format user ID");
       return;
     }
 
-    try {
-      startImpersonating(userIdInput.trim());
-      setUserIdInput("");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to start impersonation",
-      );
-    }
+    // startImpersonating handles its own errors (toast) and gates on the audit
+    // alert. Don't clear the input here: on success the page reloads, and on a
+    // blocked/failed alert we keep the entered ID so the admin can retry.
+    await startImpersonating(trimmed);
   }
 
   function handleStopImpersonation() {
@@ -62,7 +65,7 @@ export function AdminImpersonationPanel() {
       <div className="space-y-4">
         <div className="border-b pb-4">
           <div className="mb-2 flex items-center space-x-2">
-            <UserCheck className="h-5 w-5" />
+            <Icon icon={UserCheck01Icon} className="h-5 w-5" />
             <h2 className="text-xl font-semibold">Admin User Impersonation</h2>
           </div>
           <p className="text-sm text-gray-600">
@@ -105,18 +108,18 @@ export function AdminImpersonationPanel() {
 
           <div className="flex space-x-2">
             <Button
-              onClick={handleStartImpersonation}
-              disabled={isImpersonating || !userIdInput.trim()}
+              onClick={() => void handleStartImpersonation()}
+              disabled={isImpersonating || isStarting || !userIdInput.trim()}
               className="min-w-[100px]"
             >
-              {isImpersonating ? "Active" : "Start"}
+              {isImpersonating ? "Active" : isStarting ? "Starting…" : "Start"}
             </Button>
 
             {isImpersonating && (
               <Button
                 onClick={handleStopImpersonation}
                 variant="secondary"
-                leftIcon={<UserMinus className="h-4 w-4" />}
+                leftIcon={<Icon icon={UserRemove01Icon} className="h-4 w-4" />}
               >
                 Stop Impersonation
               </Button>
@@ -128,7 +131,7 @@ export function AdminImpersonationPanel() {
         <Card className="bg-gray-50">
           <div className="space-y-3">
             <div className="flex items-center space-x-2">
-              <CreditCard className="h-4 w-4" />
+              <Icon icon={CreditCardIcon} className="h-4 w-4" />
               <h3 className="text-sm font-medium">Live Demo: User Credits</h3>
             </div>
 

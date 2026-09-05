@@ -8,21 +8,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import {
-  BookOpenIcon,
-  CalendarDotsIcon,
-  FolderOpenIcon,
-  PaperclipIcon,
-  PlugsConnectedIcon,
-  PlusIcon,
-} from "@phosphor-icons/react";
 import { useComposerPlusMenu } from "./useComposerPlusMenu";
+import {
+  Attachment01Icon,
+  BookOpen01Icon,
+  Calendar03Icon,
+  FolderOpenIcon,
+  PlugSocketIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   onFilesSelected: (files: File[]) => void;
   onUseWorkspaceFile?: () => void;
   onClearGuidedPrompt?: () => void;
   disabled?: boolean;
+  className?: string;
 }
 
 export function ComposerPlusMenu({
@@ -30,6 +32,7 @@ export function ComposerPlusMenu({
   onUseWorkspaceFile,
   onClearGuidedPrompt,
   disabled,
+  className,
 }: Props) {
   const {
     fileInputRef,
@@ -59,11 +62,12 @@ export function ComposerPlusMenu({
             data-testid="composer-plus-button"
             disabled={disabled}
             className={cn(
-              "border-neutral-200 bg-white text-zinc-500 shadow-sm hover:border-neutral-200 hover:bg-neutral-50 hover:text-zinc-700",
+              "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+              className,
               disabled && "opacity-40",
             )}
           >
-            <PlusIcon className="h-4 w-4" weight="bold" />
+            <Icon icon={PlusSignIcon} className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[14rem]">
@@ -73,7 +77,7 @@ export function ComposerPlusMenu({
               openFilePicker();
             }}
           >
-            <PaperclipIcon className="mr-2 h-4 w-4" />
+            <Icon icon={Attachment01Icon} className="mr-2 h-4 w-4" />
             Attach file
           </DropdownMenuItem>
           {showWorkspaceOption && (
@@ -83,25 +87,25 @@ export function ComposerPlusMenu({
                 onUseWorkspaceFile?.();
               }}
             >
-              <FolderOpenIcon className="mr-2 h-4 w-4" />
+              <Icon icon={FolderOpenIcon} className="mr-2 h-4 w-4" />
               Use File from Workspace
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             onSelect={() => {
               onClearGuidedPrompt?.();
-              openModal("integrations");
+              openModal("connect");
             }}
           >
-            <PlugsConnectedIcon className="mr-2 h-4 w-4" />
-            Integrations
+            <Icon icon={PlugSocketIcon} className="mr-2 h-4 w-4" />
+            Connect service
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openModal("skills")}>
-            <BookOpenIcon className="mr-2 h-4 w-4" />
+            <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
             Skills
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openModal("scheduled")}>
-            <CalendarDotsIcon className="mr-2 h-4 w-4" />
+            <Icon icon={Calendar03Icon} className="mr-2 h-4 w-4" />
             Scheduled
           </DropdownMenuItem>
         </DropdownMenuContent>

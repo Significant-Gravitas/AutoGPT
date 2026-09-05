@@ -2,24 +2,6 @@
 
 import React from "react";
 import { ToolUIPart } from "ai";
-import {
-  ArrowsClockwiseIcon,
-  CheckCircleIcon,
-  CircleDashedIcon,
-  CircleIcon,
-  FileIcon,
-  FilesIcon,
-  GearIcon,
-  GlobeIcon,
-  ListChecksIcon,
-  MagnifyingGlassIcon,
-  MonitorIcon,
-  PencilSimpleIcon,
-  RobotIcon,
-  TerminalIcon,
-  TrashIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
@@ -41,6 +23,25 @@ import {
   getToolCategory,
   truncate,
 } from "./helpers";
+import {
+  AlertDiamondIcon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  CircleDashedIcon,
+  CircleIcon,
+  ComputerIcon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Files01Icon,
+  Globe02Icon,
+  PencilIcon,
+  ReloadIcon,
+  Robot01Icon,
+  Search01Icon,
+  Settings01Icon,
+  TerminalIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   part: ToolUIPart;
@@ -72,9 +73,7 @@ function ToolIcon({
   isError: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <OrbitLoader size={14} />;
@@ -83,39 +82,31 @@ function ToolIcon({
   const iconClass = "text-green-500";
   switch (category) {
     case "bash":
-      return <TerminalIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={TerminalIcon} size={14} className={iconClass} />;
     case "web":
-      return <GlobeIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Globe02Icon} size={14} className={iconClass} />;
     case "browser":
-      return <MonitorIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={ComputerIcon} size={14} className={iconClass} />;
     case "file-read":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
     case "file-write":
-      return <FileIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={FileEmpty02Icon} size={14} className={iconClass} />;
     case "file-delete":
-      return <TrashIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Delete02Icon} size={14} className={iconClass} />;
     case "file-list":
-      return <FilesIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Files01Icon} size={14} className={iconClass} />;
     case "search":
-      return (
-        <MagnifyingGlassIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={Search01Icon} size={14} className={iconClass} />;
     case "edit":
-      return (
-        <PencilSimpleIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={PencilIcon} size={14} className={iconClass} />;
     case "todo":
-      return (
-        <ListChecksIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={CheckListIcon} size={14} className={iconClass} />;
     case "compaction":
-      return (
-        <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
-      );
+      return <Icon icon={ReloadIcon} size={14} className={iconClass} />;
     case "agent":
-      return <RobotIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Robot01Icon} size={14} className={iconClass} />;
     default:
-      return <GearIcon size={14} weight="regular" className={iconClass} />;
+      return <Icon icon={Settings01Icon} size={14} className={iconClass} />;
   }
 }
 
@@ -126,30 +117,30 @@ function ToolIcon({
 function AccordionIcon({ category }: { category: ToolCategory }) {
   switch (category) {
     case "bash":
-      return <TerminalIcon size={32} weight="light" />;
+      return <Icon icon={TerminalIcon} size={32} />;
     case "web":
-      return <GlobeIcon size={32} weight="light" />;
+      return <Icon icon={Globe02Icon} size={32} />;
     case "browser":
-      return <MonitorIcon size={32} weight="light" />;
+      return <Icon icon={ComputerIcon} size={32} />;
     case "file-read":
     case "file-write":
-      return <FileIcon size={32} weight="light" />;
+      return <Icon icon={FileEmpty02Icon} size={32} />;
     case "file-delete":
-      return <TrashIcon size={32} weight="light" />;
+      return <Icon icon={Delete02Icon} size={32} />;
     case "file-list":
-      return <FilesIcon size={32} weight="light" />;
+      return <Icon icon={Files01Icon} size={32} />;
     case "search":
-      return <MagnifyingGlassIcon size={32} weight="light" />;
+      return <Icon icon={Search01Icon} size={32} />;
     case "edit":
-      return <PencilSimpleIcon size={32} weight="light" />;
+      return <Icon icon={PencilIcon} size={32} />;
     case "todo":
-      return <ListChecksIcon size={32} weight="light" />;
+      return <Icon icon={CheckListIcon} size={32} />;
     case "compaction":
-      return <ArrowsClockwiseIcon size={32} weight="light" />;
+      return <Icon icon={ReloadIcon} size={32} />;
     case "agent":
-      return <RobotIcon size={32} weight="light" />;
+      return <Icon icon={Robot01Icon} size={32} />;
     default:
-      return <GearIcon size={32} weight="light" />;
+      return <Icon icon={Settings01Icon} size={32} />;
   }
 }
 
@@ -604,21 +595,21 @@ function getTodoAccordionData(input: unknown): AccordionData {
           <div key={i} className="flex items-start gap-2 text-xs">
             <span className="mt-0.5 flex-shrink-0">
               {todo.status === "completed" ? (
-                <CheckCircleIcon
+                <Icon
+                  icon={CheckmarkCircle02Icon}
                   size={14}
-                  weight="fill"
                   className="text-green-500"
                 />
               ) : todo.status === "in_progress" ? (
-                <CircleDashedIcon
+                <Icon
+                  icon={CircleDashedIcon}
                   size={14}
-                  weight="bold"
                   className="text-blue-500"
                 />
               ) : (
-                <CircleIcon
+                <Icon
+                  icon={CircleIcon}
                   size={14}
-                  weight="regular"
                   className="text-neutral-400"
                 />
               )}

@@ -4,10 +4,11 @@ import React, { FC, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/atoms/Input/Input";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface InputExpanderModalProps {
   isOpen: boolean;
@@ -99,9 +100,9 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
               )}
             >
               {isCopied ? (
-                <CheckIcon size={16} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={16} className="text-green-600" />
               ) : (
-                <CopyIcon size={16} />
+                <Icon icon={Copy01Icon} size={16} />
               )}
             </Button>
           </div>

@@ -2,9 +2,10 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { GithubLogoIcon, SparkleIcon } from "@phosphor-icons/react";
 import { buildTourPricingUrl, TOUR_GITHUB_URL } from "../../../constants";
 import { trackTourCtaClick } from "../../../tracking";
+import { GithubIcon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Only rendered while the demo is still playing — once it completes the
 // sidebar hides this card and the end card in the chat carries the upsell.
@@ -12,9 +13,9 @@ export function TourUpsellCard() {
   return (
     <div className="relative flex flex-col rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-1.5">
-        <SparkleIcon
+        <Icon
+          icon={SparklesIcon}
           size={14}
-          weight="fill"
           className="shrink-0 text-violet-600"
         />
         <Text variant="body-medium" className="text-zinc-900">
@@ -50,7 +51,7 @@ export function TourUpsellCard() {
           trackTourCtaClick("self-host", { placement: "sidebar-card" })
         }
         className="mt-1.5 w-full text-zinc-600"
-        leftIcon={<GithubLogoIcon className="h-4 w-4" />}
+        leftIcon={<Icon icon={GithubIcon} className="h-4 w-4" />}
       >
         Self-host free
       </Button>

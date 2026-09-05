@@ -221,6 +221,58 @@ async def test_execute_blocks_trigger_config_edit(tool, mocker) -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_accepts_agent_json_ref(tool, mocker) -> None:
+    """OPEN-3188: the graph may arrive via agent_json_ref (a workspace file)
+    instead of inline agent_json, so a dropped/truncated inline object no longer
+    blocks the edit."""
+    session = make_session(_USER_ID)
+    session.metadata = ChatSessionMetadata(builder_graph_id="graph-x")
+
+    mocker.patch(
+        f"{_EDIT_MODULE}.get_agent_as_json",
+        return_value={"id": "graph-x", "version": 3, "nodes": [{"id": "n1"}]},
+    )
+    mocker.patch(f"{_EDIT_MODULE}.fetch_library_agents", return_value=[])
+    sentinel = ErrorResponse(message="pipeline-reached", error="sentinel")
+    saved = mocker.patch(f"{_EDIT_MODULE}.fix_validate_and_save", return_value=sentinel)
+    # The referenced workspace file holds the full graph.
+    mocker.patch(
+        "backend.copilot.tools.agent_json_input.read_file_bytes",
+        return_value=b'{"nodes": [{"id": "n1"}], "links": []}',
+    )
+
+    result = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="graph-x",
+        agent_json=None,
+        agent_json_ref="workspace:///agent.json",
+    )
+
+    assert result is sentinel
+    saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_edit_missing_both_inputs_errors(tool) -> None:
+    """With neither agent_json nor agent_json_ref, the edit reports the graph
+    is missing rather than crashing."""
+    session = make_session(_USER_ID)
+    session.metadata = ChatSessionMetadata(builder_graph_id="graph-x")
+
+    result = await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="graph-x",
+        agent_json=None,
+        agent_json_ref=None,
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_agent_json"
+
+
+@pytest.mark.asyncio
 async def test_execute_allows_non_trigger_edit(tool, mocker) -> None:
     """An edit that leaves trigger config untouched flows past the guard into
     the validate-and-save pipeline."""

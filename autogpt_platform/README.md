@@ -16,7 +16,7 @@ To run the AutoGPT Platform, follow these steps:
 1. Clone this repository to your local machine and navigate to the `autogpt_platform` directory within the repository:
 
    ```
-   git clone <https://github.com/Significant-Gravitas/AutoGPT.git | git@github.com:Significant-Gravitas/AutoGPT.git>
+   git clone https://github.com/Significant-Gravitas/AutoGPT.git
    cd AutoGPT/autogpt_platform
    ```
 
@@ -46,7 +46,7 @@ You can now run the following to enable just the core services.
 # For help
 make help
 
-# Run just Supabase + Redis + RabbitMQ
+# Run just Postgres + Redis + RabbitMQ
 make start-core
 
 # Stop core services

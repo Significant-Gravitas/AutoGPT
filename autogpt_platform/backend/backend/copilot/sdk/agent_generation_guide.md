@@ -56,8 +56,12 @@ sampling (step 2), not by deliberation.
    English; put block class names and wiring verbs in the separate
    `block_name` and `action` fields.
 4. **If editing**: First narrow to the specific agent by UUID, then fetch its
-   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
-   returns the full graph structure (nodes + links). **Never edit blindly** —
+   graph: `find_library_agent(agent_id="<agent_id>",
+   write_graph_to="agent.json")`. This writes the full graph (nodes + links)
+   to a workspace file and returns an `@@agptfile` ref — inspect and edit the
+   file with your file tools instead of pulling the whole graph through
+   context. (`include_graph=true` returns it inline instead; only use that
+   for small graphs.) **Never edit blindly** —
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.

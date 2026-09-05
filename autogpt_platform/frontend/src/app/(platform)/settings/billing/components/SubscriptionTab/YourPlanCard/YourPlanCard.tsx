@@ -1,8 +1,6 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react";
-
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
@@ -17,6 +15,8 @@ import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { SwitchTierDialog } from "./SwitchTierDialog";
 import { useYourPlanCard } from "./useYourPlanCard";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   index?: number;
@@ -172,6 +172,8 @@ export function YourPlanCard({ index = 0 }: Props) {
               size="small"
               onClick={onManage}
               disabled={!canManagePortal}
+              data-fast-goal="billing_portal_open"
+              data-fast-goal-surface="settings_billing"
             >
               Manage subscription
             </Button>
@@ -183,9 +185,13 @@ export function YourPlanCard({ index = 0 }: Props) {
               onClick={onUpgrade}
               disabled={isUpdatingTier}
               loading={isUpdatingTier && !plan.nextTierIsTeamLink}
+              data-fast-goal="subscription_upgrade_click"
+              data-fast-goal-from={plan.label}
+              data-fast-goal-to={plan.nextTierLabel}
+              data-fast-goal-surface="settings_billing"
               rightIcon={
                 plan.nextTierIsTeamLink ? (
-                  <ArrowSquareOutIcon size={14} aria-hidden="true" />
+                  <Icon icon={LinkSquare01Icon} size={14} aria-hidden="true" />
                 ) : undefined
               }
             >

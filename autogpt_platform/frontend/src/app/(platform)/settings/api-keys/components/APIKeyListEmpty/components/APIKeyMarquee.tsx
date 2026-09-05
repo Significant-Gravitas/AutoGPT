@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { KeyIcon } from "@phosphor-icons/react";
+import { Key01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const GHOST_CARDS = Array.from({ length: 4 }, (_, i) => i);
 
@@ -39,7 +40,7 @@ export function APIKeyMarquee() {
 function GhostCard() {
   return (
     <div className="flex h-[64px] w-[320px] items-center gap-4 rounded-xl border border-zinc-200/80 bg-white px-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-      <KeyIcon size={18} className="shrink-0 text-zinc-400" />
+      <Icon icon={Key01Icon} size={18} className="shrink-0 text-zinc-400" />
       <div className="h-2.5 flex-1 rounded-full bg-zinc-100" />
     </div>
   );

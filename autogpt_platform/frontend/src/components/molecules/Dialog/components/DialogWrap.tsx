@@ -1,7 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
 import {
   CSSProperties,
@@ -13,6 +12,8 @@ import {
 } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -34,6 +35,7 @@ export function DialogWrap({
   children,
   title,
   styling = {},
+  className,
   isForceOpen,
   handleClose,
 }: Props) {
@@ -96,7 +98,7 @@ export function DialogWrap({
         onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={isForceOpen ? undefined : handleClose}
         aria-describedby={undefined}
-        className={modalStyles.content}
+        className={cn(modalStyles.content, className)}
         style={{
           ...styling,
         }}
@@ -123,7 +125,7 @@ export function DialogWrap({
               className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
               withTooltip={false}
             >
-              <X width="1rem" />
+              <Icon icon={Cancel01Icon} width="1rem" />
             </Button>
           )}
         </div>
@@ -133,11 +135,10 @@ export function DialogWrap({
             className={cn(
               "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,
+              hasVerticalScrollbar
+                ? "-mr-6 [scrollbar-gutter:stable]"
+                : "mr-0 [scrollbar-gutter:auto]",
             )}
-            style={{
-              scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
-            }}
           >
             {children}
           </div>

@@ -1,0 +1,82 @@
+from enum import StrEnum
+from typing import Literal
+
+
+# Stored as plain strings in UserOnboarding.{completedSteps,notified,rewardedFor}
+# so adds/renames/retires are code-only. Writes are validated on the completion
+# endpoint via FrontendOnboardingStep (a Pydantic Literal); reads are validated
+# against this enum, which is why retired members are kept below.
+#
+# Lives in its own module (rather than onboarding.py) so the response model in
+# backend.data.model can type its fields with this enum without importing the
+# onboarding logic layer, which would create an import cycle.
+#
+# The class docstring ships into openapi.json (and the generated frontend
+# client) as the schema description - keep it short and user-facing.
+class OnboardingStep(StrEnum):
+    """Application-level onboarding step identifiers."""
+
+    # Retired steps are kept, never deleted: existing rows may still contain
+    # them and the strict ``list[OnboardingStep]`` response model would 500 on
+    # read otherwise, and the analytics funnel reports on them. Steps marked
+    # ``# deprecated`` below are no longer set by any code path (no writer, not
+    # accepted by the completion endpoint) - keep them; don't use in new code.
+
+    # Introductory onboarding (Library)
+    WELCOME = "WELCOME"
+    USAGE_REASON = "USAGE_REASON"
+    INTEGRATIONS = "INTEGRATIONS"
+    AGENT_CHOICE = "AGENT_CHOICE"
+    AGENT_NEW_RUN = "AGENT_NEW_RUN"
+    AGENT_INPUT = "AGENT_INPUT"
+    CONGRATS = "CONGRATS"
+    # First Wins
+    # ONBOARDING_COMPLETE is the wizard-completion signal that backs the
+    # wallet's "Complete onboarding $3" tile. Renamed from VISIT_COPILOT in
+    # SECRT-2355; existing rows are migrated in-place.
+    ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE"
+    GET_RESULTS = "GET_RESULTS"
+    MARKETPLACE_VISIT = "MARKETPLACE_VISIT"  # deprecated: never set
+    MARKETPLACE_ADD_AGENT = "MARKETPLACE_ADD_AGENT"
+    # Fires on Library runs (source == "library") and is shown to users as a
+    # Library action. Renamed from MARKETPLACE_RUN_AGENT in SECRT-2355 (the
+    # MARKETPLACE_ prefix was a misnomer); existing rows are migrated in-place.
+    LIBRARY_RUN_AGENT = "LIBRARY_RUN_AGENT"
+    BUILDER_SAVE_AGENT = "BUILDER_SAVE_AGENT"  # deprecated: never set
+    # Consistency Challenge
+    RE_RUN_AGENT = "RE_RUN_AGENT"  # deprecated: never set
+    SCHEDULE_AGENT = "SCHEDULE_AGENT"
+    RUN_AGENTS = "RUN_AGENTS"  # deprecated: never set
+    RUN_3_DAYS = "RUN_3_DAYS"
+    # The Pro Playground
+    TRIGGER_WEBHOOK = "TRIGGER_WEBHOOK"
+    RUN_14_DAYS = "RUN_14_DAYS"
+    RUN_AGENTS_100 = "RUN_AGENTS_100"
+    # No longer rewarded but exist for analytical purposes
+    BUILDER_OPEN = "BUILDER_OPEN"
+    BUILDER_RUN_AGENT = "BUILDER_RUN_AGENT"
+    # Copilot home first-run: the capability-cards modal was completed or
+    # skipped. Unrewarded; recorded so it shows only once per user.
+    CAPABILITY_CARDS = "CAPABILITY_CARDS"
+    # First-visit intro card for a tab, dismissed via its CTA or otherwise.
+    # Unrewarded; recorded so each tab introduces itself only once per user.
+    AGENTS_TAB_INTRO = "AGENTS_TAB_INTRO"
+    MARKETPLACE_TAB_INTRO = "MARKETPLACE_TAB_INTRO"
+    BUILD_TAB_INTRO = "BUILD_TAB_INTRO"
+
+
+FrontendOnboardingStep = Literal[
+    OnboardingStep.WELCOME,
+    OnboardingStep.USAGE_REASON,
+    OnboardingStep.INTEGRATIONS,
+    OnboardingStep.AGENT_CHOICE,
+    OnboardingStep.AGENT_NEW_RUN,
+    OnboardingStep.AGENT_INPUT,
+    OnboardingStep.CONGRATS,
+    OnboardingStep.ONBOARDING_COMPLETE,
+    OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.CAPABILITY_CARDS,
+    OnboardingStep.AGENTS_TAB_INTRO,
+    OnboardingStep.MARKETPLACE_TAB_INTRO,
+    OnboardingStep.BUILD_TAB_INTRO,
+]

@@ -19,15 +19,13 @@ import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import {
-  PlayCircleIcon,
-  WarningOctagonIcon,
-} from "@phosphor-icons/react/dist/ssr";
 import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { SignupMarketingPanel } from "./components/SignupMarketingPanel";
 import { useSignupPage } from "./useSignupPage";
+import { Alert02Icon, PlayCircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +45,6 @@ export default function SignupPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable,
     handleSubmit,
     handleProviderSignup,
     handleCloseNotAllowedModal,
@@ -55,16 +52,6 @@ export default function SignupPage() {
 
   if (isUserLoading || isLoggedIn) {
     return <LoadingSignup />;
-  }
-
-  if (!isSupabaseAvailable) {
-    return (
-      <AuthSplitLayout marketing={<SignupMarketingPanel />}>
-        <Text variant="body-medium" className="text-center !text-slate-500">
-          User accounts are disabled because Supabase client is unavailable
-        </Text>
-      </AuthSplitLayout>
-    );
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;
@@ -169,7 +156,7 @@ export default function SignupPage() {
                 </FormItem>
                 {termsError ? (
                   <div className="flex items-center gap-2">
-                    <WarningOctagonIcon className="h-4 w-4 text-red-500" />
+                    <Icon icon={Alert02Icon} className="h-4 w-4 text-red-500" />
                     <Text variant="small-medium" className="!text-red-500">
                       {termsError}
                     </Text>
@@ -214,9 +201,9 @@ export default function SignupPage() {
           href="/tour/chat?utm_source=platform_signup"
           className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50/60 px-4 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-violet-100/60"
         >
-          <PlayCircleIcon
+          <Icon
+            icon={PlayCircleIcon}
             className="size-5 shrink-0 text-violet-600"
-            weight="fill"
           />
           <span>
             Want to see it first?{" "}

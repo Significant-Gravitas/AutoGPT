@@ -1,6 +1,5 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Play } from "@phosphor-icons/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
@@ -9,6 +8,8 @@ import {
   isValidVideoUrl,
 } from "./helpers";
 import { useAgentImageItem } from "./useAgentImageItem";
+import { PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface AgentImageItemProps {
   image: string;
@@ -93,9 +94,9 @@ export function AgentImageItem({
               }
             }}
             rightIcon={
-              <Play
+              <Icon
+                icon={PlayIcon}
                 size={20}
-                weight="fill"
                 className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
               />
             }

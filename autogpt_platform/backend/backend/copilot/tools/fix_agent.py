@@ -3,16 +3,19 @@
 import difflib
 import json
 import logging
-import os
-import re
 from typing import Any
 
-from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
+from .agent_json_input import (
+    AGENT_JSON_REF_SCHEMA,
+    AGENT_JSON_SCHEMA,
+    resolve_agent_json_or_error,
+    write_agent_json_to_workspace,
+)
 from .base import BaseTool
-from .helpers import coerce_agent_json, require_guide_read
+from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -43,14 +46,8 @@ class FixAgentGraphTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_json": {
-                    "type": ["object", "string"],
-                    "description": (
-                        "The agent JSON to fix ('nodes' + 'links' arrays), or "
-                        'the string "@@agptfile:<path>" to a JSON file '
-                        "(preferred for large graphs)."
-                    ),
-                },
+                "agent_json": AGENT_JSON_SCHEMA,
+                "agent_json_ref": AGENT_JSON_REF_SCHEMA,
                 "write_to": {
                     "type": "string",
                     "description": (
@@ -61,7 +58,7 @@ class FixAgentGraphTool(BaseTool):
                     ),
                 },
             },
-            "required": ["agent_json"],
+            "required": [],
         }
 
     async def _execute(
@@ -69,6 +66,7 @@ class FixAgentGraphTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         agent_json: dict | str | None = None,
+        agent_json_ref: str | None = None,
         write_to: str = "",
         **kwargs,
     ) -> ToolResponseBase:
@@ -78,16 +76,23 @@ class FixAgentGraphTool(BaseTool):
         if guide_gate is not None:
             return guide_gate
 
-        agent_json = coerce_agent_json(agent_json)
-        if not agent_json:
-            return ErrorResponse(
-                message=(
-                    "Please provide a valid agent JSON object, or the string "
-                    '"@@agptfile:<path>" referencing a JSON file.'
-                ),
-                error="Missing or invalid agent_json parameter",
-                session_id=session_id,
-            )
+        agent_json, resolve_error = await resolve_agent_json_or_error(
+            agent_json=agent_json,
+            agent_json_ref=agent_json_ref,
+            user_id=user_id,
+            session=session,
+            session_id=session_id,
+            missing_message=(
+                "Please provide a valid agent JSON object via agent_json (inline "
+                'or an "@@agptfile:<path>" string), or agent_json_ref pointing '
+                "at the workspace agent file."
+            ),
+            missing_error="Missing or invalid agent_json parameter",
+            invalid_error="Missing or invalid agent_json parameter",
+        )
+        if resolve_error is not None:
+            return resolve_error
+        assert agent_json is not None  # narrowed: resolve_error covers the None case
 
         nodes = agent_json.get("nodes", [])
 
@@ -133,8 +138,14 @@ class FixAgentGraphTool(BaseTool):
         fixed_ref: str | None = None
         fix_diff: str | None = None
         if write_to := write_to.strip():
-            fixed_ref, write_note = await _write_fixed_agent(
-                fixed_agent, write_to, user_id, session_id
+            fixed_ref, write_note = await write_agent_json_to_workspace(
+                fixed_agent,
+                write_to,
+                user_id,
+                session_id,
+                label="Fixed JSON",
+                pass_to="create_agent/edit_agent",
+                fallback_note="returning the fixed JSON inline instead.",
             )
             message += write_note
             if fixed_ref and fixes_applied:
@@ -151,50 +162,6 @@ class FixAgentGraphTool(BaseTool):
             remaining_errors=remaining_errors if not is_valid else [],
             session_id=session_id,
         )
-
-
-async def _write_fixed_agent(
-    fixed_agent: dict[str, Any],
-    write_to: str,
-    user_id: str | None,
-    session_id: str | None,
-) -> tuple[str | None, str]:
-    """Write the fixed agent JSON to a workspace file, pretty-printed.
-
-    Returns (file reference to pass to create_agent/edit_agent, message
-    note). On any failure the reference is None and the note explains the
-    fallback to inline JSON.
-    """
-    if not re.fullmatch(r"[\w][\w.-]*", write_to):
-        return None, (
-            f" NOTE: write_to must be a plain filename (got {write_to!r}); "
-            "returning the fixed JSON inline instead."
-        )
-    if not user_id or not session_id:
-        return None, (
-            " NOTE: write_to requires an authenticated session; "
-            "returning the fixed JSON inline instead."
-        )
-    try:
-        manager = await get_workspace_manager(user_id, session_id)
-        rec = await manager.write_file(
-            content=json.dumps(fixed_agent, indent=2).encode("utf-8"),
-            filename=write_to,
-            overwrite=True,
-            metadata={"origin": "agent-created"},
-        )
-    except Exception as e:
-        logger.warning(f"fix_agent_graph: failed to write {write_to!r}: {e}")
-        return None, (
-            f" NOTE: could not write {os.path.basename(write_to)}; "
-            "returning the fixed JSON inline instead."
-        )
-    ref = f"@@agptfile:workspace://{rec.path}"
-    return ref, (
-        f" Fixed JSON written to workspace file {rec.path} — pass "
-        f'agent_json="{ref}" to create_agent/edit_agent (do not re-emit '
-        "the JSON)."
-    )
 
 
 _MAX_DIFF_CHARS = 4000

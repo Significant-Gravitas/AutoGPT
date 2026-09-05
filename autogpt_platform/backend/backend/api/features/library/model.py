@@ -132,6 +132,19 @@ class MarketplaceListing(pydantic.BaseModel):
     creator: MarketplaceListingCreator
 
 
+class LibraryAgentRef(pydantic.BaseModel):
+    """Just enough of a library agent to label and deep-link a run.
+
+    Deliberately cheap: no relation includes, no schedule info, unlike
+    :class:`LibraryAgent`. Used where a caller only needs to turn a set of
+    graph ids into display names and links.
+    """
+
+    id: str
+    graph_id: str
+    name: str
+
+
 class RecentExecution(pydantic.BaseModel):
     """Summary of a recent execution for quality assessment.
 
@@ -175,6 +188,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    last_run_at: datetime.datetime | None = None
 
     name: str
     description: str
@@ -347,8 +361,17 @@ class LibraryAgent(pydantic.BaseModel):
             status=status,
             created_at=created_at,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
+            last_run_at=agent.lastRunAt,
+            # Prefer the marketplace title/description snapshotted at download
+            # time; fall back to the graph's own values for user-created agents
+            # (which have no snapshot). `is not None` so an intentionally empty
+            # published value is preserved rather than replaced by the graph's.
+            name=agent.name if agent.name is not None else graph.name,
+            description=(
+                agent.description
+                if agent.description is not None
+                else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
@@ -512,6 +535,10 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     webhook_id: Optional[str] = None
     webhook: "Webhook | None"
 
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
+
     @pydantic.field_serializer("webhook")
     def _redact_webhook_signing_material(
         self, webhook: "Webhook | None", info: pydantic.FieldSerializationInfo
@@ -562,6 +589,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             team_id=preset.teamId,
             webhook_id=preset.webhookId,
             webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            expert_id=preset.expertId,
         )
 
 
@@ -570,6 +598,23 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 
     presets: list[LibraryAgentPreset]
     pagination: Pagination
+
+
+class SkippedWebhookPreset(pydantic.BaseModel):
+    """A webhook preset that was left pinned to its old version because the
+    newly activated version swaps or reconfigures the trigger block. The user
+    needs to reconfigure the trigger on the new version for it to fire."""
+
+    id: str
+    name: str
+    pinned_version: int
+
+
+class WebhookPresetMigrationResult(pydantic.BaseModel):
+    """Outcome of migrating webhook-attached presets to a new graph version."""
+
+    migrated_count: int = 0
+    skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
 
 
 class LibraryAgentFilter(str, Enum):
@@ -584,6 +629,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_RUN = "lastRunAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):

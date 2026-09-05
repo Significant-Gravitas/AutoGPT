@@ -3,12 +3,13 @@ import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
 import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
@@ -56,14 +57,14 @@ export const MainSearchResultPage = ({
   }
   return (
     <div className="w-full">
-      <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
+      <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         <div className="mb-4 mt-5">
           <Button
             variant="secondary"
             size="small"
             as="NextLink"
             href="/marketplace"
-            leftIcon={<ArrowLeftIcon size={16} />}
+            leftIcon={<Icon icon={ArrowLeft02Icon} size={16} />}
           >
             Go back
           </Button>

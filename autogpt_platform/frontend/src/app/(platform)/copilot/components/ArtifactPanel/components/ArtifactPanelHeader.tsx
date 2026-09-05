@@ -6,16 +6,17 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import {
-  ArrowLeftIcon,
-  CopyIcon,
-  DownloadSimpleIcon,
-  FolderIcon,
-  XIcon,
-} from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";
+import {
+  ArrowLeft02Icon,
+  Cancel01Icon,
+  Copy01Icon,
+  Download01Icon,
+  Folder01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   artifact: ArtifactRef;
@@ -30,6 +31,10 @@ interface Props {
   onDownload: () => void;
   onOpenFiles: () => void;
   onSourceToggle: (isSource: boolean) => void;
+  /** True when a control outside the panel (the chat's sidebar-right
+   *  toggle) already closes it — standalone hosts (share viewer, tour,
+   *  mobile drawer) have no such control and keep the header Close. */
+  hasExternalClose?: boolean;
 }
 
 function HeaderButton({
@@ -71,19 +76,27 @@ export function ArtifactPanelHeader({
   onDownload,
   onOpenFiles,
   onSourceToggle,
+  hasExternalClose = false,
 }: Props) {
-  const Icon = classification.icon;
-
+  // An expert is not a workspace file: nothing to download, and "All files"
+  // would strand the user in the wrong tab.
+  const isFile = !artifact.expert;
+  // Height matches the chat thread header (36px avatar + py-2 + border) so
+  // the two top bars share one seam across the panel split.
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3 py-2">
+    <div className="sticky top-0 z-10 flex h-[53px] items-center gap-2 border-b border-b-[#80808017] bg-sidebar px-3">
       {/* Left section */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
-            <ArrowLeftIcon size={16} />
+            <Icon icon={ArrowLeft02Icon} size={16} />
           </HeaderButton>
         )}
-        <Icon size={16} className="shrink-0 text-zinc-400" />
+        <Icon
+          icon={classification.icon}
+          size={16}
+          className="shrink-0 text-zinc-400"
+        />
         <span className="truncate text-sm font-medium text-zinc-900">
           {artifact.title}
         </span>
@@ -106,18 +119,24 @@ export function ArtifactPanelHeader({
         )}
         {canCopy && (
           <HeaderButton onClick={onCopy} title="Copy">
-            <CopyIcon size={16} />
+            <Icon icon={Copy01Icon} size={16} />
           </HeaderButton>
         )}
-        <HeaderButton onClick={onDownload} title="Download">
-          <DownloadSimpleIcon size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onOpenFiles} title="All files">
-          <FolderIcon size={16} />
-        </HeaderButton>
-        <HeaderButton onClick={onClose} title="Close">
-          <XIcon size={16} />
-        </HeaderButton>
+        {isFile && (
+          <HeaderButton onClick={onDownload} title="Download">
+            <Icon icon={Download01Icon} size={16} />
+          </HeaderButton>
+        )}
+        {isFile && (
+          <HeaderButton onClick={onOpenFiles} title="All files">
+            <Icon icon={Folder01Icon} size={16} />
+          </HeaderButton>
+        )}
+        {!hasExternalClose && (
+          <HeaderButton onClick={onClose} title="Close">
+            <Icon icon={Cancel01Icon} size={16} />
+          </HeaderButton>
+        )}
       </div>
     </div>
   );
