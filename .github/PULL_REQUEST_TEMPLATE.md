@@ -1,3 +1,9 @@
+### Flag-off behavior 🚩
+
+- [ ] This PR changes flag-off behavior — rationale:
+
+---
+
 ### Why / What / How
 
 <!-- Why: Why does this PR exist? What problem does it solve, or what's broken/missing without it? -->
