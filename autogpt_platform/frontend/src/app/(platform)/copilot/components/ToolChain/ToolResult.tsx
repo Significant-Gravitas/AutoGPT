@@ -52,7 +52,7 @@ import {
   str,
   stripBaseFields,
 } from "./resultHelpers";
-import { SubSessionPendingCard } from "./SubSessionLive";
+import { SubSessionPendingCard } from "./SubSessionLive/components/SubSessionPendingCard";
 import {
   FileCard,
   KeyValueList,
