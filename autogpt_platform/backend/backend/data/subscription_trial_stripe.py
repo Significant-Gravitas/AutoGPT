@@ -11,17 +11,10 @@ from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState, get_subscription_trial
 from backend.data.subscription_trial_config import AcceptedTrialOffer
-
-
-class Card(BaseModel):
-    exp_month: int
-    exp_year: int
-
-
-class PaymentMethod(BaseModel):
-    id: str
-    type: str
-    card: Card | None = None
+from backend.data.subscription_trial_payment import (
+    PaymentMethod,
+    get_customer_default_payment_method,
+)
 
 
 class Invoice(BaseModel):
@@ -54,6 +47,8 @@ class SubscriptionSnapshot(BaseModel):
     trial_end: int | None = None
     cancel_at_period_end: bool = False
     default_payment_method: PaymentMethod | None = None
+    default_source: str | dict | None = None
+    customer_default_payment_method: PaymentMethod | None = None
     pending_setup_intent: str | dict | None = None
     latest_invoice: Invoice | None = None
     items: SubscriptionItems | None = None
@@ -69,6 +64,8 @@ class SubscriptionSnapshot(BaseModel):
 
     def has_verified_card(self, now: datetime) -> bool:
         method = self.default_payment_method
+        if method is None and self.default_source is None:
+            method = self.customer_default_payment_method
         return bool(
             method
             and method.type == "card"
@@ -119,6 +116,10 @@ async def _reconcile_locked(
     if trial.converted_at is None and not snapshot.has_accepted_price(trial.offer):
         raise ValueError(
             "Stripe items do not match the accepted trial price and quantity"
+        )
+    if snapshot.default_payment_method is None and snapshot.default_source is None:
+        snapshot.customer_default_payment_method = (
+            await get_customer_default_payment_method(trial.customer_id)
         )
     now = datetime.now(UTC)
     checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(

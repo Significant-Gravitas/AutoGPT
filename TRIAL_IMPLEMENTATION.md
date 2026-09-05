@@ -411,3 +411,65 @@ Implementation checkpoint: `a415e380c3`. All configured commit hooks passed.
   hosted test session is still sandbox-only and open. Native Safari control is
   now available through Cua without enabling browser debugging; completion and
   backend fulfillment are being verified separately from these frontend tests.
+
+## Hosted Checkout and customer-default card checkpoint
+
+- Completed the owned AutoGPT sandbox Checkout through native Safari using Cua
+  and Stripe's published 4242 test card, with no real card data or live charge.
+  The session above is now `complete`, `livemode=false`, amount due/paid today 0,
+  subscription `sub_1UC8zcEVwK4k8ivIspFi5QqV`. The $50/month, seven-day offer
+  remains a test fixture, not the chosen launch offer. This supersedes the
+  earlier hosted-interaction limitation; no browser debugging was enabled.
+- Before backend confirmation, the local user remained NO_TIER with unconsumed
+  eligibility despite Stripe Checkout being complete. Calling the real backend
+  confirmation granted TRIAL with a verified card and no pending setup. Repeated
+  confirmation retained the same enrollment and subscription. Stripe's initial
+  paid $0 `subscription_create` invoice did not incorrectly grant a paid tier.
+- Activation and repeated confirmation produced **zero credit transactions**.
+  Calling the real onboarding-completion function twice then produced exactly
+  one **300-credit** grant and balance 300, keyed by the existing
+  `REWARD-{user_id}-ONBOARDING_COMPLETE` identity. No credit-model or notification
+  function was mocked in this sandbox/local-database check. Earlier-recipient
+  no-top-up behavior also remains covered by the disposable database suite.
+- Scheduling cancellation through the test Stripe API, then running actual
+  backend reconciliation, retained trial access through the original end date.
+  Repeated cancellation kept notification revision 1. This does not prove the
+  authenticated cancellation HTTP route or rendered app behavior. The owned test
+  subscription is left scheduled to cancel rather than convert to a test charge.
+- Moving the already-verified test card to the customer's billing default and
+  clearing the subscription-specific default reproduced a real bug: the backend
+  removed trial access although Stripe still had the valid effective card.
+  Reconciliation now reads the customer's expanded invoice default only when
+  neither a subscription payment method nor a legacy subscription source exists.
+  Subscription precedence, card type/expiry, pending setup, and ownership checks
+  remain enforced. Customer lookup failures do not commit a new entitlement.
+- After the fix, that same customer-default card restored the original trial.
+  Clearing the effective billing default changed the local user to NO_TIER;
+  restoring it restored TRIAL. All transitions preserved consumption, end date,
+  cancellation, and the single onboarding grant. The final Stripe and local
+  snapshots both report a verified effective card and active trial.
+- Added **13 card-fallback regression cases**, including three reproduced
+  expected failures before implementation; all expected-failure markers were
+  removed. Shared fulfillment fixtures avoid duplicating test setup. Final
+  verification: **249 selected trial/billing/onboarding tests**, **29 disposable
+  database tests**, whole-backend formatting/type checks, and `git diff --check`
+  passed. An earlier selected run was interrupted after 104 passing cases because
+  its Redis settings were not pinned; the completed rerun used the owned local
+  database and Redis containers explicitly. Existing dependency/test warnings
+  remain, with no suppressions or gates changed.
+- CI at preceding head `2905c3948379d1d689532b8d42fe5e2350d76d7d` completed with
+  no pending or failed checks. Final frontend patch coverage was **83.06% / 70%**
+  and backend **85.50% / 80%**. The earlier lower frontend number was an interim
+  result before its unit-test upload. This evidence does not cover the newer
+  customer-default fix until its own CI completes. The PR remains draft with
+  independent review required.
+- Still unverified: hosted declines/3DS and actual app return/auth flow; real
+  webhook delivery and the deployed API version; portal-driven card replacement;
+  legacy-source handling beyond fail-closed behavior; real email delivery/rendering
+  and suppressed-notice recovery; concurrent/in-flight spend guarantees; broader
+  billing account isolation; final offer/conversion choices, configuration,
+  staging, and the explicitly approved live rollout. Nothing is live.
+
+Stripe references: [published test cards](https://docs.stripe.com/testing),
+[customer and subscription payment defaults](https://docs.stripe.com/payments/checkout/subscriptions/update-payment-details),
+and [subscription payment-source precedence](https://docs.stripe.com/api/subscriptions/object).
