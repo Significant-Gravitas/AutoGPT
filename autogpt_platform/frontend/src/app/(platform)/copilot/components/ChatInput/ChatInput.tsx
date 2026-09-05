@@ -83,6 +83,12 @@ interface Props {
   stacked?: boolean;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
+  /**
+   * Replaces the composer's controls while voice mode is on: typing,
+   * attachments and send do nothing hands-free, and a bar of its own above
+   * the composer covered the last message's buttons.
+   */
+  voiceBar?: ReactNode;
 }
 
 export function ChatInput({
@@ -103,6 +109,7 @@ export function ChatInput({
   recipientPicker,
   stacked = false,
   voiceToggle,
+  voiceBar,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -295,6 +302,7 @@ export function ChatInput({
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        {voiceBar}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -305,6 +313,9 @@ export function ChatInput({
           className={cn(
             "flex w-full flex-wrap",
             stacked ? "items-center" : "items-end",
+            // tailwind-merge drops `flex` for `hidden`: the draft and the
+            // attachments survive the round trip through voice mode.
+            voiceBar && "hidden",
           )}
         >
           <InputGroupAddon

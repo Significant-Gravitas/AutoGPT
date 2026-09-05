@@ -1,8 +1,12 @@
+import { act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { render, screen } from "@/tests/integrations/test-utils";
 
+import { reportMicLevel } from "../micLevel";
+
 import { VoiceModeBar } from "../components/VoiceModeBar";
+import { TICK_MS } from "../components/VoiceTrace";
 import { VoiceModeButton } from "../components/VoiceModeButton";
 
 describe("VoiceModeBar", () => {
@@ -39,9 +43,37 @@ describe("VoiceModeBar", () => {
     rerender(
       <VoiceModeBar state="speaking" statusLabel="Speaking" onStop={vi.fn()} />,
     );
-    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Stop speaking" })).toBeDefined();
+  });
+
+  it("draws the mic level while the mic is open, and stops when it shuts", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <VoiceModeBar state="hearing" statusLabel="Hearing" onStop={vi.fn()} />,
+    );
+
+    reportMicLevel(0.9);
+    act(() => void vi.advanceTimersByTime(TICK_MS));
+    const loud = newestColumn(container);
+
+    // Nothing reported since — a shut mic reads as silence within one tick.
+    act(() => void vi.advanceTimersByTime(TICK_MS));
+    expect(newestColumn(container)).toBeLessThan(loud);
+
+    // Thinking has no input to draw, so the trace must not read as silence.
+    rerender(
+      <VoiceModeBar state="thinking" statusLabel="Thinking" onStop={vi.fn()} />,
+    );
+    act(() => void vi.advanceTimersByTime(TICK_MS * 3));
+    expect(newestColumn(container)).toBeGreaterThan(0);
+    vi.useRealTimers();
   });
 });
+
+function newestColumn(container: HTMLElement): number {
+  const columns = container.querySelectorAll<HTMLElement>("span[style]");
+  return parseFloat(columns[columns.length - 1].style.height);
+}
 
 describe("VoiceModeButton", () => {
   it("labels itself by what the click will do", () => {

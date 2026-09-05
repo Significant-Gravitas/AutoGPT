@@ -15,6 +15,7 @@ from backend.copilot.executor.utils import (
     CoPilotLogMetadata,
     create_copilot_queue_config,
 )
+from backend.copilot.prompting import VOICE_TURN_TAG
 
 
 @pytest.mark.asyncio
@@ -160,3 +161,61 @@ class TestCoPilotLogMetadata:
             base_logger, session_id="s1", user_id=None, turn_id="t1"
         )
         assert log is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> None:
+    # The services dedup the dispatched message against the row saved here.
+    # When the two diverged, the turn was saved twice — once with the prefix
+    # and once without.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+            voice=True,
+        )
+
+    persisted = append.await_args.args[1].content
+    assert persisted == dispatch.await_args.kwargs["message"]
+    assert persisted.startswith(f"<{VOICE_TURN_TAG}>")
+    assert persisted.endswith("what did I run yesterday")
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+        )
+
+    assert append.await_args.args[1].content == "what did I run yesterday"
+    assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"

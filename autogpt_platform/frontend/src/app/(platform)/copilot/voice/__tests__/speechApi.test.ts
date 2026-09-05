@@ -26,32 +26,10 @@ describe("synthesizeSpeech", () => {
     expect(JSON.parse(init!.body as string)).toEqual({
       text: "A first phrase.",
       session_id: "session-1",
-      kind: "reply",
     });
     expect((init!.headers as Record<string, string>).Authorization).toBe(
       "Bearer test",
     );
-  });
-
-  it("serves a repeated phrase from cache — the acknowledgement bank repeats", async () => {
-    await synthesizeSpeech("One moment.", null);
-    await synthesizeSpeech("One moment.", null);
-
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("asks for the acknowledgement delivery when told to", async () => {
-    await synthesizeSpeech("On it.", null, "acknowledgement");
-
-    const [, init] = vi.mocked(fetch).mock.calls[0];
-    expect(JSON.parse(init!.body as string).kind).toBe("acknowledgement");
-  });
-
-  it("does not serve one delivery's audio for the other", async () => {
-    await synthesizeSpeech("Right.", null, "acknowledgement");
-    await synthesizeSpeech("Right.", null, "reply");
-
-    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces the status code when synthesis is refused", async () => {

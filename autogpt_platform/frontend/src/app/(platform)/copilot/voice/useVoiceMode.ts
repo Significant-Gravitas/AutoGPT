@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
-import { pickAcknowledgement } from "./acknowledgements";
+import { playClickSound, primeClickSound } from "./clickSound";
 import {
   describeVoiceState,
   isMicOpen,
@@ -70,7 +70,6 @@ export function useVoiceMode({
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const reader = useRef(createReplyTextReader());
   const chunkBuffer = useRef("");
-  const lastPhrase = useRef<string | null>(null);
   const replyDone = useRef(false);
   const spokeThisTurn = useRef(false);
   const lastMessageId = useRef("");
@@ -134,6 +133,7 @@ export function useVoiceMode({
     setStarting(true);
     // Unlocking here, inside the click, is what lets later chunks play at all.
     player().unlock();
+    primeClickSound();
 
     let session: VadSession;
     try {
@@ -210,7 +210,7 @@ export function useVoiceMode({
     const mine = activation.current;
     utteranceEndedAt.current = Date.now();
     dispatch({ type: "SPEECH_END" });
-    acknowledge();
+    playClickSound();
 
     let transcript = "";
     try {
@@ -344,12 +344,6 @@ export function useVoiceMode({
     });
   }
 
-  function acknowledge() {
-    const phrase = pickAcknowledgement(lastPhrase.current);
-    lastPhrase.current = phrase;
-    player().enqueue(phrase, "acknowledgement");
-  }
-
   function dispatch(event: VoiceEvent) {
     const next = voiceReduce(stateRef.current, event);
     if (next === stateRef.current) return;
@@ -381,8 +375,7 @@ export function useVoiceMode({
   function player(): SpeechPlayer {
     if (!playerRef.current) {
       playerRef.current = createSpeechPlayer({
-        synthesize: (text, kind) =>
-          synthesizeSpeech(text, inputs.current.sessionId, kind),
+        synthesize: (text) => synthesizeSpeech(text, inputs.current.sessionId),
         onIdle: () => {
           if (replyDone.current) dispatch({ type: "REPLY_DONE" });
         },

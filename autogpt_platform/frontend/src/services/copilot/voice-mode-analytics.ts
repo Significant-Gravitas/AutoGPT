@@ -28,8 +28,8 @@ type VoiceModeEvent =
   // streaming session; this route uploads the whole clip, so it is the
   // number that decides whether streaming STT is worth building.
   | "voice_transcribe_latency_ms"
-  // Speech end to first audio out — what the user experiences as "did it
-  // hear me". Includes the canned acknowledgement.
+  // Speech end to the first spoken word. The click answers "did it hear
+  // me" instantly; this measures how long the answer itself takes.
   | "voice_first_sound_latency_ms"
   // The mic reopened after a reply finished playing: a full loop closed.
   | "voice_turn_completed"

@@ -358,11 +358,6 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
-                    <VoiceModeBar
-                      state={voice.state}
-                      statusLabel={voice.statusLabel}
-                      onStop={voice.stop}
-                    />
                     <Tooltip open={isLimitReached ? undefined : false}>
                       <TooltipTrigger asChild>
                         <div>
@@ -389,6 +384,21 @@ export const ChatContainer = ({
                                     voice.isStarting
                                   }
                                   onClick={voice.toggle}
+                                />
+                              ) : undefined
+                            }
+                            voiceBar={
+                              voice.isActive ? (
+                                <VoiceModeBar
+                                  state={voice.state}
+                                  statusLabel={voice.statusLabel}
+                                  onStop={voice.stop}
+                                  leaveButton={
+                                    <VoiceModeButton
+                                      isActive
+                                      onClick={voice.toggle}
+                                    />
+                                  }
                                 />
                               ) : undefined
                             }

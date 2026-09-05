@@ -3,6 +3,8 @@
  * onnxruntime.
  */
 
+import { reportMicLevel } from "./micLevel";
+
 const VAD_OPTIONS = {
   positiveSpeechThreshold: 0.6,
   negativeSpeechThreshold: 0.45,
@@ -43,6 +45,9 @@ export async function startVadSession(
     baseAssetPath: ASSET_PATH,
     onnxWASMBasePath: ASSET_PATH,
     onSpeechStart: callbacks.onSpeechStart,
+    // Frames stop arriving while the VAD is paused, which is what makes the
+    // level indicator go flat exactly when the mic is shut.
+    onFrameProcessed: (_probabilities, frame) => reportMicLevel(rms(frame)),
     onVADMisfire: callbacks.onMisfire,
     onSpeechEnd: (audio) => {
       const wav = utils.encodeWAV(audio, 1, 16000, 1, 16);
@@ -57,4 +62,10 @@ export async function startVadSession(
     resume: () => void vad.start(),
     destroy: () => vad.destroy(),
   };
+}
+
+function rms(frame: Float32Array): number {
+  let sum = 0;
+  for (const sample of frame) sum += sample * sample;
+  return Math.sqrt(sum / frame.length);
 }

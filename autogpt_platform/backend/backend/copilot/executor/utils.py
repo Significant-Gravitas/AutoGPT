@@ -526,7 +526,15 @@ async def schedule_chat_turn(
     from uuid import uuid4
 
     from backend.copilot.model import ChatMessage, append_and_save_message
+    from backend.copilot.prompting import VOICE_TURN_PREFIX
     from backend.copilot.tracking import track_user_message
+
+    # Prefix before persistence, not after: the services dedup the incoming
+    # message against the row saved here, and a prefix applied later fails
+    # that match and saves the turn a second time. Display strips it again.
+    raw_message_length = len(message)
+    if message and voice and is_user_message:
+        message = VOICE_TURN_PREFIX + message
 
     async with acquire_turn_slot(user_id, session_id) as slot:
         if message_already_persisted and not slot.admitted:
@@ -546,7 +554,7 @@ async def schedule_chat_turn(
                 track_user_message(
                     user_id=user_id,
                     session_id=session_id,
-                    message_length=len(message),
+                    message_length=raw_message_length,
                 )
 
         if is_duplicate:

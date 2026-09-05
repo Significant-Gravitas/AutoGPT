@@ -26016,13 +26016,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Voice",
             "description": "Overrides the configured default voice."
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["reply", "acknowledgement"],
-            "title": "Kind",
-            "description": "Picks the delivery instruction; a canned acknowledgement is read far too heavily by the one written for prose.",
-            "default": "reply"
           }
         },
         "type": "object",

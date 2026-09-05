@@ -1372,14 +1372,6 @@ class ChatConfig(BaseSettings):
         description="Playback rate for synthesis. The instruction alone barely "
         "moves comma-heavy listings; this does (12.6s to 10.3s at 1.3).",
     )
-    voice_tts_ack_instructions: str = Field(
-        default=(
-            "A two-second aside, as if glancing up mid-task. Brisk, friendly, "
-            "with a little lift — not flat, not an announcement."
-        ),
-        description="Delivery instruction for the canned acknowledgements. They "
-        "are short fragments, which the reply instruction reads far too heavily.",
-    )
     voice_tts_usd_per_1k_chars: float = Field(
         default=0.02,
         description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "

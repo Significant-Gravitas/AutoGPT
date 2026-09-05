@@ -42,6 +42,12 @@ vi.mock("../speechApi", () => ({
   transcribeUtterance: vi.fn(() => transcribe()),
 }));
 
+const clicks: string[] = [];
+vi.mock("../clickSound", () => ({
+  playClickSound: () => clicks.push("play"),
+  primeClickSound: () => clicks.push("prime"),
+}));
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
@@ -66,6 +72,7 @@ describe("useVoiceMode", () => {
     setVoiceTurnActive(false);
     takeVoiceStart();
     spoken.length = 0;
+    clicks.length = 0;
     sessions.length = 0;
     vadLoad = Promise.resolve();
     transcribe = async () => transcript;
@@ -101,29 +108,28 @@ describe("useVoiceMode", () => {
     expect(vad.resume).toHaveBeenCalled();
   });
 
-  it("acknowledges before the transcript has even arrived", async () => {
+  it("clicks the moment the user stops, before the transcript arrives", async () => {
     const view = render({});
     await enable(view);
     await speak();
 
-    expect(spoken.length).toBeGreaterThan(0);
-    expect(spoken[0]).not.toContain("Slack");
+    expect(clicks).toContain("play");
   });
 
-  it("speaks exactly one acknowledgement, however long the reply takes", async () => {
+  it("buys no speech while the model thinks", async () => {
+    // The model's first token is a median 13.9 s out. Nothing may fill that
+    // gap: a second cue reads as a glitch, and synthesis is real money.
     vi.useFakeTimers();
     const view = render({});
     await enable(view);
     await speak();
-    expect(spoken).toHaveLength(1);
 
-    // The model's first token is a median 13.9 s out. Nothing may fill that
-    // gap with a second phrase — two in a row read as a glitch.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20_000);
     });
 
-    expect(spoken).toHaveLength(1);
+    expect(spoken).toHaveLength(0);
+    expect(clicks.filter((c) => c === "play")).toHaveLength(1);
     vi.useRealTimers();
   });
 
