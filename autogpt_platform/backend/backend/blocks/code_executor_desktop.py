@@ -5,6 +5,7 @@ from e2b import AsyncSandbox, CommandExitException, TimeoutException
 from e2b_desktop import Sandbox as DesktopSandbox
 
 logger = logging.getLogger(__name__)
+_cleanup_tasks: set[asyncio.Task[None]] = set()
 
 
 async def create_desktop_sandbox(
@@ -22,13 +23,21 @@ async def create_desktop_sandbox(
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:
-        try:
-            sandbox_id, _ = await task
-        except Exception:
-            pass
-        else:
-            await kill_desktop_sandbox(api_key, sandbox_id)
+        cleanup = asyncio.create_task(_cleanup_cancelled_creation(task, api_key))
+        _cleanup_tasks.add(cleanup)
+        cleanup.add_done_callback(_cleanup_tasks.discard)
         raise
+
+
+async def _cleanup_cancelled_creation(
+    task: asyncio.Task[tuple[str, str]], api_key: str
+) -> None:
+    try:
+        sandbox_id, _ = await task
+    except Exception:
+        logger.warning("Desktop provisioning failed after cancellation")
+        return
+    await kill_desktop_sandbox(api_key, sandbox_id)
 
 
 async def kill_desktop_sandbox(api_key: str, sandbox_id: str) -> None:

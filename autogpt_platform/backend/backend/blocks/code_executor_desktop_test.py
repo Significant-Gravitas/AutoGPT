@@ -174,12 +174,15 @@ async def test_missing_interpreter_fails_clearly_and_cleans_up():
     sandbox.kill.assert_called_once()
 
 
-async def test_cancelled_creation_cleans_up_when_worker_finishes():
+@pytest.mark.parametrize("worker_error", [False, True])
+async def test_cancelled_creation_cleans_up_when_worker_finishes(worker_error, caplog):
     started, finish = asyncio.Event(), asyncio.Event()
 
     async def worker(*args):
         started.set()
         await finish.wait()
+        if worker_error:
+            raise RuntimeError("provisioning failed")
         return "desktop-id", "https://preview.example"
 
     with (
@@ -191,10 +194,24 @@ async def test_cancelled_creation_cleans_up_when_worker_finishes():
         task = asyncio.create_task(create_desktop_sandbox("key", "custom", 300))
         await started.wait()
         task.cancel()
-        finish.set()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-    kill.assert_awaited_once_with("key", "desktop-id")
+        try:
+            done, _ = await asyncio.wait({task}, timeout=0.1)
+            assert task in done
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            kill.assert_not_awaited()
+        finally:
+            finish.set()
+            await asyncio.gather(task, return_exceptions=True)
+            for _ in range(10):
+                if kill.await_count or caplog.records:
+                    break
+                await asyncio.sleep(0)
+    if worker_error:
+        kill.assert_not_awaited()
+        assert "Desktop provisioning failed after cancellation" in caplog.text
+    else:
+        kill.assert_awaited_once_with("key", "desktop-id")
 
 
 async def test_setup_commands_execute_in_reconnected_desktop_before_code():
