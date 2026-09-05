@@ -34,6 +34,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
+    from backend.copilot.tree import TurnEnvelope
     from backend.data.execution import ExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -389,6 +390,7 @@ class AutoPilotBlock(Block):
         max_recursion_depth: int,
         user_id: str,
         permissions: "CopilotPermissions | None" = None,
+        spawner_envelope: "TurnEnvelope | None" = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot on the copilot_executor queue and aggregate the
         result.
@@ -407,6 +409,10 @@ class AutoPilotBlock(Block):
             max_recursion_depth: Maximum allowed recursion nesting.
             user_id: Authenticated user ID.
             permissions: Optional capability filter restricting tools/blocks.
+            spawner_envelope: The copilot turn that started this graph, rebuilt
+                from the execution context. Keeps a nested agent turn inside
+                the tree that spawned it; ``None`` roots a new tree, which is
+                what a user-started graph run should do.
 
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
@@ -414,6 +420,7 @@ class AutoPilotBlock(Block):
         from backend.copilot.sdk.session_waiter import (
             run_copilot_turn_via_queue,  # avoid circular import
         )
+        from backend.copilot.tree import SpawnRequest
 
         tokens = _check_recursion(max_recursion_depth)
         perm_token = None
@@ -429,6 +436,12 @@ class AutoPilotBlock(Block):
                 session_id=session_id,
                 user_id=user_id,
                 message=effective_prompt,
+                # Contextvars do not cross the process boundary into the graph
+                # executor, so without this the turn would look parentless and
+                # root a fresh, unbounded tree. The spawning turn's identity
+                # rides in the execution context instead.
+                spawner_envelope=spawner_envelope,
+                spawn=SpawnRequest(may_spawn=True),
                 # Graph block execution is synchronous from the caller's
                 # perspective — wait effectively as long as needed. The
                 # SDK enforces its own idle-based timeout inside the
@@ -648,6 +661,7 @@ class AutoPilotBlock(Block):
                 max_recursion_depth=input_data.max_recursion_depth,
                 user_id=execution_context.user_id,
                 permissions=permissions,
+                spawner_envelope=_spawner_envelope_from(execution_context),
             )
 
             yield "response", response
@@ -682,6 +696,7 @@ class AutoPilotBlock(Block):
                     execution_context.user_id,
                     effective_prompt,
                     input_data.dry_run or execution_context.dry_run,
+                    _spawner_envelope_from(execution_context),
                 )
             except asyncio.CancelledError:
                 # Task cancelled during recovery — still yield the error
@@ -710,6 +725,37 @@ _autopilot_recursion_depth: contextvars.ContextVar[int] = contextvars.ContextVar
 _autopilot_recursion_limit: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "_autopilot_recursion_limit", default=None
 )
+
+
+def _spawner_envelope_from(
+    execution_context: ExecutionContext,
+) -> "TurnEnvelope | None":
+    """Rebuild the copilot turn that started this graph, if one did.
+
+    ``run_agent`` stamps the tree onto the execution context because
+    contextvars cannot cross into the executor process. Without this a nested
+    agent turn looks parentless and roots a fresh tree, escaping the depth
+    bound and the spend ceiling of the tree that started it.
+
+    A graph the user ran themselves carries no tree, and correctly gets None.
+    """
+    from backend.copilot.tree import TurnEnvelope
+
+    if not execution_context.copilot_tree_id:
+        return None
+    return TurnEnvelope(
+        tree_id=execution_context.copilot_tree_id,
+        depth=execution_context.copilot_tree_depth,
+        tainted=execution_context.copilot_tree_tainted,
+        # None stays None (an unrestricted root); anything else is restored as
+        # a set. Leaving this at the default would hand the far side the root
+        # sentinel and reopen every tool the spawner had lost.
+        tools=(
+            frozenset(execution_context.copilot_tree_tools)
+            if execution_context.copilot_tree_tools is not None
+            else None
+        ),
+    )
 
 
 def _check_recursion(
@@ -830,6 +876,7 @@ async def _enqueue_for_recovery(
     user_id: str,
     message: str,
     dry_run: bool,
+    spawner_envelope: "TurnEnvelope | None" = None,
 ) -> None:
     """Re-enqueue an orphaned sub-agent session so a fresh executor picks it up.
 
@@ -850,7 +897,11 @@ async def _enqueue_for_recovery(
             enqueue_copilot_turn,
         )
         from backend.copilot.model import get_chat_session
-        from backend.copilot.tree import root_envelope
+        from backend.copilot.tree import (
+            SpawnRequest,
+            derive_child_envelope,
+            root_envelope,
+        )
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -861,6 +912,17 @@ async def _enqueue_for_recovery(
             return
 
         recovery_turn_id = str(uuid.uuid4())
+        # Recovery must not widen authority. The orphaned turn's own envelope
+        # died with its worker, but the tree that spawned it is recoverable
+        # from the execution context, so the retry re-derives a child of that
+        # same spawner rather than starting an unrestricted root. Only a graph
+        # the user ran themselves has no spawner, and there a root is correct.
+        if spawner_envelope is not None:
+            recovery_envelope = derive_child_envelope(
+                spawner_envelope, SpawnRequest(may_spawn=True)
+            )
+        else:
+            recovery_envelope = root_envelope(recovery_turn_id)
         await asyncio.wait_for(
             enqueue_copilot_turn(
                 session_id=session_id,
@@ -869,12 +931,7 @@ async def _enqueue_for_recovery(
                 turn_id=recovery_turn_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
-                # The orphaned turn's envelope died with its worker and is not
-                # recoverable, so this re-dispatch roots a fresh tree — which
-                # is what an AutoPilotBlock turn already gets, the graph
-                # executor being a separate process.
-                # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id),
+                envelope=recovery_envelope,
             ),
             timeout=10,
         )
