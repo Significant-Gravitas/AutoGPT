@@ -21,12 +21,14 @@ class DesktopPreview(BaseModel):
 def create_preview_link(user_id: str, live_url: str) -> str:
     if not user_id:
         raise ValueError("Live view requires an authenticated user")
+    base_url = Config().frontend_base_url.rstrip("/")
+    if not base_url:
+        raise ValueError("Live view requires FRONTEND_BASE_URL to be configured")
     token = JSONCryptor().encrypt(
         DesktopPreview(
             purpose="e2b-desktop-preview", user_id=user_id, url=live_url
         ).model_dump()
     )
-    base_url = Config().frontend_base_url.rstrip("/")
     return f"{base_url}/api/proxy/api/desktop-preview?{urlencode({'token': token})}"
 
 

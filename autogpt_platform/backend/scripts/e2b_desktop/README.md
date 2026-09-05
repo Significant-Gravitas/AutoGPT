@@ -4,6 +4,9 @@ The existing block supports `enable_live_view=true` and returns `live_url`
 alongside its normal outputs. The default remains disabled. Execute Code Step
 continues using the returned `sandbox_id` and the same notebook interpreter.
 
+The backend must have `FRONTEND_BASE_URL` set to the public frontend URL so
+preview links open through the authenticated frontend proxy.
+
 ## Build the template once
 
 From `autogpt_platform/backend`, with `E2B_API_KEY` configured in the environment
