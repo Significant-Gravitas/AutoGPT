@@ -53,6 +53,13 @@ class MCPToolResponse(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
+    integrity_hash: str = ""
+    """SHA-256 fingerprint of this tool's definition (name + description + inputSchema).
+
+    Store this value in the block's ``tool_integrity_hash`` field when the user
+    selects the tool.  The block will re-verify the hash before every execution
+    to detect post-deployment mutations (tool poisoning / rug pulls).
+    """
 
 
 class DiscoverToolsResponse(BaseModel):
@@ -121,6 +128,7 @@ async def discover_tools(
                 name=t.name,
                 description=t.description,
                 input_schema=t.input_schema,
+                integrity_hash=t.integrity_hash,
             )
             for t in tools
         ],
