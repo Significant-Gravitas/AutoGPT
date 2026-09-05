@@ -96,6 +96,14 @@ _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     "StoreListingVersion": True,
 }
 _WORKFLOW_INCLUDE = {"Workflows": {"include": _WORKFLOW_ROW_INCLUDE}}
+_ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
+    "Workflows": {
+        "include": {
+            "LibraryAgent": {"include": {"AgentGraph": True}},
+            "StoreListingVersion": True,
+        }
+    }
+}
 _MAX_EXPERT_RUNS = 20
 # One year: the window the at-a-glance activity graph draws.
 EXPERT_ACTIVITY_DAYS = 365
@@ -263,7 +271,7 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
             "isArchived": False,
             "visibility": ResourceVisibility.PRIVATE,
         },
-        include=_WORKFLOW_INCLUDE,
+        include=_ROSTER_WORKFLOW_INCLUDE,
     )
     if not with_metrics:
         return [_to_model(row) for row in rows]
