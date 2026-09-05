@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - "autogpt_platform/backend/**"
@@ -15,6 +16,7 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - "autogpt_platform/backend/**"
@@ -320,13 +322,15 @@ jobs:
           CLAMAV_CONTAINER: ${{ job.services.clamav.id }}
           RABBITMQ_CONTAINER: ${{ job.services.rabbitmq.id }}
         run: |
-          docker run -d --name postgres-test \
+          postgres_image=pgvector/pgvector:pg15
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$postgres_image"
+          docker run --pull=never -d --name postgres-test \
             -e POSTGRES_USER=postgres \
             -e POSTGRES_PASSWORD=postgres \
             -e POSTGRES_DB=postgres \
             -p 5432:5432 \
             -v "$(pwd)/db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro" \
-            pgvector/pgvector:pg15
+            "$postgres_image"
 
           postgres_ready=false
           for _ in $(seq 1 30); do
@@ -365,10 +369,10 @@ jobs:
               local port=$((base_port + offset))
               local bus=$((base_port + 10000 + offset))
               local container="redis-${name}-${offset}"
-              docker run -d --name "$container" --network "$network" \
+              docker run --pull=never -d --name "$container" --network "$network" \
                 --network-alias "$container" \
                 -p "$port:$port" \
-                redis:7 \
+                "$redis_image" \
                 redis-server --port "$port" \
                   --cluster-enabled yes \
                   --cluster-config-file nodes.conf \
@@ -398,7 +402,7 @@ jobs:
               fi
             done
 
-            docker run --rm --network "$network" redis:7 \
+            docker run --pull=never --rm --network "$network" "$redis_image" \
               redis-cli --cluster create \
                 "redis-${name}-0:${base_port}" \
                 "redis-${name}-1:$((base_port + 1))" \
@@ -423,6 +427,8 @@ jobs:
             return 1
           }
 
+          redis_image=redis:7
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$redis_image"
           start_redis_cluster "$TEST_SHARD" "$REDIS_PORT"
 
           if [[ -z "$CLAMAV_CONTAINER" ]]; then

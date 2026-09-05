@@ -7,6 +7,7 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
@@ -15,6 +16,7 @@ on:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
+      - ".github/scripts/docker-pull-with-retry.sh"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
@@ -154,6 +156,8 @@ jobs:
   e2e_test:
     name: end-to-end tests
     runs-on: big-boi
+    env:
+      BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
     steps:
       - name: Checkout repository
@@ -161,6 +165,17 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+
+      - name: Set up Platform - Pull BuildKit image
+        id: buildkit-image
+        working-directory: /tmp
+        timeout-minutes: 2
+        background: true
+        run: |
+          if docker image inspect "$BUILDKIT_IMAGE" >/dev/null 2>&1; then
+            exit 0
+          fi
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$BUILDKIT_IMAGE"
 
       - name: Set up Platform - Copy default platform .env
         run: |
@@ -175,12 +190,6 @@ jobs:
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      - name: Set up Platform - Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          driver-opts: network=host
 
       - name: Set up Platform - Expose GHA cache to docker buildx CLI
         uses: crazy-max/ghaction-github-runtime@v4
@@ -217,6 +226,17 @@ jobs:
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}-sourcemaps" \
             --git-ref "${{ github.ref }}" \
             --cache-to "$cache_to"
+
+      - name: Set up Platform - Wait for BuildKit image
+        wait: [buildkit-image]
+
+      - name: Set up Platform - Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          driver-opts: |
+            image=${{ env.BUILDKIT_IMAGE }}
+            network=host
 
       - name: Set up Platform - Build Docker images
         id: platform-build
