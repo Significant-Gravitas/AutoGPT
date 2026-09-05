@@ -2482,14 +2482,16 @@ class Scheduler(AppService):
         # jobstore first: a schedule added while this scan ran is in the
         # index and not in our snapshot, and must survive.
         stale = index.all_job_ids() - {e.job_id for e in entries}
-        if not self.scheduler.running or (not entries and stale):
-            # A shutdown raced the scan, or the scan came back empty while
+        if not self.scheduler.running or (not jobs and stale):
+            # A shutdown raced the scan, or the raw scan came back empty while
             # the index still has rows: neither is evidence the rows are
-            # stale, so keep them for the next reconcile.
+            # stale, so keep them for the next reconcile. (Test the raw scan,
+            # not `entries`: a jobstore holding only system jobs is a
+            # legitimate empty listing whose stale rows must still go.)
             logger.warning(
                 "Skipping stale-row sweep: scan returned %d jobs against %d "
                 "index rows (running=%s)",
-                len(entries),
+                len(jobs),
                 len(stale),
                 self.scheduler.running,
             )
