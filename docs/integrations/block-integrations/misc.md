@@ -298,6 +298,7 @@ Use this for multi-step code execution where each step builds on previous result
 | step_code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | dispose_sandbox | Whether to dispose of the sandbox after executing this code. | bool | No |
+| timeout | Sandbox lifetime in seconds from the start of this step. Set this to leave time for manual testing through a live URL. If omitted, E2B's default lifetime applies. | int | No |
 
 ### Outputs
 
@@ -699,7 +700,7 @@ This block uses the Reddit API via PRAW to fetch posts submitted by a specific u
 ## Instantiate Code Sandbox
 
 ### What it is
-Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block.
+Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block. Optionally enable a live desktop preview and return its viewing URL.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -715,7 +716,8 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | setup_code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
-| timeout | Execution timeout in seconds | int | No |
+| timeout | Sandbox lifetime in seconds. Choose enough time to run setup and test through the live URL. | int | No |
+| enable_live_view | Start an interactive desktop preview and return live_url. Requires a custom template_id containing both the desktop and code interpreter. Use the returned sandbox_id with Execute Code Step to work in the same environment. The preview ends when the sandbox stops. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
 ### Outputs
@@ -724,6 +726,7 @@ The sandbox persists until its timeout expires or it's explicitly disposed. Use 
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | sandbox_id | ID of the sandbox instance | str |
+| live_url | Authenticated desktop URL, returned when live view is enabled. Anyone with this URL can view and control the desktop while the sandbox runs. | str |
 | response | Text result (if any) of the setup code execution | str |
 | stdout_logs | Standard output logs from execution | str |
 | stderr_logs | Standard error logs from execution | str |
