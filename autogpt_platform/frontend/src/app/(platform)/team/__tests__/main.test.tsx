@@ -163,7 +163,7 @@ const hiredMaria: Expert = {
   boundaries: "Never invent customer evidence.",
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
-    "External actions require approval.",
+    "The expert asks for approval before acting externally.",
   ],
   is_template: false,
   source_template_id: "template-maria",
@@ -414,7 +414,14 @@ describe("TeamPage", () => {
       ),
     ).toBeDefined();
     expect(
-      screen.getByText("External actions require approval."),
+      screen.getByText(
+        "The expert asks for approval before acting externally.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "These rules are part of every expert's soul and cannot be edited.",
+      ),
     ).toBeDefined();
     expect(screen.getAllByRole("textbox")).toHaveLength(4);
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();

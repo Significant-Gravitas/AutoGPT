@@ -17,6 +17,9 @@ export interface ChainActionEntry {
   ready: boolean;
   buildMessage: () => string | null;
   onSent?: () => void;
+  /** This card's reply must be reviewed before it is sent, so the chain owes
+   *  it a Proceed even when it asks for nothing but credentials. */
+  manualProceed?: boolean;
   /** Credentials this card needs. The chain merges every entry's request
    *  into the single connectors table it renders underneath itself. */
   connectors?: ConnectorRequest;
