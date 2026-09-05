@@ -238,8 +238,12 @@ fi
 `REVIEW_WAIT_BUDGET = 60 minutes`, measured as `now - REQUESTED_AT`:
 
 ```bash
-WAITED=$(( $(date +%s) - $(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$REQUESTED_AT" +%s 2>/dev/null || date -u -d "$REQUESTED_AT" +%s) ))
-[ "$WAITED" -ge 3600 ] && pending=false   # budget spent — stop waiting
+# Only meaningful when a request exists: GNU date reads an empty string as
+# "now", BSD date errors, and either way there is nothing to time out.
+if [ -n "$REQUESTED_AT" ]; then
+  WAITED=$(( $(date +%s) - $(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$REQUESTED_AT" +%s 2>/dev/null || date -u -d "$REQUESTED_AT" +%s) ))
+  [ "$WAITED" -ge 3600 ] && pending=false   # budget spent — stop waiting
+fi
 ```
 
 An observed reply on this repo took **46 minutes**, so a 45-minute budget
