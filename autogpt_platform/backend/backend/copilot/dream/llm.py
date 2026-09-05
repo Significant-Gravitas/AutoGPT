@@ -40,12 +40,7 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.transport_routing import routing_kwargs_for_chat_transport
-from backend.util.llm.providers import (
-    DEFAULT_REQUEST_TIMEOUT_SECONDS,
-    ProviderLiteral,
-    ProviderResponse,
-    call_provider,
-)
+from backend.util.llm.providers import ProviderLiteral, ProviderResponse, call_provider
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +93,7 @@ async def structured_completion(
     response_model: type[T],
     temperature: float = 0.2,
     max_output_tokens: int = 4096,
-    timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
 ) -> StructuredCompletion[T]:
     """Call the LLM in JSON mode and parse into ``response_model``.
 
@@ -107,11 +102,10 @@ async def structured_completion(
     token counts + cost up into a ``DreamPassUsage``.
 
     ``timeout_seconds`` is the wall-clock budget for the provider call.
-    The shared 120s default is sized for short chat completions; dream
-    phases with large ``max_output_tokens`` budgets (recombine/sanitize
-    at 16384) must pass their own ceiling — see the per-phase
-    ``*_TIMEOUT_SECONDS`` constants in ``orchestrator.py`` — or real
-    long responses die on TimeoutError before they finish decoding.
+    The shared default is a generic block-call budget; dream phases are
+    sized against the pass's own scheduler/lock envelope and must pass
+    their own ceiling — see the per-phase ``*_TIMEOUT_SECONDS`` constants
+    in ``orchestrator.py`` — rather than inherit it.
 
     Raises ``DreamLLMError`` if the response is empty, unparseable, or
     fails Pydantic validation. Callers should treat that as "this

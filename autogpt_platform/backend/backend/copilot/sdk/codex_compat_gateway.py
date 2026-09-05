@@ -833,8 +833,11 @@ def _serialize_messages(value: object) -> str:
         if not isinstance(message, dict):
             raise TypeError("Each message must be an object")
         role = message.get("role")
-        if role not in {"user", "assistant"}:
-            raise ValueError("Message roles must be user or assistant")
+        # Anthropic accepts `system` turns inline in `messages`, not only in
+        # the top-level `system` field; the CLI uses this for mid-conversation
+        # reminders, so the role allowlist must include it.
+        if role not in {"user", "assistant", "system"}:
+            raise ValueError("Message roles must be user, assistant, or system")
         normalized.append(
             {
                 "role": role,
