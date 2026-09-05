@@ -1,5 +1,5 @@
 import time
-from typing import Literal
+from typing import Literal, Optional
 
 from e2b import CommandExitException
 
@@ -78,18 +78,21 @@ class DesktopCommandBlock(Block):
                 ("exit_code", 0),
                 ("cost_meter", lambda v: v["provider"] == "e2b"),
             ],
-            test_mock={"exec_command": lambda *args, **kwargs: ("hello\n", "", 0)},
+            test_mock={
+                "exec_command": lambda *args, **kwargs: ("hello\n", "", 0, (8, 8.0))
+            },
         )
 
     async def exec_command(
         self, api_key: str, sandbox_id: str, command: str, cwd: str, timeout: int
-    ) -> tuple[str, str, int]:
+    ) -> tuple[str, str, int, Optional[tuple[int, float]]]:
         session = await DesktopSession.connect(sandbox_id, api_key)
+        resources = await session.resources()
         try:
             result = await session.run_command(command, cwd=cwd, timeout=timeout)
         except CommandExitException as exc:
-            return exc.stdout, exc.stderr, exc.exit_code
-        return result.stdout, result.stderr, result.exit_code
+            return exc.stdout, exc.stderr, exc.exit_code, resources
+        return result.stdout, result.stderr, result.exit_code, resources
 
     async def run(
         self,
@@ -100,7 +103,7 @@ class DesktopCommandBlock(Block):
     ) -> BlockOutput:
         start = time.monotonic()
         try:
-            stdout, stderr, exit_code = await self.exec_command(
+            stdout, stderr, exit_code, resources = await self.exec_command(
                 api_key=credentials.api_key.get_secret_value(),
                 sandbox_id=input_data.sandbox_id,
                 command=input_data.command,
@@ -111,7 +114,7 @@ class DesktopCommandBlock(Block):
             yield "stderr", stderr
             yield "exit_code", exit_code
             yield "cost_meter", build_cost_meter(
-                input_data.sandbox_id, time.monotonic() - start
+                input_data.sandbox_id, time.monotonic() - start, resources
             ).model_dump()
         except Exception as e:
             yield "error", str(e)

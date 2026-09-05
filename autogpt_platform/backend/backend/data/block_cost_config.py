@@ -1073,10 +1073,12 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # E2B desktop blocks: the "desktop" template runs ~2 vCPU + 4 GiB RAM ≈
-    # $0.000046/s — roughly double the code sandboxes. Charge 1 credit per
-    # 5 seconds of walltime; same pre-flight-0 + reconciliation model as the
-    # code-execution blocks above.
+    # E2B desktop blocks: on our account the "desktop" template resolves to
+    # 8 vCPU + 8 GiB RAM ≈ $0.000148/s (measured 2026-09-05; each block's
+    # cost_meter reports the real size per run). Charge 1 credit per 5 seconds
+    # of walltime; same pre-flight-0 + reconciliation model as the
+    # code-execution blocks above. Revisit the credit rate against the
+    # measured provider cost before this leaves preview.
     **{
         block: [
             BlockCost(

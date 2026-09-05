@@ -115,6 +115,7 @@ class CreateDesktopSandboxBlock(Block):
                         sandbox_id="test-sandbox-id",
                     ),
                     PersistenceInfo(volume_mounted=True, volume_name="autogpt-user-x"),
+                    (8, 8.0),
                 )
             },
         )
@@ -127,7 +128,7 @@ class CreateDesktopSandboxBlock(Block):
         height: int,
         timeout_minutes: int,
         volume_name: Optional[str],
-    ) -> tuple[str, DesktopStream, PersistenceInfo]:
+    ) -> tuple[str, DesktopStream, PersistenceInfo, Optional[tuple[int, float]]]:
         if sandbox_id:
             session = await DesktopSession.connect(sandbox_id, api_key)
             mounted = await session.is_workspace_mounted()
@@ -143,7 +144,7 @@ class CreateDesktopSandboxBlock(Block):
                 volume_mounts={WORKSPACE_PATH: volume_name} if volume_name else None,
             )
         stream = await session.start_stream()
-        return session.sandbox_id, stream, persistence
+        return session.sandbox_id, stream, persistence, await session.resources()
 
     async def run(
         self,
@@ -155,7 +156,7 @@ class CreateDesktopSandboxBlock(Block):
     ) -> BlockOutput:
         start = time.monotonic()
         try:
-            sandbox_id, stream, persistence = await self.setup_desktop(
+            sandbox_id, stream, persistence, resources = await self.setup_desktop(
                 api_key=credentials.api_key.get_secret_value(),
                 sandbox_id=input_data.sandbox_id,
                 width=input_data.width,
@@ -170,7 +171,7 @@ class CreateDesktopSandboxBlock(Block):
             yield "workspace_path", WORKSPACE_PATH
             yield "persistence", persistence.model_dump()
             yield "cost_meter", build_cost_meter(
-                sandbox_id, time.monotonic() - start
+                sandbox_id, time.monotonic() - start, resources
             ).model_dump()
         except Exception as e:
             yield "error", str(e)
@@ -221,16 +222,20 @@ class StopDesktopSandboxBlock(Block):
                 ("final_status", "suspended"),
                 ("cost_meter", lambda v: v["provider"] == "e2b"),
             ],
-            test_mock={"stop_desktop": lambda *args, **kwargs: "suspended"},
+            test_mock={"stop_desktop": lambda *args, **kwargs: ("suspended", (8, 8.0))},
         )
 
-    async def stop_desktop(self, api_key: str, sandbox_id: str, mode: str) -> str:
+    async def stop_desktop(
+        self, api_key: str, sandbox_id: str, mode: str
+    ) -> tuple[str, Optional[tuple[int, float]]]:
         session = await DesktopSession.connect(sandbox_id, api_key)
+        # Read the size before the box goes away.
+        resources = await session.resources()
         if mode == "destroy":
             await session.kill()
-            return "destroyed"
+            return "destroyed", resources
         await session.pause()
-        return "suspended"
+        return "suspended", resources
 
     async def run(
         self,
@@ -241,7 +246,7 @@ class StopDesktopSandboxBlock(Block):
     ) -> BlockOutput:
         start = time.monotonic()
         try:
-            final_status = await self.stop_desktop(
+            final_status, resources = await self.stop_desktop(
                 api_key=credentials.api_key.get_secret_value(),
                 sandbox_id=input_data.sandbox_id,
                 mode=input_data.mode,
@@ -249,7 +254,7 @@ class StopDesktopSandboxBlock(Block):
             yield "sandbox_id", input_data.sandbox_id
             yield "final_status", final_status
             yield "cost_meter", build_cost_meter(
-                input_data.sandbox_id, time.monotonic() - start
+                input_data.sandbox_id, time.monotonic() - start, resources
             ).model_dump()
         except Exception as e:
             yield "error", str(e)

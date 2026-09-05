@@ -267,6 +267,21 @@ class DesktopSession:
         )
         await self.run_command(script)
 
+    async def resources(self) -> Optional[tuple[int, float]]:
+        """``(vCPU, RAM GiB)`` as E2B reports for this box, or ``None``.
+
+        Templates are sized by E2B, not by us, so cost telemetry reads the
+        real numbers instead of assuming them. Never raises: a failed lookup
+        just means the meter falls back to its default sizing.
+        """
+        try:
+            info = await asyncio.wait_for(
+                self.sandbox.get_info(), timeout=_KILL_TIMEOUT_SECONDS
+            )
+            return info.cpu_count, info.memory_mb / 1024
+        except Exception:
+            return None
+
     async def pause(self) -> None:
         await self.sandbox.pause()
 
