@@ -1,0 +1,30 @@
+{{ subject }}
+
+Hi {{ user_name }},
+
+{% if kind == 'started' %}
+Your card is set up and your trial is ready. Pick a real task and give AutoGPT a first run.
+Complete onboarding to receive your one-time {{ onboarding_credit_amount }} automation credits. If you already received onboarding credits, they won't be granted a second time.
+Unless you cancel before {{ ends_label }}, your plan starts automatically at {{ plan.price_display }}. Applicable tax may be added. Trial access is subject to your trial allowance.
+{% elif kind == 'ending' %}
+Your trial ends {{ ends_label }}. Unless you cancel before then, your saved card will be charged {{ plan.price_display }} for your {{ plan.name }} plan. Applicable tax may be added.
+{% elif kind == 'canceled' %}
+Your trial will not convert to a paid plan. You can keep using your remaining trial allowance until {{ ends_label }}.
+{% elif kind == 'resumed' %}
+Your cancellation has been removed. Your saved card will be charged for your {{ plan.name }} plan when the trial ends {{ ends_label }}. Applicable tax may be added.
+{% elif kind == 'converted' %}
+Your trial has ended, your payment is confirmed, and your {{ plan.name }} plan is active. View your invoice and manage future renewals in billing.
+{% elif kind == 'payment_failed' %}
+We couldn't complete the payment after your trial. Your paid access is paused until payment succeeds. Open billing to update your card or complete verification requested by your bank.
+{% else %}
+Your trial access has ended. Your saved work remains in your account. Open billing to review your plan and payment status if you'd like to continue.
+{% endif %}
+
+Plan: {{ plan.label }}
+Trial ends: {{ ends_label }}
+Paid price: {{ plan.price_display }}
+
+Manage trial and billing: {{ urls.billing }}
+
+This is a service message about the AutoGPT account for {{ user_email }}.
+Email preferences: {{ urls.prefs }}

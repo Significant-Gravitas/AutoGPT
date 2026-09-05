@@ -129,6 +129,10 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial_billing import (
+    TRIAL_BILLING_EVENTS,
+    sync_trials_for_billing_event,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -158,6 +162,7 @@ from backend.monitoring.instrumentation import (
 )
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
+from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -874,7 +879,7 @@ class SubscriptionTierRequest(BaseModel):
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["NO_TIER", "TRIAL", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> monthly amount in cents
     tier_costs_yearly: dict[str, int] = Field(
@@ -1174,6 +1179,11 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
+        raise HTTPException(
+            409,
+            "Your accepted plan starts after your trial. Manage the trial in billing.",
+        )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -1501,6 +1511,8 @@ async def _notify_checkout_completed(session: dict) -> None:
         ).model_dump_json(),
     )
     if not result.success:
+        if (session.get("metadata") or {}).get("trial_enrollment_id"):
+            raise RuntimeError("Could not queue the trial welcome notice")
         logger.warning(
             "stripe_webhook: could not queue the welcome email for session %s: %s",
             session_id,
@@ -1558,6 +1570,12 @@ async def stripe_webhook(request: Request):
     # Acknowledge with 200 and a warning so Stripe stops retrying.
     event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    if event_type in TRIAL_BILLING_EVENTS:
+        # This idempotent path only reconciles current Stripe state. Do not let
+        # a claim left by a crashed delivery suppress card removal/restoration.
+        await sync_trials_for_billing_event(event_type, event.get("data"))
+        return Response(status_code=200)
 
     # Event-level dedup: short-circuit identical re-deliveries before any
     # handler runs. Stripe retries the same event.id on non-2xx responses, and
@@ -1629,10 +1647,16 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_succeeded":
             await handle_subscription_payment_success(data_object)
+            await on_trial_invoice(data_object, paid=True)
+
+        if event_type == "customer.subscription.trial_will_end":
+            await sync_subscription_from_stripe(data_object)
+            await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
-            await lifecycle.on_payment_failed(data_object)
+            if not await on_trial_invoice(data_object, paid=False):
+                await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1648,9 +1672,11 @@ async def stripe_webhook(request: Request):
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
+                    await on_trial_invoice(invoice_payload, paid=True)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
-                    await lifecycle.on_payment_failed(invoice_payload)
+                    if not await on_trial_invoice(invoice_payload, paid=False):
+                        await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a

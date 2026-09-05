@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Coroutine
 
 import aio_pika
+from prisma.enums import NotificationType
 
 from backend.data import rabbitmq
 from backend.data.notifications import (
@@ -23,6 +24,7 @@ from backend.data.notifications import (
     NotificationEventModel,
     NotificationResult,
     PassWorkEvent,
+    TrialUpdateData,
     get_notif_data_type,
 )
 from backend.data.user import (
@@ -38,9 +40,15 @@ from backend.notifications.queue import (
     AUDIENCE_QUEUE,
     OPS_NOTIFICATIONS_QUEUE,
     PASS_WORK_QUEUE,
+    TRIAL_NOTIFICATIONS_QUEUE,
     USER_NOTIFICATIONS_QUEUE,
     create_notification_config,
     queue_notification_async,
+)
+from backend.notifications.trial import trial_notice_is_current
+from backend.notifications.trial_delivery import (
+    deliver_trial_notification,
+    recover_trial_notifications,
 )
 from backend.util.clients import get_database_manager_async_client
 from backend.util.logging import TruncatedLogger
@@ -124,6 +132,10 @@ class NotificationManager(AppService):
         hour is."""
         self._spawn_pass("send_due_briefings", briefing_runner.send_due_briefings)
 
+    @expose
+    async def recover_trial_notifications(self) -> None:
+        self._spawn_pass("recover_trial_notifications", recover_trial_notifications)
+
     def _spawn_pass(
         self, name: str, work: Callable[[], Coroutine[None, None, None]]
     ) -> None:
@@ -194,6 +206,11 @@ class NotificationManager(AppService):
         event = self._parse_message(message)
         if not event:
             return False
+
+        if event.type == NotificationType.TRIAL_UPDATE:
+            data = TrialUpdateData.model_validate(event.data.model_dump())
+            if not await trial_notice_is_current(event.user_id, data):
+                return True
 
         preference = await get_database_manager_async_client(
             should_retry=False
@@ -325,6 +342,7 @@ class NotificationManager(AppService):
 
         consumers = {
             USER_NOTIFICATIONS_QUEUE: self._process_user_notification,
+            TRIAL_NOTIFICATIONS_QUEUE: deliver_trial_notification,
             OPS_NOTIFICATIONS_QUEUE: self._process_ops_notification,
             AUDIENCE_QUEUE: self._process_audience_change,
             PASS_WORK_QUEUE: self._process_pass_work,
@@ -494,5 +512,8 @@ class NotificationManagerClient(AppServiceClient):
 
     flush_matured_alerts = endpoint_to_sync(NotificationManager.flush_matured_alerts)
     send_due_briefings = endpoint_to_sync(NotificationManager.send_due_briefings)
+    recover_trial_notifications = endpoint_to_sync(
+        NotificationManager.recover_trial_notifications
+    )
     discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
     send_email_or_raise = endpoint_to_sync(NotificationManager.send_email_or_raise)

@@ -38,6 +38,12 @@ from backend.data.model import User as AppUser
 from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, OpsData
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_checkout import (
+    ensure_no_unconverted_trial,
+    expire_other_subscription_checkouts,
+    subscription_checkout_lock,
+)
+from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util.cache import cached
@@ -1566,6 +1572,10 @@ async def set_subscription_tier(
         "subscriptionTier": tier,
     }
     await User.prisma().update(where={"id": user_id}, data=data)
+    invalidate_subscription_caches(user_id)
+
+
+def invalidate_subscription_caches(user_id: str) -> None:
     get_user_by_id.cache_delete(user_id)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
     # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
@@ -1743,6 +1753,7 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 # never reached via self-service flows.
 _TIER_ORDER: tuple[SubscriptionTier, ...] = (
     SubscriptionTier.NO_TIER,
+    SubscriptionTier.TRIAL,
     SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
     SubscriptionTier.MAX,
@@ -2081,6 +2092,10 @@ async def modify_stripe_subscription_for_tier(
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
         return False
+    if (sub.get("metadata") or {}).get("trial_enrollment_id"):
+        if sub.get("status") == "trialing":
+            raise ValueError("Manage your accepted trial plan in billing")
+        await ensure_no_unconverted_trial(user_id, user.stripe_customer_id)
     items = sub["items"].data
     if not items:
         return False
@@ -2507,42 +2522,7 @@ async def build_price_to_tier_map() -> dict[str, SubscriptionTier]:
 
 
 async def _expire_open_subscription_sessions(customer_id: str) -> None:
-    """Expire open subscription checkout sessions for the customer.
-
-    An abandoned subscription session leaves an incomplete subscription + open invoice
-    in Stripe. Expiring it triggers Stripe to cancel that subscription and void the
-    invoice, so the user is not shown phantom charges on their billing page.
-    """
-    try:
-        starting_after: str | None = None
-        while True:
-            list_kwargs: dict = {
-                "customer": customer_id,
-                "status": "open",
-                "limit": 100,
-            }
-            if starting_after:
-                list_kwargs["starting_after"] = starting_after
-            sessions = await stripe_call(
-                stripe.checkout.Session.list_async, **list_kwargs
-            )
-            for s in sessions.data:
-                if s.mode == "subscription":
-                    try:
-                        await stripe_call(stripe.checkout.Session.expire_async, s.id)
-                    except stripe.StripeError:
-                        logger.warning(
-                            "create_subscription_checkout: could not expire session %s",
-                            s.id,
-                        )
-            if not sessions.has_more or not sessions.data:
-                break
-            starting_after = sessions.data[-1].id
-    except Exception:
-        logger.warning(
-            "create_subscription_checkout: could not list open sessions for %s",
-            customer_id,
-        )
+    await expire_other_subscription_checkouts(customer_id)
 
 
 def _is_stripe_reconcilable(user: AppUser) -> bool:
@@ -2641,11 +2621,33 @@ async def create_subscription_checkout(
     datafast_session_id: str | None = None,
 ) -> str:
     """Create a Stripe Checkout Session for a subscription. Returns the redirect URL."""
+    async with subscription_checkout_lock(user_id):
+        return await _create_subscription_checkout(
+            user_id,
+            tier,
+            success_url,
+            cancel_url,
+            billing_cycle,
+            datafast_visitor_id,
+            datafast_session_id,
+        )
+
+
+async def _create_subscription_checkout(
+    user_id: str,
+    tier: SubscriptionTier,
+    success_url: str,
+    cancel_url: str,
+    billing_cycle: BillingCycle,
+    datafast_visitor_id: str | None,
+    datafast_session_id: str | None,
+) -> str:
     price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
     await _expire_open_subscription_sessions(customer_id)
+    await ensure_no_unconverted_trial(user_id, customer_id)
     datafast = _datafast_metadata(datafast_visitor_id, datafast_session_id)
     session = await stripe_call(
         stripe.checkout.Session.create_async,
@@ -2773,6 +2775,15 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         return
     status = stripe_subscription.get("status", "")
     new_sub_id = stripe_subscription.get("id", "")
+    if metadata.get("trial_enrollment_id") and new_sub_id:
+        trial_result = await reconcile_trial_subscription(user.id, new_sub_id)
+        if trial_result is None:
+            raise ValueError("Stripe trial is missing its matching enrollment")
+        stripe_subscription, trial_tier = trial_result
+        status = stripe_subscription.get("status", "")
+        if trial_tier is not None:
+            invalidate_subscription_caches(user.id)
+            return
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])

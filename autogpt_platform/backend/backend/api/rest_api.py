@@ -54,6 +54,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -378,6 +379,7 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",

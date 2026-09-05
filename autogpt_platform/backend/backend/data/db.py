@@ -171,7 +171,9 @@ async def _raw_with_schema(
 
 
 @overload
-async def query_raw_with_schema(query_template: str, *args) -> list[dict]: ...
+async def query_raw_with_schema(
+    query_template: str, *args, client: Prisma | None = None
+) -> list[dict]: ...
 
 
 @overload
@@ -179,6 +181,7 @@ async def query_raw_with_schema(
     query_template: str,
     *args,
     model: type[RawQueryModelT],
+    client: Prisma | None = None,
 ) -> list[RawQueryModelT]: ...
 
 
@@ -186,6 +189,7 @@ async def query_raw_with_schema(
     query_template: str,
     *args,
     model: type[RawQueryModelT] | None = None,
+    client: Prisma | None = None,
 ) -> list[dict] | list[RawQueryModelT]:
     """Execute raw SQL SELECT query with proper schema handling.
 
@@ -207,6 +211,7 @@ async def query_raw_with_schema(
         *args,
         execute=False,
         model=model,
+        client=client,
     )  # type: ignore
 
 

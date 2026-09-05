@@ -1,0 +1,42 @@
+{%- import "_lifecycle_ui.j2" as ui with context -%}
+<!doctype html>
+<html lang="en">
+<head>{{ ui.head_block(subject) }}</head>
+<body style="margin:0; padding:0; background-color:#f1efe9; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+{{ ui.preheader(preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+<tr><td bgcolor="#ffffff" style="border-radius:0 0 14px 14px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{% call ui.eyebrow() %}YOUR AUTOGPT TRIAL{% endcall %}
+{% call ui.headline() %}{{ subject }}{% endcall %}
+{% call ui.para() %}Hi {{ user_name }},{% endcall %}
+{% if kind == 'started' %}
+{% call ui.para() %}Your card is set up and your trial is ready. Pick a real task, connect the accounts it needs, and give AutoGPT a first run.{% endcall %}
+{% elif kind == 'ending' %}
+{% call ui.para() %}Your trial ends on {{ ends_label }}. Unless you cancel before then, your saved card will be charged for your {{ plan.name }} plan at {{ plan.price_display }}. Applicable tax may be added.{% endcall %}
+{% elif kind == 'canceled' %}
+{% call ui.para() %}Your trial will not convert to a paid plan. You can keep using your remaining trial allowance until {{ ends_label }}.{% endcall %}
+{% elif kind == 'resumed' %}
+{% call ui.para() %}Your cancellation has been removed. Your saved card will be charged for your {{ plan.name }} plan when the trial ends on {{ ends_label }}. Applicable tax may be added.{% endcall %}
+{% elif kind == 'converted' %}
+{% call ui.para() %}Your trial has ended, your payment is confirmed, and your {{ plan.name }} plan is active. You can view the invoice and manage future renewals in billing.{% endcall %}
+{% elif kind == 'payment_failed' %}
+{% call ui.para() %}We couldn't complete the payment after your trial. Your paid access is paused until payment succeeds. Open billing to update your card or complete any verification requested by your bank.{% endcall %}
+{% else %}
+{% call ui.para() %}Your trial access has ended. Your saved work remains in your account. Open billing to review your plan and payment status if you'd like to continue.{% endcall %}
+{% endif %}
+{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}
+{% if kind == 'started' %}
+{% call ui.para() %}Complete onboarding to receive your one-time {{ onboarding_credit_amount }} automation credits. If you already received onboarding credits, they won't be granted a second time.{% endcall %}
+{% call ui.para() %}Unless you cancel before {{ ends_label }}, your plan starts automatically at {{ plan.price_display }}. Applicable tax may be added. Trial access is subject to your trial allowance.{% endcall %}
+{{ ui.cta('Start using AutoGPT', urls.dashboard) }}
+{% endif %}
+{{ ui.cta('Manage trial and billing', urls.billing) }}
+{{ ui.close_row('Review your plan or cancel in billing settings.', 'Billing settings', urls.billing) }}
+      </table>
+    </td></tr>
+{{ ui.page_close() }}
+{{ ui.legal_footer('This is a service message about the AutoGPT account for ' ~ user_email ~ '.', 'Email preferences', urls.prefs, discord=false) }}
+</td></tr></table>
+</body></html>

@@ -1,0 +1,15 @@
+{% if kind == 'started' %}Your AutoGPT trial has started
+Your trial ends {{ ends_label }}. Review your plan and next steps.
+{% elif kind == 'ending' %}Your AutoGPT trial ends {{ ends_label }}
+Your {{ plan.name }} plan starts at {{ plan.price_display }} unless you cancel.
+{% elif kind == 'canceled' %}Your AutoGPT trial cancellation is confirmed
+Your trial will not convert to a paid plan.
+{% elif kind == 'resumed' %}Your AutoGPT trial will continue into your plan
+Your {{ plan.name }} plan starts {{ ends_label }} at {{ plan.price_display }}.
+{% elif kind == 'converted' %}Your AutoGPT {{ plan.name }} plan is active
+Your trial has ended and your payment is confirmed.
+{% elif kind == 'payment_failed' %}Action needed: your AutoGPT trial payment
+Your trial has ended. Update your payment method to activate your plan.
+{% else %}Your AutoGPT trial has ended
+Review your billing settings to continue using AutoGPT.
+{% endif %}
