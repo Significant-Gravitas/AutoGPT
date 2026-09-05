@@ -6,6 +6,7 @@ import type {
 import {
   upsertProviderCredentials,
   type CredentialsProvidersContextType,
+  mergePendingCredentials,
 } from "../credentials-provider";
 
 function makeCred(
@@ -119,5 +120,28 @@ describe("upsertProviderCredentials", () => {
     expect(result?.google?.savedCredentials).not.toBe(snapshot);
     // snapshot of the old list must still be empty
     expect(prev.google?.savedCredentials).toEqual([]);
+  });
+});
+
+describe("mergePendingCredentials", () => {
+  const loaded = { id: "a", provider: "stripe_link", type: "oauth2" } as never;
+  const fresh = { id: "b", provider: "stripe_link", type: "oauth2" } as never;
+
+  it("returns the loaded list untouched when nothing is pending", () => {
+    expect(mergePendingCredentials([loaded], undefined)).toEqual([loaded]);
+    expect(mergePendingCredentials([loaded], [])).toEqual([loaded]);
+  });
+
+  it("keeps a credential a stale list response would have dropped", () => {
+    // The listCredentials() call was already in flight when device auth minted
+    // `fresh`, so the response predates it. Publishing it unmodified drops the
+    // credential and useCredentialsInput reports it as removed.
+    const merged = mergePendingCredentials([loaded], [fresh]);
+    expect(merged.map((c: { id: string }) => c.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("does not duplicate a credential the server has caught up on", () => {
+    const merged = mergePendingCredentials([loaded, fresh], [fresh]);
+    expect(merged.map((c: { id: string }) => c.id).sort()).toEqual(["a", "b"]);
   });
 });

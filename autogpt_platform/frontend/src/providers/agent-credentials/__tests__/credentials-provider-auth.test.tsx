@@ -9,6 +9,7 @@ const { apiMock, errorHandlerMock, isLoggedIn, onFailToastMock, useAuthMock } =
     return {
       apiMock: {
         listCredentials: vi.fn().mockResolvedValue([]),
+        deleteCredentials: vi.fn().mockResolvedValue({ deleted: true }),
         listProviders: vi.fn().mockResolvedValue(["google"]),
         listSystemProviders: vi.fn().mockResolvedValue([]),
       },
@@ -32,6 +33,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 import CredentialsProvider, {
+  CredentialsActionsContext,
   CredentialsProvidersContext,
 } from "../credentials-provider";
 
@@ -62,6 +64,46 @@ function deferred<T>() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+/**
+ * Exposes `upsert` and the resulting saved-credential ids, so a test can drive
+ * the same sequence device auth does: mint a credential outside a list
+ * response, then let a reload land.
+ */
+function UpsertProbe({ provider }: { provider: string }) {
+  const providers = useContext(CredentialsProvidersContext);
+  const actions = useContext(CredentialsActionsContext);
+  const saved = providers?.[provider]?.savedCredentials ?? [];
+  return (
+    <div>
+      <button
+        data-testid="do-upsert"
+        onClick={() =>
+          actions?.upsert(provider, {
+            id: "cred-device",
+            provider,
+            type: "oauth2",
+            title: "Device Auth Credential",
+          } as never)
+        }
+      >
+        upsert
+      </button>
+      <button data-testid="do-reload" onClick={() => actions?.reload()}>
+        reload
+      </button>
+      <button
+        data-testid="do-delete"
+        onClick={() =>
+          providers?.[provider]?.deleteCredentials("cred-device", true)
+        }
+      >
+        delete
+      </button>
+      <span data-testid="saved-ids">{saved.map((c) => c.id).join(",")}</span>
+    </div>
+  );
 }
 
 describe("CredentialsProvider authentication", () => {
@@ -144,5 +186,129 @@ describe("CredentialsProvider authentication", () => {
 
     expect(screen.getByTestId("provider-state").textContent).toBe("");
     expect(apiMock.listCredentials).not.toHaveBeenCalled();
+  });
+});
+
+describe("CredentialsProvider device-auth upserts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient.clear();
+    isLoggedIn.value = true;
+    apiMock.listCredentials.mockResolvedValue([]);
+    apiMock.listProviders.mockResolvedValue(["stripe_link"]);
+    apiMock.listSystemProviders.mockResolvedValue([]);
+    useAuthMock.mockImplementation(() => ({ isLoggedIn: isLoggedIn.value }));
+  });
+
+  const deviceCred = {
+    id: "cred-device",
+    provider: "stripe_link",
+    type: "oauth2",
+    title: "Device Auth Credential",
+  };
+
+  function savedIds() {
+    return (screen.getByTestId("saved-ids").textContent ?? "")
+      .split(",")
+      .filter(Boolean);
+  }
+
+  async function mountProbe() {
+    render(
+      <CredentialsProvider>
+        <UpsertProbe provider="stripe_link" />
+      </CredentialsProvider>,
+      { wrapper: TestWrapper },
+    );
+    await waitFor(() => expect(apiMock.listCredentials).toHaveBeenCalled());
+  }
+
+  /** Click reload and wait for that specific request to have been issued. */
+  async function reloadAndSettle() {
+    const before = apiMock.listCredentials.mock.calls.length;
+    await act(async () => {
+      screen.getByTestId("do-reload").click();
+    });
+    await waitFor(() =>
+      expect(apiMock.listCredentials.mock.calls.length).toBeGreaterThan(before),
+    );
+    // Let the response publish.
+    await act(async () => undefined);
+  }
+
+  it("survives a reload whose response predates the credential", async () => {
+    // The device-auth race: the credential is minted server-side by the poll,
+    // and a listCredentials() call that started before it existed resolves
+    // afterwards. Publishing that stale response unmodified drops the
+    // credential, and useCredentialsInput then tells the user their brand-new
+    // connection was removed.
+    await mountProbe();
+
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+    expect(savedIds()).toContain("cred-device");
+
+    apiMock.listCredentials.mockResolvedValue([] as never);
+    await reloadAndSettle();
+
+    expect(savedIds()).toContain("cred-device");
+  });
+
+  it("retires the pending entry once the server returns it", async () => {
+    await mountProbe();
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+
+    // Server catches up: present exactly once, not duplicated by the pending copy.
+    apiMock.listCredentials.mockResolvedValue([deviceCred] as never);
+    await reloadAndSettle();
+    expect(savedIds().filter((i) => i === "cred-device")).toHaveLength(1);
+
+    // The proof that it was actually retired rather than merely deduped: a
+    // later empty reload must now drop it, because nothing is pending.
+    apiMock.listCredentials.mockResolvedValue([] as never);
+    await reloadAndSettle();
+    expect(savedIds()).not.toContain("cred-device");
+  });
+
+  it("does not carry a pending credential across a logout", async () => {
+    // pendingUpsertsRef outlives a session unless cleared. Left in place it
+    // would be merged into the next user's list on the same mounted provider,
+    // exposing the previous account's credential metadata.
+    await mountProbe();
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+    expect(savedIds()).toContain("cred-device");
+
+    isLoggedIn.value = false;
+    await act(async () => {
+      screen.getByTestId("do-reload").click();
+    });
+
+    isLoggedIn.value = true;
+    apiMock.listCredentials.mockResolvedValue([] as never);
+    await reloadAndSettle();
+
+    expect(savedIds()).not.toContain("cred-device");
+  });
+
+  it("does not resurrect a credential deleted while still pending", async () => {
+    await mountProbe();
+    await act(async () => {
+      screen.getByTestId("do-upsert").click();
+    });
+
+    apiMock.deleteCredentials.mockResolvedValue({ deleted: true });
+    await act(async () => {
+      screen.getByTestId("do-delete").click();
+    });
+
+    apiMock.listCredentials.mockResolvedValue([] as never);
+    await reloadAndSettle();
+
+    expect(savedIds()).not.toContain("cred-device");
   });
 });
