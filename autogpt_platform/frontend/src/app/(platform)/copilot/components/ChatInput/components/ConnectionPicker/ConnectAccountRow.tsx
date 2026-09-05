@@ -1,10 +1,9 @@
 "use client";
 
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 
 interface Props {
@@ -21,30 +20,30 @@ interface Props {
  */
 export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2">
+    <Button
+      type="button"
+      variant="ghost"
+      size="small"
+      aria-label="Connect a ChatGPT subscription"
+      disabled={isConnecting}
+      onClick={onConnect}
+      className="h-auto min-h-14 w-full justify-start gap-3 whitespace-normal rounded-lg px-3 py-2 text-left"
+    >
       <IntegrationLogo provider="openai" size={20} />
-      {/* The row sits under "Add a connection" and beside the connections it
-          would join, so what it is for is already said. A sentence of its own
-          would only repeat the section above it. */}
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900">
-        ChatGPT subscription
+      <span className="min-w-0 flex-1 text-sm font-medium text-zinc-900">
+        <span className="block">ChatGPT subscription</span>
+        <span className="mt-1 block text-[11px] font-normal text-zinc-600">
+          Connect your existing account
+        </span>
       </span>
-      <Button
-        variant="primary"
-        size="small"
-        aria-label="Connect a ChatGPT subscription"
-        // Not the Button's own `loading`: it keeps the children beside its
-        // spinner, and drops the props that carry this button's only name.
-        disabled={isConnecting}
-        onClick={onConnect}
-        className="h-8 w-8 min-w-0 flex-none p-0"
-      >
-        {isConnecting ? (
-          <LoadingSpinner size="small" />
-        ) : (
-          <Icon icon={PlusSignIcon} size={16} aria-hidden />
-        )}
-      </Button>
-    </div>
+      <span className="flex size-7 flex-none items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500">
+        <Icon
+          icon={isConnecting ? Loading03Icon : PlusSignIcon}
+          size={14}
+          aria-hidden
+          className={isConnecting ? "animate-spin" : undefined}
+        />
+      </span>
+    </Button>
   );
 }

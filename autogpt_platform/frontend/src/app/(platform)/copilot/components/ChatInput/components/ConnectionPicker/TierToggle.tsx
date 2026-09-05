@@ -7,6 +7,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { Fragment, type ReactNode } from "react";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ interface Props {
   segments: Segment[];
   value: CopilotLlmModel;
   onSelect: (tier: CopilotLlmModel) => void;
+  advancedUpgrade?: ReactNode;
 }
 
 /**
@@ -44,7 +46,12 @@ function tierIcon(tier: CopilotLlmModel) {
   return tier === "advanced" ? AiBrain01Icon : FlashIcon;
 }
 
-export function TierToggle({ segments, value, onSelect }: Props) {
+export function TierToggle({
+  segments,
+  value,
+  onSelect,
+  advancedUpgrade,
+}: Props) {
   const options = segments.map((segment) => ({
     value: segment.tier,
     disabled: Boolean(segment.lock),
@@ -67,11 +74,18 @@ export function TierToggle({ segments, value, onSelect }: Props) {
       role="radiogroup"
       aria-label="Model tier"
       onKeyDown={handleKeyDown}
-      className="divide-y divide-neutral-200"
+      className={cn(
+        "divide-y divide-neutral-200",
+        advancedUpgrade && "divide-y-0",
+      )}
     >
       {segments.map((segment) =>
         segment.lock ? (
-          <LockedSegment key={segment.tier} segment={segment} />
+          segment.tier === "advanced" && advancedUpgrade ? (
+            <Fragment key={segment.tier}>{advancedUpgrade}</Fragment>
+          ) : (
+            <LockedSegment key={segment.tier} segment={segment} />
+          )
         ) : (
           <button
             key={segment.tier}

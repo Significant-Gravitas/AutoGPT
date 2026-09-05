@@ -16,6 +16,7 @@ interface Props extends PropsWithChildren {
 
   forceOpen?: boolean;
   onClose?: (() => void) | undefined;
+  onCloseAutoFocus?: (event: Event) => void;
   controlled?: {
     isOpen: boolean;
     set: (open: boolean) => Promise<void> | void;
@@ -34,6 +35,7 @@ function Dialog({
 
   forceOpen = false,
   onClose,
+  onCloseAutoFocus,
   controlled,
 }: Props) {
   const config = useDialogInternal({ controlled });
@@ -45,6 +47,7 @@ function Dialog({
         title: title || "",
         styling,
         className,
+        onCloseAutoFocus,
 
         isOpen,
         isForceOpen: forceOpen,
@@ -71,6 +74,7 @@ function Dialog({
       ) : (
         <Drawer.Root
           shouldScaleBackground
+          dismissible={!forceOpen}
           open={isOpen}
           onOpenChange={(open) => {
             if (!open && !forceOpen) {
