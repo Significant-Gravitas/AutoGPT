@@ -280,10 +280,11 @@ still exist for follow-up validation. No live Stripe configuration was changed.
 
 ## Outstanding launch choices
 
-Draft [PR #14353](https://github.com/Significant-Gravitas/AutoGPT/pull/14353) is open
-against dev at `057bbc21d6e5d455c04851e7b15cfd47105ad82e`. The merge commit passed
+Draft [PR #14353](https://github.com/Significant-Gravitas/AutoGPT/pull/14353) was opened
+against dev at `057bbc21d6e5d455c04851e7b15cfd47105ad82e`. That merge commit passed
 its configured hooks; both secret scanners also passed against the complete trial
-diff from the merged dev ref. CI was verified in progress at this exact head.
+diff from the merged dev ref. Initial CI ran at that head; failures and their
+follow-up fixes are recorded below.
 The worktree was clean after that push. No merge or production activation occurred.
 
 The final offer amounts/duration/price and launch cutoff remain unset pending
@@ -292,6 +293,8 @@ are chosen and the complete integration is verified. Onboarding credits are a
 separate wallet from the operator-side chat spend budget.
 
 ## Trial email recovery checkpoint
+
+Implementation checkpoint: `a415e380c3`. All configured commit hooks passed.
 
 - Added a trial-only PostgreSQL outbox with immutable payloads, semantic unique
   keys, owner-fenced five-minute leases, bounded retries, and retained terminal
