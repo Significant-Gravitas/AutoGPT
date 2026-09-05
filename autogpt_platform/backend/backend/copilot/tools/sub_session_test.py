@@ -451,10 +451,8 @@ class TestRunSubSession:
     async def test_a_large_sub_tool_output_does_not_come_back(
         self, mock_queue, mock_waiter, mock_model
     ):
-        """The sub's tool inputs and outputs are exactly what delegation
-        exists to keep out of the parent, so the hand-back carries a count
-        and not the payload. ``BaseTool.execute`` serialises this whole
-        model into the parent's context, so its size is the thing to pin."""
+        """``BaseTool.execute`` serialises this whole model into the parent's
+        context, so the hand-back's serialised size is the thing to pin."""
         res = SessionResult()
         res.response_text = "read the schema, wrote the graph"
         res.tool_calls = [

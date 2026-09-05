@@ -417,9 +417,8 @@ class SubSessionStatusResponse(ToolResponseBase):
     sub_autopilot_session_id: str | None = Field(
         default=None,
         description=(
-            "The session_id of the sub-AutoPilot conversation. Pass it back "
-            "as ``sub_autopilot_session_id`` to ask a follow-up without the "
-            "sub re-reading what it already has."
+            "The session_id of the sub-AutoPilot conversation. Pass it to "
+            "``run_sub_session`` as ``sub_autopilot_session_id`` to continue it."
         ),
     )
     sub_autopilot_session_link: str | None = Field(
@@ -441,9 +440,8 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description=(
             "How many tool calls the sub made. The calls themselves are not "
-            "returned: their inputs and outputs are what delegation exists to "
-            "keep out of this conversation. Read the sub's transcript at "
-            "``sub_autopilot_session_link`` to see them."
+            "returned; read the sub's transcript at "
+            "``sub_autopilot_session_link``."
         ),
     )
     sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
