@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections import deque
 from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
@@ -10,6 +11,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -28,6 +30,14 @@ _LARGE_OUTPUT_THRESHOLD = 80_000
 #   - Claude SDK's ~100 KB tool-result spill-to-disk threshold
 # to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
 _PREVIEW_CHARS = 95_000
+
+# Threshold and budget used when AUTOPILOT_DELEGATION is on.  The largest block
+# schema in the registry is ~34K chars, so the 80K trigger above has never once
+# fired on the reads that fill AutoPilot's transcript.  The budget is derived
+# from the trigger so a digest can never be larger than the output it replaces.
+_DIGEST_THRESHOLD = 8_000
+_DIGEST_PREVIEW_CHARS = _DIGEST_THRESHOLD // 4
+_OUTLINE_SCALAR_CHARS = 120
 
 
 # Fields whose values are binary/base64 data — truncating them produces
@@ -61,18 +71,30 @@ async def _persist_and_summarize(
     user_id: str,
     session_id: str,
     tool_call_id: str,
+    digest: bool = False,
 ) -> str:
-    """Persist full output to workspace and return a middle-out preview with retrieval instructions.
+    """Persist full output to workspace and return a preview with retrieval
+    instructions — a structural outline when *digest*, else a middle-out slice.
 
     On failure, returns the original ``raw_output`` unchanged so that the
     existing ``model_post_init`` middle-out truncation handles it as before.
     """
     file_path = f"tool-outputs/{tool_call_id}.json"
+
+    # The outline quotes offsets into the persisted file, so the file has to be
+    # the text the index was built from, not the original serialisation.
+    body, outline = raw_output, ""
+    if digest:
+        indexed = _index_json(raw_output)
+        if indexed is not None:
+            body, data, offsets = indexed
+            outline = _outline(data, offsets, _DIGEST_PREVIEW_CHARS)
+
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
         manager = WorkspaceManager(user_id, workspace.id, session_id)
         await manager.write_file(
-            content=raw_output.encode("utf-8"),
+            content=body.encode("utf-8"),
             filename=f"{tool_call_id}.json",
             path=file_path,
             mime_type="application/json",
@@ -86,26 +108,157 @@ async def _persist_and_summarize(
         )
         return raw_output  # fall back to normal truncation
 
-    total = len(raw_output)
-    preview = truncate(_summarize_binary_fields(raw_output), _PREVIEW_CHARS)
-    retrieval = (
-        f"\nFull output ({total:,} chars) saved to workspace. "
-        f"Use read_workspace_file("
-        f'path="{file_path}", offset=<char_offset>, length=50000) '
-        f"to read any section. "
-        f"To process the file in the sandbox/working dir, use "
+    total = len(body)
+    if outline:
+        shape, preview = "outline", outline
+        # A flat length= larger than the file makes one "narrow" read pull
+        # everything back, which is how a digest ends up costing more.
+        retrieval = (
+            f"\nThe preview above is a structural outline of the {total:,}-char "
+            f"output, not a literal prefix of it. Each `@offset+length` is that "
+            f"node's exact window in the file: "
+            f'read_workspace_file(path="{file_path}", offset=<offset>, '
+            f"length=<length>) returns it and nothing else."
+        )
+    else:
+        shape, preview = "excerpt", truncate(
+            _summarize_binary_fields(body), _PREVIEW_CHARS
+        )
+        retrieval = (
+            f"\nFull output ({total:,} chars) saved to workspace. "
+            f"Use read_workspace_file("
+            f'path="{file_path}", offset=<char_offset>, length=50000) '
+            f"to read any section. "
+        )
+    retrieval += (
+        f"\nTo process the file in the sandbox/working dir, use "
         f"read_workspace_file("
         f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
         f"first, then use bash_exec to work with the local copy."
     )
-    # Use workspace:// prefix so the model doesn't confuse the workspace path
-    # with a local filesystem path (e.g. ~/.claude/projects/.../tool-outputs/).
     return (
-        f'<tool-output-truncated total_chars={total} workspace_path="{file_path}">\n'
+        f"<tool-output-truncated total_chars={total} "
+        f'workspace_path="{file_path}" format="{shape}">\n'
         f"{preview}\n"
         f"{retrieval}\n"
         f"</tool-output-truncated>"
     )
+
+
+def _index_json(raw_output: str) -> tuple[str, Any, dict[str, tuple[int, int]]] | None:
+    """``(text, data, path -> (offset, length))``, or ``None`` for non-JSON.
+
+    Serialising it ourselves is what makes the offsets exact: they are recorded
+    as the text is built, so no re-parsing can drift from what was persisted.
+    """
+    try:
+        data = json.loads(raw_output)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, (dict, list)):
+        return None
+    chunks: list[str] = []
+    offsets: dict[str, tuple[int, int]] = {}
+    _write_indexed(data, "$", chunks, offsets, 0)
+    return "".join(chunks), data, offsets
+
+
+def _write_indexed(
+    node: Any,
+    path: str,
+    chunks: list[str],
+    offsets: dict[str, tuple[int, int]],
+    pos: int,
+) -> int:
+    start = pos
+    if isinstance(node, (dict, list)):
+        pairs = node.items() if isinstance(node, dict) else enumerate(node)
+        opening, closing = ("{", "}") if isinstance(node, dict) else ("[", "]")
+        chunks.append(opening)
+        pos += 1
+        for index, (key, value) in enumerate(pairs):
+            if index:
+                chunks.append(",")
+                pos += 1
+            if isinstance(node, dict):
+                label = json.dumps(key, ensure_ascii=False) + ":"
+                chunks.append(label)
+                pos += len(label)
+                child = f"{path}.{key}"
+            else:
+                child = f"{path}[{key}]"
+            pos = _write_indexed(value, child, chunks, offsets, pos)
+        chunks.append(closing)
+        pos += 1
+    else:
+        text = json.dumps(node, ensure_ascii=False)
+        chunks.append(text)
+        pos += len(text)
+    offsets[path] = (start, pos - start)
+    return pos
+
+
+def _outline(data: Any, offsets: dict[str, tuple[int, int]], budget: int) -> str:
+    """Structural outline of *data* within *budget* characters.
+
+    A middle-out slice of a schema shows one arbitrary window; an outline names
+    every property first and carries each node's window in the file, so the
+    model can both judge whether it needs more and fetch only that.
+    """
+    # Widen the per-scalar cap when the structure alone leaves most of the
+    # budget unspent, so a payload that is one long string still says something.
+    tight = _render_outline(data, offsets, budget, _OUTLINE_SCALAR_CHARS)
+    if len(tight) >= budget // 2:
+        return tight
+    wide = _render_outline(data, offsets, budget, budget // 2)
+    return max((tight, wide), key=lambda text: (text.count("\n"), len(text)))
+
+
+def _render_outline(
+    root: Any, offsets: dict[str, tuple[int, int]], budget: int, scalar_chars: int
+) -> str:
+    """Breadth-first so shallow facts outlive the budget: one line per
+    container, its scalar children inline and its container children named
+    with the window that holds them."""
+    lines: list[str] = []
+    used = 0
+    queue: deque[tuple[str, Any]] = deque([("$", root)])
+    while queue:
+        path, node = queue.popleft()
+        is_map = isinstance(node, dict)
+        parts: list[str] = []
+        for key, value in node.items() if is_map else enumerate(node):
+            child = f"{path}.{key}" if is_map else f"{path}[{key}]"
+            if isinstance(value, (dict, list)):
+                braces = "{}" if isinstance(value, dict) else "[]"
+                unit = "keys" if isinstance(value, dict) else "items"
+                start, length = offsets.get(child, (0, 0))
+                parts.append(
+                    f"{key}={braces[0]}…{len(value)} {unit} "
+                    f"@{start}+{length}{braces[1]}"
+                )
+                queue.append((child, value))
+            else:
+                parts.append(f"{key}={_scalar(value, scalar_chars)}")
+        braces = "{}" if is_map else "[]"
+        line = f"{path}: {braces[0]}{', '.join(parts)}{braces[1]}"
+        if len(line) + 1 > budget - used:
+            marker = f"… {len(queue) + 1} more nodes not shown; read their windows"
+            while lines and used + len(marker) > budget:
+                used -= len(lines.pop()) + 1
+            room = budget - used - len(marker) - 1
+            if room > _OUTLINE_SCALAR_CHARS:
+                lines.append(line[: room - 1] + "…")
+            lines.append(marker)
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
+
+
+def _scalar(value: Any, limit: int) -> str:
+    text = json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 async def _record_activity(
@@ -233,13 +386,19 @@ class BaseTool:
                 await _record_activity(self, user_id, session, result, kwargs)
             raw_output = result.model_dump_json(exclude_none=True)
 
-            if (
-                len(raw_output) > _LARGE_OUTPUT_THRESHOLD
-                and user_id
-                and session.session_id
-            ):
+            # Consult the flag only once the output could plausibly be digested,
+            # so the common small-output path stays a pure local check.
+            digest = (
+                len(raw_output) > _DIGEST_THRESHOLD
+                and user_id is not None
+                and await is_feature_enabled(
+                    Flag.AUTOPILOT_DELEGATION, user_id, default=False
+                )
+            )
+            threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD
+            if len(raw_output) > threshold and user_id and session.session_id:
                 raw_output = await _persist_and_summarize(
-                    raw_output, user_id, session.session_id, tool_call_id
+                    raw_output, user_id, session.session_id, tool_call_id, digest
                 )
 
             return StreamToolOutputAvailable(

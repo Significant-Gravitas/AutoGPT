@@ -8,8 +8,6 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.util.feature_flag import Flag, is_feature_enabled
-
 # Workflow rules appended to the system prompt on every copilot turn
 # (baseline appends directly; SDK appends via the storage-supplement
 # template).  These are cross-tool rules (file sharing, @@agptfile: refs,
@@ -663,51 +661,6 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
-"""
-
-
-async def build_sdk_delegation_supplement(user_id: str | None) -> str:
-    """The delegation rules, or ``""`` when the cohort flag is off.
-
-    One gate, so a flag-off system prompt is byte-identical to today's by
-    construction. Anonymous turns fail closed.
-    """
-    if not user_id:
-        return ""
-    if not await is_feature_enabled(Flag.AUTOPILOT_DELEGATION, user_id, default=False):
-        return ""
-    return _sdk_delegation_rules()
-
-
-def _sdk_delegation_rules() -> str:
-    """The rules themselves. Private: calling it directly bypasses the flag.
-
-    Names ``Agent`` because that is what the CLI presents to the model today;
-    ``_SDK_BUILTIN_ALWAYS`` allows ``Task`` too, so a CLI rename disables the
-    wording rather than the tool.
-
-    Three things here are measured; do not change them without re-measuring.
-
-    The prohibition **leads**: carrying it as a later, permission-framed bullet
-    scored 9/25 against this one's 25/25.
-
-    The list is **concrete**. Appending the principle behind it — "delegate any
-    self-contained lookup whose reading is long and whose answer is short" —
-    as one further sentence dropped it to 3/25, and leading with that principle
-    instead of the list scored 0/25. Naming the work leaves nothing to judge;
-    stating the principle invites the model to decide whether this lookup
-    qualifies, and it decides not to. Widen by naming more work, never by
-    generalising.
-
-    It excludes **building agents**: a sub-agent never receives this system
-    prompt, so it has neither the building guide nor the shared tool notes.
-    """
-    return """
-
-### Delegating research
-Do not search blocks, read schemas, fetch docs or web pages, or read long
-files, logs or command output in this conversation. Send each such question to
-`Agent` and use what it reports. Build and validate agents yourself.
 """
 
 

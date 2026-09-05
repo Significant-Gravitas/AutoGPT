@@ -1,16 +1,8 @@
 """Tests for prompting helpers."""
 
-import ast
 import importlib
-import inspect
-from unittest.mock import AsyncMock
-
-import pytest
 
 from backend.copilot import prompting
-from backend.copilot.baseline import service as baseline_service
-from backend.copilot.sdk import service as sdk_service
-from backend.util.feature_flag import Flag
 
 
 class TestGetSdkSupplementStaticPlaceholder:
@@ -99,79 +91,3 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
-
-
-class TestSdkDelegationSupplement:
-    """One gate, so flag-off is provably a no-op on the system prompt."""
-
-    @pytest.mark.asyncio
-    async def test_flag_off_leaves_the_prompt_byte_identical(self, monkeypatch):
-        _set_flag(monkeypatch, False)
-        assert await prompting.build_sdk_delegation_supplement("u1") == ""
-
-    @pytest.mark.asyncio
-    async def test_anonymous_turn_fails_closed_without_consulting_the_flag(
-        self, monkeypatch
-    ):
-        flag = _set_flag(monkeypatch, True)
-        assert await prompting.build_sdk_delegation_supplement(None) == ""
-        flag.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_flag_on_returns_the_rules_for_this_user(self, monkeypatch):
-        flag = _set_flag(monkeypatch, True)
-        result = await prompting.build_sdk_delegation_supplement("u1")
-        assert result == prompting._sdk_delegation_rules()
-        assert result != ""
-        assert flag.await_args.args[0] is Flag.AUTOPILOT_DELEGATION
-        assert flag.await_args.args[1] == "u1", "must evaluate for THIS user"
-        assert flag.await_args.kwargs["default"] is False
-
-    def test_the_rules_lead_with_the_prohibition_and_name_the_tool(self):
-        rules = prompting._sdk_delegation_rules()
-        # Load-bearing and measured: a version carrying the prohibition as a
-        # later, permission-framed bullet scored 9/25 against this one's 25/25.
-        assert rules.strip().splitlines()[1].startswith("Do not ")
-        assert "`Agent`" in rules
-
-    def test_the_rules_keep_graph_building_in_this_conversation(self):
-        """A sub-agent never receives this system prompt, so it has neither the
-        building guide nor the shared tool notes. Delegating lookups is the
-        point; delegating the build is a regression, so it is pinned."""
-        rules = prompting._sdk_delegation_rules()
-        assert "Build and validate agents yourself" in rules
-        assert "build and validate graphs" not in rules
-
-    def test_only_the_sdk_engine_appends_it(self):
-        """Asserted against the AST, not the text: ``getsource`` returns
-        comments, so a grep stays green on a commented-out concatenation.
-        The baseline engine has no sub-agent tool, so it must NOT get this."""
-        assert "sdk_delegation_supplement" in _system_prompt_operands(sdk_service)
-        assert "sdk_delegation_supplement" not in _system_prompt_operands(
-            baseline_service
-        )
-
-
-def _set_flag(monkeypatch, enabled: bool) -> AsyncMock:
-    flag = AsyncMock(return_value=enabled)
-    monkeypatch.setattr("backend.copilot.prompting.is_feature_enabled", flag)
-    return flag
-
-
-def _system_prompt_operands(module) -> set[str]:
-    """Names concatenated into the module's ``system_prompt = a + b + ...``."""
-    tree = ast.parse(inspect.getsource(module))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(
-            isinstance(t, ast.Name) and t.id == "system_prompt" for t in node.targets
-        ):
-            continue
-        names |= {
-            operand.id
-            for operand in ast.walk(node.value)
-            if isinstance(operand, ast.Name)
-        }
-    return names
