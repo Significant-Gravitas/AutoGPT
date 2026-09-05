@@ -20,8 +20,10 @@ from openai.types.completion_usage import PromptTokensDetails
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
+from .context import get_current_envelope
 from .model import ChatSession, Usage
 from .rate_limit import record_cost_usage
+from .tree import charge_turn
 
 logger = logging.getLogger(__name__)
 
@@ -221,15 +223,23 @@ async def persist_and_record_usage(
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
-    if user_id and cost_microdollars is not None and cost_microdollars > 0:
-        # record_cost_usage() owns its fail-open handling for Redis/network
-        # errors. Don't wrap with a broad except here — unexpected accounting
-        # bugs should surface instead of being silently logged as warnings.
-        await record_cost_usage(
-            user_id=user_id,
-            cost_microdollars=cost_microdollars,
-            skip_daily=skip_daily,
-        )
+    if cost_microdollars is not None and cost_microdollars > 0:
+        if user_id:
+            # record_cost_usage() owns its fail-open handling for Redis/network
+            # errors. Don't wrap with a broad except here — unexpected accounting
+            # bugs should surface instead of being silently logged as warnings.
+            await record_cost_usage(
+                user_id=user_id,
+                cost_microdollars=cost_microdollars,
+                skip_daily=skip_daily,
+            )
+        # Same charge, second ledger: the tree this turn belongs to. A tree is
+        # identified by its root turn, not by a user, so this must not sit
+        # behind the user_id guard — an anonymous turn still spends its tree's
+        # budget.
+        envelope = get_current_envelope()
+        if envelope is not None:
+            await charge_turn(envelope, cost_microdollars)
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0

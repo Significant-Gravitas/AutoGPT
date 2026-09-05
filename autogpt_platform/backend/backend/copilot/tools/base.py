@@ -6,6 +6,7 @@ from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.activity_event import ActivityEventDraft
@@ -222,6 +223,29 @@ class BaseTool:
                 toolName=self.name,
                 output=NeedLoginResponse(
                     message=f"Please sign in to use {self.name}",
+                    session_id=session.session_id,
+                ).model_dump_json(),
+                success=False,
+            )
+
+        # Hiding a tool from the schema is presentation; this is the boundary.
+        # A spawned turn's envelope can only ever be narrower than its spawner's.
+        envelope = get_current_envelope()
+        if envelope is not None and not envelope.permits(self.name):
+            logger.warning(
+                "Refusing tool outside turn envelope: tool=%s session=%s depth=%s",
+                self.name,
+                session.session_id,
+                envelope.depth,
+            )
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=ErrorResponse(
+                    message=(
+                        f"{self.name} is not available in this delegated turn. "
+                        "If the task needs it, say so in your report instead."
+                    ),
                     session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,

@@ -31,13 +31,19 @@ from typing import Any
 from backend.copilot.active_turns import running_turn_limit_message
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
-from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSession,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
     run_copilot_turn_via_queue,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
+from backend.copilot.tree import SpawnRequest
 
 from .base import BaseTool
 from .models import (
@@ -164,6 +170,28 @@ class RunSubSessionTool(BaseTool):
                     ),
                     session_id=session.session_id,
                 )
+            # Only the session that opened a sub may steer it: same scope is
+            # not enough, or any sibling — or the sub itself — could queue a
+            # prompt into it under its envelope rather than their own.
+            #
+            # Subs created before this tool started recording provenance have
+            # ``None`` here and cannot satisfy the check. Refusing them would
+            # strand every in-flight sub at deploy, so they fall back to the
+            # scope + origin rules that governed them when they were made —
+            # the group is closed (nothing new joins it) and ages out with the
+            # 6h turn lifetime.
+            if (
+                owned.metadata.delegated_by_session_id is not None
+                and owned.metadata.delegated_by_session_id != session.session_id
+            ):
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} was not "
+                        "started by this session. Leave empty to start a fresh "
+                        "sub."
+                    ),
+                    session_id=session.session_id,
+                )
             # Subs are created as automations below, so only a sub may be
             # resumed as one. Otherwise this tool would run a model-authored
             # prompt inside an interactive session the caller happens to own,
@@ -195,6 +223,7 @@ class RunSubSessionTool(BaseTool):
                     session_id=session.session_id,
                 )
             inner_session_id = sub_session_param
+            opened_here = False
         else:
             new_session = await create_chat_session(
                 user_id,
@@ -204,6 +233,14 @@ class RunSubSessionTool(BaseTool):
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 expert_id=session.expert_id,
+                # Provenance doubles as the resume capability above and as
+                # the poll capability in get_sub_session_result. It also makes
+                # subs visible to ``chain_refusal``'s walk, which is intended:
+                # a sub hop spends delegation budget like any other hop (both
+                # bounds refuse the same 4th hop), and a sub delegating back
+                # to its own parent expert is seen as the loop it is.
+                delegated_by_expert_id=session.expert_id,
+                delegated_by_session_id=session.session_id,
                 # A sub is machine-driven whatever opened it: its prompt is
                 # written by the parent model, not typed by the user, and no
                 # tool restriction applies to it. Inheriting an "interactive"
@@ -212,6 +249,7 @@ class RunSubSessionTool(BaseTool):
                 origin="automation",
             )
             inner_session_id = new_session.session_id
+            opened_here = True
 
         effective_prompt = prompt
         if system_context.strip():
@@ -227,14 +265,21 @@ class RunSubSessionTool(BaseTool):
             permissions=get_current_permissions(),
             tool_call_id=(f"sub:{session.session_id}" if session.session_id else "sub"),
             tool_name="run_sub_session",
+            # An isolate shares its spawner's memory namespace, so it must not
+            # write to it; depth bounds how far it may spawn onward.
+            spawn=SpawnRequest(may_spawn=True, shares_memory=True),
+            allow_queue=False,
         )
         elapsed = time.monotonic() - started_at
+        discarded = opened_here and await discard_unused_sub_session(
+            inner_session_id, user_id, outcome
+        )
         workspace_files = (
             await list_sub_workspace_files(user_id, inner_session_id)
             if outcome == "completed"
             else None
         )
-        return response_from_outcome(
+        outcome_response = response_from_outcome(
             outcome=outcome,
             result=result,
             inner_session_id=inner_session_id,
@@ -242,6 +287,14 @@ class RunSubSessionTool(BaseTool):
             elapsed=elapsed,
             workspace_files=workspace_files,
         )
+        if discarded:
+            # The row is gone, so its id and link would send the model to poll
+            # a sub-session that no longer exists. Keep the reason, drop the
+            # handles — the same shape handoff_to_expert returns on refusal.
+            return ErrorResponse(
+                message=outcome_response.message, session_id=session.session_id
+            )
+        return outcome_response
 
 
 def apply_delegated_expert(
@@ -389,6 +442,39 @@ def _as_payload(output: Any) -> dict[str, Any] | None:
     return None
 
 
+# Outcomes meaning the turn never reached the sub's session, so the row we
+# opened for it holds nothing. Notably NOT ``failed``: there the turn ran and
+# errored, and its thread is the only record of that.
+_NOTHING_QUEUED: frozenset[SessionOutcome] = frozenset(
+    {"refused", "rejected_concurrent_turn_cap"}
+)
+
+
+async def discard_unused_sub_session(
+    session_id: str, user_id: str, outcome: SessionOutcome
+) -> bool:
+    """Drop a thread opened for a turn that was then refused, reporting
+    whether it is gone.
+
+    A tree refusal or the concurrent-turn cap rejects the turn after the
+    session row exists, leaving an empty conversation the user can open from
+    their history. Callers use the return value to withhold the sub-session
+    handles, which would otherwise point at a row that no longer exists.
+    Best-effort by contract: a failed cleanup must not turn a refusal into an
+    error, so it reports False and the handles stay valid.
+    """
+    if outcome not in _NOTHING_QUEUED:
+        return False
+    try:
+        await delete_chat_session(session_id, user_id)
+    except Exception:
+        logger.warning(
+            "Failed to clean up unused sub-session %s", session_id, exc_info=True
+        )
+        return False
+    return True
+
+
 def response_from_outcome(
     *,
     outcome: SessionOutcome,
@@ -446,6 +532,18 @@ def response_from_outcome(
             ),
             session_id=parent_session_id,
             status="running",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        )
+
+    if outcome == "refused":
+        # The turn never started; the tree or the target said why.
+        return SubSessionStatusResponse(
+            message=result.refusal or f"{actor} could not start this task.",
+            session_id=parent_session_id,
+            status="error",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
             sub_autopilot_session_link=link,

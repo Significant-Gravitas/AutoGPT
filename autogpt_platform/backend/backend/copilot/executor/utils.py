@@ -18,7 +18,17 @@ from backend.copilot.active_turns import (
     inflight_turn_limit_message,
 )
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.context import get_current_envelope
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.tree import (
+    SpawnRequest,
+    TreeRefusal,
+    TurnEnvelope,
+    admit_turn,
+    derive_child_envelope,
+    release_turn,
+    root_envelope,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 
@@ -220,6 +230,11 @@ class CoPilotExecutionEntry(BaseModel):
     forwards its parent's permissions so the sub can't escalate). ``None``
     means the worker applies no filter."""
 
+    envelope: TurnEnvelope | None = None
+    """The turn's tree envelope (depth, tool ceiling, taint, deadline), derived
+    at dispatch from the spawning turn's. ``None`` only for entries queued
+    before the field existed."""
+
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP
     ``/stream`` request arrived.  The executor's turn-start drain uses
@@ -255,8 +270,18 @@ async def enqueue_copilot_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    *,
+    envelope: TurnEnvelope,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
+
+    ``envelope`` is required and keyword-only on purpose. Every turn belongs to
+    a tree, and a turn that arrives without one is unenforced end to end: the
+    ``BaseTool.execute`` check no-ops and its first spawn is minted as a fresh
+    root. Making the parameter mandatory means a new entry point has to decide
+    which tree its turn belongs to rather than silently opting out.
+    ``CoPilotExecutionEntry.envelope`` stays optional so a message enqueued by
+    an older worker still decodes.
 
     Args:
         session_id: Chat session ID (also used for dedup/locking)
@@ -288,6 +313,7 @@ async def enqueue_copilot_turn(
         llm_credential_id=llm_credential_id,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        envelope=envelope,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -316,6 +342,7 @@ async def schedule_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    spawn: SpawnRequest | None = None,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -381,6 +408,7 @@ async def schedule_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            spawn=spawn,
         )
 
 
@@ -403,10 +431,16 @@ async def dispatch_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    spawn: SpawnRequest | None = None,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
     transfer slot ownership to ``mark_session_completed``.
+
+    This is the one chokepoint every turn passes — HTTP chat, scheduler,
+    ``AutoPilotBlock``, and the three spawn tools — so it is where the
+    turn's tree envelope is derived and admitted. A spawned turn that the
+    tree refuses raises :class:`TreeRefusal` before any side effect.
 
     Caller is responsible for acquiring ``slot`` via
     :func:`acquire_turn_slot`. This function is the post-acquire dispatch
@@ -423,14 +457,13 @@ async def dispatch_turn(
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        turn_id=turn_id,
-    )
+    envelope = await _admitted_turn_envelope(turn_id, user_id, permissions, spawn)
 
+    # Everything after the admit above runs inside the try: the tree's node
+    # counter is already incremented, so an exception from ``create_session``
+    # (a Redis blip) would otherwise leak a node for the key's whole TTL, and
+    # a handful of those exhaust a tree that never ran anything.
+    #
     # Once ``create_session`` has written Redis meta, EVERY exit path
     # from this point on must either (a) commit the turn (``slot.keep()``
     # + RabbitMQ message enqueued) or (b) tear the Redis meta down — or
@@ -440,6 +473,17 @@ async def dispatch_turn(
     # happy path from any failure / cancellation.
     committed = False
     try:
+        # Inside the try on purpose: the admit above already incremented the
+        # tree's node count, so anything that can raise between there and the
+        # finally must be covered by ``release_turn``.
+        permissions = _narrow_permissions(permissions, envelope)
+        await stream_registry.create_session(
+            session_id=session_id,
+            user_id=user_id,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            turn_id=turn_id,
+        )
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -455,11 +499,13 @@ async def dispatch_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            envelope=envelope,
         )
         slot.keep()
         committed = True
     finally:
         if not committed:
+            await release_turn(envelope)
             try:
                 await stream_registry.delete_session_meta(session_id)
             except BaseException:
@@ -469,6 +515,68 @@ async def dispatch_turn(
                     "dispatch_turn: redis meta cleanup failed for session=%s",
                     session_id,
                 )
+
+
+async def _admitted_turn_envelope(
+    turn_id: str,
+    user_id: str | None,
+    permissions: CopilotPermissions | None,
+    spawn: SpawnRequest | None,
+) -> TurnEnvelope:
+    """Derive this turn's envelope from the running turn's (a child) or mint
+    a root, then admit it against the tree ledger.
+
+    The spawner's envelope comes from the executor contextvar, so a caller
+    outside any turn — the HTTP route, the scheduler, a graph block — is a
+    root by construction rather than by declaration.
+    """
+    spawner = get_current_envelope()
+    if spawn is not None and spawner is None:
+        # A caller that passed a SpawnRequest is by construction a spawn tool
+        # running inside a turn, so a missing spawner envelope means the
+        # context was lost — a pre-deploy queue entry, or a refactor that
+        # dropped it. Minting a root there would hand the child FULL
+        # authority, which is the opposite of what the caller asked for, so
+        # refuse instead. This also makes the stream_heartbeat task boundary
+        # belt-and-braces rather than load-bearing.
+        raise TreeRefusal(
+            "This task's context was lost, so its limits cannot be carried "
+            "over. Start it again from the top."
+        )
+    if spawner is None:
+        envelope = root_envelope(turn_id)
+    else:
+        envelope = derive_child_envelope(
+            spawner, spawn or SpawnRequest(), spawner_permissions=permissions
+        )
+    await admit_turn(envelope, user_id=user_id)
+    return envelope
+
+
+def _narrow_permissions(
+    permissions: CopilotPermissions | None, envelope: TurnEnvelope
+) -> CopilotPermissions | None:
+    """The envelope's tool set as the turn's whitelist, keeping any block
+    filter the caller passed. Hides the tools from the model; the refusal
+    itself lives in ``BaseTool.execute``."""
+    narrowed = envelope.as_permissions()
+    if narrowed is None:
+        return permissions
+    if permissions is None:
+        return narrowed
+    # The caller's ``_parent`` is dropped on purpose: it belongs to the
+    # spawner's turn, and the envelope is already the narrower bound.
+    #
+    # ``tools_exclude`` is carried, never hardcoded: an empty envelope encodes
+    # deny-all as a blacklist of every tool, and forcing ``False`` here would
+    # reread that as a whitelist of every tool — the exact inversion the
+    # encoding exists to prevent.
+    return CopilotPermissions(
+        tools=narrowed.tools,
+        tools_exclude=narrowed.tools_exclude,
+        blocks=permissions.blocks,
+        blocks_exclude=permissions.blocks_exclude,
+    )
 
 
 async def schedule_chat_turn(
