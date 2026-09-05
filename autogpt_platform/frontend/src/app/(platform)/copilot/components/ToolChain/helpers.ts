@@ -354,3 +354,11 @@ export function buildChainSegments(
 
   return segments;
 }
+
+/** A tool call whose result has not landed. Whatever it needs from the user
+ *  has not been asked for yet. */
+export function isToolCallPending(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  const state = (part as ToolUIPart).state;
+  return state === "input-streaming" || state === "input-available";
+}

@@ -575,41 +575,7 @@ describe("copilot Connect card, already satisfied", () => {
 });
 
 describe("copilot Connect card, one tool needing several providers", () => {
-  beforeEach(() => {
-    savedCredentials = [];
-    server.use(
-      http.get("*/api/integrations/providers", () =>
-        HttpResponse.json([
-          { name: "github", description: "Repositories" },
-          { name: "slack", description: "Messages" },
-        ]),
-      ),
-      http.get("*/api/integrations/providers/system", () =>
-        HttpResponse.json([]),
-      ),
-      http.get("*/api/integrations/credentials", () =>
-        HttpResponse.json(savedCredentials),
-      ),
-      http.get("*/api/integrations/:provider/login", () =>
-        HttpResponse.json({
-          login_url: "https://example.com/oauth/authorize",
-          state_token: "state-token",
-        }),
-      ),
-      http.post("*/api/integrations/:provider/callback", ({ params }) => {
-        const provider = String(params.provider);
-        const stored = {
-          id: `cred-${provider}`,
-          provider,
-          type: "oauth2",
-          title: provider,
-          scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
-        };
-        savedCredentials = [...savedCredentials, stored];
-        return HttpResponse.json(stored);
-      }),
-    );
-  });
+  beforeEach(mockTwoProviderBackend);
 
   afterEach(resetStores);
 
@@ -729,6 +695,80 @@ describe("copilot Connect card, one tool needing several providers", () => {
     await screen.findByText(/Still to connect:/);
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilot Connect card, a card that arrives after the first connection", () => {
+  beforeEach(mockTwoProviderBackend);
+
+  afterEach(resetStores);
+
+  it("waits for a tool that is still running, then sends once", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), pendingSlackCallPart()]}
+            isStreaming={true}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+
+    // The running tool has not said what it needs yet, so sending here spends
+    // the chain's one turn before that card exists.
+    await screen.findByText("Connected");
+    expect(onSend).not.toHaveBeenCalled();
+
+    rerender(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), slackRequirementsPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+  });
+
+  it("gives a card that lands after the send a Proceed to continue from", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[setupRequirementsPart()]} isStreaming={true} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), slackRequirementsPart()]}
+            isStreaming={true}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+
+    // The chain's single send is spent, so without a button this card is
+    // connected with nothing to press.
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -953,5 +993,52 @@ function widerScopePart(): MessagePart {
         },
       },
     },
+  } as unknown as MessagePart;
+}
+
+function mockTwoProviderBackend() {
+  savedCredentials = [];
+  server.use(
+    http.get("*/api/integrations/providers", () =>
+      HttpResponse.json([
+        { name: "github", description: "Repositories" },
+        { name: "slack", description: "Messages" },
+      ]),
+    ),
+    http.get("*/api/integrations/providers/system", () =>
+      HttpResponse.json([]),
+    ),
+    http.get("*/api/integrations/credentials", () =>
+      HttpResponse.json(savedCredentials),
+    ),
+    http.get("*/api/integrations/:provider/login", () =>
+      HttpResponse.json({
+        login_url: "https://example.com/oauth/authorize",
+        state_token: "state-token",
+      }),
+    ),
+    http.post("*/api/integrations/:provider/callback", ({ params }) => {
+      const provider = String(params.provider);
+      const stored = {
+        id: `cred-${provider}`,
+        provider,
+        type: "oauth2",
+        title: provider,
+        scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
+      };
+      savedCredentials = [...savedCredentials, stored];
+      return HttpResponse.json(stored);
+    }),
+  );
+}
+
+/** The Slack tool call before its result arrives, under the id its setup card
+ *  later lands on. */
+function pendingSlackCallPart(): MessagePart {
+  return {
+    type: "tool-run_block",
+    toolCallId: "call-run_block-slack",
+    state: "input-available",
+    input: { block_name: "SlackPostMessageBlock" },
   } as unknown as MessagePart;
 }

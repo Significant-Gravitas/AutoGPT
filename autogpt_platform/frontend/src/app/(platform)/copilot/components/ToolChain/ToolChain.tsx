@@ -35,6 +35,7 @@ import {
   type ChainRow,
   getChainHeading,
   isLiftedSetupRow,
+  isToolCallPending,
   markSupersededSubSessionRows,
   toChainRow,
 } from "./helpers";
@@ -65,7 +66,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // Proceed only fills the composer, so the cards' onSent callbacks fire
   // when the user actually sends — not when the draft is written.
   const draftedRef = useRef<{ ids: string[]; sentAt: number } | null>(null);
+  // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
+  const [autoSent, setAutoSent] = useState(false);
 
   // Action cards (credential setup, clarifying questions) register here
   // instead of rendering their own Proceed/Answer buttons — the chain
@@ -130,21 +133,33 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // card in the chain is satisfied — otherwise connecting the first provider
   // sends while the rest of the rows are still visibly unconnected.
   const justConnectedHere = pendingActions.some((entry) => entry.justConnected);
+  // A tool still awaiting its result may yet add a card to this chain, and the
+  // send is once-only — spending it now leaves that card unsendable. A stopped
+  // stream owes no more results, however its calls ended.
+  const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
   const canAutoSend =
-    !readOnly && allActionsReady && !needsManualProceed && justConnectedHere;
+    !readOnly &&
+    !awaitingToolResult &&
+    !autoSent &&
+    allActionsReady &&
+    !needsManualProceed &&
+    justConnectedHere;
   // Nothing to sign in to and nothing to fill in: without a button this card
-  // has no way forward at all. Only asks that build a message qualify — an MCP
-  // row builds none, so offering one there is a button that does nothing.
+  // has no way forward at all — a card that lands after the send is spent
+  // included. Only asks that build a message qualify — an MCP row builds none,
+  // so offering one there is a button that does nothing.
   const offerProceed =
     !readOnly &&
+    !awaitingToolResult &&
+    !canAutoSend &&
     allActionsReady &&
-    !justConnectedHere &&
     (connectorRequests.length > 0 || inputRequests.length > 0);
 
   useEffect(
     function sendOnceEveryCardIsSatisfied() {
       if (!canAutoSend || autoSentRef.current) return;
       autoSentRef.current = true;
+      setAutoSent(true);
       const message = pendingActions
         .map((entry) => entry.buildMessage())
         .filter(Boolean)
