@@ -19603,6 +19603,11 @@
             "type": "array",
             "title": "Workflows"
           },
+          "credential_count": {
+            "type": "integer",
+            "title": "Credential Count",
+            "default": 0
+          },
           "last_run_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },

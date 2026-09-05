@@ -4,6 +4,7 @@
     "bio": null,
     "boundaries": "Ask before external actions.",
     "color": "",
+    "credential_count": 0,
     "id": "template-1",
     "identity": "You are Maria, a pragmatic marketing specialist.",
     "is_archived": false,

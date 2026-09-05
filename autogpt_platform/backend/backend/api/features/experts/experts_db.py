@@ -16,6 +16,7 @@ from backend.api.features.experts import raise_attachments, scheduling
 
 # Re-exported so `db_accessors.experts_db()` resolves the same attribute name
 # on both branches: the module here, and the RPC client stub in db_manager.
+from backend.api.features.experts.credential_counts import count_expert_credentials
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
@@ -268,8 +269,11 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
         return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
+    credential_counts = await count_expert_credentials(user_id, rows)
     return [
-        _to_model(row, latest_runs.get(row.id), weekly_spends.get(row.id, 0))
+        _to_model(
+            row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)
+        ).model_copy(update={"credential_count": credential_counts.get(row.id, 0)})
         for row in rows
     ]
 

@@ -271,28 +271,20 @@ describe("TeamPage", () => {
   });
 
   test("counts the integrations an expert has been granted", async () => {
+    const credentialRequests = vi.fn();
     server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getListExpertCredentialsMockHandler([
-        {
-          credential_id: "cred-1",
-          provider: "notion",
-          title: "Notion",
-          type: "oauth2",
-        },
-        {
-          credential_id: "cred-2",
-          provider: "openai",
-          title: "OpenAI",
-          type: "api_key",
-        },
-      ]),
+      getListExpertsMockHandler([{ ...hiredMaria, credential_count: 2 }]),
+      http.get("*/api/experts/:expertId/credentials", () => {
+        credentialRequests();
+        return HttpResponse.json([]);
+      }),
     );
 
     render(<TeamPage />);
 
     const card = await screen.findByRole("link", { name: "View Maria" });
     await waitFor(() => expect(getStatValue(card, "Integrations")).toBe("2"));
+    expect(credentialRequests).not.toHaveBeenCalled();
   });
 
   test("counts an expert's schedules on their card", async () => {

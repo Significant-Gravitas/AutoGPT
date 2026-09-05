@@ -157,6 +157,7 @@ class Expert(BaseModel):
     source_template_id: str | None
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
+    credential_count: int = 0
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None

@@ -36,6 +36,7 @@ import {
   getWeeklySpend,
   ACTION_BUTTON_CLASS,
 } from "../../helpers";
+import { ChatCircle } from "@phosphor-icons/react";
 import { CardStat, CardStats } from "../CardStats";
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
@@ -71,14 +72,8 @@ export function ExpertTeamCard({
   const needsSetupCount = getNeedsSetupCount(expert, schedules);
   const rosterStatus = getExpertRosterStatus(expert, needsSetupCount);
   const weeklySpend = getWeeklySpend(expert);
-  const {
-    credentialCount,
-    handleResume,
-    isResuming,
-    isFireOpen,
-    openFire,
-    closeFire,
-  } = useExpertTeamCard(expert.id);
+  const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
+    useExpertTeamCard(expert.id);
   const isPaused = Boolean(expert.schedules_paused_at);
 
   function handleInstallClick() {
@@ -228,7 +223,9 @@ export function ExpertTeamCard({
             <CardStat label="Schedules">{schedules.length}</CardStat>
             <CardStat label="Skills">{expert.skills.length}</CardStat>
             <CardStat label="Workflows">{expert.workflows.length}</CardStat>
-            <CardStat label="Integrations">{credentialCount}</CardStat>
+            <CardStat label="Integrations">
+              {expert.credential_count ?? 0}
+            </CardStat>
           </CardStats>
         </div>
       </Link>
@@ -257,7 +254,7 @@ export function ExpertTeamCard({
           variant="secondary"
           size="small"
           className={FOOTER_BUTTON_CLASS}
-          leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
+          leftIcon={<ChatCircle size={14} />}
         >
           Chat
         </Button>
