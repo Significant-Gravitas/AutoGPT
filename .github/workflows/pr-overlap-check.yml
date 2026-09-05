@@ -19,27 +19,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Need full history for merge testing
+          fetch-depth: 0 # Need full history for merge testing
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Configure git
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
+      - name: Test overlap detection helpers
+        run: >-
+          python .github/scripts/run_unittest_junit.py
+          --start-directory .github/scripts
+          --pattern test_detect_overlaps.py
+          --suite-name pr-overlap-helpers
+          --output "$RUNNER_TEMP/pr-overlap-results/unit-tests.xml"
+
       - name: Run overlap detection
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          READ_ONLY_PR: ${{ github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') }}
           TARGET_SHA: ${{ github.sha }}
         run: |
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            python .github/scripts/detect_overlaps.py "$PR_NUMBER"
+            overlap_args=("$PR_NUMBER")
+            if [[ "$READ_ONLY_PR" == "true" ]]; then
+              overlap_args+=(--dry-run)
+            fi
           else
-            python .github/scripts/detect_overlaps.py --ref "$TARGET_SHA" --base dev --dry-run --skip-merge-test
+            overlap_args=(--ref "$TARGET_SHA" --base dev --dry-run)
           fi
+          python .github/scripts/run_command_junit.py \
+            --name overlap-detection \
+            --classname pr-overlap \
+            --output "$RUNNER_TEMP/pr-overlap-results/overlap.xml" \
+            -- python .github/scripts/detect_overlaps.py "${overlap_args[@]}"
+
+      - name: Upload overlap reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-overlap-results
+          path: ${{ runner.temp }}/pr-overlap-results/*.xml
+          if-no-files-found: error
