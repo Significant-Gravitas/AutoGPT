@@ -23,6 +23,7 @@ const BOOKKEEPING_PART_TYPES: ReadonlySet<string> = new Set([
   STATUS_PART_TYPE,
   DREAM_OPERATIONS_PART_TYPE,
   COMPACTION_DATA_PART_TYPE,
+  "data-tool-display",
 ]);
 
 export function isBookkeepingPart(part: { type: string }): boolean {

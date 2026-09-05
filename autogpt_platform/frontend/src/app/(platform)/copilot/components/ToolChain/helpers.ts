@@ -233,7 +233,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state);
+    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
+      displayName: tool.title,
+      output: tool.output,
+    });
     if (catalogLabel) {
       return {
         key: tool.toolCallId,

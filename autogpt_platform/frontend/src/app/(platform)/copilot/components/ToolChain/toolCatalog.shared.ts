@@ -24,11 +24,16 @@ export type ChainCategory =
 
 export type ToolInput = Record<string, unknown>;
 
+export interface ToolDisplayContext {
+  displayName?: unknown;
+  output?: unknown;
+}
+
 export interface ToolMeta {
   category: ChainCategory;
   running: string;
   done: string;
-  subject?: (input: ToolInput) => string | null;
+  subject?: (input: ToolInput, context: ToolDisplayContext) => string | null;
 }
 
 export function strField(input: ToolInput, key: string): string | null {

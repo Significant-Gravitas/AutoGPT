@@ -69,6 +69,75 @@ function subSession(
 describe("SubSessionLive", () => {
   afterEach(cleanup);
 
+  it("shows persisted names in a delegate's live workflow steps", async () => {
+    server.use(
+      subSession(
+        [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "run-1",
+                display_name: "Daily briefing",
+                function: {
+                  name: "run_agent",
+                  arguments: '{"library_agent_id":"library-id"}',
+                },
+              },
+            ],
+          },
+        ],
+        { chat_status: "running", active_stream: null },
+      ),
+    );
+    render(
+      <SubSessionCard
+        output={{ status: "running", sub_session_id: "sub-1" }}
+      />,
+    );
+    expect(
+      await screen.findByText('Running agent "Daily briefing"…'),
+    ).toBeDefined();
+  });
+
+  it("matches historical delegate output names by tool call ID", async () => {
+    server.use(
+      subSession(
+        [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              { id: "run-1", function: { name: "run_agent", arguments: "{}" } },
+              { id: "run-2", function: { name: "run_agent", arguments: "{}" } },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-2",
+            content: '{"agent_name":"Second workflow"}',
+            tool_calls: null,
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-1",
+            content: '{"graph_name":"First workflow"}',
+            tool_calls: null,
+          },
+        ],
+        { chat_status: "idle", active_stream: null },
+      ),
+    );
+    render(
+      <SubSessionCard
+        output={{ status: "running", sub_session_id: "sub-1" }}
+      />,
+    );
+    expect(await screen.findByText('Ran agent "First workflow"')).toBeDefined();
+    expect(screen.getByText('Ran agent "Second workflow"')).toBeDefined();
+  });
+
   it("streams the delegate's recent tools and latest words while running", async () => {
     server.use(
       subSession([

@@ -26,6 +26,7 @@ from .tool_adapter import (
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
 )
+from .tool_display import SDKToolDisplayBridge
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,7 @@ def create_security_hooks(
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
+    tool_display_bridge: SDKToolDisplayBridge | None = None,
 ) -> dict[HookEvent, list[HookMatcher]]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -276,6 +278,20 @@ def create_security_hooks(
                 subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
+            if (
+                is_copilot_tool
+                and clean_name == "run_agent"
+                and tool_use_id is not None
+                and tool_display_bridge is not None
+            ):
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "updatedInput": tool_display_bridge.prepare_call(
+                            clean_name, tool_input, tool_use_id
+                        ),
+                    }
+                }
             return cast(SyncHookJSONOutput, {})
 
         def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
