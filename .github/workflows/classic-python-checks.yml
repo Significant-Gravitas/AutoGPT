@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.min-python-version }}
 
@@ -87,7 +87,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python ${{ env.min-python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.min-python-version }}
 
