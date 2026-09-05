@@ -20,6 +20,7 @@ from backend.data.notifications import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger
+from backend.util.settings import Config
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationQueue]")
 
@@ -54,7 +55,9 @@ def create_notification_config() -> RabbitMQConfig:
             arguments={"x-queue-type": _QUORUM},
         ),
     ]
-    return RabbitMQConfig(exchanges=EXCHANGES, queues=queues)
+    return RabbitMQConfig(
+        vhost=Config().rabbitmq_vhost, exchanges=EXCHANGES, queues=queues
+    )
 
 
 def get_routing_key(event_type: NotificationType) -> str:
