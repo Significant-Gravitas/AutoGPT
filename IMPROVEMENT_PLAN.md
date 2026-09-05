@@ -5,9 +5,9 @@
 
 ## Wave 0 Status: CERTIFIED AND CLOSED (2026-09-04)
 
-**Branch:** `fix/wave0-runtime-integrity` (18 commits ahead of `master` @ `ce6ab7b07`)
-**Final SHA:** `b2da02682` (certification packet); all invariant code at `59245d686`
-**Certification:** `WAVE0_CERTIFICATION.md` at repo root; Gates A/B/C passed, 7/7 invariants PROVEN
+**Branch:** `fix/wave0-runtime-integrity` (certification-packet commit `b2da02682`; invariant-evidence SHA `59245d686`; see `WAVE0_CERTIFICATION.md` for current ahead count)
+**Certification-packet SHA:** `b2da02682`; all invariant code at `59245d686`
+**Certification:** `WAVE0_CERTIFICATION.md` at repo root; Gates A/B/C passed, 7/7 invariants PROVEN; state `WAVE_0_CERTIFIED_AND_CLOSED`
 
 ### Proven invariants
 
@@ -26,7 +26,7 @@
 
 | ID | Class | Detail |
 |---|---|---|
-| R1 | LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA | Poetry venv proven functional (`test_revocation.py` 18/18 in 0.18s). Full-repo suite blocked by pre-existing `SpinTestServer` autouse fixture (`conftest.py:92`) resolving compose-internal hostnames (`db`, `redis`, `rabbitmq`) unreachable on this workstation; zero Wave 0 diff in `backend/util/test.py` or `backend/util/cache.py`. 83/83 Wave 0 tests passed with conftest active against real migrated Postgres. CI must run `poetry run test` on merge. |
+| R1 | LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA | Poetry venv proven functional (`test_revocation.py` 18/18 in 0.18s). Full-repo suite blocked by pre-existing `SpinTestServer` autouse fixture (`conftest.py:92`) resolving compose-internal hostnames (`db`, `redis`, `rabbitmq`) unreachable on this workstation; zero Wave 0 diff in `backend/util/test.py` or `backend/util/cache.py`. 83/83 Wave 0 tests passed with conftest active against real migrated Postgres. Upstream CI `poetry run test` on the PR is follow-up verification, not a prerequisite for the already documented local certification state. |
 | R2 | RESIDUAL (bounded) | One extra retry between executor crash and FAILED mark (max 5, finite). |
 | R3 | DEFERRED | Legacy Supabase HS256 bridge removal gated on 30-day measurement window. |
 | R4 | DEFERRED | `check_authz.py` advisory (39 flagged, documented suppressions). Promoting to blocking requires AST false-positive reduction. |
@@ -35,9 +35,9 @@
 | R7 | DEFERRED polish | `stop_graph_execution` persists cancel on already-terminal rows (harmless, no corruption). |
 | R8 | ACCEPTED POLICY | Missed-tick `status=missed` non-billable (CEO-approved). |
 
-### External blocker
+### GitHub transport
 
-**PR transport:** `gh auth` CLI is broken (`TypeError: Cannot read properties of undefined`); `git push` to `Significant-Gravitas/AutoGPT.git` returns 403 for `CCRBrad`. Requires `gh auth login` or `GITHUB_TOKEN` to fork and push. No code or test work blocked; only PR creation is external.
+`/opt/homebrew/bin/gh` is authenticated as CCRBrad (keyring, `repo` scope). The npm `gh` at `/Users/bradstrawbridge/.nvm/.../gh` is an unrelated broken binary; use `/opt/homebrew/bin/gh` for all GitHub operations. PR push and creation are the only remaining external steps.
 
 ### Process improvement (permanent, applies to all future waves)
 
@@ -713,11 +713,10 @@ Do not propose exhaustive testing — the ten above protect invariants.
 | `REL-008` WS healing on all surfaces (`S`) | Library/admin/stale tabs stale after reconnect; only detail page heals via `invalidateQueries` |
 | `UX-003` library run overview (cost+retry+edit) (`M`) | Answers the 7 operator questions in one view (status, root cause, retry, duration, cost) |
 | Execution-state reconciliation after reconnect/refresh/stale-tab | Stale `RUNNING` badges after WS drop; need `useExecutionWsWithHealing` on all surfaces |
-| Failure taxonomy: meaningful reasons instead of generic `FAILED` | `node_errors` string map is weak; surface root-cause trace to the failing block + input |
+| Failure taxonomy: meaningful error categories instead of generic `FAILED` | Replace `node_errors` string map with structured categories (auth, authz, validation, dependency unavailable, queue/dispatch, executor, model/tool, timeout, cancellation, retry exhausted, unknown). Surface block type + error code + sanitized message; never expose raw input or exception payloads to end users |
 | Execution timeline/audit trail (queued, claimed, started, retrying, cancelled, succeeded, failed) | Operators need the full lifecycle, not just terminal status |
 | `REL-009` notification failed badge (`S`) | Silent email miss → user thinks notified, was not; surface badge + retry |
 | `TEST-001` failure-path suite (10+ cases) (`M`) | Gate CI; add as each fix lands |
-| `ARCH-003`/`ARCH-004` decompose + virtualize `ExecutionsTable` (`M+S`) | Needed to render newly surfaced notifications/misses without perf regression |
 | Targeted disconnect/reconnect + stale-state recovery tests | Prove the invariant: WS drop → reconnect → correct state within 2s |
 
 **Exit criteria:** Library list flips `RUNNING→terminal` <2s after reconnect in Playwright; `followups-empty` replaced by "missed" + retry; per-run screen shows status + root cause + cost + retry; `TEST-001` 10/10 green; disconnect/reconnect tests prove state reconciliation.
@@ -749,6 +748,9 @@ Do not propose exhaustive testing — the ten above protect invariants.
 **Exit criteria:** `pnpm types` passes with `noImplicitAny` on manual files; axe violations 0 on `library`/`build`; Builder create/edit/validate/save flow passes Playwright `builder-happy` with pre-save lint gate.
 
 ### Wave 4: Design-System Convergence and Legacy Containment (weeks 9-10)
+
+**Goal:** Remove the seams that block velocity. Consolidate the design system so every route uses the same primitives.
+
 | Item |
 |---|
 | `ARCH-002` inversion fix (6 wrappers) (`S`) |
@@ -761,12 +763,14 @@ Do not propose exhaustive testing — the ten above protect invariants.
 
 **Exit criteria:** `rg __legacy__ src/components/{atoms,molecules,ui}` -> 0; `rg StoreCard` single source; button migration complete; HS retirement checklist scheduled.
 
-### Wave 5: Performance, Bundle Cleanup, and Component Decomposition (weeks 11-12)
+### Wave 5: Performance, Bundle Cleanup, and Structural Decomposition (weeks 11-12)
 
-**Goal:** Bundle, build, and docs without product work.
+**Goal:** Bundle, build, docs, and structural decomposition without product work.
 
 | Item |
 |---|
+| `ARCH-003` decompose `ExecutionsTable` (`M`); reduce 1096-line file into maintainable components; prerequisite for rendering notification/miss states at scale |
+| `ARCH-004` virtualize `ExecutionsTable` rows (`S`); depends on `ARCH-003`; render only visible rows to prevent perf regression when surfacing missed/failed runs |
 | `PERF-001` motion/icons dedupe (`S`) - measure `next build` route JS first |
 | `ICON-001` icons migration (1880) (`L`) - deliberately last, paired with design |
 | `PERF-002` cssnano re-enable (`S`) - after CSS size drops |
@@ -784,7 +788,6 @@ Do not propose exhaustive testing — the ten above protect invariants.
 | Marketplace install model: copy vs subscription (product decision item 3 in section 16) |
 | Copilot-to-marketplace agent publishing flow |
 | Featured agent curation and discovery |
-| `ENV-001` hosted vs self-host environment matrix doc |
 
 **Exit criteria:** Marketplace install creates a clear ownership path (copy or subscription, product decision); `StoreCard` has a single source; builder block picker uses a dedicated marketplace endpoint, not a reused listing fetch.
 

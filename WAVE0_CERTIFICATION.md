@@ -2,7 +2,7 @@
 
 **Branch:** `fix/wave0-runtime-integrity`
 **Baseline SHA:** `ce6ab7b07` (`origin/master == HEAD` at audit start)
-**Final SHA:** `59245d6863f1b4e5d58bae3c43ea05dfbdacae83` — **17 commits ahead** of baseline
+**Invariant-evidence SHA:** `59245d6863f1b4e5d58bae3c43ea05dfbdacae83` (all Wave 0 code and tests); **Certification-packet SHA:** `b2da02682` (certification document). 17 commits ahead of baseline at certification.
 **Worktree:** Pre-existing local modifications preserved, unstaged, untouched:
 
 ```
@@ -23,7 +23,7 @@
 | Gate | Result | Evidence |
 |---|---|---|
 | **A. Database Migration Certification** | **PASS** | Full chain (179 migrations incl. both Wave 0 migrations) `prisma migrate deploy` exit 0 on two clean disposable Postgres instances; `prisma generate` exit 0; DB-level verification below |
-| **B. Canonical Backend Integration** | **PASS (scoped) / ENVIRONMENT-LIMITED (full-repo)** | All 83 Wave 0 tests passed WITH conftest + session fixtures active against real migrated Postgres. Full-repo suite blocked by environment (see §Residual) |
+| **B. Canonical Backend Integration** | **PASS (scoped) / LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA (full-repo)** | All 83 Wave 0 tests passed WITH conftest + session fixtures active against real migrated Postgres. Poetry venv proven functional (`test_revocation.py` 18/18 in 0.18s). Full-repo suite blocked by pre-existing `SpinTestServer` autouse fixture resolving compose-internal hostnames; zero Wave 0 diff in fixture chain. See R1 for detail. |
 | **C. Regression Revalidation @ final SHA** | **PASS** | All gates rerun against `59245d686` (below) |
 | Missed-tick non-billing proof | **PASS** | `test_missed_occurrence_non_billing.py` 4/4 |
 | Revocation policy (CEO decision) | **CONFIRMED** | `FAIL_OPEN_BOUNDED_TO_5_MINUTES` implemented + 18 tests |
@@ -125,7 +125,7 @@ Test Files  432 passed (432)
 
 | ID | Risk | Class | Detail |
 |---|---|---|---|
-| R1 | Full-repo backend suite not executed locally | **LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA** | Poetry venv proven functional (`test_revocation.py` 18/18 in 0.18s). Full-repo suite blocked by pre-existing `SpinTestServer` autouse fixture (`conftest.py:92`) resolving compose-internal hostnames (`db`, `redis`, `rabbitmq`) unreachable on this workstation; zero Wave 0 diff in `backend/util/test.py` or `backend/util/cache.py`. All 83 Wave 0 tests DID run with conftest active against real migrated Postgres. **Follow-up: CI `poetry run test` on merge.** |
+| R1 | Full-repo backend suite not executed locally | **LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA** | Poetry venv proven functional (`test_revocation.py` 18/18 in 0.18s). Full-repo suite blocked by pre-existing `SpinTestServer` autouse fixture (`conftest.py:92`) resolving compose-internal hostnames (`db`, `redis`, `rabbitmq`) unreachable on this workstation; zero Wave 0 diff in `backend/util/test.py` or `backend/util/cache.py`. All 83 Wave 0 tests DID run with conftest active against real migrated Postgres. **Follow-up: CI `poetry run test` on the PR to exercise the full canonical suite; the blocking fixture is pre-existing workstation infrastructure, not Wave 0 code.** |
 | R2 | Redis retry-counter vs DB FAILED non-transactional | **RESIDUAL (bounded)** | One extra bounded retry possible between executor crash and FAILED mark; finite either way (max 5). |
 | R3 | Legacy Supabase HS256 bridge still live | **DEFERRED** | Removal gated on measured 30-day bridge window (separate workstream, per audit §5C). |
 | R4 | `check_authz.py` remains advisory | **DEFERRED** | 39 flagged with documented suppression classes; promoting to blocking CI requires AST-level analysis to drop false-positives below noise threshold. |
@@ -138,18 +138,16 @@ Test Files  432 passed (432)
 
 ## Git Transport Status
 
-**`MERGE-READY`** (not PUSHED / PR not OPENED — external blocker):
-```
-git push -u origin fix/wave0-runtime-integrity  →  403 Permission to Significant-Gravitas/AutoGPT.git denied to CCRBrad
-gh repo fork ...                                 →  unauthenticated (no oauth token in ~/.config/gh/hosts.yml, no GITHUB_TOKEN)
-```
-Post-authentication commands:
+**`MERGE-READY`** (not yet pushed; PR not yet opened).
+
+`/opt/homebrew/bin/gh` is authenticated as CCRBrad (keyring, `repo` scope). The npm `gh` under Node v24 at `/Users/bradstrawbridge/.nvm/.../gh` is an unrelated broken binary; use `/opt/homebrew/bin/gh` for all GitHub operations.
+
+Commands to push and open the PR:
 ```bash
-gh auth login
-gh repo fork Significant-Gravitas/AutoGPT --clone=false
+/opt/homebrew/bin/gh repo fork Significant-Gravitas/AutoGPT --clone=false
 git remote add fork https://github.com/CCRBrad/AutoGPT.git
 git push -u fork fix/wave0-runtime-integrity
-gh pr create --repo Significant-Gravitas/AutoGPT --base master \
+/opt/homebrew/bin/gh pr create --repo Significant-Gravitas/AutoGPT --base master \
   --head CCRBrad:fix/wave0-runtime-integrity \
   --title "fix(platform): harden Wave 0 runtime integrity" \
   --body-file WAVE0_CERTIFICATION.md
@@ -166,4 +164,4 @@ All seven runtime invariants **PROVEN** with behavior evidence at final SHA `592
 
 **State: WAVE_0_CERTIFIED_AND_CLOSED. Do not reopen REL-001 through REL-007 unless CI or review produces a concrete regression.**
 
-**Follow-up (non-blocking):** (a) CI execution of `poetry run test` on the PR to formally close R1; (b) PR transport once GitHub credentials are provided (external). Neither blocks the engineering certification.
+**Follow-up (non-blocking):** (a) CI execution of `poetry run test` on the PR to exercise the full canonical suite (R1 is `LOCAL_PARTIAL_PASS / CI_BOUND_FIXTURE_INFRA`; the blocking fixture is pre-existing workstation infrastructure, not Wave 0 code); (b) PR transport via `/opt/homebrew/bin/gh`. Neither blocks the engineering certification.
