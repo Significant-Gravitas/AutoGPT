@@ -480,6 +480,29 @@ class TestRunSubSession:
         assert r.sub_tool_call_count == 1
 
     @pytest.mark.asyncio
+    async def test_a_completed_run_with_no_tool_calls_reports_zero(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """``BaseTool.execute`` serialises with ``exclude_none=True``, so a
+        None count would drop the field and read as "not applicable" rather
+        than "the sub used no tools"."""
+        res = SessionResult()
+        res.response_text = "answered from what I already knew"
+        res.tool_calls = []
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="what is 2+2",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.sub_tool_call_count == 0
+        assert "sub_tool_call_count" in r.model_dump_json(exclude_none=True)
+
+    @pytest.mark.asyncio
     async def test_completed_surfaces_workspace_file_manifest(
         self, mock_queue, mock_waiter, mock_model, stub_workspace_listing
     ):
