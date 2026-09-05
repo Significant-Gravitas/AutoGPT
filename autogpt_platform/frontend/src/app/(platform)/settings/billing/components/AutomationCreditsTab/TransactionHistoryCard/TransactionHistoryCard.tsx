@@ -43,7 +43,7 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
           </Text>
         </div>
         <Text variant="small" className="text-zinc-600">
-          USD · {Intl.DateTimeFormat().resolvedOptions().timeZone}
+          USD · Your local time
         </Text>
       </div>
       {history.isLoading ? (
