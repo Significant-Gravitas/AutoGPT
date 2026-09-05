@@ -262,7 +262,13 @@ def _before_send(event, hint):
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
-    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
+    # Only wire the LaunchDarkly inspector where LaunchDarkly actually answers
+    # flag reads; in posthog mode this would build a client nothing else uses.
+    if (
+        feature_flag.serves_launchdarkly()
+        and feature_flag.is_configured()
+        and LaunchDarklyIntegration is not None
+    ):
         try:
             integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
         except DidNotEnable as e:

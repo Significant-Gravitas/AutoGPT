@@ -2,8 +2,9 @@
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { environment } from "@/services/environment";
-import { useFlags } from "launchdarkly-react-client-sdk";
 import { useEffect, useState } from "react";
+import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
+import { useFlagSource } from "./flag-source";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
@@ -198,9 +199,8 @@ export function envFlagOverride<T extends Flag>(
 }
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
-  const currentFlags = useFlags<FlagValues>();
-  const flagValue = currentFlags[flag];
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+  const { value } = useFlagSource(flag);
+  const areFlagsEnabled = areFeatureFlagsEnabled();
 
   const override = envFlagOverride(flag);
   if (override !== undefined) {
@@ -211,24 +211,24 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
     return defaultFlags[flag];
   }
 
-  return flagValue ?? defaultFlags[flag];
+  return (value ?? defaultFlags[flag]) as FlagValues[T];
 }
 
 const FLAG_RESOLUTION_TIMEOUT_MS = 5000;
 
 /**
- * Same as ``useGetFlag`` but also surfaces whether LaunchDarkly has
+ * Same as ``useGetFlag`` but also surfaces whether the flag vendor has
  * actually answered for this flag. Callers that gate a whole route on a
  * flag should branch on ``ready`` first — short-circuiting to
- * ``notFound()`` before LD responds 404s users that actually have the
- * flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS`` so
- * a flag key that LD never registers doesn't spin forever.
+ * ``notFound()`` before the vendor responds 404s users that actually have
+ * the flag on. Falls back to "ready" after ``FLAG_RESOLUTION_TIMEOUT_MS``
+ * so an unregistered flag key doesn't spin forever.
  */
 export function useFlagStatus<T extends Flag>(
   flag: T,
 ): { enabled: FlagValues[T]; ready: boolean } {
-  const currentFlags = useFlags<FlagValues>();
-  const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+  const { value, resolved } = useFlagSource(flag);
+  const areFlagsEnabled = areFeatureFlagsEnabled();
   const override = envFlagOverride(flag);
 
   const [timedOut, setTimedOut] = useState(false);
@@ -247,9 +247,22 @@ export function useFlagStatus<T extends Flag>(
     return { enabled: defaultFlags[flag], ready: true };
   }
 
-  const ldResponded = flag in currentFlags;
   return {
-    enabled: (currentFlags[flag] ?? defaultFlags[flag]) as FlagValues[T],
-    ready: ldResponded || timedOut,
+    enabled: (value ?? defaultFlags[flag]) as FlagValues[T],
+    ready: resolved || timedOut,
   };
+}
+
+// ``environment.areFeatureFlagsEnabled`` only knows about LaunchDarkly, and
+// deliberately stays that way — it is what the provider and 75 test files
+// stub. This is the same question asked of whichever vendor is configured.
+function areFeatureFlagsEnabled() {
+  switch (FLAG_BACKEND) {
+    case "posthog":
+      return isPostHogFlagsEnabled();
+    case "dual":
+      return environment.areFeatureFlagsEnabled() || isPostHogFlagsEnabled();
+    default:
+      return environment.areFeatureFlagsEnabled();
+  }
 }

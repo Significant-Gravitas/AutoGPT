@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from enum import Enum
@@ -20,6 +21,8 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -44,6 +47,20 @@ class AppEnvironment(str, Enum):
 class BehaveAs(str, Enum):
     LOCAL = "local"
     CLOUD = "cloud"
+
+
+class FeatureFlagBackend(str, Enum):
+    """Which vendor answers a feature flag read.
+
+    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
+    disagreement is measurable before the switch. The backend always serves
+    LaunchDarkly in this mode; the frontend falls back to PostHog where
+    LaunchDarkly is not configured, because there its answer never arrives.
+    """
+
+    LAUNCHDARKLY = "launchdarkly"
+    POSTHOG = "posthog"
+    DUAL = "dual"
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
@@ -697,6 +714,32 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
+    feature_flag_backend: FeatureFlagBackend = Field(
+        default=FeatureFlagBackend.LAUNCHDARKLY,
+        description="Which vendor answers feature flag reads: launchdarkly "
+        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
+        "every disagreement).",
+    )
+
+    @field_validator("feature_flag_backend", mode="before")
+    @classmethod
+    def _default_unknown_flag_backend(cls, v):
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
+        if not isinstance(v, str):
+            return v
+        try:
+            return FeatureFlagBackend(v.strip().lower())
+        except ValueError:
+            logger.warning(
+                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
+                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+            )
+            return FeatureFlagBackend.LAUNCHDARKLY
+
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
@@ -1083,6 +1126,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_api_key: str = Field(default="", description="PostHog API key")
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
+    )
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key. Only used for local feature-flag "
+        "evaluation; without it flag reads fall back to a remote /flags call.",
     )
 
     # Add more secret fields as needed

@@ -2,6 +2,8 @@
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
+import { usesPostHog } from "@/services/feature-flags/flag-backend";
+import { buildFlagPersonProperties } from "@/services/feature-flags/helpers";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
 import posthog from "posthog-js";
@@ -41,6 +43,11 @@ export function PostHogUserTracker() {
         posthog.identify(user.id, {
           email: user.email,
           ...(user.user_metadata?.name && { name: user.user_metadata.name }),
+          // Signup date and role become PostHog person properties here, and
+          // that is intended: they are what the ported targeting rules match
+          // on. Sent only when PostHog answers flag reads — in LaunchDarkly
+          // mode this call stays analytics-only and byte-identical.
+          ...(usesPostHog() && buildFlagPersonProperties(user)),
         });
         previousUserIdRef.current = user.id;
       }
