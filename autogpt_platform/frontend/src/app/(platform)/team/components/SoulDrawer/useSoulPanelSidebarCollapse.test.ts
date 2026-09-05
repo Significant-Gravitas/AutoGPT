@@ -40,4 +40,35 @@ describe("useSoulPanelSidebarCollapse", () => {
 
     expect(setOpen).toHaveBeenCalledWith(true);
   });
+  it("restores a sidebar it closed when the panel unmounts", () => {
+    const { rerender, unmount } = renderHook(() =>
+      useSoulPanelSidebarCollapse(true),
+    );
+    sidebarOpen = false;
+    rerender();
+    setOpen.mockClear();
+    unmount();
+    expect(setOpen).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it("does not open a sidebar that was already closed", () => {
+    sidebarOpen = false;
+    const { unmount } = renderHook(() => useSoulPanelSidebarCollapse(true));
+    setOpen.mockClear();
+    unmount();
+    expect(setOpen).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a sidebar the user reopened", () => {
+    const { rerender, unmount } = renderHook(() =>
+      useSoulPanelSidebarCollapse(true),
+    );
+    sidebarOpen = false;
+    rerender();
+    sidebarOpen = true;
+    rerender();
+    setOpen.mockClear();
+    unmount();
+    expect(setOpen).not.toHaveBeenCalled();
+  });
 });

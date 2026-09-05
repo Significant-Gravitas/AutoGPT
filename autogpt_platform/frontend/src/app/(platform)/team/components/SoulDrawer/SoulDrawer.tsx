@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
+import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/FullscreenDialog";
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon, LockIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -41,21 +42,12 @@ export function SoulDrawer({ expert, onClose }: Props) {
   const renderedWidth = Math.min(width, maxWidth);
   useSoulPanelSidebarCollapse(expert !== null);
 
-  // Keep painting the outgoing expert through the close tween — by then
-  // `expert` is already null and unmounting outright would snap the panel shut.
-  const lastShownRef = useRef<Expert | null>(null);
-  if (expert) lastShownRef.current = expert;
-  const shown = lastShownRef.current;
-
   if (isMobile) {
     if (!expert) return null;
     return (
-      <aside
-        aria-label={`${expert.name}'s Soul`}
-        className="fixed inset-0 z-50 flex flex-col bg-white"
-      >
+      <FullscreenDialog title={`${expert.name}'s Soul`} onClose={onClose}>
         <SoulPanelBody expert={expert} onClose={onClose} />
-      </aside>
+      </FullscreenDialog>
     );
   }
 
@@ -66,10 +58,10 @@ export function SoulDrawer({ expert, onClose }: Props) {
 
   return (
     <AnimatePresence>
-      {expert && shown ? (
+      {expert ? (
         <motion.aside
           data-soul-panel
-          aria-label={`${shown.name}'s Soul`}
+          aria-label={`${expert.name}'s Soul`}
           initial={{ width: 0, opacity: 0 }}
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
@@ -88,7 +80,7 @@ export function SoulDrawer({ expert, onClose }: Props) {
               style={{ width: renderedWidth }}
               className="flex h-full min-h-0 flex-col"
             >
-              <SoulPanelBody expert={shown} onClose={onClose} />
+              <SoulPanelBody expert={expert} onClose={onClose} />
             </div>
           </div>
         </motion.aside>
