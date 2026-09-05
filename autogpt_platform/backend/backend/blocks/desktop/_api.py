@@ -9,6 +9,7 @@ package pins a conflicting pillow version.
 
 import asyncio
 import base64
+import contextlib
 import secrets
 import shlex
 import string
@@ -30,11 +31,19 @@ DISPLAY = ":0"
 VNC_PORT = 5900
 STREAM_PORT = 6080
 SCREENSHOT_PATH = "/tmp/agpt_screenshot.png"
+# The stream password lives next to x11vnc's hashed one so a resume can hand
+# back the URL the user already holds instead of restarting the proxy.
+STREAM_PASSWORD_PATH = f"{HOME_PATH}/.vnc/agpt_stream_password"
+# Bound on the E2B volumes API (private beta) so a slow create cannot stall
+# sandbox creation; the by-name mount fallback is the normal path anyway.
+VOLUME_API_TIMEOUT_SECONDS = 10
+_KILL_TIMEOUT_SECONDS = 10
 
 _TYPE_CHUNK_SIZE = 25
 _TYPE_DELAY_MS = 75
 _READY_POLL_SECONDS = 0.5
-_READY_POLL_ATTEMPTS = 20
+# XFCE routinely takes 10-15 s to bring up xfwm4 on a cold start.
+_READY_POLL_ATTEMPTS = 40
 
 _KEY_ALIASES = {
     "enter": "Return",
@@ -110,12 +119,23 @@ class DesktopSession:
             volume_mounts, api_key, timeout_seconds, template, metadata
         )
         session = cls(sandbox)
-        await session.ensure_display(width, height)
-        if persistence.mounted_paths:
-            paths = " ".join(shlex.quote(p) for p in persistence.mounted_paths)
-            await session.run_command(f"mkdir -p {paths}")
-        if persistence.volume_mounted:
-            await session.ensure_persistent_home()
+        try:
+            await session.ensure_display(width, height)
+            # WORKSPACE_PATH always exists (blocks default their cwd to it),
+            # mounted or not; mounted paths get their mkdir as well.
+            paths = dict.fromkeys([WORKSPACE_PATH, *persistence.mounted_paths])
+            await session.run_command(
+                "mkdir -p " + " ".join(shlex.quote(p) for p in paths)
+            )
+            if persistence.volume_mounted:
+                await session.ensure_persistent_home()
+        except BaseException:
+            # The box is on the meter but no caller has its id yet: kill it
+            # rather than leak a sandbox that would bill until timeout and
+            # then sit paused forever.
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(sandbox.kill(), timeout=_KILL_TIMEOUT_SECONDS)
+            raise
         return session, persistence
 
     @classmethod
@@ -124,31 +144,56 @@ class DesktopSession:
         return cls(sandbox)
 
     async def start_stream(self) -> DesktopStream:
-        password = "".join(
-            secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
-        )
-        await self.run_command(
-            "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
-        )
-        await self.run_command(
-            f"mkdir -p ~/.vnc && x11vnc -storepasswd {password} ~/.vnc/passwd"
-        )
-        await self.run_command(
-            f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
-            f"-rfbport {VNC_PORT} -usepw 2>/tmp/x11vnc_stderr.log"
-        )
-        await self.sandbox.commands.run(
-            f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
-            f"--listen {STREAM_PORT} --web /opt/noVNC > /tmp/novnc.log 2>&1",
-            background=True,
-        )
-        await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+        """Return the live stream URL, starting the VNC stack only if needed.
+
+        A resume (or a second ``start_desktop`` call) must not restart x11vnc
+        and noVNC: that would sever the stream the user is watching and rotate
+        the password baked into the URL they already hold. When the proxy is
+        still serving — E2B's pause/resume restores processes — the saved
+        password is reused and the same URL comes back.
+        """
+        password = await self._running_stream_password()
+        if password is None:
+            password = "".join(
+                secrets.choice(string.ascii_letters + string.digits) for _ in range(16)
+            )
+            await self.run_command(
+                "pkill -f '[n]ovnc_proxy' || true; pkill -x x11vnc || true"
+            )
+            await self.run_command(
+                f"mkdir -p ~/.vnc && x11vnc -storepasswd {password} ~/.vnc/passwd"
+            )
+            await self.run_command(
+                f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
+                f"-rfbport {VNC_PORT} -usepw 2>/tmp/x11vnc_stderr.log"
+            )
+            await self.sandbox.commands.run(
+                f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
+                f"--listen {STREAM_PORT} --web /opt/noVNC > /tmp/novnc.log 2>&1",
+                background=True,
+            )
+            await self._wait_for(f'netstat -tuln | grep ":{STREAM_PORT} "')
+            await self.run_command(
+                f"umask 077 && printf %s {shlex.quote(password)} "
+                f"> {shlex.quote(STREAM_PASSWORD_PATH)}"
+            )
         host = self.sandbox.get_host(STREAM_PORT)
         url = (
             f"https://{host}/vnc.html"
             f"?autoconnect=true&resize=scale&password={password}"
         )
         return DesktopStream(url=url, sandbox_id=self.sandbox_id)
+
+    async def _running_stream_password(self) -> Optional[str]:
+        """The saved stream password, only while noVNC is actually listening."""
+        if not await self._check(f'netstat -tuln | grep -q ":{STREAM_PORT} "'):
+            return None
+        try:
+            saved = await self.sandbox.files.read(STREAM_PASSWORD_PATH)
+        except Exception:
+            return None
+        saved = saved.strip() if isinstance(saved, str) else ""
+        return saved or None
 
     async def screenshot_base64(self) -> str:
         await self.run_command(f"scrot --pointer {SCREENSHOT_PATH}")
@@ -280,11 +325,20 @@ def _sandbox_create_kwargs(
     return kwargs
 
 
-async def _resolve_volume(volume_name: str, api_key: str) -> "AsyncVolume | str":
+async def resolve_volume(volume_name: str, api_key: str) -> "AsyncVolume | str":
+    """Create *volume_name* if it does not exist yet, else mount it by name.
+
+    E2B has no get-or-create, so the create is expected to fail on every run
+    after the first and the by-name fallback is the normal path. Bounded so a
+    slow volumes API cannot stall sandbox creation. Shared with the CoPilot
+    shell (``copilot/tools/e2b_sandbox``) so both surfaces resolve identically.
+    """
     try:
-        return await AsyncVolume.create(volume_name, api_key=api_key)
+        return await asyncio.wait_for(
+            AsyncVolume.create(volume_name, api_key=api_key),
+            timeout=VOLUME_API_TIMEOUT_SECONDS,
+        )
     except Exception:
-        # Creation fails when the volume already exists; mount by name instead.
         return volume_name
 
 
@@ -299,10 +353,11 @@ async def _create_sandbox_with_volumes(
     if not volume_mounts:
         return await AsyncSandbox.create(**kwargs), PersistenceInfo()
 
-    mounts = {
-        path: await _resolve_volume(name, api_key)
-        for path, name in volume_mounts.items()
-    }
+    paths = list(volume_mounts)
+    volumes = await asyncio.gather(
+        *(resolve_volume(volume_mounts[path], api_key) for path in paths)
+    )
+    mounts = dict(zip(paths, volumes))
     try:
         sandbox = await AsyncSandbox.create(**kwargs, volume_mounts=mounts)
     except Exception as mount_error:

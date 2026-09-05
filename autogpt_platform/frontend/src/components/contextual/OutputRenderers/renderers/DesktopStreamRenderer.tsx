@@ -1,9 +1,10 @@
 import React, { useRef } from "react";
 import {
-  ArrowSquareOutIcon,
-  CornersOutIcon,
-  MonitorIcon,
-} from "@phosphor-icons/react";
+  ArrowExpandIcon,
+  ArrowUpRight01Icon,
+  ComputerIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -40,7 +41,7 @@ function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
     <div className="overflow-hidden rounded-lg border border-zinc-200">
       <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-3 py-2">
         <div className="flex items-center gap-2 text-sm text-zinc-700">
-          <MonitorIcon size={16} />
+          <Icon icon={ComputerIcon} size={16} />
           <span className="font-medium">Interactive Desktop</span>
           <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs uppercase text-zinc-600">
             {value.provider}
@@ -53,7 +54,7 @@ function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
             aria-label="Fullscreen"
           >
-            <CornersOutIcon size={14} />
+            <Icon icon={ArrowExpandIcon} size={14} />
             Fullscreen
           </button>
           <a
@@ -62,7 +63,7 @@ function DesktopStreamPreview({ value }: { value: DesktopStreamValue }) {
             rel="noopener noreferrer"
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-200"
           >
-            <ArrowSquareOutIcon size={14} />
+            <Icon icon={ArrowUpRight01Icon} size={14} />
             Open in new tab
           </a>
         </div>
