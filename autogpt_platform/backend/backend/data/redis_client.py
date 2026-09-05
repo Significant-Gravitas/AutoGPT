@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 from collections.abc import AsyncGenerator
 from weakref import ReferenceType, WeakKeyDictionary, ref
 
@@ -91,6 +92,22 @@ def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
         return addr
     _, port = addr
     return HOST, port
+
+
+def server_reachable(timeout: float = 1.0) -> bool:
+    """Probe the configured `HOST:PORT` with a single TCP connect.
+
+    Safe to call from collection-time ``skipif`` guards: unlike
+    :func:`connect`, a dead host fails after ``timeout`` seconds instead of
+    retrying for ~45 minutes (``conn_retry``'s defaults) before the guard
+    can resolve.
+    """
+    try:
+        with socket.create_connection((HOST, PORT), timeout):
+            pass
+    except OSError:
+        return False
+    return True
 
 
 @conn_retry("Redis", "Acquiring connection")
