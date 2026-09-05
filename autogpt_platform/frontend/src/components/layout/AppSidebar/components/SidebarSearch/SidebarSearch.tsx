@@ -27,12 +27,7 @@ export function SidebarSearch() {
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent
-        side="right"
-        className="[[data-radix-popper-content-wrapper]:has(>&)]:pointer-events-none"
-      >
-        Search
-      </TooltipContent>
+      <TooltipContent side="right">Search</TooltipContent>
     </Tooltip>
   );
 }
