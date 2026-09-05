@@ -269,7 +269,11 @@ async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Exper
         return [_to_model(row) for row in rows]
     latest_runs = await _latest_runs([row.id for row in rows])
     weekly_spends = await _weekly_spends([row.id for row in rows])
-    credential_counts = await count_expert_credentials(user_id, rows)
+    try:
+        credential_counts = await count_expert_credentials(user_id, rows)
+    except Exception:
+        logger.exception("Failed to read credential counts for expert roster")
+        credential_counts = {}
     return [
         _to_model(
             row, latest_runs.get(row.id), weekly_spends.get(row.id, 0)

@@ -65,7 +65,10 @@ async def test_empty_roster_skips_credential_reads():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("with_metrics", [True, False])
-async def test_roster_includes_counts_only_when_metrics_are_requested(with_metrics):
+@pytest.mark.parametrize("count_error", [False, True])
+async def test_roster_includes_counts_only_when_metrics_are_requested(
+    with_metrics, count_error
+):
     row = prisma.models.Expert.model_construct(id="expert-1", ownerUserId="owner-1")
     client = SimpleNamespace(find_many=AsyncMock(return_value=[row]))
     with (
@@ -78,13 +81,18 @@ async def test_roster_includes_counts_only_when_metrics_are_requested(with_metri
         patch.object(
             experts_db,
             "count_expert_credentials",
-            new=AsyncMock(return_value={row.id: 2}),
+            new=AsyncMock(
+                return_value={row.id: 2},
+                side_effect=(
+                    RuntimeError("credentials unavailable") if count_error else None
+                ),
+            ),
         ) as counts,
     ):
         roster = await experts_db.list_experts("owner-1", with_metrics=with_metrics)
 
     assert client.find_many.await_args.kwargs["where"]["ownerUserId"] == "owner-1"
-    assert roster[0].credential_count == (2 if with_metrics else 0)
+    assert roster[0].credential_count == (2 if with_metrics and not count_error else 0)
     if with_metrics:
         counts.assert_awaited_once_with("owner-1", [row])
     else:
