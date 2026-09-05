@@ -1171,6 +1171,20 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6-astra",
+                display_name="GPT-6 Astra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=15,
+                    input_credits_per_1m=1500.0,
+                    output_credits_per_1m=7500.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-5.6-sol",
                 display_name="GPT-5.6 Sol",
                 provider="openai",
