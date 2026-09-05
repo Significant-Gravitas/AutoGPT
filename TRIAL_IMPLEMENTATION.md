@@ -380,3 +380,34 @@ Implementation checkpoint: `a415e380c3`. All configured commit hooks passed.
   recovery; concurrency/late-settlement spend guarantees; frontend coverage and
   account-switching/UI QA; final offer choices, Stripe configuration, staging,
   independent review, and the approved live rollout. Trial enrollment remains off.
+
+## Frontend confirmation and account-isolation checkpoint
+
+- Added 17 UI-driven integration cases using generated MSW handlers: cancellation
+  success/failure/retry, pending-button behavior, accepted checkout token and return
+  destination, expired-offer refresh, status-query retry, yearly/zero-decimal offer
+  display, expiry, account switching, and backend confirmation/confirmation retry.
+- Tests reproduced an inactive HTTP 200 response silently finishing confirmation,
+  and an older GET overwriting a successful confirmation with an obsolete trial
+  offer. Confirmation now shows a retryable inactive-trial error. A shared,
+  user-scoped cache update cancels older status requests before publishing either
+  confirmation or cancellation and rechecks account identity across awaits.
+- Followed the React guidance on keeping mutation work in its interaction path
+  and deriving account-specific visible state instead of copying it into effects.
+  Existing grant wording and tunable offer values are unchanged.
+- Complete required sequence passed: whole-frontend `pnpm format`, `pnpm lint`,
+  `pnpm types`, and `pnpm test:unit --maxWorkers=2`. The Vitest result cache records
+  **581 test files, no failures**. Existing warning output remains. All new tests
+  are enabled; no coverage exclusions or thresholds were changed.
+- Current local Cobertura coverage is 100% for TrialCard, TrialStatus, and the
+  cache-update helper, 94.59% for useTrialCard, and 92.85% for checkout-return
+  confirmation. A comparison of instrumented added lines against merged dev
+  `a242bc9392a8a062cce48a7913b57a833b3b909b` found **120/124 covered (96.77%)**;
+  that is a local estimate, not a claim that the next Codecov check has passed.
+- Billing-auth dependency #14226 remains open at
+  `5de13ac07cd3f9759a2ab02d3b0fe79f965f6056`. The new tests cover trial data and
+  late trial mutations, not the broader billing/credit surfaces in that dependency.
+- Stripe CLI access was refreshed read-only and remains valid for AutoGPT. The
+  hosted test session is still sandbox-only and open. Native Safari control is
+  now available through Cua without enabling browser debugging; completion and
+  backend fulfillment are being verified separately from these frontend tests.

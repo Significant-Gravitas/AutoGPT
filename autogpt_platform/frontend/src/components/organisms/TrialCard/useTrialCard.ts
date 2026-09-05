@@ -1,11 +1,10 @@
 import {
-  getGetTrialsGetTrialStatusQueryKey,
   usePostTrialsCancelTrial,
   usePostTrialsStartTrialCheckout,
 } from "@/app/api/__generated__/endpoints/trials/trials";
-import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
+import { updateTrialStatusCache } from "@/services/trials/updateTrialStatusCache";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePostHog } from "@posthog/react";
 import { useEffect, useRef, useState } from "react";
@@ -19,7 +18,6 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
     userID: string;
     message: string;
   } | null>(null);
-  const queryKey = [...getGetTrialsGetTrialStatusQueryKey(), userID];
   const query = useTrialStatus();
   const { mutateAsync: checkout, isPending: isStarting } =
     usePostTrialsStartTrialCheckout();
@@ -75,10 +73,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
       if (useAuthStore.getState().user?.id !== userID) return;
       if (response.status !== 200)
         throw new Error("Unable to cancel your trial.");
-      queryClient.setQueryData(queryKey, response);
-      await queryClient.invalidateQueries({
-        queryKey: getGetSubscriptionStatusQueryKey(),
-      });
+      await updateTrialStatusCache({ queryClient, userID, response });
     } catch (error) {
       setFailure({
         userID,

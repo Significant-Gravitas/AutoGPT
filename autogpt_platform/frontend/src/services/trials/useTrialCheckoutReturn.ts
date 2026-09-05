@@ -1,13 +1,10 @@
-import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
-import {
-  getGetTrialsGetTrialStatusQueryKey,
-  usePostTrialsConfirmTrial,
-} from "@/app/api/__generated__/endpoints/trials/trials";
+import { usePostTrialsConfirmTrial } from "@/app/api/__generated__/endpoints/trials/trials";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { updateTrialStatusCache } from "./updateTrialStatusCache";
 
 export function useTrialCheckoutReturn() {
   const userID = useAuthStore((state) => state.user?.id);
@@ -37,13 +34,12 @@ export function useTrialCheckoutReturn() {
         if (useAuthStore.getState().user?.id !== userID) return;
         if (response.status !== 200)
           throw new Error("Could not confirm your trial.");
-        queryClient.setQueryData(
-          [...getGetTrialsGetTrialStatusQueryKey(), userID],
-          response,
-        );
-        await queryClient.invalidateQueries({
-          queryKey: getGetSubscriptionStatusQueryKey(),
-        });
+        if (!(await updateTrialStatusCache({ queryClient, userID, response })))
+          return;
+        if (!response.data.active && !response.data.converted)
+          throw new Error(
+            "Your trial is not active. Review your card setup and try again.",
+          );
         setResult({ userID, trial: response.data });
       })
       .catch((error: unknown) => {
