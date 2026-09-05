@@ -5666,13 +5666,8 @@
             "required": false,
             "schema": {
               "anyOf": [
-                {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                {
-                  "type": "null"
-                }
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
               ],
               "title": "Transaction Time"
             }
@@ -5682,14 +5677,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Transaction Type"
             }
           },
@@ -5708,14 +5696,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Cursor"
             }
           }
@@ -15393,102 +15374,6 @@
   },
   "components": {
     "schemas": {
-      "CreditHistoryCharge": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "posted_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Posted At"
-          },
-          "amount": {
-            "type": "integer",
-            "title": "Amount"
-          },
-          "charge_type": {
-            "type": "string",
-            "enum": ["usage", "execution_fee", "adjustment", "transaction"],
-            "title": "Charge Type"
-          },
-          "block_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Block Name"
-          },
-          "node_execution_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Node Execution Id"
-          }
-        },
-        "type": "object",
-        "required": ["id", "posted_at", "amount", "charge_type"],
-        "title": "CreditHistoryCharge"
-      },
-      "CreditHistoryRelatedExecution": {
-        "properties": {
-          "execution_id": {
-            "type": "string",
-            "title": "Execution Id"
-          },
-          "agent_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Name"
-          },
-          "library_agent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Library Agent Id"
-          },
-          "execution_available": {
-            "type": "boolean",
-            "title": "Execution Available",
-            "default": false
-          },
-          "amount": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Amount"
-          }
-        },
-        "type": "object",
-        "required": ["execution_id"],
-        "title": "CreditHistoryRelatedExecution"
-      },
       "AIConnectionOffer": {
         "properties": {
           "offer_id": { "type": "string", "title": "Offer Id" },
@@ -18720,13 +18605,61 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditHistoryCharge": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "amount": { "type": "integer", "title": "Amount" },
+          "charge_type": {
+            "type": "string",
+            "enum": ["usage", "execution_fee", "adjustment", "transaction"],
+            "title": "Charge Type"
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name"
+          },
+          "node_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Execution Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "posted_at", "amount", "charge_type"],
+        "title": "CreditHistoryCharge"
+      },
+      "CreditHistoryRelatedExecution": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id"],
+        "title": "CreditHistoryRelatedExecution"
+      },
       "CreditTransactionItem": {
         "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "default": ""
-          },
+          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -18742,42 +18675,17 @@
             "$ref": "#/components/schemas/CreditTransactionType",
             "default": "USAGE"
           },
-          "amount": {
-            "type": "integer",
-            "title": "Amount",
-            "default": 0
-          },
+          "amount": { "type": "integer", "title": "Amount", "default": 0 },
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
           },
           "usage_graph_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Graph Id"
           },
           "usage_execution_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
           },
           "usage_node_count": {
@@ -18791,10 +18699,7 @@
             "title": "Usage Start Time",
             "default": "9999-12-31T23:59:59.999999Z"
           },
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
+          "user_id": { "type": "string", "title": "User Id" },
           "activity_type": {
             "type": "string",
             "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
@@ -18802,59 +18707,26 @@
             "default": "other"
           },
           "library_agent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id"
           },
           "agent_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agent Name"
           },
           "execution_started_at": {
             "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
             ],
             "title": "Execution Started At"
           },
           "execution_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Execution Status"
           },
           "execution_graph_version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Execution Graph Version"
           },
           "execution_available": {
@@ -18863,58 +18735,23 @@
             "default": false
           },
           "conversation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Conversation Id"
           },
           "conversation_title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Conversation Title"
           },
           "parent_execution_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Parent Execution Id"
           },
           "parent_agent_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Parent Agent Name"
           },
           "parent_library_agent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Parent Library Agent Id"
           },
           "related_executions": {
@@ -18945,9 +18782,7 @@
             "default": 0
           },
           "charges": {
-            "items": {
-              "$ref": "#/components/schemas/CreditHistoryCharge"
-            },
+            "items": { "$ref": "#/components/schemas/CreditHistoryCharge" },
             "type": "array",
             "title": "Charges"
           },
@@ -28617,44 +28452,25 @@
       "TransactionHistory": {
         "properties": {
           "transactions": {
-            "items": {
-              "$ref": "#/components/schemas/CreditTransactionItem"
-            },
+            "items": { "$ref": "#/components/schemas/CreditTransactionItem" },
             "type": "array",
             "title": "Transactions"
           },
           "next_transaction_time": {
             "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
             ],
             "title": "Next Transaction Time"
           },
           "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Next Cursor"
           },
           "snapshot_at": {
             "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
             ],
             "title": "Snapshot At"
           }
