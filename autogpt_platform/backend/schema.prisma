@@ -232,6 +232,7 @@ model SubscriptionTrial {
   notifications             TrialNotificationDelivery[]
 
   @@index([status, endsAt])
+  @@index([stripeCustomerId, id])
 }
 
 model TrialNotificationDelivery {

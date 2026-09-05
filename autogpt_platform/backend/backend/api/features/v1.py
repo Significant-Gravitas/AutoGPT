@@ -129,6 +129,10 @@ from backend.data.onboarding import (
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial_billing import (
+    TRIAL_BILLING_EVENTS,
+    sync_trials_for_billing_event,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -1566,6 +1570,12 @@ async def stripe_webhook(request: Request):
     # Acknowledge with 200 and a warning so Stripe stops retrying.
     event_id = event.get("id", "")
     event_type = event.get("type", "")
+
+    if event_type in TRIAL_BILLING_EVENTS:
+        # This idempotent path only reconciles current Stripe state. Do not let
+        # a claim left by a crashed delivery suppress card removal/restoration.
+        await sync_trials_for_billing_event(event_type, event.get("data"))
+        return Response(status_code=200)
 
     # Event-level dedup: short-circuit identical re-deliveries before any
     # handler runs. Stripe retries the same event.id on non-2xx responses, and

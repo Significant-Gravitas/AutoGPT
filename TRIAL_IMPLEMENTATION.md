@@ -473,3 +473,74 @@ Implementation checkpoint: `a415e380c3`. All configured commit hooks passed.
 Stripe references: [published test cards](https://docs.stripe.com/testing),
 [customer and subscription payment defaults](https://docs.stripe.com/payments/checkout/subscriptions/update-payment-details),
 and [subscription payment-source precedence](https://docs.stripe.com/api/subscriptions/object).
+
+## Automatic billing-card webhook checkpoint
+
+- Found that customer billing-default changes and payment-method detachment were
+  not routed to trial reconciliation. Added customer updated/deleted, payment
+  method attached/updated/automatically-updated/detached, and SetupIntent
+  succeeded/requires-action/setup-failed/canceled handling. Typed event models
+  identify both current and previous customers; the latter is required when a
+  detached card's current customer becomes null.
+- These signed events trigger current Stripe reads, not entitlement decisions
+  from potentially stale event fields. Lookup is limited to consumed,
+  unconverted enrollments whose current user/customer mapping still matches;
+  ENTERPRISE and unrelated customers are excluded. Subscription/customer/user/
+  enrollment ownership is checked again before reconciliation. Keyset pagination
+  processes all targets, and one failed target does not starve later targets.
+  Failures return a retryable error instead of acknowledging incomplete work.
+- The state-only billing refresh deliberately runs outside the existing event
+  claim shortcut: a claim left by a crashed request cannot discard a replayed
+  card removal/restoration. Repeated events safely reconcile current state; they
+  do not issue trial credits. Existing payment/checkout event handling is unchanged.
+- Added a customer-plus-ID lookup index in
+  `20260905030000_index_trial_billing_customer`. The local disposable database was
+  prebuilt without `_prisma_migrations`, so `migrate deploy` correctly refused to
+  baseline it (P3005). No reset or fake history was applied. Executed only the new
+  additive SQL with the database explicitly pinned to `127.0.0.1:15432/trial_test`
+  and verified the exact index. Full deployment migration validation remains a
+  staging gate, separate from this additive local check.
+- Reproduced **12 expected failures** before the webhook change, then removed
+  every expected-failure marker. Added signed HTTP tests, event-identity and
+  failure tests, and real database checks for ownership/exclusions and 101-row
+  pagination. Final selected validation: **302 billing/trial/database tests**
+  (including all 31 disposable database cases) and **50 webhook/trial API tests**
+  passed. Whole-backend formatting/type checks and whole-schema Prisma formatting
+  passed; existing test/dependency warnings remain. No checks were weakened.
+- Exercised actual Stripe CLI test-mode forwarding to a guarded localhost server
+  running the real FastAPI router, real Stripe SDK reads, and local database/Redis.
+  The project's FastAPI CLI extras are absent, so the test used its existing
+  Uvicorn server without adding production dependencies. The forwarding secret
+  stayed in process memory and was not printed or persisted. Both owned test
+  processes were stopped after validation; no stored webhook destination changed.
+- Clearing and restoring the owned sandbox customer's effective billing default
+  automatically revoked/restored trial access via actual forwarded HTTP requests,
+  with no manual Checkout confirmation. A captured older removal event was then
+  replayed with a fresh local test signature and could not undo the restored card.
+  An invalid signature returned 400 without changing the active trial.
+- Also created a disposable `tok_visa` test PaymentMethod, made it the test billing
+  default, and detached it. Actual event
+  `evt_1UC9ixEVwK4k8ivI7tadN3gI` used API `2023-10-16`, with current customer null
+  and previous customer `cus_VCUA4PuWBWfp1O`. Its delivery revoked trial access;
+  restoring the original verified card restored access. The final run observed
+  six HTTP 200 deliveries (including local replay) and one expected HTTP 400.
+  No live card or charge was used. The temporary PaymentMethod remains detached.
+- Final state is the original TRIAL enrollment/subscription, same consumption
+  timestamp and end date, cancellation revision 1, and exactly one 300-credit
+  onboarding grant. The original test subscription is still scheduled to cancel.
+  This verifies selected test-mode webhook delivery, not production event
+  subscription, hosted 3DS/declines, the authenticated app return flow, or email
+  delivery after card restoration.
+- CI completed at preceding head
+  `56a27f6af8b66ab5fdd9ff7ad6ce4346adcb8073` with no pending/failed checks. The new
+  webhook checkpoint still needs its own CI and independent review. Analytics
+  PRs #14290 (`b3700b0e1e923540faee82f0fcca86587508ba52`) and #14287
+  (`d302ac9e9b96f42a7fc6df49c15c004dba35851d`) remain open, as does billing
+  isolation #14226 (`5de13ac07cd3f9759a2ab02d3b0fe79f965f6056`, BLOCKED).
+- Remaining launch work includes hosted authentication/decline cases, card and
+  trial freshness/recovery audits, suppressed email recovery and real email/UI
+  validation, concurrent/in-flight spend guarantees, final offer/conversion
+  decisions, event/flag configuration, staging migration/runtime checks, and the
+  explicitly approved live rollout. Enrollment remains off.
+
+Stripe reference: [billing-card and SetupIntent event types](https://docs.stripe.com/api/events/types).
