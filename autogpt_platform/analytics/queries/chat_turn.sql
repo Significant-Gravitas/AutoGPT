@@ -50,25 +50,25 @@
 
 SELECT
     m."id"                                                        AS id,
-    m."createdAt"                                                 AS createdAt,
-    m."sessionId"                                                 AS sessionId,
-    s."userId"                                                    AS userId,
-    s."organizationId"                                            AS organizationId,
-    s."expertId"                                                  AS expertId,
+    m."createdAt"                                                 AS "createdAt",
+    m."sessionId"                                                 AS "sessionId",
+    s."userId"                                                    AS "userId",
+    s."organizationId"                                            AS "organizationId",
+    s."expertId"                                                  AS "expertId",
     CASE WHEN s."expertId" IS NULL THEN 'autopilot' ELSE 'expert' END
                                                                   AS surface,
-    COALESCE(s."metadata"::jsonb->>'origin', 'interactive')       AS sessionOrigin,
+    COALESCE(s."metadata"::jsonb->>'origin', 'interactive')       AS "sessionOrigin",
     COALESCE(s."metadata"::jsonb->>'origin', 'interactive') <> 'automation'
-                                                                  AS isHumanTurn,
-    s."metadata"::jsonb->>'source_platform'                       AS sourcePlatform,
+                                                                  AS "isHumanTurn",
+    s."metadata"::jsonb->>'source_platform'                       AS "sourcePlatform",
     m."sequence"                                                  AS sequence,
     NOT EXISTS (
       SELECT 1 FROM platform."ChatMessage" p
       WHERE p."sessionId" = m."sessionId"
         AND p."role" = 'user'
         AND p."sequence" < m."sequence"
-    )                                                             AS isFirstTurnInSession,
-    s."createdAt"                                                 AS sessionCreatedAt
+    )                                                             AS "isFirstTurnInSession",
+    s."createdAt"                                                 AS "sessionCreatedAt"
 FROM platform."ChatMessage" m
 JOIN platform."ChatSession" s ON s."id" = m."sessionId"
 WHERE m."role" = 'user'

@@ -111,14 +111,17 @@ SELECT
         '[a-zA-Z0-9_:-]*\d[a-zA-Z0-9_:-]*', '*', 'g'
     )                                                              AS groupedErrorMessage,
     -- Columns below were appended later; CREATE OR REPLACE VIEW only allows
-    -- adding columns at the end, so keep new ones here.
-    ge."expertId"                                                  AS expertId,
-    ge."triggerSource"                                             AS triggerSource,
-    ge."triggerRef"                                                AS triggerRef,
-    ge."stats"::jsonb->>'failure_reason'                           AS failureReason,
-    COALESCE((ge."stats"::jsonb->>'is_dry_run')::boolean, FALSE)   AS isDryRun,
-    ge."parentGraphExecutionId" IS NOT NULL                        AS isSubgraphRun,
-    ge."endedAt"                                                   AS endedAt
+    -- adding columns at the end, so keep new ones here. They are quoted so
+    -- the column names stay camelCase as documented (an unquoted alias folds
+    -- to lowercase); groupedErrorMessage above predates this and cannot be
+    -- renamed in place.
+    ge."expertId"                                                  AS "expertId",
+    ge."triggerSource"                                             AS "triggerSource",
+    ge."triggerRef"                                                AS "triggerRef",
+    ge."stats"::jsonb->>'failure_reason'                           AS "failureReason",
+    COALESCE((ge."stats"::jsonb->>'is_dry_run')::boolean, FALSE)   AS "isDryRun",
+    ge."parentGraphExecutionId" IS NOT NULL                        AS "isSubgraphRun",
+    ge."endedAt"                                                   AS "endedAt"
 FROM platform."AgentGraphExecution" ge
 LEFT JOIN platform."AgentGraph" g
        ON ge."agentGraphId" = g."id"
