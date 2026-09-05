@@ -226,6 +226,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using Flux Kontext or Google Nano Banana models |
 | [AI Image Generator](block-integrations/llm.md#ai-image-generator) | Generate images using various AI models through a unified interface |
 | [AI List Generator](block-integrations/llm.md#ai-list-generator) | A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context |
+| [AI Media Generator](block-integrations/wavespeed/ai_media_generator.md#ai-media-generator) | Generate images and videos using WaveSpeed AI models |
 | [AI Music Generator](block-integrations/llm.md#ai-music-generator) | This block generates music using Meta's MusicGen model on Replicate |
 | [AI Screenshot To Video Ad](block-integrations/llm.md#ai-screenshot-to-video-ad) | Turns a screenshot into an engaging, avatar‑narrated video advert |
 | [AI Shortform Video Creator](block-integrations/llm.md#ai-shortform-video-creator) | Creates a shortform video using revid |
