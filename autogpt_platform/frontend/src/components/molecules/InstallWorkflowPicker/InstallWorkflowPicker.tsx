@@ -36,6 +36,9 @@ export function InstallWorkflowPicker({
     searchQuery,
     setSearchQuery,
     libraryResults,
+    hasMoreLibraryResults,
+    loadMoreLibraryResults,
+    isLoadingMore,
     marketplaceResults,
     isSearching,
     pendingKey,
@@ -225,6 +228,16 @@ export function InstallWorkflowPicker({
                     ))}
               </div>
             )}
+            {source === "library" && hasMoreLibraryResults ? (
+              <Button
+                variant="secondary"
+                size="small"
+                loading={isLoadingMore}
+                onClick={() => loadMoreLibraryResults()}
+              >
+                Load more workflows
+              </Button>
+            ) : null}
           </div>
         )}
       </Dialog.Content>

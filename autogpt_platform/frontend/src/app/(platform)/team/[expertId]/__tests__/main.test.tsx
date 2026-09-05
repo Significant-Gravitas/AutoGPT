@@ -1002,6 +1002,56 @@ describe("ExpertDetailPage", () => {
     expect(within(dialog).queryByTestId("install-workflow-option")).toBeNull();
   });
 
+  test("fetches later installable workflows after an installed first page", async () => {
+    const pages: number[] = [];
+    server.use(
+      getListExpertsMockHandler([maria]),
+      http.get("*/api/library/agents", ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
+        pages.push(page);
+        const agents =
+          page === 1
+            ? [{ ...ownLibraryAgent, id: "lib-1", name: "Already installed" }]
+            : page === 2
+              ? [ownLibraryAgent]
+              : [
+                  {
+                    ...ownLibraryAgent,
+                    id: "lib-later",
+                    name: "Another workflow",
+                  },
+                ];
+        return HttpResponse.json({
+          ...libraryResponse(agents),
+          pagination: {
+            total_items: 21,
+            total_pages: 3,
+            current_page: page,
+            page_size: 10,
+          },
+        });
+      }),
+    );
+    render(<ExpertDetailPage />);
+    await screen.findByRole("heading", { name: "Maria" });
+    await openTab("Workflows");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Install workflow" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("My Private Agent")).toBeDefined();
+    expect(within(dialog).queryByText("Already installed")).toBeNull();
+    expect(pages).toEqual([1, 2]);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Load more workflows" }),
+    );
+    expect(await within(dialog).findByText("Another workflow")).toBeDefined();
+    expect(pages).toEqual([1, 2, 3]);
+    expect(
+      within(dialog).queryByRole("button", { name: "Load more workflows" }),
+    ).toBeNull();
+  });
+
   test("shows the workflow description rather than an unknown creator", async () => {
     const user = userEvent.setup();
     server.use(
