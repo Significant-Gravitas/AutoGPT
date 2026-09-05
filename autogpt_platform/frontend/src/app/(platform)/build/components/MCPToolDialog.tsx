@@ -32,6 +32,7 @@ import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 export type MCPToolDialogResult = {
   serverUrl: string;
@@ -300,7 +301,7 @@ export function MCPToolDialog({
                 placeholder="https://mcp.example.com/mcp"
                 value={serverUrl}
                 onChange={(e) => setServerUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                 autoFocus
               />
             </div>
@@ -327,7 +328,7 @@ export function MCPToolDialog({
                   placeholder="Paste your auth token here"
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                   autoFocus
                 />
               </div>

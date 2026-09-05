@@ -21,6 +21,31 @@
         "varsIgnorePattern": "^_",
         "caughtErrorsIgnorePattern": "^_"
       }
+    ],
+    // Keyboard handlers must go through `isKey()` from `@/lib/keyboard` so that
+    // keydowns fired while an IME is composing (Japanese, Chinese, Korean input)
+    // are ignored. See AGENTS.md "Keyboard handling".
+    //
+    // Scope: direct `.key` comparisons and switches against the IME key names
+    // (or KEY_* / *_KEY constants). Modifier chords such as Cmd+K, which read
+    // `.key.toLowerCase()` or `.code`, are out of scope by design: an IME never
+    // owns them. Keep the key list in sync with KEY_NAMES in src/lib/keyboard.ts
+    // (src/lib/keyboard.test.ts checks). Selectors are covered by
+    // scripts/eslint-keyboard-rules.test.ts.
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([right.type='Literal'][right.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], [right.type='Identifier'][right.name=/(^KEY_|_KEY$)/]) > MemberExpression.left[computed=false][property.name='key']",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([left.type='Literal'][left.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], [left.type='Identifier'][left.name=/(^KEY_|_KEY$)/]) > MemberExpression.right[computed=false][property.name='key']",
+        "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      },
+      {
+        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
+        "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
+      }
     ]
   }
 }

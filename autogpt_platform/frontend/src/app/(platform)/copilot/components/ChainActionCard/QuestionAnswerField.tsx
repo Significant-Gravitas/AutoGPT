@@ -5,6 +5,7 @@ import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   question: ClarifyingQuestion;
@@ -48,7 +49,7 @@ export function QuestionAnswerField({
           onChange={(e) => onChange(e.target.value)}
           // Enter advances the pager; Shift+Enter is the newline.
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.shiftKey) return;
+            if (!isKey(e, "Enter") || e.shiftKey) return;
             e.preventDefault();
             onSubmit();
           }}

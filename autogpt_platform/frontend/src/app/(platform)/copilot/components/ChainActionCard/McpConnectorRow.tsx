@@ -6,6 +6,7 @@ import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/compon
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
+import { isKey } from "@/lib/keyboard";
 
 function hostOf(serverUrl: string): string | null {
   try {
@@ -77,7 +78,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             onKeyDown={(e) =>
-              e.key === "Enter" &&
+              isKey(e, "Enter") &&
               !request.loading &&
               token.trim() &&
               request.onUseToken(token.trim())

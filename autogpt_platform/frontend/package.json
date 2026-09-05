@@ -156,6 +156,7 @@
     "@testing-library/user-event": "14.6.1",
     "@types/bcryptjs": "3.0.0",
     "@types/canvas-confetti": "1.9.0",
+    "@types/eslint": "^8.56.12",
     "@types/lodash": "4.17.20",
     "@types/negotiator": "0.6.4",
     "@types/node": "24.10.0",

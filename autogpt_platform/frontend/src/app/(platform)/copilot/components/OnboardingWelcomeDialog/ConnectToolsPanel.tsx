@@ -11,6 +11,7 @@ import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   onBack: () => void;
@@ -66,7 +67,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   // reaching the dialog's skip handler, which would end onboarding.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (!isKey(event, "Escape")) return;
       if (selectedProvider) {
         handleBackToList();
         return;

@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import {
@@ -72,6 +73,13 @@ export function DialogWrap({
     [isForceOpen],
   );
 
+  // Radix closes the dialog on Escape by default (through onOpenChange, which
+  // honours forceOpen in Dialog.tsx). Only veto it while an IME is composing so
+  // Escape can dismiss the candidate window without losing the dialog.
+  function handleEscapeKeyDown(event: KeyboardEvent) {
+    if (isComposingEvent(event)) event.preventDefault();
+  }
+
   useEffect(() => {
     function update() {
       const el = scrollRef.current;
@@ -96,7 +104,7 @@ export function DialogWrap({
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}
-        onEscapeKeyDown={isForceOpen ? undefined : handleClose}
+        onEscapeKeyDown={handleEscapeKeyDown}
         aria-describedby={undefined}
         className={cn(modalStyles.content, className)}
         style={{

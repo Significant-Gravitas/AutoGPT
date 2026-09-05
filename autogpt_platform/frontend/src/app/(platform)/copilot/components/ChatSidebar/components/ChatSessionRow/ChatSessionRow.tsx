@@ -22,6 +22,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   session: SessionSummaryResponse;
@@ -92,9 +93,9 @@ export function ChatSessionRow({
             value={editingTitle}
             onChange={(e) => onEditingTitleChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.currentTarget.blur();
-              } else if (e.key === "Escape") {
+              } else if (isKey(e, "Escape")) {
                 onRenameCancel();
               }
             }}

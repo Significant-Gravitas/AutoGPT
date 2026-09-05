@@ -9,6 +9,7 @@ import {
   getPendingQuestions,
   type PendingQuestions,
 } from "./helpers";
+import { isKey } from "@/lib/keyboard";
 
 interface FormProps {
   dockId: string;
@@ -104,7 +105,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
                 }))
               }
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleSubmit();
+                if (isKey(e, "Enter")) handleSubmit();
               }}
               placeholder={q.example ? `e.g. ${q.example}` : "Type your answer"}
               className="rounded-xl bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-800 ring-1 ring-zinc-200/70 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-400"

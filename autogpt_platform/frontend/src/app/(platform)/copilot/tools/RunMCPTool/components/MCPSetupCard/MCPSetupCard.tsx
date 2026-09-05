@@ -14,6 +14,7 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
+import { isKey } from "@/lib/keyboard";
 
 function normalizeMcpUrl(url: string): string {
   // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
@@ -364,7 +365,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               value={manualToken}
               onChange={(e) => setManualToken(e.target.value)}
               onKeyDown={(e) =>
-                e.key === "Enter" && !loading && handleManualToken()
+                isKey(e, "Enter") && !loading && handleManualToken()
               }
               className="flex-1 rounded border px-2 py-1 text-sm"
             />

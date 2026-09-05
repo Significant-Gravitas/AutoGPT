@@ -32,15 +32,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import {
-  Children,
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { Children, useCallback, useLayoutEffect, useRef } from "react";
 import { ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 // ============================================================================
 // PromptInput — form wrapper
@@ -141,7 +136,6 @@ export function PromptInputTextarea({
   onMultilineChange,
   ...props
 }: PromptInputTextareaProps) {
-  const [isComposing, setIsComposing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Ref keeps autoResize stable inside the memoized change handler while
   // still reaching the latest callback.
@@ -255,19 +249,15 @@ export function PromptInputTextarea({
 
       if (e.defaultPrevented) return;
 
-      if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) return;
+      if (isKey(e, "Enter")) {
         if (e.shiftKey) return;
         e.preventDefault();
 
         e.currentTarget.form?.requestSubmit();
       }
     },
-    [onKeyDown, isComposing],
+    [onKeyDown],
   );
-
-  const handleCompositionEnd = useCallback(() => setIsComposing(false), []);
-  const handleCompositionStart = useCallback(() => setIsComposing(true), []);
 
   return (
     <InputGroupTextarea
@@ -280,8 +270,6 @@ export function PromptInputTextarea({
       name="message"
       value={value}
       onChange={handleChange}
-      onCompositionEnd={handleCompositionEnd}
-      onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
       {...props}

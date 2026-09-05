@@ -3,6 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef } from "react";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   /** Expected trimmed and deduped — `toOptions` establishes that invariant,
@@ -44,18 +45,17 @@ export function QuestionOptionList({
     // tabbing past the pager to reach send. Selecting first means tabbing in
     // and hitting Enter can't submit an option nobody chose — and arrowing or
     // clicking already selects, so those reach the pager on the first Enter.
-    if (event.key === "Enter") {
+    if (isKey(event, "Enter")) {
       event.preventDefault();
       if (options[index] === value.trim()) onSubmit();
       else onChange(options[index]);
       return;
     }
-    const step =
-      event.key === "ArrowDown" || event.key === "ArrowRight"
-        ? 1
-        : event.key === "ArrowUp" || event.key === "ArrowLeft"
-          ? -1
-          : 0;
+    const step = isKey(event, "ArrowDown", "ArrowRight")
+      ? 1
+      : isKey(event, "ArrowUp", "ArrowLeft")
+        ? -1
+        : 0;
     if (step === 0) return;
     event.preventDefault();
     moveTo((index + step + options.length) % options.length);

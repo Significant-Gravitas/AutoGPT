@@ -32,6 +32,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
 5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+7. **Keyboard handling**: Use `isKey(e, "Enter")` (or `isKey(e, "Enter", " ")`) from `@/lib/keyboard` instead of comparing `e.key`. It returns false while an IME is composing (Japanese, Chinese, Korean input), when Enter/Space/arrows belong to the input method, not the app. The `Input` atom drops composing keydowns before calling `onKeyDown` as a safety net; every handler on a raw `<input>`/`<textarea>`, a container, or `document` must use `isKey` itself. ESLint (`no-restricted-syntax`) flags direct `.key` comparisons and switches against the IME key names only. Modifier chords like Cmd+K, `.key.toLowerCase()` and `[...].includes(e.key)` are not checked and are out of scope, since an IME never owns them.
 
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
 - Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
