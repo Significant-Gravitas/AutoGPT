@@ -73,6 +73,7 @@ def build_variable_injection(
         )
 
     _validate_keys(variables)
+    variables = _sanitize_surrogates(variables)
 
     try:
         serialized = json.dumps(variables)
@@ -91,6 +92,29 @@ def build_variable_injection(
 
     envs = {VARIABLES_ENV_KEY: serialized}
     return envs, prefix
+
+
+def _sanitize_surrogates(value: Any) -> Any:
+    """Replace unpaired UTF-16 surrogates in strings so the payload can't
+    crash when something downstream (the sandbox's own env var setup, its
+    JSON decode, etc.) encodes it to UTF-8. Upstream blocks (e.g. Notion)
+    can hand us strings with lone surrogates from mis-decoded emoji.
+    Mirrors the same sanitization already used for LLM prompt content in
+    ``backend/blocks/llm.py``.
+    """
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+            return value
+        except UnicodeEncodeError:
+            return value.encode("utf-8", errors="surrogatepass").decode(
+                "utf-8", errors="replace"
+            )
+    if isinstance(value, dict):
+        return {key: _sanitize_surrogates(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_surrogates(item) for item in value]
+    return value
 
 
 def _validate_keys(variables: dict[str, Any]) -> None:
