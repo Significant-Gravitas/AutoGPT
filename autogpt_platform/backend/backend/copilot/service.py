@@ -19,6 +19,7 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -284,6 +285,12 @@ _ENV_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+# Prepended per-turn on voice turns; the user typed none of it, so it must
+# not appear in their own message when the history is read back.
+_VOICE_TURN_PREFIX_RE = re.compile(
+    rf"^<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\n\n", re.DOTALL
+)
+
 _BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
 )
@@ -453,7 +460,8 @@ def strip_injected_context_for_display(message: str) -> str:
     Used by the chat-history GET endpoint to hide server-side prefixes that
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<voice_turn>``, and
+    ``<available_skills>``
     blocks from the **start** of the message, iterating until no more leading
     injected blocks remain.
 
@@ -472,6 +480,7 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _USER_CONTEXT_PREFIX_RE.sub("", result)
         result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
         result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
+        result = _VOICE_TURN_PREFIX_RE.sub("", result)
         result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
         result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
         result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)

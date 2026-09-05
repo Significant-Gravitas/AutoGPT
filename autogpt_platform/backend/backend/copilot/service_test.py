@@ -106,3 +106,20 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
         f"Response: {turn2_text[:200]}"
     )
     logger.info(f"Turn 2 recalled keyword successfully: {turn2_text[:100]}")
+
+
+def test_voice_turn_prefix_is_hidden_from_the_user() -> None:
+    """The user typed none of it, so it must not show in their own message."""
+    from backend.copilot.prompting import VOICE_TURN_PREFIX
+    from backend.copilot.service import strip_injected_context_for_display
+
+    typed = "How many agents do I have?"
+    assert strip_injected_context_for_display(VOICE_TURN_PREFIX + typed) == typed
+
+
+def test_a_user_typing_the_voice_turn_tag_keeps_their_text() -> None:
+    """Only the server-injected prefix is stripped, never mid-message text."""
+    from backend.copilot.service import strip_injected_context_for_display
+
+    typed = "why does <voice_turn>this</voice_turn> show up?"
+    assert strip_injected_context_for_display(typed) == typed
