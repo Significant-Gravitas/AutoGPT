@@ -13,15 +13,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.blocks.code_executor import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    ExecuteCodeBlock,
-    ProgrammingLanguage,
-)
-from backend.blocks.code_executor_helpers import (
+from backend.blocks.code_executor._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.code_executor.execute import ExecuteCodeBlock
+from backend.blocks.code_executor.helpers import (
     MAX_VARIABLES_PAYLOAD_BYTES,
     VARIABLES_ENV_KEY,
+    ProgrammingLanguage,
     UnsupportedLanguageError,
     build_variable_injection,
 )

@@ -1,0 +1,8 @@
+{
+  "body": "{\"detail\":\"Preview unavailable\"}",
+  "headers": {
+    "content-length": "32",
+    "content-type": "application/json"
+  },
+  "status": 404
+}

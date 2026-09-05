@@ -502,8 +502,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AllQuiet List Teams](block-integrations/allquiet/teams.md#allquiet-list-teams) | Lists All Quiet teams and their IDs |
 | [AllQuiet Update Incident](block-integrations/allquiet/incidents.md#allquiet-update-incident) | Investigates, resolves, escalates or comments on an All Quiet incident |
 | [Exa Code Context](block-integrations/exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
-| [Execute Code](block-integrations/misc.md#execute-code) | Executes code in a sandbox environment with internet access |
-| [Execute Code Step](block-integrations/misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
+| [Execute Code](block-integrations/code_executor/execute.md#execute-code) | Executes code in a sandbox environment with internet access |
+| [Execute Code Step](block-integrations/code_executor/step.md#execute-code-step) | Execute code in a previously instantiated sandbox |
 | [Github Add Label](block-integrations/github/issues.md#github-add-label) | A block that adds a label to a GitHub issue or pull request for categorization and organization |
 | [Github Assign Issue](block-integrations/github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](block-integrations/github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
@@ -563,7 +563,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Update Check Run](block-integrations/github/checks.md#github-update-check-run) | Updates an existing check run in a GitHub repository |
 | [Github Update Comment](block-integrations/github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
 | [Github Update File](block-integrations/github/repo_files.md#github-update-file) | This block updates an existing file in a GitHub repository |
-| [Instantiate Code Sandbox](block-integrations/misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
+| [Instantiate Code Sandbox](block-integrations/code_executor/instantiate.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [MCP Tool](block-integrations/mcp/block.md#mcp-tool) | Connect to any MCP server and execute its tools |
 | [Slant3D Order Webhook](block-integrations/slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |
 
