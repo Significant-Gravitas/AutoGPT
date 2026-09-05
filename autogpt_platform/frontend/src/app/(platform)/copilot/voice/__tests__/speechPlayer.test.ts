@@ -79,6 +79,39 @@ describe("createSpeechPlayer", () => {
     expect(player.isIdle()).toBe(true);
   });
 
+  it("keeps working after a stop lands mid-playback", async () => {
+    // stop() swaps the element's src, which fires neither "ended" nor
+    // "error". Leaving that playback unsettled wedges the queue for the life
+    // of the tab: state says Speaking, no audio ever comes.
+    vi.restoreAllMocks();
+    vi.spyOn(window.HTMLMediaElement.prototype, "play").mockResolvedValue(
+      undefined,
+    );
+    const played: string[] = [];
+    const player = createSpeechPlayer({
+      synthesize: async (text) => {
+        played.push(text);
+        return new Blob([text]);
+      },
+      onIdle: () => undefined,
+      onError: () => undefined,
+    });
+
+    player.enqueue("first");
+    await settle();
+    expect(player.isIdle()).toBe(false);
+
+    player.stop();
+    await settle();
+    expect(player.isIdle()).toBe(true);
+
+    stubAudio();
+    player.enqueue("second");
+    await settle();
+    expect(played).toContain("second");
+    expect(player.isIdle()).toBe(true);
+  });
+
   it("reports a failed synthesis and moves on to the next chunk", async () => {
     const onError = vi.fn();
     const player = createSpeechPlayer({

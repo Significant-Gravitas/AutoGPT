@@ -43,6 +43,8 @@ export function createSpeechPlayer({
 }: Args) {
   const queue: Promise<Blob | null>[] = [];
   let draining = false;
+  /** Ends the in-flight playback. Set only while a chunk is playing. */
+  let cutPlayback: (() => void) | null = null;
   /** Bumped by `stop`, so audio synthesised for an abandoned turn is dropped. */
   let generation = 0;
 
@@ -95,6 +97,7 @@ export function createSpeechPlayer({
       function settle(finish: () => void) {
         audio.removeEventListener("ended", onEnded);
         audio.removeEventListener("error", onFailed);
+        cutPlayback = null;
         finish();
       }
       function onEnded() {
@@ -103,6 +106,11 @@ export function createSpeechPlayer({
       function onFailed() {
         settle(() => reject(new Error("Audio playback failed")));
       }
+      // Swapping `src` in stop() fires neither "ended" nor "error", so
+      // without this the promise never settles, `draining` stays true, and
+      // every later chunk is dropped by the drain guard — silently, for the
+      // life of the tab.
+      cutPlayback = () => settle(resolve);
       audio.addEventListener("ended", onEnded);
       audio.addEventListener("error", onFailed);
       audio.play().catch((error) => settle(() => reject(error)));
@@ -117,6 +125,7 @@ export function createSpeechPlayer({
       sharedAudio.pause();
       sharedAudio.src = SILENT_WAV;
     }
+    cutPlayback?.();
   }
 
   function destroy() {
