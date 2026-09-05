@@ -19,7 +19,6 @@ import {
   FlashIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { useRef, useState } from "react";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -28,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { ChoiceRow } from "./ChoiceRow";
 import { ConnectAccountRow } from "./ConnectAccountRow";
+import { MaxUpgradeCard } from "./MaxUpgradeCard";
 import { Swap } from "./Swap";
 import {
   isLinkedAccount,
@@ -42,10 +42,6 @@ import {
 import { nextRovingValue, rovingTabIndex } from "./radioKeys";
 import { TierToggle } from "./TierToggle";
 import { useConnectionPicker } from "./useConnectionPicker";
-import { MaxUpgradeCard } from "./MaxUpgradeCard";
-import { MaxUpgradeDialog } from "./MaxUpgradeDialog";
-import { formatUpgradePrice } from "./maxUpgrade";
-import { useMaxUpgrade } from "./useMaxUpgrade";
 
 const TIERS = ["standard", "advanced"] as const;
 
@@ -85,23 +81,9 @@ export function ConnectionPicker({
     isLoading,
     isError,
   } = useConnectionPicker();
-  const [isOpen, setIsOpen] = useState(false);
-  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
-  const upgradeTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const pickerTriggerRef = useRef<HTMLSpanElement | null>(null);
   const advancedLock = tierLock(active, "advanced");
-  const upgrade = useMaxUpgrade(
-    isUpgradeOpen ||
-      (isOpen && active?.auth_method === "deployment" && Boolean(advancedLock)),
-  );
   const showMaxUpgrade =
-    active?.auth_method === "deployment" &&
-    Boolean(advancedLock) &&
-    upgrade.subscription?.tier === "PRO";
-  const price = upgrade.pricing;
-  const maxPriceLabel = price?.maxCents
-    ? `Max is ${formatUpgradePrice(price.maxCents)}/${price.cycle === "yearly" ? "year" : "month"} · billed ${price.cycle}`
-    : undefined;
+    active?.auth_method === "deployment" && Boolean(advancedLock);
 
   if (isLoading && offers.length === 0) return null;
 
@@ -229,167 +211,137 @@ export function ConnectionPicker({
   );
 
   return (
-    <>
-      <Popover
-        open={isOpen}
-        onOpenChange={(open) => {
-          if (!isUpgradeOpen) setIsOpen(open);
-        }}
+    <Popover>
+      {showsTier ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
+
+      <PopoverContent
+        align="end"
+        className={cn(
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
+          showMaxUpgrade && "bg-white",
+        )}
       >
-        <span ref={pickerTriggerRef} className="inline-flex">
-          {showsTier ? (
-            <Tooltip>
-              <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-              <TooltipContent side="top">
-                {tierLabel(active, tier)}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            trigger
-          )}
-        </span>
-
-        <PopoverContent
-          align="end"
-          className={cn(
-            "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
-            showMaxUpgrade && "bg-white",
-          )}
-          onInteractOutside={(event) => {
-            if (isUpgradeOpen) event.preventDefault();
-          }}
-        >
-          {showsConnections && (
-            <>
-              <SectionLabel>Runs on</SectionLabel>
-              <div
-                role="radiogroup"
-                aria-label="Connection this chat runs on"
-                // The connections read as plain rows on the sheet: a card around
-                // them would frame the choice twice, once here and once around
-                // the tiers below.
-                className="overflow-hidden rounded-xl"
-                onKeyDown={(event) => {
-                  const to = nextRovingValue(
+        {showsConnections && (
+          <>
+            <SectionLabel>Runs on</SectionLabel>
+            <div
+              role="radiogroup"
+              aria-label="Connection this chat runs on"
+              // The connections read as plain rows on the sheet: a card around
+              // them would frame the choice twice, once here and once around
+              // the tiers below.
+              className="overflow-hidden rounded-xl"
+              onKeyDown={(event) => {
+                const to = nextRovingValue(
+                  connectionOptions,
+                  active?.offer_id ?? "",
+                  event.key,
+                );
+                if (to === null) return;
+                event.preventDefault();
+                const target = offers.find((o) => o.offer_id === to);
+                if (target) chooseConnection(target);
+                event.currentTarget
+                  .querySelector<HTMLElement>(`[data-offer="${to}"]`)
+                  ?.focus();
+              }}
+            >
+              {offers.map((offer) => (
+                <ChoiceRow
+                  key={offer.offer_id}
+                  offerId={offer.offer_id}
+                  tabIndex={rovingTabIndex(
                     connectionOptions,
+                    { value: offer.offer_id },
                     active?.offer_id ?? "",
-                    event.key,
-                  );
-                  if (to === null) return;
-                  event.preventDefault();
-                  const target = offers.find((o) => o.offer_id === to);
-                  if (target) chooseConnection(target);
-                  event.currentTarget
-                    .querySelector<HTMLElement>(`[data-offer="${to}"]`)
-                    ?.focus();
-                }}
-              >
-                {offers.map((offer) => (
-                  <ChoiceRow
-                    key={offer.offer_id}
-                    offerId={offer.offer_id}
-                    tabIndex={rovingTabIndex(
-                      connectionOptions,
-                      { value: offer.offer_id },
-                      active?.offer_id ?? "",
-                    )}
-                    leading={<OfferMark offer={offer} />}
-                    title={offer.display_name}
-                    subtitle={offerSubtitle(offer)}
-                    badge={isLinkedAccount(offer) ? "Connected" : undefined}
-                    // A selectable row's models are named by the tier toggle
-                    // right below it, so repeating them here only crowds the
-                    // choice. A locked row has no toggle, so it keeps them.
-                    notes={
-                      offer.lock_reason
-                        ? [tierSummary(offer), ...offer.limitations].filter(
-                            Boolean,
-                          )
-                        : offer.limitations
-                    }
-                    isSelected={offer.offer_id === active?.offer_id}
-                    onSelect={() => chooseConnection(offer)}
-                    lock={
-                      offer.lock_reason
-                        ? {
-                            reason: offer.lock_reason,
-                            href: offer.unlock_href ?? null,
-                          }
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          {showTiers && (
-            <>
-              <SectionLabel>Model tier</SectionLabel>
-              <div
-                className={cn(
-                  "overflow-hidden rounded-xl border border-neutral-200 bg-white",
-                  showMaxUpgrade && "border-0",
-                )}
-              >
-                <TierToggle
-                  value={tier}
-                  onSelect={setTier}
-                  advancedUpgrade={
-                    showMaxUpgrade && advancedLock ? (
-                      <MaxUpgradeCard
-                        label={tierLabel(active, "advanced")}
-                        name={tierName(active, "advanced")}
-                        model={tierModel(active, "advanced")}
-                        reason={advancedLock.reason}
-                        priceLabel={maxPriceLabel}
-                        onUpgrade={(trigger) => {
-                          upgradeTriggerRef.current = trigger;
-                          setIsUpgradeOpen(true);
-                        }}
-                      />
-                    ) : undefined
+                  )}
+                  leading={<OfferMark offer={offer} />}
+                  title={offer.display_name}
+                  subtitle={offerSubtitle(offer)}
+                  badge={isLinkedAccount(offer) ? "Connected" : undefined}
+                  // A selectable row's models are named by the tier toggle
+                  // right below it, so repeating them here only crowds the
+                  // choice. A locked row has no toggle, so it keeps them.
+                  notes={
+                    offer.lock_reason
+                      ? [tierSummary(offer), ...offer.limitations].filter(
+                          Boolean,
+                        )
+                      : offer.limitations
                   }
-                  segments={TIERS.map((candidate) => ({
-                    tier: candidate,
-                    label: tierLabel(active, candidate),
-                    name: tierName(active, candidate),
-                    model: tierModel(active, candidate),
-                    lock: tierLock(active, candidate),
-                  }))}
+                  isSelected={offer.offer_id === active?.offer_id}
+                  onSelect={() => chooseConnection(offer)}
+                  lock={
+                    offer.lock_reason
+                      ? {
+                          reason: offer.lock_reason,
+                          href: offer.unlock_href ?? null,
+                        }
+                      : undefined
+                  }
                 />
-              </div>
-            </>
-          )}
+              ))}
+            </div>
+          </>
+        )}
 
-          {canConnectChatGPT && (
+        {showTiers && (
+          <>
+            <SectionLabel>Model tier</SectionLabel>
             <div
               className={cn(
-                showMaxUpgrade && "mt-4 border-t border-zinc-200 pt-4",
+                "overflow-hidden rounded-xl border border-neutral-200 bg-white",
+                showMaxUpgrade && "border-0",
               )}
             >
-              <SectionLabel>Add a connection</SectionLabel>
-              <ConnectAccountRow
-                onConnect={connectChatGPT}
-                isConnecting={isConnecting}
+              <TierToggle
+                value={tier}
+                onSelect={setTier}
+                advancedUpgrade={
+                  showMaxUpgrade && advancedLock?.href ? (
+                    <MaxUpgradeCard
+                      label={tierLabel(active, "advanced")}
+                      name={tierName(active, "advanced")}
+                      model={tierModel(active, "advanced")}
+                      reason={advancedLock.reason}
+                      href={advancedLock.href}
+                    />
+                  ) : undefined
+                }
+                segments={TIERS.map((candidate) => ({
+                  tier: candidate,
+                  label: tierLabel(active, candidate),
+                  name: tierName(active, candidate),
+                  model: tierModel(active, candidate),
+                  lock: tierLock(active, candidate),
+                }))}
               />
             </div>
-          )}
-        </PopoverContent>
-      </Popover>
-      <MaxUpgradeDialog
-        isOpen={isUpgradeOpen}
-        model={tierModel(active, "advanced")}
-        upgrade={upgrade}
-        onClose={() => setIsUpgradeOpen(false)}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          const trigger = upgradeTriggerRef.current;
-          if (trigger?.isConnected) trigger.focus();
-          else pickerTriggerRef.current?.querySelector("button")?.focus();
-        }}
-      />
-    </>
+          </>
+        )}
+
+        {canConnectChatGPT && (
+          <div
+            className={cn(
+              showMaxUpgrade && "mt-4 border-t border-zinc-200 pt-4",
+            )}
+          >
+            <SectionLabel>Add a connection</SectionLabel>
+            <ConnectAccountRow
+              onConnect={connectChatGPT}
+              isConnecting={isConnecting}
+            />
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 

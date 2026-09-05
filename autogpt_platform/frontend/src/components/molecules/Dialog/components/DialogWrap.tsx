@@ -38,7 +38,6 @@ export function DialogWrap({
   className,
   isForceOpen,
   handleClose,
-  onCloseAutoFocus,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
@@ -94,7 +93,6 @@ export function DialogWrap({
       <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
       <RXDialog.Content
         data-dialog-content
-        onCloseAutoFocus={onCloseAutoFocus}
         onInteractOutside={handleInteractOutside}
         onPointerDownOutside={handlePointerDownOutside}
         onFocusOutside={handleFocusOutside}

@@ -58,6 +58,7 @@ export function TierToggle({
   }));
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest("a")) return;
     const to = nextRovingValue(options, value, event.key);
     if (to === null) return;
     event.preventDefault();

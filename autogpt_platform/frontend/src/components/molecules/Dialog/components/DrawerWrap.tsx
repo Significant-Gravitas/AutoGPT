@@ -23,7 +23,6 @@ export function DrawerWrap({
   handleClose,
   isForceOpen,
   className,
-  onCloseAutoFocus,
 }: Props) {
   const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
@@ -35,7 +34,7 @@ export function DrawerWrap({
       onClick={handleClose}
       className="!focus-visible:ring-0 p-0"
     >
-      <Icon icon={Cancel01Icon} width="1.5rem" className="text-zinc-900" />
+      <Icon icon={Cancel01Icon} width="1.5rem" />
     </Button>
   );
 
@@ -43,7 +42,6 @@ export function DrawerWrap({
     <Drawer.Portal>
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
-        onCloseAutoFocus={onCloseAutoFocus}
         aria-describedby={undefined}
         className={cn(drawerStyles.content, className)}
         data-testid={testId}

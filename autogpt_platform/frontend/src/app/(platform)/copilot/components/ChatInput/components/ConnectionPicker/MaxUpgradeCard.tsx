@@ -7,23 +7,15 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-type Props = {
+interface Props {
   label: string;
   name: string;
   model?: string | null;
   reason: string;
-  priceLabel?: string;
-  onUpgrade: (trigger: HTMLButtonElement) => void;
-};
+  href: string;
+}
 
-export function MaxUpgradeCard({
-  label,
-  name,
-  model,
-  reason,
-  priceLabel,
-  onUpgrade,
-}: Props) {
+export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
   return (
     <div className="mt-3 rounded-xl border border-purple-200/40 bg-purple-50 p-4">
       <div
@@ -53,30 +45,21 @@ export function MaxUpgradeCard({
         </span>
       </div>
       <p className="mb-2 mt-5 text-lg font-medium leading-snug tracking-tight text-zinc-900">
-        A stronger model for
-        <br />
-        more demanding work.
+        Unlock {name} with Max.
       </p>
-      <p className="text-xs leading-relaxed text-zinc-600">
-        Unlock Advanced with Max, plus higher usage limits for bigger tasks.
-      </p>
+      <p className="text-xs leading-relaxed text-zinc-600">{reason}</p>
       <Button
-        type="button"
+        as="NextLink"
+        href={href}
         variant="primary"
         size="small"
         className="mt-5 h-11 w-full rounded-lg border-purple-600 bg-purple-600 text-white hover:border-purple-700 hover:bg-purple-700"
-        onClick={(event) => onUpgrade(event.currentTarget)}
         data-fast-goal="subscription_upgrade_intent"
         data-fast-goal-surface="model_picker"
       >
         Upgrade to Max
         <Icon icon={ArrowRight02Icon} size={16} aria-hidden />
       </Button>
-      {priceLabel && (
-        <p className="mt-2.5 text-center text-[11px] leading-relaxed text-zinc-600">
-          {priceLabel}
-        </p>
-      )}
     </div>
   );
 }

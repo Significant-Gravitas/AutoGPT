@@ -15,7 +15,6 @@ export interface DialogCtx {
   isLargeScreen: boolean;
   styling: CSSProperties | undefined;
   className?: string;
-  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export const DialogCtx = createContext<DialogCtx>({

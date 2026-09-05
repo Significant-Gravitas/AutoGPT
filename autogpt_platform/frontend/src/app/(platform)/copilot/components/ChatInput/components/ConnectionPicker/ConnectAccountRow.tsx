@@ -36,7 +36,11 @@ export function ConnectAccountRow({ onConnect, isConnecting }: Props) {
           Connect your existing account
         </span>
       </span>
-      <span className="flex size-7 flex-none items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500">
+      <span
+        role={isConnecting ? "status" : undefined}
+        aria-label={isConnecting ? "Connecting ChatGPT" : undefined}
+        className="flex size-7 flex-none items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500"
+      >
         <Icon
           icon={isConnecting ? Loading03Icon : PlusSignIcon}
           size={14}

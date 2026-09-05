@@ -1,20 +1,12 @@
 import { server } from "@/mocks/mock-server";
-import {
-  render,
-  screen,
-  waitFor,
-  within,
-  act,
-} from "@/tests/integrations/test-utils";
+import { render, screen, within } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../../../../store";
+import { ConnectionPicker } from "../ConnectionPicker/ConnectionPicker";
 import {
-  ComposerHarness,
   mockMaxUpgrade,
-  proSubscription,
-  openOffer,
   deploymentOffer,
   openPicker,
 } from "./maxUpgradeFixtures";
@@ -26,91 +18,63 @@ beforeEach(() => {
   });
 });
 
-describe("contextual Max upgrade", () => {
-  it("explains the locked server model and preserves the ChatGPT connection entry", async () => {
+describe("contextual Max upsell", () => {
+  it("links the locked server model to existing billing without fetching or showing prices", async () => {
+    const billingRequest = vi.fn(() => HttpResponse.error());
     mockMaxUpgrade();
-    render(<ComposerHarness />);
+    server.use(http.all("*/api/credits/*", billingRequest));
+    render(<ConnectionPicker />);
     await openPicker();
 
+    const upgrade = await screen.findByRole("link", { name: "Upgrade to Max" });
+    expect(upgrade.getAttribute("href")).toBe("/settings/billing");
+    expect(screen.getByText("opus-server").isConnected).toBe(true);
+    const group = screen.getByRole("radiogroup", { name: "Model tier" });
+    const advanced = within(group).getByRole("radio", {
+      name: /Advanced.*opus-server/,
+    });
+    expect(advanced.getAttribute("aria-disabled")).toBe("true");
+    expect(advanced.getAttribute("aria-checked")).toBe("false");
+    expect(advanced.getAttribute("tabindex")).toBe("-1");
     expect(
-      await screen.findByRole("button", { name: "Upgrade to Max" }),
-    ).toBeDefined();
-    expect(screen.getByText("opus-server")).toBeDefined();
-    expect(
-      screen
+      within(group)
         .getByRole("radio", { name: /Balanced.*sonnet-server/ })
         .getAttribute("aria-checked"),
     ).toBe("true");
-    expect(screen.getByText("Add a connection")).toBeDefined();
-    expect(screen.getByText("ChatGPT subscription")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Connect a ChatGPT subscription" }),
-    ).toBeDefined();
+      screen.queryByText(
+        /\$\d|prorat|higher usage|priority support|file storage/i,
+      ),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Review upgrade|Upgrade to Max/ }),
+    ).toBeNull();
+    expect(billingRequest).not.toHaveBeenCalled();
+    expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
   });
 
-  it("does not invent a Max price when server pricing is unavailable", async () => {
-    mockMaxUpgrade(proSubscription({ tier_costs: {} }));
-    render(<ComposerHarness />);
-    const offer = await openOffer();
-
-    expect(offer.textContent).not.toMatch(/\$\d/);
-    expect(
-      within(offer)
-        .getByRole("button", { name: "Review upgrade" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-  });
-
-  it("keeps the existing lock explanation for a non-Pro subscriber", async () => {
-    mockMaxUpgrade(proSubscription({ tier: "BASIC" }));
-    render(<ComposerHarness />);
-    await openPicker();
-
-    expect(
-      await screen.findByText("A Max plan or higher is required for Advanced."),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
-  });
-
-  it("keeps the server lock without guessed pricing while billing loads or fails", async () => {
-    let respond: (() => void) | undefined;
-    const response = new Promise<Response>((resolve) => {
-      respond = () =>
-        resolve(
-          HttpResponse.json(
-            { detail: "Subscription unavailable" },
-            { status: 503 },
-          ),
-        );
-    });
-    const subscriptionRequest = vi.fn(() => response);
+  it("preserves the ChatGPT connection entry below the Max offer", async () => {
     mockMaxUpgrade();
-    server.use(http.get("*/api/credits/subscription", subscriptionRequest));
-    render(<ComposerHarness />);
+    render(<ConnectionPicker />);
     await openPicker();
-    await waitFor(() => expect(subscriptionRequest).toHaveBeenCalled());
 
-    expect(
-      screen.getByText("A Max plan or higher is required for Advanced."),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
-    expect(screen.queryByText(/\$\d/)).toBeNull();
-
-    await act(async () => {
-      respond?.();
-      await response;
+    const upgrade = await screen.findByRole("link", { name: "Upgrade to Max" });
+    expect(screen.getByText("Add a connection").isConnected).toBe(true);
+    const connect = screen.getByRole("button", {
+      name: "Connect a ChatGPT subscription",
     });
+    expect(within(connect).getByText("ChatGPT subscription").isConnected).toBe(
+      true,
+    );
+    expect(connect.hasAttribute("disabled")).toBe(false);
     expect(
-      screen.getByText("A Max plan or higher is required for Advanced."),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
-    expect(screen.queryByText(/\$\d/)).toBeNull();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+      upgrade.compareDocumentPosition(connect) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
-  it("retains the ChatGPT plan gate alongside the contextual Advanced offer", async () => {
-    mockMaxUpgrade(proSubscription(), [
+  it("retains the ChatGPT plan gate alongside the Advanced upsell", async () => {
+    mockMaxUpgrade([
       deploymentOffer(),
       deploymentOffer({
         offer_id: "codex:locked",
@@ -125,16 +89,21 @@ describe("contextual Max upgrade", () => {
         unlock_href: "/settings/billing",
       }),
     ]);
-    render(<ComposerHarness />);
+    render(<ConnectionPicker />);
     await openPicker();
 
     expect(
-      await screen.findByRole("button", { name: "Upgrade to Max" }),
-    ).toBeDefined();
+      (
+        await screen.findByRole("link", { name: "Upgrade to Max" })
+      ).getAttribute("href"),
+    ).toBe("/settings/billing");
     expect(
-      screen.getByText("A Max plan or higher is required to use ChatGPT."),
-    ).toBeDefined();
-    expect(screen.getByRole("link", { name: "See plans" })).toBeDefined();
+      screen.getByText("A Max plan or higher is required to use ChatGPT.")
+        .isConnected,
+    ).toBe(true);
+    expect(
+      screen.getByRole("link", { name: "See plans" }).getAttribute("href"),
+    ).toBe("/settings/billing");
     expect(
       screen.queryByRole("button", { name: "Connect a ChatGPT subscription" }),
     ).toBeNull();
@@ -164,8 +133,8 @@ describe("contextual Max upgrade", () => {
         },
       ],
     });
-    mockMaxUpgrade(proSubscription(), [deploymentOffer(), linked]);
-    render(<ComposerHarness />);
+    mockMaxUpgrade([deploymentOffer(), linked]);
+    render(<ConnectionPicker />);
     await openPicker();
     await userEvent.click(
       await screen.findByRole("radio", { name: /ChatGPT/ }),
@@ -173,7 +142,7 @@ describe("contextual Max upgrade", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Advanced" }));
 
     expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
-    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Upgrade to Max" })).toBeNull();
     expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
       authProvider: "codex",
       credentialId: "cred-1",
