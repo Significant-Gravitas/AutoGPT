@@ -29,6 +29,17 @@ The SDK stays pinned to 2.3.0 because the bounded readiness adapter overrides it
 retry behavior; revalidate that adapter before upgrading. Its dependencies require
 Pillow >=11.1. noVNC and websockify are checked out at immutable commits.
 
+## Agent responsibilities and interface
+
+The workflow agent provisions the sandbox with Instantiate Code Sandbox, using
+E2B credentials, the combined `template_id`, `enable_live_view=true`, a `timeout`,
+and any `setup_commands` or `setup_code`. Successful setup returns `sandbox_id`
+and the owner-authenticated `live_url`. The human owner opens `live_url`; the
+agent and any collaborating experts pass `sandbox_id` to Execute Code Step with
+`step_code` and `language` to work in that same environment. The workflow agent
+extends the testing window with the step's `timeout` and disposes the sandbox
+with `dispose_sandbox=true` when testing is finished.
+
 ## Use the existing blocks
 
 1. On Instantiate Code Sandbox, select credentials from the account containing
