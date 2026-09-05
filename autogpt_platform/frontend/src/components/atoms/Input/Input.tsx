@@ -3,7 +3,7 @@ import {
   type InputProps,
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
-import { forwardRef, ReactNode, useState } from "react";
+import { forwardRef, ReactNode, useRef, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import type { Variant } from "../Text/helpers";
@@ -73,16 +73,21 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
 
   const isPasswordType = props.type === "password";
   const inputType = showPassword ? "text" : props.type;
+  const passwordWrapperRef = useRef<HTMLDivElement>(null);
 
-  function handleMouseDown() {
-    setShowPassword(true);
+  function handleTogglePassword() {
+    setShowPassword((prev) => !prev);
   }
 
-  function handleMouseUp() {
-    setShowPassword(false);
-  }
-
-  function handleMouseLeave() {
+  // Re-mask the password when focus leaves both the input and the toggle
+  // button (focus-within check). Clicking between the input and the reveal
+  // button keeps focus inside the wrapper so we don't flicker; navigating
+  // away re-masks so a revealed password doesn't linger after a failed
+  // submit or other abandoned flow.
+  function handleWrapperBlur(e: React.FocusEvent<HTMLDivElement>) {
+    if (!isPasswordType || !showPassword) return;
+    if (passwordWrapperRef.current?.contains(e.relatedTarget as Node | null))
+      return;
     setShowPassword(false);
   }
 
@@ -207,16 +212,20 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   };
 
   const input = (
-    <div className={cn("relative w-full", wrapperClassName)}>
+    <div
+      ref={isPasswordType ? passwordWrapperRef : undefined}
+      onBlur={isPasswordType ? handleWrapperBlur : undefined}
+      className={cn("relative w-full", wrapperClassName)}
+    >
       {renderInput()}
       {isPasswordType && (
         <button
           type="button"
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600"
-          aria-label="Press and hold to show password"
+          onClick={handleTogglePassword}
+          disabled={props.disabled}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={showPassword ? "Hide password" : "Show password"}
+          aria-pressed={showPassword}
         >
           {showPassword ? (
             <Icon icon={EyeIcon} size={16} />
