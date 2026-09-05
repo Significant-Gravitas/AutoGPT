@@ -23,6 +23,7 @@ equally well:
 | Ollama on the same Docker host, via Docker Desktop | `http://host.docker.internal:11434/v1` |
 | Ollama on a separate LAN box | `http://ollama.lab.local:11434/v1` |
 | Ollama behind an HTTPS reverse proxy on the public internet | `https://ollama.example.com/v1` |
+| [llmman](llmman.md) on the same Docker host | `http://192.168.1.42:17434/v1` (LAN IP) |
 | [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html), [LocalAI](https://localai.io/), [LM Studio](https://lmstudio.ai/), [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy) | their respective `/v1` URLs |
 | A managed OpenAI-compatible API you don't pay AutoGPT for | its `/v1` URL |
 
