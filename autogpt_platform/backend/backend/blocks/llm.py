@@ -125,7 +125,7 @@ class LLMResponse(BaseModel):
     raw_response: Any
     prompt: list[Any]
     response: str
-    tool_calls: Optional[list[ToolContentBlock]] | None
+    tool_calls: list[ToolContentBlock] | None
     prompt_tokens: int
     completion_tokens: int
     cache_read_tokens: int = 0

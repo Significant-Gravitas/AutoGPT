@@ -137,7 +137,9 @@ def _event_key(
         execution = exec_by_id.get(event.graph_exec_id)
         if execution and execution.expert_id:
             return ("expert", execution.expert_id)
-        return ("workflow", execution.graph_id if execution else "")
+        # A run past the fetch limit still keys by its own execution, so two
+        # unknown runs never collapse into one unnamed workflow.
+        return ("workflow", execution.graph_id if execution else event.graph_exec_id)
     return ("autopilot", "")
 
 

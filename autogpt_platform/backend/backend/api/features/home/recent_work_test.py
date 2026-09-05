@@ -167,6 +167,29 @@ def test_an_executor_event_follows_its_run_to_the_expert() -> None:
     assert [item.id for item in work.groups[0].items] == ["e1"]
 
 
+def test_events_from_unfetched_runs_stay_apart() -> None:
+    events = [
+        _event(
+            event_id="e1",
+            category="INTEGRATION",
+            provider="google",
+            graph_exec_id="run-a",
+        ),
+        _event(
+            event_id="e2",
+            category="INTEGRATION",
+            provider="slack",
+            graph_exec_id="run-b",
+        ),
+    ]
+
+    work = _compose(events=events)
+
+    assert len(work.groups) == 2
+    assert all(group.actor.kind == "workflow" for group in work.groups)
+    assert [group.actor.name for group in work.groups] == ["Agent task", "Agent task"]
+
+
 def test_thread_work_without_an_expert_is_autopilots() -> None:
     work = _compose(events=[_event(event_id="e1", session_id="s2")])
 

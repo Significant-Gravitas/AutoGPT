@@ -1,11 +1,10 @@
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
-import type { HomeWorkActor } from "@/app/api/__generated__/models/homeWorkActor";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { getActorIcon, getActorKindLabel } from "../helpers";
+import { getActorKindLabel } from "../helpers";
+import { ActorMark } from "./ActorMark";
 import { OutcomeRow } from "./OutcomeRow";
 import { WorkItemRow } from "./WorkItemRow";
 
@@ -81,26 +80,5 @@ export function WorkGroup({ group, timezone }: Props) {
         </Text>
       ) : null}
     </article>
-  );
-}
-
-interface ActorMarkProps {
-  actor: HomeWorkActor;
-}
-
-function ActorMark({ actor }: ActorMarkProps) {
-  if (actor.kind === "expert" && actor.expert) {
-    return (
-      <ExpertAvatar
-        name={actor.expert.name}
-        avatarUrl={actor.expert.avatar_url}
-        size={18}
-      />
-    );
-  }
-  return (
-    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-      <Icon icon={getActorIcon(actor.kind)} size={11} aria-hidden="true" />
-    </span>
   );
 }
