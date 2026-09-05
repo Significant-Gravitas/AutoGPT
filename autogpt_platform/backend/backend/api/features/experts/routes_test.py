@@ -1652,7 +1652,7 @@ def test_start_expert_desktop_returns_the_stream(
     response = client.post("/experts/expert-1/computer/desktop")
 
     assert response.status_code == 200
-    assert response.json()["url"].startswith("https://6080-sbx.e2b.app")
+    assert response.json()["url"] == "https://6080-sbx.e2b.app/vnc.html"
     owner = open_desktop.await_args.args[0]
     assert owner.kind == "expert" and owner.id == "expert-1"
 
