@@ -18,14 +18,17 @@ export function WorkGroup({ group, timezone }: Props) {
         <ExpertAvatar
           name={group.actor.expert.name}
           avatarUrl={group.actor.expert.avatar_url}
-          size={22}
+          size={18}
         />
       ) : (
-        <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-          <Icon icon={Robot01Icon} size={13} aria-hidden="true" />
+        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+          <Icon icon={Robot01Icon} size={11} aria-hidden="true" />
         </span>
       )}
-      <Text variant="body-medium" className="truncate text-zinc-950">
+      <Text
+        variant="body-medium"
+        className="truncate text-[13px] leading-5 text-zinc-900"
+      >
         {group.actor.name}
       </Text>
       {group.session_title ? (
@@ -33,7 +36,10 @@ export function WorkGroup({ group, timezone }: Props) {
           <span className="text-zinc-300" aria-hidden="true">
             ·
           </span>
-          <Text variant="body" className="truncate text-zinc-500">
+          <Text
+            variant="body"
+            className="truncate text-[13px] leading-5 text-zinc-500"
+          >
             {group.session_title}
           </Text>
         </>
@@ -41,8 +47,8 @@ export function WorkGroup({ group, timezone }: Props) {
       {group.link ? (
         <Icon
           icon={ArrowUpRight01Icon}
-          size={15}
-          className="ml-auto shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-700"
+          size={14}
+          className="ml-auto shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
           aria-hidden="true"
         />
       ) : null}
@@ -50,40 +56,41 @@ export function WorkGroup({ group, timezone }: Props) {
   );
 
   return (
-    <article className="px-4 py-3 sm:px-5">
+    <article className="px-4 py-3">
       {group.link ? (
         <Link
           href={group.link}
-          className="group block outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+          className="group -mx-1 block rounded px-1 outline-none focus-visible:bg-zinc-50"
         >
           {header}
         </Link>
       ) : (
         header
       )}
-      <div className="mt-2 flex flex-col gap-1.5">
+      <div className="mt-1.5 flex flex-col gap-1">
         {group.items.map((item) => (
-          <div key={item.id} className="flex items-start gap-2.5">
-            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-500">
+          <div key={item.id} className="flex items-center gap-2">
+            <span className="flex size-[18px] shrink-0 items-center justify-center text-zinc-400">
               <Icon
                 icon={getWorkItemIcon(item.category)}
                 size={13}
                 aria-hidden="true"
               />
             </span>
-            <div className="min-w-0 flex-1">
-              <Text variant="body" className="truncate text-zinc-800">
-                {item.title}
-              </Text>
-            </div>
-            <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+            <Text
+              variant="small"
+              className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-700"
+            >
+              {item.title}
+            </Text>
+            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
               {item.provider ? `${item.provider} · ` : ""}
               {formatWorkTime(item.occurred_at, timezone)}
             </span>
           </div>
         ))}
         {group.more_count ? (
-          <Text variant="small" className="pl-[34px] text-zinc-400">
+          <Text variant="small" className="pl-[26px] text-[11px] text-zinc-400">
             Plus {group.more_count} more
           </Text>
         ) : null}

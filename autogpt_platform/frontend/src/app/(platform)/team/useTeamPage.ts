@@ -17,6 +17,7 @@ import { useState } from "react";
 import {
   getAssignToastTitle,
   getExpertSchedules,
+  getHiredExperts,
   groupExpertsByPods,
 } from "./helpers";
 
@@ -127,9 +128,7 @@ export function useTeamPage({ enabled }: Args) {
     },
   });
 
-  const hiredExperts = (expertsQuery.data ?? []).filter(
-    (expert) => !expert.is_template && !expert.is_archived,
-  );
+  const hiredExperts = getHiredExperts(expertsQuery.data ?? []);
   const schedules = schedulesQuery.data ?? [];
   const { groups, ungrouped } = groupExpertsByPods(hiredExperts, pods);
 

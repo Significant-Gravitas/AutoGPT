@@ -165,6 +165,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const questionRequests = pendingActions
     .map((entry) => entry.questions)
     .filter((request) => request !== undefined);
+  const manualProceed = pendingActions.some((entry) => entry.manualProceed);
   const hasCardWork =
     connectorRequests.length > 0 ||
     mcpRequests.length > 0 ||
@@ -225,7 +226,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               <div
                 id={panelId}
                 aria-hidden={!panelOpen}
-                inert={!panelOpen ? ("" as unknown as boolean) : undefined}
+                inert={!panelOpen || undefined}
                 className="min-h-0 overflow-hidden"
               >
                 <div
@@ -343,6 +344,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             mcp={mcpRequests}
             inputs={inputRequests}
             questions={questionRequests}
+            manualProceed={manualProceed}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />

@@ -1,10 +1,11 @@
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -12,11 +13,14 @@ from backend.api.features.experts.models import (
     MAX_RAISE_ATTACHMENTS,
     WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
+    ExpertActivity,
+    ExpertAvatarUpdate,
     ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertSkillsUpdate,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -24,12 +28,19 @@ from backend.api.features.experts.models import (
     RaiseResult,
     validate_avatar_url,
 )
+from backend.util.exceptions import NotFoundError
 
 router = APIRouter(
     prefix="/experts",
     tags=["experts", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
+
+# Templates are marketplace content: the expert page shows them to signed-out
+# visitors, so they live on a router without the session requirement. It must
+# be mounted before ``router`` so ``/templates`` isn't swallowed by
+# ``/{expert_id}``.
+public_router = APIRouter(prefix="/experts", tags=["experts"])
 
 
 class HireRequest(BaseModel):
@@ -38,7 +49,18 @@ class HireRequest(BaseModel):
 
 
 class InstallWorkflowRequest(BaseModel):
-    store_listing_version_id: str
+    """One workflow source: a marketplace listing, or the caller's own agent."""
+
+    store_listing_version_id: str | None = None
+    library_agent_id: str | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> "InstallWorkflowRequest":
+        if bool(self.store_listing_version_id) == bool(self.library_agent_id):
+            raise ValueError(
+                "Provide exactly one of store_listing_version_id, library_agent_id"
+            )
+        return self
 
 
 class CreatePodRequest(BaseModel):
@@ -102,7 +124,7 @@ class CreateRaisedExpertRequest(BaseModel):
         return value.strip() or None
 
 
-@router.get("/templates", operation_id="list_expert_templates")
+@public_router.get("/templates", operation_id="list_expert_templates")
 async def list_expert_templates() -> list[Expert]:
     return await experts_db.list_templates()
 
@@ -286,6 +308,22 @@ async def list_expert_runs(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
+@router.get(
+    "/{expert_id}/activity",
+    operation_id="get_expert_activity",
+    responses={404: {"description": "Expert not found"}},
+)
+async def get_expert_activity(
+    expert_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> ExpertActivity:
+    """Daily chat-session and run counts for the expert's activity graph."""
+    try:
+        return await experts_db.get_expert_activity(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
 class GrantCredentialsRequest(BaseModel):
     credential_ids: list[str] = Field(min_length=1, max_length=50)
 
@@ -363,10 +401,47 @@ async def update_expert_soul(
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
 
+@router.put(
+    "/{expert_id}/skills",
+    operation_id="update_expert_skills",
+    responses={404: {"description": "Expert or skill not found"}},
+)
+async def update_expert_skills(
+    expert_id: str,
+    request: ExpertSkillsUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_skills(
+            user_id,
+            expert_id,
+            request.skills,
+            marketplace_listing_ids=request.marketplace_listing_ids,
+        )
+    except NotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/avatar",
+    operation_id="update_expert_avatar",
+    responses={404: {"description": "Expert not found"}},
+)
+async def update_expert_avatar(
+    expert_id: str,
+    request: ExpertAvatarUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
 @router.post(
     "/{expert_id}/workflows",
     operation_id="install_expert_workflow",
-    responses={404: {"description": "Expert not found"}},
+    responses={404: {"description": "Expert or workflow not found"}},
 )
 async def install_expert_workflow(
     expert_id: str,
@@ -375,10 +450,38 @@ async def install_expert_workflow(
 ) -> ExpertWorkflowRef:
     try:
         return await experts_db.install_workflow(
-            user_id, expert_id, request.store_listing_version_id
+            user_id,
+            expert_id,
+            store_listing_version_id=request.store_listing_version_id,
+            library_agent_id=request.library_agent_id,
         )
-    except experts_db.ExpertNotFoundError as e:
+    except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete(
+    "/{expert_id}/workflows/{workflow_id}",
+    operation_id="remove_expert_workflow",
+    status_code=204,
+    responses={
+        404: {"description": "Expert or workflow not found"},
+        503: {"description": "Workflow schedule cleanup temporarily unavailable"},
+    },
+)
+async def remove_expert_workflow(
+    expert_id: str,
+    workflow_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    try:
+        await experts_db.remove_workflow(user_id, expert_id, workflow_id)
+    except NotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ExpertScheduleCleanupError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Could not remove the workflow schedule. Please try again.",
+        ) from e
 
 
 @router.get(

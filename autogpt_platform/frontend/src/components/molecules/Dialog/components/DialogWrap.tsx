@@ -35,6 +35,7 @@ export function DialogWrap({
   children,
   title,
   styling = {},
+  className,
   isForceOpen,
   handleClose,
 }: Props) {
@@ -97,7 +98,7 @@ export function DialogWrap({
         onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={isForceOpen ? undefined : handleClose}
         aria-describedby={undefined}
-        className={modalStyles.content}
+        className={cn(modalStyles.content, className)}
         style={{
           ...styling,
         }}
@@ -134,11 +135,10 @@ export function DialogWrap({
             className={cn(
               "flex-1 overflow-y-auto overflow-x-hidden px-2",
               scrollbarStyles,
+              hasVerticalScrollbar
+                ? "-mr-6 [scrollbar-gutter:stable]"
+                : "mr-0 [scrollbar-gutter:auto]",
             )}
-            style={{
-              scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
-            }}
           >
             {children}
           </div>

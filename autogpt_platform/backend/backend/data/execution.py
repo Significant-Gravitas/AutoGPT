@@ -1213,10 +1213,16 @@ async def update_graph_execution_stats(
                 f"This status can only be set at creation or is not a valid target status."
             )
 
-    await AgentGraphExecution.prisma().update_many(
+    updated = await AgentGraphExecution.prisma().update_many(
         where=where_clause,
         data=update_data,
     )
+    if status is not None and updated == 0:
+        # The row exists but is not in a state this status may be reached
+        # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
+        # the run already finished. Nothing changed, so do not score it,
+        # cascade its children, or hand back a row that suggests it did.
+        return None
 
     if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Score the finished run for the Briefing while its stats are fresh.

@@ -104,7 +104,10 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    "description": "Continue a prior sub; empty = new.",
+                    "description": (
+                        "Continue or queue into a prior sub; empty = new. "
+                        "Cheaper when the follow-up builds on what it read."
+                    ),
                     "default": "",
                 },
                 "wait_for_result": {
@@ -491,11 +494,10 @@ def response_from_outcome(
     message is built correctly once instead of via a post-hoc string
     substitution against this function's own wording.
 
-    ``completed`` surfaces the aggregated response text + tool calls, plus a
-    manifest of any workspace files the sub wrote (SECRT-2377). Pass
-    ``workspace_files`` to supply the authoritative listing from the sub's
-    session; when omitted, the files are mined from ``result.tool_calls`` as a
-    fallback.
+    ``completed`` surfaces the aggregated response text, plus a manifest of
+    any workspace files the sub wrote (SECRT-2377). Pass ``workspace_files``
+    to supply the authoritative listing from the sub's session; when omitted,
+    the files are mined from ``result.tool_calls`` as a fallback.
     ``failed`` returns the error marker with the same handles.
     ``running`` returns just the polling handles so the agent can resume.
     ``queued`` means the target session already had a turn in flight; the
@@ -595,7 +597,7 @@ def response_from_outcome(
         sub_autopilot_session_id=inner_session_id,
         sub_autopilot_session_link=link,
         response=result.response_text,
-        tool_calls=[tc.model_dump() for tc in result.tool_calls],
+        sub_tool_call_count=len(result.tool_calls),
         sub_workspace_files=workspace_files or None,
         elapsed_seconds=round(elapsed, 2),
     )

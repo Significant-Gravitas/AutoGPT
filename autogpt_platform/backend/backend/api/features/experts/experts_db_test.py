@@ -7,6 +7,7 @@ from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import prisma.enums
 import prisma.errors
@@ -159,6 +160,28 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
             user_id=admin.id,
         )
     return slv_id
+
+
+async def _seed_own_library_agent(
+    server: SpinTestServer, user_id: str
+) -> tuple[str, str]:
+    """Create an unpublished graph owned by *user_id*, returning its
+    LibraryAgent id and name — the private case that has no store listing."""
+    name = f"Private graph {uuid.uuid4().hex[:8]}"
+    graph = Graph(
+        name=name,
+        description="Never published to the marketplace",
+        nodes=[Node(block_id=AgentInputBlock().id, input_default={"name": "input_1"})],
+        links=[],
+    )
+    created_graph = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), user_id
+    )
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"userId": user_id, "agentGraphId": created_graph.id}
+    )
+    assert library_agent is not None, "Graph creation did not make a LibraryAgent"
+    return library_agent.id, name
 
 
 async def _load_roster_store_assets() -> dict[str, str]:
@@ -389,14 +412,17 @@ async def test_raise_expert_persists_avatar_and_color(server: SpinTestServer):
         voice_preferences=None,
         avatar_url="https://storage.googleapis.com/bucket/nova.png",
         color="sky-300",
+        tagline="Finds your leads and their decision-makers.",
     )
     assert raised.expert.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert raised.expert.color == "sky-300"
+    assert raised.expert.tagline == "Finds your leads and their decision-makers."
 
     reloaded = await experts_db.get_expert(owner.id, raised.expert.id)
     assert reloaded is not None
     assert reloaded.avatar_url == "https://storage.googleapis.com/bucket/nova.png"
     assert reloaded.color == "sky-300"
+    assert reloaded.tagline == "Finds your leads and their decision-makers."
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1249,7 +1275,9 @@ async def test_install_workflow_on_archived_expert_raises(
     await experts_db.archive_expert(test_user.id, hired.expert.id)
 
     with pytest.raises(experts_db.ExpertNotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1661,6 +1689,62 @@ async def test_owner_can_update_expert_soul(server: SpinTestServer, test_user):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_attaches_library_skills_and_keeps_existing(
+    server: SpinTestServer, test_user
+):
+    from backend.copilot.tools.skills import DEFAULT_SKILLS
+
+    default_slug = DEFAULT_SKILLS[0].name
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    await prisma.models.Expert.prisma().update(
+        where={"id": hired.expert.id}, data={"skills": ["Marketplace Skill"]}
+    )
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["marketplace skill", default_slug.upper()]
+    )
+
+    assert updated.skills[0] == "Marketplace Skill"
+    assert updated.skills[1].lower() == default_slug.lower()
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["not-a-skill-anyone-has"]
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    from backend.copilot.tools.skills import ParsedSkill
+
+    listed = ParsedSkill(name="Deep Research", description="Research anything", body="")
+    monkeypatch.setattr(experts_db, "read_user_skill_with_body", _none_skill)
+    monkeypatch.setattr(experts_db, "list_user_skills", _listing_skills([listed]))
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    updated = await experts_db.update_skills(
+        test_user.id, hired.expert.id, ["deep research"]
+    )
+
+    assert updated.skills == ["Deep Research"]
+
+
+async def _none_skill(*_args, **_kwargs):
+    return None
+
+
+def _listing_skills(skills):
+    async def _list(*_args, **_kwargs):
+        return skills
+
+    return _list
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_other_user_cannot_update_expert_soul(
     server: SpinTestServer, test_user, other_user
 ):
@@ -1860,14 +1944,49 @@ async def test_seed_roster_exposes_two_voice_samples_per_template(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_detaches_it_from_the_expert(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    await experts_db.remove_workflow(test_user.id, hired.expert.id, installed.id)
+
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == []
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}
+    )
+    assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_remove_workflow_unknown_id_raises(server: SpinTestServer, test_user):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.remove_workflow(test_user.id, hired.expert.id, "missing")
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_install_workflow_duplicate_returns_existing(
     server: SpinTestServer, test_user
 ):
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    a = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
-    b = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
     assert a.id == b.id
     assert a.library_agent_id is not None
     assert a.store_listing_version_id == slv_id
@@ -1900,7 +2019,7 @@ async def test_install_workflow_returns_concurrent_winner(
         prisma.models.ExpertWorkflow, "prisma", return_value=workflow_client
     ):
         installed = await experts_db.install_workflow(
-            test_user.id, hired.expert.id, slv_id
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
         )
 
     assert installed.id == winner.id
@@ -1925,7 +2044,9 @@ async def test_install_workflow_reraises_race_without_winner(
         ),
         pytest.raises(prisma.errors.UniqueViolationError),
     ):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
 
     assert workflow_client.find_first.await_count == 2
 
@@ -1953,7 +2074,9 @@ async def test_install_workflow_reuses_library_agent_without_resetting_settings(
         where={"userId": test_user.id}
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     persisted = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -1991,7 +2114,9 @@ async def test_install_workflow_restores_archived_deleted_library_agent(
         },
     )
 
-    installed = await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
 
     restored = await prisma.models.LibraryAgent.prisma().find_unique(
         where={"id": library_agent.id}
@@ -2016,7 +2141,131 @@ async def test_install_workflow_rejects_unapproved_store_version(
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
     with pytest.raises(NotFoundError):
-        await experts_db.install_workflow(test_user.id, hired.expert.id, slv_id)
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_own_library_agent(
+    server: SpinTestServer, test_user
+):
+    """The unpublished-agent case: no listing version, and the row still
+    carries the agent's own name so the UI is not left with a placeholder."""
+    library_agent_id, agent_name = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert installed.library_agent_id == library_agent_id
+    assert installed.store_listing_version_id is None
+    assert installed.name == agent_name
+    assert installed.graph_id is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_from_library_agent_is_idempotent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    a = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    b = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+
+    assert a.id == b.id
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id, "libraryAgentId": library_agent_id}
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_other_users_library_agent(
+    server: SpinTestServer, test_user, other_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, other_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+    assert (
+        await prisma.models.ExpertWorkflow.prisma().count(
+            where={"expertId": hired.expert.id}
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_rejects_deleted_library_agent(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent_id}, data={"isDeleted": True}
+    )
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.install_workflow(
+            test_user.id, hired.expert.id, library_agent_id=library_agent_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_library_path_dedupes_marketplace_row(
+    server: SpinTestServer, test_user
+):
+    """Installing a listing and then its resulting library agent is one
+    attachment, not two — the marketplace install already set libraryAgentId."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    from_listing = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, store_listing_version_id=slv_id
+    )
+    assert from_listing.library_agent_id is not None
+    from_library = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=from_listing.library_agent_id
+    )
+
+    assert from_library.id == from_listing.id
+    assert from_library.store_listing_version_id == slv_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_install_workflow_requires_exactly_one_source(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(test_user.id, hired.expert.id)
+    with pytest.raises(ValueError):
+        await experts_db.install_workflow(
+            test_user.id,
+            hired.expert.id,
+            store_listing_version_id="slv-1",
+            library_agent_id="library-agent-1",
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3198,7 +3447,22 @@ def _run_execution(**overrides) -> SimpleNamespace:
 def _run_workflow(name: str = "SEO Blog Writer") -> SimpleNamespace:
     return SimpleNamespace(
         libraryAgentId="library-agent-1",
+        LibraryAgent=None,
         StoreListingVersion=SimpleNamespace(name=name),
+    )
+
+
+def _library_run_workflow(name: str, graph_name: str | None) -> SimpleNamespace:
+    """A library-only workflow row: no listing, so the name comes from the
+    library agent — or from its graph when the agent was never published."""
+    return SimpleNamespace(
+        libraryAgentId="library-agent-1",
+        LibraryAgent=SimpleNamespace(
+            name=name,
+            description=None,
+            AgentGraph=SimpleNamespace(name=graph_name, description=None),
+        ),
+        StoreListingVersion=None,
     )
 
 
@@ -3214,6 +3478,17 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     assert run.link == (
         "/library/agents/library-agent-1?activeTab=runs&activeItem=exec-1"
     )
+
+
+def test_to_expert_run_names_a_library_only_workflow():
+    run = experts_db._to_expert_run(
+        _run_execution(),
+        _library_run_workflow(None, "My Private Agent"),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert run.agent_name == "My Private Agent"
 
 
 def test_to_expert_run_falls_back_when_workflow_unresolved():
@@ -3392,6 +3667,94 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
     assert [run.status for run in runs] == ["completed", "review"]
     assert [run.needs_review for run in runs] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar():
+    tz = "Pacific/Auckland"
+    instant = datetime(2026, 1, 1, 11, 30, tzinfo=timezone.utc)
+    today = instant.astimezone(ZoneInfo(tz)).date()
+    yesterday = today - timedelta(days=1)
+    seen: list[tuple] = []
+
+    async def fake_query(sql: str, *args, model):
+        seen.append((sql, args))
+        if '"ChatSession"' in sql:
+            return [model(day=today, count=2), model(day=yesterday, count=1)]
+        return [model(day=today, count=3)]
+
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=True)
+        ),
+        patch.object(
+            experts_db,
+            "get_user_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(timezone=tz)),
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=fake_query),
+        patch.object(experts_db, "datetime", wraps=datetime) as clock,
+    ):
+        clock.now.return_value = instant.astimezone(ZoneInfo(tz))
+        activity = await experts_db.get_expert_activity("owner-1", "expert-1")
+
+    assert activity.timezone == tz
+    assert len(activity.days) == 365
+    assert activity.days[-1].day == today
+    assert activity.days[0].day == today - timedelta(
+        days=experts_db.EXPERT_ACTIVITY_DAYS - 1
+    )
+    assert [d.day for d in activity.days] == sorted(d.day for d in activity.days)
+    assert (activity.days[-1].sessions, activity.days[-1].runs) == (2, 3)
+    assert (activity.days[-2].sessions, activity.days[-2].runs) == (1, 0)
+    assert all(d.sessions == 0 and d.runs == 0 for d in activity.days[:-2])
+
+    assert {'"ChatSession"' in sql for sql, _ in seen} == {True, False}
+    for sql, args in seen:
+        assert args[:3] == ("owner-1", "expert-1", tz)
+        assert args[3] == datetime.combine(
+            activity.days[0].day, datetime.min.time(), tzinfo=ZoneInfo(tz)
+        )
+        assert ('"isDeleted" = false' in sql) == ('"AgentGraphExecution"' in sql)
+
+
+@pytest.mark.asyncio
+async def test_get_expert_activity_rejects_missing_or_foreign_expert():
+    with (
+        patch.object(
+            experts_db, "owns_active_expert", new=AsyncMock(return_value=False)
+        ),
+        patch.object(experts_db, "query_raw_with_schema", new=AsyncMock()) as query,
+        pytest.raises(experts_db.ExpertNotFoundError),
+    ):
+        await experts_db.get_expert_activity("owner-1", "foreign-expert")
+
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_expert_activity_counts_sessions_by_day(server: SpinTestServer):
+    owner = await _create_seed_user()
+    raised = await experts_db.create_raised_expert(
+        owner.id, name="Otto", role=None, voice_preferences=None
+    )
+    for _ in range(2):
+        await create_chat_session(owner.id, dry_run=False, expert_id=raised.expert.id)
+    await create_chat_session(owner.id, dry_run=False)
+
+    instant = datetime(2026, 1, 1, 23, 59, tzinfo=timezone.utc)
+    await prisma.models.ChatSession.prisma().update_many(
+        where={"userId": owner.id}, data={"createdAt": instant}
+    )
+    with patch.object(experts_db, "datetime", wraps=datetime) as clock:
+        clock.now.return_value = instant
+        activity = await experts_db.get_expert_activity(owner.id, raised.expert.id)
+
+    assert activity.timezone == "UTC"
+    assert activity.days[-1].day == instant.date()
+    assert activity.days[-1].sessions == 2
+    assert sum(d.sessions for d in activity.days) == 2
+    assert sum(d.runs for d in activity.days) == 0
 
 
 @pytest.mark.asyncio
