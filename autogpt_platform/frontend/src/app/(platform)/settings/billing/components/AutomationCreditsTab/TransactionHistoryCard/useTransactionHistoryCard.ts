@@ -1,50 +1,62 @@
 "use client";
 
-import { useGetV1GetCreditHistory } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetV1GetCreditHistoryQueryKey,
+  getV1GetCreditHistory,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
-
-import { formatCents } from "../../../helpers";
-
-export interface TransactionRow {
-  id: string;
-  date: string;
-  description: string;
-  amount: string;
-  kind: "credit" | "debit";
-}
+import { useOrgTeamStore } from "@/services/org-team/store";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import type { Transaction } from "./helpers";
 
 export function useTransactionHistoryCard() {
-  const { data, isLoading, isError, refetch } = useGetV1GetCreditHistory(
-    { transaction_count_limit: 50 },
-    {
-      query: {
-        select: (res) => res.data as TransactionHistory | undefined,
-      },
+  const activeOrgID = useOrgTeamStore((state) => state.activeOrgID);
+  const history = useInfiniteQuery({
+    queryKey: [...getGetV1GetCreditHistoryQueryKey(), "receipts", activeOrgID],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const response = await getV1GetCreditHistory(
+        { transaction_count_limit: 25, cursor: pageParam },
+        { signal },
+      );
+      if (response.status !== 200)
+        throw new Error("Transaction history could not be loaded");
+      return response.data;
     },
-  );
+    getNextPageParam: (page) => page.next_cursor || undefined,
+    retry: false,
+  });
+  const transactions = mergeTransactions(history.data?.pages ?? []);
+  return {
+    transactions,
+    isLoading: history.isLoading,
+    isError: history.isError && !history.data,
+    isLoadingMore: history.isFetchingNextPage,
+    isLoadMoreError: history.isFetchNextPageError,
+    isRefreshError: history.isRefetchError && !history.isFetchNextPageError,
+    hasMore: !!history.hasNextPage,
+    refetch: history.refetch,
+    loadMore: history.fetchNextPage,
+  };
+}
 
-  const transactions: TransactionRow[] = (data?.transactions ?? []).map(
-    (tx, idx) => {
-      const amountCents = tx.amount ?? 0;
-      return {
-        id:
-          tx.transaction_key ??
-          (tx.transaction_time
-            ? `${tx.transaction_time.toString()}-${idx}`
-            : `tx-${idx}`),
-        date: tx.transaction_time
-          ? new Date(tx.transaction_time).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "—",
-        description: tx.description ?? tx.transaction_type ?? "Transaction",
-        amount: `${amountCents > 0 ? "+" : ""}${formatCents(amountCents)}`,
-        kind: amountCents >= 0 ? "credit" : "debit",
-      };
-    },
-  );
-
-  return { transactions, isLoading, isError, refetch };
+function mergeTransactions(pages: TransactionHistory[]): Transaction[] {
+  const transactions = new Map<string, Transaction>();
+  for (const page of pages) {
+    for (const item of page.transactions) {
+      const id =
+        item.id ||
+        item.transaction_key ||
+        `execution:${item.usage_execution_id}`;
+      if (!transactions.has(id))
+        transactions.set(id, {
+          ...item,
+          id,
+          amount: item.amount ?? 0,
+          transaction_type: item.transaction_type ?? "USAGE",
+          receipt_as_of: page.snapshot_at,
+        });
+    }
+  }
+  return Array.from(transactions.values());
 }
