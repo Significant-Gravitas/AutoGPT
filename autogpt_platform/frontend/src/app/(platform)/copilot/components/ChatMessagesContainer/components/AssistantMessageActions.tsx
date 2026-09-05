@@ -89,7 +89,7 @@ export function AssistantMessageActions({
           <Icon icon={ThumbsDownIcon} size={16} />
         </MessageAction>
 
-        <TTSButton text={text} />
+        <TTSButton text={text} sessionID={sessionID} />
       </MessageActions>
 
       {showFeedbackModal && (
