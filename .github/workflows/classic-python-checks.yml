@@ -23,6 +23,7 @@ on:
       - 'classic/poetry.lock'
       - '**.py'
       - '!classic/forge/tests/vcr_cassettes'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ format('classic-python-checks-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
@@ -32,6 +33,9 @@ defaults:
   run:
     shell: bash
     working-directory: classic
+
+permissions:
+  contents: read
 
 jobs:
   lint:
