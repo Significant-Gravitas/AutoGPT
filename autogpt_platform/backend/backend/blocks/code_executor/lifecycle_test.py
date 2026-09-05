@@ -3,13 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from backend.blocks.code_executor import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    ExecuteCodeStepBlock,
-    InstantiateCodeSandboxBlock,
-    ProgrammingLanguage,
-)
+from backend.blocks.code_executor._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from backend.blocks.code_executor.helpers import ProgrammingLanguage
+from backend.blocks.code_executor.instantiate import InstantiateCodeSandboxBlock
+from backend.blocks.code_executor.step import ExecuteCodeStepBlock
 
 
 async def test_reconnect_preserves_explicit_sandbox_timeout():
@@ -20,7 +17,7 @@ async def test_reconnect_preserves_explicit_sandbox_timeout():
         )
     )
     with patch(
-        "backend.blocks.code_executor.AsyncSandbox.connect",
+        "backend.blocks.code_executor._base.AsyncSandbox.connect",
         AsyncMock(return_value=sandbox),
     ) as connect:
         await InstantiateCodeSandboxBlock().execute_code(
@@ -87,7 +84,7 @@ async def test_code_step_can_dispose_desktop_after_testing():
         dispose_sandbox=True,
     )
     with patch(
-        "backend.blocks.code_executor.AsyncSandbox.connect",
+        "backend.blocks.code_executor._base.AsyncSandbox.connect",
         AsyncMock(return_value=sandbox),
     ):
         _ = [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]

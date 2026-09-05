@@ -14,11 +14,9 @@ from backend.blocks.ayrshare.post_to_tiktok import PostToTikTokBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
 from backend.blocks.bannerbear.text_overlay import BannerbearTextOverlayBlock
-from backend.blocks.code_executor import (
-    ExecuteCodeBlock,
-    ExecuteCodeStepBlock,
-    InstantiateCodeSandboxBlock,
-)
+from backend.blocks.code_executor.execute import ExecuteCodeBlock
+from backend.blocks.code_executor.instantiate import InstantiateCodeSandboxBlock
+from backend.blocks.code_executor.step import ExecuteCodeStepBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.youtube import TranscribeYoutubeVideoBlock
