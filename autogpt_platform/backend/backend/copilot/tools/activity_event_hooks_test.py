@@ -95,3 +95,18 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
 
     assert tool.activity_event(session=session, result=without_provider) is None
     assert tool.activity_event(session=session, result=dry_run) is None
+
+
+def test_run_block_does_not_report_llm_credential_use() -> None:
+    tool = RunBlockTool()
+    session = _make_session()
+    model_call = BlockOutputResponse(
+        message="Block executed",
+        block_id="block-1",
+        block_name="AITextGeneratorBlock",
+        outputs={},
+        provider="openai",
+        session_id="test-session",
+    )
+
+    assert tool.activity_event(session=session, result=model_call) is None

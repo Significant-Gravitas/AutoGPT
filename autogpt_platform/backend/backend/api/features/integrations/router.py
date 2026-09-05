@@ -79,6 +79,7 @@ from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
+    GraphNotAccessibleError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -1278,14 +1279,20 @@ async def _execute_webhook_preset_trigger(
             )
             return
 
+    # Read-authorization must not decide this: `None` would then also mean
+    # "not allowed to read", and the write below would silently kill a live
+    # trigger. add_graph_execution() is the authorization gate for this path.
     graph = await get_graph(
-        preset.graph_id, preset.graph_version, user_id=webhook.user_id
+        preset.graph_id,
+        preset.graph_version,
+        user_id=webhook.user_id,
+        skip_access_check=True,
     )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
             f"#{preset.graph_id} v{preset.graph_version}, "
-            "but no access to the graph itself."
+            "but the graph version does not exist."
         )
         logger.info(f"Automatically deactivating broken preset #{preset.id}")
         await update_preset(preset.user_id, preset.id, is_active=False)
@@ -1346,11 +1353,19 @@ async def _execute_webhook_preset_trigger(
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+            f"deleted graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
             preset.graph_id, webhook.user_id, webhook_id
+        )
+    except GraphNotAccessibleError as e:
+        # Permanent, unlike the transient failures below: every future
+        # delivery fails the same way while the preset still reads as Active.
+        logger.error(
+            f"Webhook #{webhook_id} preset #{preset.id} is permanently blocked: "
+            f"user #{webhook.user_id} may not execute graph "
+            f"#{preset.graph_id} v{preset.graph_version}: {e}"
         )
     except Exception:
         logger.exception(

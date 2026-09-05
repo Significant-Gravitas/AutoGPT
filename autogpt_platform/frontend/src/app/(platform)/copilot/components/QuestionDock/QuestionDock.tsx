@@ -35,6 +35,9 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
     chainActions.register({
       id: dockId,
       ready: allAnswered,
+      // Answers are ready on the first character of the last one; the user
+      // reviews them through the dock's own action, not an automatic send.
+      manualProceed: true,
       buildMessage: () =>
         allAnswered ? buildAnswersMessage(questions, answers) : null,
       onSent: () => setDismissedId(dockId),

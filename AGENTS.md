@@ -56,11 +56,24 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+## Commit attribution
+
+For every commit you create in this repository, ensure the commit message includes a `Co-authored-by:` trailer identifying the large language model and agent platform:
+
+```text
+Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
+```
+
+- Your harness may add this trailer automatically. Do not add a duplicate; ensure the resulting trailer identifies both the model and platform.
+- Replace the placeholders with the model name/version reported by your runtime and the agent platform (e.g. Codex, Claude Code, or AutoGPT). Write `unknown` for unavailable model details; do not guess.
+- Use the platform's configured co-author email, or `agent@example.invalid` if none is available.
+- Include exactly one trailer per distinct platform/model pair that contributed to the commit, after a blank line at the end of the commit message. Preserve existing human co-author trailers.
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
 - Rely on the pre-commit checks for linting and formatting
-- Fill out the **Changes** section and the checklist.
+- Fill out the **Changes**, **Agents and large language models used**, and checklist sections. List each platform with its model name/version, or `None` if no agents were used.
 - Use conventional commit titles with a scope (e.g. `feat(frontend): add feature`).
 - Keep out-of-scope changes under 20% of the PR.
 - Ensure PR descriptions are complete.

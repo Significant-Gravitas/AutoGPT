@@ -14,11 +14,12 @@ from datetime import datetime, timezone
 import prisma.models
 from prisma.enums import ResourceVisibility
 
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import ExpertRunPausedError
+from backend.util.exceptions import ExpertRunPausedError, NotFoundError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -102,9 +103,19 @@ async def create_workflow_schedule(
     return True
 
 
-async def _delete_schedule_best_effort(
+async def delete_workflow_schedule(
     schedule_id: str, user_id: str, expert_id: str
 ) -> None:
+    """Drop the schedule of a workflow being removed from an expert."""
+    if not await _delete_schedule_best_effort(schedule_id, user_id, expert_id):
+        raise ExpertScheduleCleanupError(
+            f"Could not delete workflow schedule #{schedule_id}"
+        )
+
+
+async def _delete_schedule_best_effort(
+    schedule_id: str, user_id: str, expert_id: str
+) -> bool:
     """Never leave a schedule firing with no row pointing at it. One
     immediate retry covers transient RPC blips; a persistent failure is
     logged loudly by id. A surviving orphan is not invisible: it stays
@@ -114,13 +125,16 @@ async def _delete_schedule_best_effort(
     for _attempt in range(2):
         try:
             await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
-            return
+            return True
+        except NotFoundError:
+            return True
         except Exception as cleanup_error:
             last_error = cleanup_error
     logger.error(
         f"Orphaned schedule #{schedule_id} for expert #{expert_id} "
         f"could not be deleted: {type(last_error).__name__}: {last_error}"
     )
+    return False
 
 
 async def _get_expert_schedules(

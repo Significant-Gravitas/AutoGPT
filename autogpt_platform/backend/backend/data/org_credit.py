@@ -22,6 +22,7 @@ from backend.data.credit import (
 from backend.data.db import prisma
 from backend.data.model import RefundRequest, TransactionHistory
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.stripe_client import stripe_call
 from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import SafeJson
@@ -457,12 +458,10 @@ class OrgCreditModel(UserCreditBase):
         if not org or not org.stripeCustomerId:
             return []
 
-        from fastapi.concurrency import run_in_threadpool
-
         limit = max(1, min(limit, 100))
         try:
-            invoices = await run_in_threadpool(
-                stripe.Invoice.list,
+            invoices = await stripe_call(
+                stripe.Invoice.list_async,
                 customer=org.stripeCustomerId,
                 limit=limit,
             )
