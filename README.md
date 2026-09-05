@@ -111,17 +111,15 @@ The hosted Platform is a paid service with usage-based agent runs. [Compare plan
 > [!NOTE]
 > Self-hosting is the free path. You provide the infrastructure and model API keys, and you maintain the deployment. If you want zero setup, use the [managed Platform](https://platform.agpt.co/signup?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=self_host_note).
 
-**macOS and Linux:**
+The Linux and macOS single-container release installer is coming with the next
+appliance release. Until the public installer endpoint and image tags pass the
+[documented release gates](docs/platform/installer.md#maintainer-release-gates),
+use the [manual self-hosting guide](https://docs.agpt.co/platform/getting-started).
 
-```bash
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
-```
-
-**Windows PowerShell:**
-
-```powershell
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
-```
+The release installer will require an already-running local Docker daemon using
+Linux containers on `amd64` or `arm64`. It pulls the published appliance and
+runs its immutable digest; it does not install Docker or build from source.
+Windows users should continue with the manual self-hosting guide for now.
 
 [Read the self-hosting guide →](https://docs.agpt.co/platform/getting-started)
 
@@ -131,7 +129,7 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 
 | | **AutoGPT Platform** | **Self-hosted** |
 |---|---|---|
-| Access | Public signup | Clone and install |
+| Access | Public signup | Operate the published appliance or a development checkout |
 | Cost | Paid plan plus agent usage | No license fee; pay your own infrastructure and model providers |
 | Setup | Managed | Docker and configuration required |
 | Model access | Built in | Bring your own API keys |
