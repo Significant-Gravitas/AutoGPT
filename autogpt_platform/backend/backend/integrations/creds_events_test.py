@@ -17,10 +17,7 @@ from backend.integrations.creds_events import (
     listen_creds_changed,
     publish_creds_changed,
 )
-from backend.integrations.creds_manager import (
-    IntegrationCredentialsManager,
-    _invoke_creds_changed_hook,
-)
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 _USER = "user-creds-events-test"
 
@@ -41,8 +38,13 @@ async def test_publish_spublishes_on_the_broadcast_channel():
 
 @pytest.mark.asyncio
 async def test_a_dead_redis_does_not_fail_the_credential_write():
-    """The write is already durable by the time we publish, so a broadcast
-    failure must stay non-fatal — loudly, since the fallback is the 60 s TTL."""
+    """A write is durable before it is announced, so a broadcast failure must
+    stay non-fatal — loudly, since the fallback is then the 60 s TTL."""
+    manager = IntegrationCredentialsManager()
+    manager.store = MagicMock()
+    manager.store.update_creds = AsyncMock()
+    manager._locked = lambda *args, **kwargs: contextlib.nullcontext()
+
     records: list[logging.LogRecord] = []
     handler = logging.Handler()
     handler.emit = records.append
@@ -53,10 +55,11 @@ async def test_a_dead_redis_does_not_fail_the_credential_write():
             "backend.data.event_bus.redis.get_redis_async",
             side_effect=ConnectionError("redis down"),
         ):
-            await _invoke_creds_changed_hook(_USER, "github")
+            await manager.update(_USER, _oauth_creds())
     finally:
         bus_logger.removeHandler(handler)
 
+    manager.store.update_creds.assert_awaited_once()
     assert [r for r in records if r.levelno >= logging.ERROR and r.exc_info]
 
 
