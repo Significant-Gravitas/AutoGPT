@@ -238,9 +238,9 @@ Executes code in a sandbox environment with internet access.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block executes Python, JavaScript, or Bash code in an isolated E2B sandbox with internet access. Use setup_commands to install dependencies before running your code.
+This block executes Python, JavaScript, or Bash code in an isolated E2B sandbox with internet access. Use `setup_commands` to install dependencies before running your code.
 
-The sandbox includes pip and npm pre-installed. Set timeout to limit execution time, and use dispose_sandbox to clean up after execution or keep the sandbox running for follow-up steps.
+The sandbox includes pip and npm pre-installed. The `timeout` sets the sandbox lifetime in seconds from creation, including setup and execution. Set `dispose_sandbox=True` to stop it immediately after execution; otherwise it remains available until its lifetime expires.
 <!-- END MANUAL -->
 
 ### Inputs
