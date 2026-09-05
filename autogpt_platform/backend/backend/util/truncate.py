@@ -107,6 +107,9 @@ def truncate(value: Any, size_limit: int) -> Any:
     largest str_limit and list_limit that fit.
     """
 
+    if size_limit <= 0:
+        return ""
+
     # Fast path: plain strings don't need the binary search machinery.
     if isinstance(value, str):
         return _truncate_string_middle(value, size_limit)
@@ -156,5 +159,9 @@ def truncate(value: Any, size_limit: int) -> Any:
     # If nothing fits, fall back to the most aggressive truncation
     if best is None:
         best = _truncate_value(value, STR_MIN, LIST_MIN)
+
+    # If no structured candidate can fit within size_limit, return a bounded representation
+    if measure(best) > size_limit:
+        return _truncate_string_middle(str(best), size_limit)
 
     return best

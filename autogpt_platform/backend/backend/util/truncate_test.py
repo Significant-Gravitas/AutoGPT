@@ -72,3 +72,13 @@ def test_recursive_truncation_nested_structures():
     }
     truncated = truncate(data, 100)
     assert len(str(truncated)) <= 100
+
+
+def test_structured_values_at_small_and_non_positive_limits():
+    """Structured values (lists and dicts) must never exceed size_limit, even for small/non-positive limits."""
+    for val in [["x"], ["hello", "world"], {"a": "b"}, {"key": "very long value"}]:
+        assert truncate(val, 0) == ""
+        assert truncate(val, -3) == ""
+        for lim in range(1, 5):
+            res = truncate(val, lim)
+            assert len(str(res)) <= lim, f"len({res!r}) > {lim} for value {val!r}"
