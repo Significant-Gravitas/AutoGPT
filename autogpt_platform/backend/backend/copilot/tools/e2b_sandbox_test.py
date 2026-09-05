@@ -684,7 +684,7 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
 class TestSandboxOwner:
     def test_expert_session_is_owned_by_the_expert(self):
         owner = SandboxOwner.for_session(_SESSION_ID, _EXPERT_ID)
-        assert owner == SandboxOwner("expert", _EXPERT_ID)
+        assert owner == SandboxOwner(kind="expert", id=_EXPERT_ID)
         assert owner.is_expert
         assert owner.key() == _EXPERT_SHELL_KEY
         assert owner.key("desktop") == _EXPERT_DESKTOP_KEY
@@ -697,12 +697,12 @@ class TestSandboxOwner:
 
     def test_expert_cache_outlives_session_cache(self):
         assert (
-            SandboxOwner("expert", _EXPERT_ID).ttl
-            > SandboxOwner("session", _SESSION_ID).ttl
+            SandboxOwner(kind="expert", id=_EXPERT_ID).ttl
+            > SandboxOwner(kind="session", id=_SESSION_ID).ttl
         )
 
     def test_metadata_identifies_owner_and_kind(self):
-        assert SandboxOwner("expert", _EXPERT_ID).metadata("desktop") == {
+        assert SandboxOwner(kind="expert", id=_EXPERT_ID).metadata("desktop") == {
             "autogpt_owner": f"expert:{_EXPERT_ID}",
             "autogpt_kind": "desktop",
         }
@@ -713,7 +713,7 @@ class TestFindOwnedSandboxId:
         with patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls:
             result = asyncio.run(
                 find_owned_sandbox_id(
-                    SandboxOwner("session", _SESSION_ID), "shell", _API_KEY
+                    SandboxOwner(kind="session", id=_SESSION_ID), "shell", _API_KEY
                 )
             )
         assert result is None
@@ -728,7 +728,7 @@ class TestFindOwnedSandboxId:
             mock_cls.list = _mock_list(infos)
             result = asyncio.run(
                 find_owned_sandbox_id(
-                    SandboxOwner("expert", _EXPERT_ID), "shell", _API_KEY
+                    SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
                 )
             )
         assert result == "sb-running-old"
@@ -748,7 +748,7 @@ class TestFindOwnedSandboxId:
             mock_cls.list = _mock_list(infos)
             result = asyncio.run(
                 find_owned_sandbox_id(
-                    SandboxOwner("expert", _EXPERT_ID), "desktop", _API_KEY
+                    SandboxOwner(kind="expert", id=_EXPERT_ID), "desktop", _API_KEY
                 )
             )
         assert result == "sb-new"
@@ -758,7 +758,7 @@ class TestFindOwnedSandboxId:
             mock_cls.list = MagicMock(side_effect=RuntimeError("e2b down"))
             result = asyncio.run(
                 find_owned_sandbox_id(
-                    SandboxOwner("expert", _EXPERT_ID), "shell", _API_KEY
+                    SandboxOwner(kind="expert", id=_EXPERT_ID), "shell", _API_KEY
                 )
             )
         assert result is None

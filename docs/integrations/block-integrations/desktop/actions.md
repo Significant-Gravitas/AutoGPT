@@ -1,6 +1,6 @@
 # Desktop Actions
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Computer-use input for an interactive desktop created by the Desktop Sandbox block: mouse, keyboard, scrolling, waiting and screenshots, driven by pixel coordinates on the live screen.
 <!-- END MANUAL -->
 
 ## Desktop Action
@@ -10,7 +10,7 @@ Performs a computer-use action (mouse, keyboard, scroll, screenshot) on an inter
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Reconnects to the desktop by `sandbox_id` (resuming it if suspended) and translates the action into `xdotool` commands on the sandbox's X display. Clicks and drags move the pointer to `(x, y)` first; `type` sends text in short chunks with a small key delay so applications keep up; `press` maps friendly key names such as `enter`, `ctrl` or `cmd` to X keysyms and sends them as one chord. `screenshot`, and any action with `screenshot_after` set, captures the screen with `scrot` and returns it as a PNG file so a vision model can decide the next step. Coordinates are screen pixels at the resolution the desktop was created with.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -41,7 +41,8 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- Drive a GUI-only application in a loop: screenshot, let a vision model pick the next click or keystroke, act, repeat.
+- Fill in and submit a web form when no API exists, then screenshot the confirmation page.
 <!-- END MANUAL -->
 
 ---

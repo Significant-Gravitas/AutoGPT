@@ -67,10 +67,10 @@ import asyncio
 import contextlib
 import logging
 import math
-from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Mapping
 
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle, SandboxQuery, SandboxState
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.redis_client import get_redis_async
 
@@ -131,8 +131,7 @@ _EXPERT_ID_TTL = 30 * 24 * 3600
 _ACTIVE_TURN_TTL = 3600
 
 
-@dataclass(frozen=True)
-class SandboxOwner:
+class SandboxOwner(BaseModel):
     """Who a CoPilot sandbox belongs to — and therefore how long it lives.
 
     ``session`` sandboxes are scratch for one chat.  ``expert`` sandboxes are
@@ -140,6 +139,8 @@ class SandboxOwner:
     runs as that expert — one box per expert, not one per account, so two
     experts never see each other's logins or files.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     kind: Literal["session", "expert"]
     id: str
@@ -150,8 +151,8 @@ class SandboxOwner:
     ) -> "SandboxOwner":
         """Expert sessions run on the expert's box; everything else per-session."""
         if expert_id:
-            return cls("expert", expert_id)
-        return cls("session", session_id)
+            return cls(kind="expert", id=expert_id)
+        return cls(kind="session", id=session_id)
 
     @property
     def is_expert(self) -> bool:
@@ -180,11 +181,11 @@ def _as_owner(owner: "SandboxOwner | str") -> SandboxOwner:
     """Accept a bare session id where an owner is expected."""
     if isinstance(owner, SandboxOwner):
         return owner
-    return SandboxOwner("session", owner)
+    return SandboxOwner(kind="session", id=owner)
 
 
 def _sandbox_key(session_id: str) -> str:
-    return SandboxOwner("session", session_id).key()
+    return SandboxOwner(kind="session", id=session_id).key()
 
 
 async def _get_stored_sandbox_id(
@@ -623,7 +624,7 @@ async def kill_sandbox(
     Safe to call even when no sandbox exists for the session.
     """
     return await _act_on_sandbox(
-        SandboxOwner("session", session_id),
+        SandboxOwner(kind="session", id=session_id),
         api_key,
         "kill",
         lambda sb: sb.kill(),
@@ -639,7 +640,7 @@ async def kill_expert_sandboxes(expert_id: str, api_key: str) -> int:
     Falls back to the E2B metadata lookup for each box so a stale Redis cache
     cannot leave a paused machine behind.  Returns the number killed.
     """
-    owner = SandboxOwner("expert", expert_id)
+    owner = SandboxOwner(kind="expert", id=expert_id)
     killed = 0
     for sandbox_kind in ("shell", "desktop"):
         sandbox_id = await _get_stored_sandbox_id(owner, sandbox_kind)

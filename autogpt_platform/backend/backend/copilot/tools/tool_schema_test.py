@@ -112,7 +112,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 62_000 for start_desktop, the on-demand interactive
+# desktop (new LLM-facing primitive, ~700 chars of schema skeleton), plus
+# one sentence on bash_exec telling the model which paths persist
+# (~/workspace vs ~/shared on an expert's own box). Both descriptions are
+# already cut to the minimum. Merged registry measures 61530 chars; ~470
+# headroom for CI env deltas.
+_CHAR_BUDGET = 62_000
 
 
 @pytest.fixture(scope="module")

@@ -1,6 +1,6 @@
 # Desktop Command
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Shell access to an interactive desktop created by the Desktop Sandbox block, with the X display wired up so commands can launch and control GUI applications.
 <!-- END MANUAL -->
 
 ## Desktop Command
@@ -10,7 +10,7 @@ Runs a shell command inside an interactive desktop sandbox (DISPLAY is set, so G
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+Reconnects to the desktop by `sandbox_id` and runs the command through E2B's command API with `DISPLAY=:0` set, so `firefox https://example.com` or `libreoffice report.odt` opens on the visible desktop. Output is captured until the process exits or `timeout_seconds` elapses; long-lived programs should be backgrounded with `&`. Commands run as the sandbox user with the persistent workspace available at `/home/user/workspace`.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +34,8 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+- Launch a browser or office application on the desktop before handing control to the Desktop Action block.
+- Install a tool with `apt` or `pip`, convert files, or inspect the machine without leaving the workflow.
 <!-- END MANUAL -->
 
 ---
