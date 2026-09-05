@@ -182,7 +182,7 @@ Connect the apps that are yours. AutoGPT provides access to hundreds of AI model
 | Discord | [Join the AutoGPT community](https://discord.gg/autogpt) |
 | Documentation | [docs.agpt.co](https://docs.agpt.co) |
 | Bug reports | [GitHub Issues](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose) |
-| Feature requests | [GitHub Discussions](https://github.com/Significant-Gravitas/AutoGPT/discussions) |
+| Feature requests | [GitHub Issues](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ---
