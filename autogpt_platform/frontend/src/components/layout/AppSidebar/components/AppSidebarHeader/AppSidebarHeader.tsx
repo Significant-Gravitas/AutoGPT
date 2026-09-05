@@ -37,7 +37,10 @@ export function AppSidebarHeader() {
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right">
+      <TooltipContent
+        side="right"
+        className="[[data-radix-popper-content-wrapper]:has(>&)]:pointer-events-none"
+      >
         {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       </TooltipContent>
     </Tooltip>
