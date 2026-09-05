@@ -246,12 +246,32 @@ describe("toChainRow", () => {
     });
   });
 
+  it("marks a gated tool call as requiring action, not as a result", () => {
+    const row = toChainRow(
+      toolPart(
+        "bash_exec",
+        { command: "ls" },
+        { type: "approval_required", tool_name: "bash_exec", reason: "why" },
+      ),
+      0,
+    );
+
+    expect(row?.requiresAction).toBe(true);
+    expect(row?.text).toBe("Approve bash_exec");
+  });
+
   it.each([
     [
       { type: "review_required", block_name: "Send Email" },
       "Review Send Email",
     ],
     [{ type: "review_required" }, "Review this action"],
+    [
+      { type: "approval_required", tool_name: "post_to_chat_platform" },
+      "Approve post_to_chat_platform",
+    ],
+    [{ type: "approval_required" }, "Approve this action"],
+    [{ type: "approval_required", tool_name: "   " }, "Approve this action"],
     [{ type: "suggested_goal" }, "Review the suggested goal"],
     [{ type: "need_login", message: "Log in first" }, "Log in first"],
     [{ type: "need_login" }, "Action required"],

@@ -60,6 +60,7 @@ from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUs
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.copilot.gate import gate_active
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
@@ -114,6 +115,7 @@ from ..permissions import (
 )
 from ..prompting import (
     get_delegation_supplement,
+    AUTO_MODE_SUPPLEMENT,
     get_graphiti_supplement,
     get_sdk_supplement,
 )
@@ -1666,6 +1668,7 @@ async def _apply_building_mode_restart(
     base_system_prompt: str,
     delegation_supplement: str,
     graphiti_supplement: str,
+    auto_mode_supplement: str,
     use_e2b: bool,
     session_id: str,
     message_id: str,
@@ -1702,6 +1705,7 @@ async def _apply_building_mode_restart(
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
         + graphiti_supplement
+        + auto_mode_supplement
         + building_suffix
         + expert_session_suffix
     )
@@ -4734,6 +4738,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        auto_mode_supplement = (
+            AUTO_MODE_SUPPLEMENT if await gate_active(user_id, session) else ""
+        )
         # The whole expert-team surface rides the hire-experts flag, failing
         # closed for anonymous turns.  Resolved here rather than at the
         # tool-hiding site below so the delegation rules can be gated on the
@@ -4759,6 +4766,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             + get_sdk_supplement(use_e2b=use_e2b)
             + delegation_supplement
             + graphiti_supplement
+            + auto_mode_supplement
             + builder_session_suffix
             + expert_session_suffix
         )
@@ -5522,6 +5530,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
                     graphiti_supplement=graphiti_supplement,
+                    auto_mode_supplement=auto_mode_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,
                     message_id=message_id,
