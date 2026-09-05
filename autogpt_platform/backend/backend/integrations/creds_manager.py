@@ -79,6 +79,29 @@ def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
             )
 
 
+def _may_need_refresh(credentials: OAuth2Credentials) -> bool:
+    """Whether a refresh could ever apply to *credentials*.
+
+    Every ``needs_refresh`` implementation keys off ``access_token_expires_at``
+    and returns ``False`` when it is unset, and every refresh grant needs a
+    ``refresh_token`` — so a credential with neither can only ever take the
+    no-op branch of the refresh paths. The converse does not hold: this
+    returning ``True`` does not promise a refresh is possible, only that one
+    is worth evaluating.
+
+    Checking it *before* resolving a handler matters because resolution is not
+    side-effect free: a static MCP bearer token (stored by ``POST /mcp/token``
+    for servers that don't support OAuth) carries no ``mcp_token_url``, so
+    ``create_mcp_oauth_handler`` raises for it — turning a usable token into a
+    failed credential lookup. TODO(REQ-115): storing those as
+    ``APIKeyCredentials`` would make the guard unnecessary for MCP.
+    """
+    return (
+        credentials.access_token_expires_at is not None
+        or credentials.refresh_token is not None
+    )
+
+
 class IntegrationCredentialsManager:
     """
     Handles the lifecycle of integration credentials.
@@ -232,6 +255,12 @@ class IntegrationCredentialsManager:
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         if credentials.refresh_strategy == "provider_runtime":
+            return credentials
+
+        # Returns the caller's snapshot rather than re-reading the store as
+        # the locked path would; for a credential that cannot refresh, that
+        # re-read only ever produced the same no-op result.
+        if not _may_need_refresh(credentials):
             return credentials
 
         # When lock=False, skip ALL Redis locking (both the outer "refresh" scope

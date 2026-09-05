@@ -4,6 +4,7 @@ Uses httpx.AsyncClient with ASGITransport instead of fastapi.testclient.TestClie
 to avoid creating blocking portals that can corrupt pytest-asyncio's session event loop.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import fastapi
@@ -16,7 +17,7 @@ from pydantic import SecretStr
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
-from backend.util.request import HTTPClientError
+from backend.util.request import HTTPClientError, HTTPServerError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -457,10 +458,33 @@ class TestOAuthCallback:
         assert "token exchange failed" in response.json()["detail"].lower()
 
 
+def _probe_client(error: Exception | None = None):
+    client = AsyncMock()
+    client.initialize = AsyncMock(side_effect=error)
+    client.close = AsyncMock()
+    return client
+
+
+def _probe_server(error: Exception | None = None):
+    """Patch the ``/token`` verification probe. No *error* means the server
+    accepts the token."""
+    return patch(
+        "backend.api.features.mcp.routes.MCPClient",
+        return_value=_probe_client(error),
+    )
+
+
+def _accepting_server():
+    return _probe_server()
+
+
 class TestStoreToken:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_success(self, client):
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             mock_cm.create = AsyncMock()
 
@@ -505,7 +529,10 @@ class TestStoreToken:
             scopes=[],
             metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
         )
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
             mock_cm.create = AsyncMock()
             mock_cm.store.delete_creds_by_id = AsyncMock()
@@ -522,6 +549,164 @@ class TestStoreToken:
         mock_cm.store.delete_creds_by_id.assert_called_once_with(
             "test-user-id", old_cred.id
         )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_rejected_by_server_is_not_stored(self, client):
+        """A 2xx here turns the setup card green, so it must mean the token
+        actually authenticates — not merely that a row was written
+        (SECRT-2592)."""
+        with (
+            _probe_server(HTTPClientError("HTTP 401", status_code=401)),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "wrong-token",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "rejected this token" in response.json()["detail"]
+        mock_cm.create.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_survives_server_outage(self, client):
+        """A 5xx says nothing about the token — refusing the save would strand
+        the user during someone else's outage."""
+        with (
+            _probe_server(HTTPServerError("HTTP 503", status_code=503)),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "probably-fine",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_verifies_with_the_submitted_token(self, client):
+        """The probe must carry the token — verifying anonymously would prove
+        nothing."""
+        probe = _probe_client()
+        with (
+            patch(
+                "backend.api.features.mcp.routes.MCPClient", return_value=probe
+            ) as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        MockClient.assert_called_once_with(
+            "https://mcp.example.com/mcp", auth_token="my-api-key-123"
+        )
+        probe.close.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("status_code", [403, 404, 429])
+    async def test_store_token_stores_when_status_is_not_a_rejection(
+        self, client, status_code
+    ):
+        """Only a 401 unambiguously means "this credential was refused".
+
+        A bare 403 is as often a per-scope decision or a WAF blocking our
+        egress IP; a 404 is a wrong MCP path. Blocking the save on those would
+        tell the user their token is wrong when it isn't.
+        """
+        with (
+            _probe_server(
+                HTTPClientError(f"HTTP {status_code}", status_code=status_code)
+            ),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "probably-fine",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_requires_https(self, client):
+        """The token rides in an Authorization header — never over cleartext."""
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.create = AsyncMock()
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "http://mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "https" in response.json()["detail"].lower()
+        mock_cm.create.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_survives_a_hanging_server(self, client):
+        """MCPClient sets no timeout and no retry ceiling, so an unbounded
+        probe could pin the handler forever."""
+        hanging = _probe_client()
+        cancelled = asyncio.Event()
+
+        async def never_returns():
+            # Raising TimeoutError directly would pass with ``wait_for``
+            # removed; the probe has to actually hang for this to mean
+            # anything.
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        hanging.initialize = never_returns
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient", return_value=hanging),
+            patch("backend.api.features.mcp.routes._PROBE_TIMEOUT_SECONDS", 0.01),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "probably-fine",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_called_once()
+        assert cancelled.is_set()
 
 
 class TestSSRFValidation:
@@ -567,7 +752,7 @@ class TestSSRFValidation:
             response = await client.post(
                 "/token",
                 json={
-                    "server_url": "http://127.0.0.1/mcp",
+                    "server_url": "https://127.0.0.1/mcp",
                     "token": "some-token",
                 },
             )
