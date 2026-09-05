@@ -13,7 +13,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _cleanup_tasks: set[asyncio.Task[None]] = set()
 INTERPRETER_PORT = 49999
-INTERPRETER_READY_TIMEOUT = 10
+INTERPRETER_RETRY_TIMEOUT = 10
+INTERPRETER_REQUEST_TIMEOUT = 10
+INTERPRETER_COMMAND_TIMEOUT = (
+    INTERPRETER_RETRY_TIMEOUT + INTERPRETER_REQUEST_TIMEOUT + 5
+)
 CLEANUP_TIMEOUT = 10
 TEMPLATE_DOCS_URL = "https://docs.agpt.co/integrations/block-integrations/misc/#instantiate-code-sandbox"
 
@@ -102,9 +106,9 @@ def _check_code_interpreter(sandbox: "DesktopSandbox") -> None:
     try:
         sandbox.commands.run(
             f"curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "
-            f"--retry-max-time {INTERPRETER_READY_TIMEOUT} --max-time {INTERPRETER_READY_TIMEOUT} "
+            f"--retry-max-time {INTERPRETER_RETRY_TIMEOUT} --max-time {INTERPRETER_REQUEST_TIMEOUT} "
             f"http://localhost:{INTERPRETER_PORT}/health >/dev/null",
-            timeout=INTERPRETER_READY_TIMEOUT + 5,
+            timeout=INTERPRETER_COMMAND_TIMEOUT,
         )
     except (CommandExitException, TimeoutException) as exc:
         raise ValueError(

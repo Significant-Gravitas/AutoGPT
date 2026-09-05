@@ -176,7 +176,7 @@ async def test_desktop_stream_requires_auth_and_allows_interaction():
     sandbox.commands.run.assert_called_once_with(
         "curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "
         "--retry-max-time 10 --max-time 10 http://localhost:49999/health >/dev/null",
-        timeout=15,
+        timeout=25,
     )
     sandbox.stream.start.assert_called_once_with(require_auth=True)
     sandbox.stream.get_url.assert_called_once_with(
