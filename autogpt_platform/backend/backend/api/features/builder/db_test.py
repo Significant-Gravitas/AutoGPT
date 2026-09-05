@@ -14,6 +14,7 @@ import pytest
 
 import backend.api.features.builder.db as db
 from backend.blocks._base import BlockInfo, BlockType
+from backend.integrations.providers import ProviderName
 from backend.util.text import split_camelcase
 
 
