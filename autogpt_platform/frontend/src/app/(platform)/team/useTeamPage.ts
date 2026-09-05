@@ -13,6 +13,7 @@ import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { okData } from "@/app/api/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import {
   getAssignToastTitle,
@@ -31,6 +32,16 @@ export function useTeamPage({ enabled }: Args) {
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
   const [isNewPodOpen, setIsNewPodOpen] = useState(false);
+  // The inline chat drawer reuses the real copilot chat, which is driven by
+  // these URL params. `isChatOpen` is the drawer's own marker so Autopilot
+  // (no expertId) is distinguishable from "closed".
+  const [chatExpertId, setChatExpertId] = useQueryState(
+    "expertId",
+    parseAsString,
+  );
+  const [, setChatSessionId] = useQueryState("sessionId", parseAsString);
+  const [, setChatKickoff] = useQueryState("kickoff", parseAsString);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const expertsQuery = useListExperts({
     query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
@@ -177,6 +188,30 @@ export function useTeamPage({ enabled }: Args) {
     setIsNewPodOpen(false);
   }
 
+  // Opening a chat always starts a fresh session: clear sessionId/kickoff so
+  // the copilot mounts a new conversation, then point it at the right expert
+  // (or Autopilot when expertId is null).
+  function openExpertChat(expertId: string) {
+    void setChatSessionId(null);
+    void setChatKickoff(null);
+    void setChatExpertId(expertId);
+    setIsChatOpen(true);
+  }
+
+  function openAutopilotChat() {
+    void setChatSessionId(null);
+    void setChatKickoff(null);
+    void setChatExpertId(null);
+    setIsChatOpen(true);
+  }
+
+  function closeChat() {
+    setIsChatOpen(false);
+    void setChatExpertId(null);
+    void setChatSessionId(null);
+    void setChatKickoff(null);
+  }
+
   return {
     hiredExperts,
     pods,
@@ -207,5 +242,11 @@ export function useTeamPage({ enabled }: Args) {
     createPod,
     isCreatingPod,
     assignPod,
+    isChatOpen,
+    chatExpert:
+      hiredExperts.find((expert) => expert.id === chatExpertId) ?? null,
+    openExpertChat,
+    openAutopilotChat,
+    closeChat,
   };
 }
