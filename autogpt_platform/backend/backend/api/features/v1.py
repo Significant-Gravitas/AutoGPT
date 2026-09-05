@@ -39,7 +39,6 @@ from typing_extensions import Optional, TypedDict
 from backend.api.features.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
-from backend.api.features.desktop_preview import router as desktop_preview_router
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -195,7 +194,6 @@ logger = logging.getLogger(__name__)
 
 # Define the API routes
 v1_router = APIRouter()
-v1_router.include_router(desktop_preview_router)
 
 
 ########################################################
