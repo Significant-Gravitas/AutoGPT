@@ -285,9 +285,9 @@ Execute code in a previously instantiated sandbox.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block executes additional code in a sandbox that was previously created with the Instantiate Code Sandbox block. The sandbox maintains state between steps, so variables and installed packages persist.
+This block connects to the `sandbox_id` returned by Instantiate Code Sandbox and executes `step_code` in the same environment, preserving variables and installed packages. An optional positive `timeout` sets the remaining sandbox lifetime in seconds when this step connects; omitting it applies E2B's default lifetime. The sandbox stops and its desktop preview becomes unavailable when that lifetime expires.
 
-Use this for multi-step code execution where each step builds on previous results. Set dispose_sandbox to true on the final step to clean up.
+For manual testing after the final code change, use `timeout=1800` and `dispose_sandbox=False` to leave a 30-minute window starting when the step connects. Open the earlier `live_url` during that window, then run a step with `dispose_sandbox=True` to clean up immediately. An expired or invalid `sandbox_id` produces an error; this block does not create a replacement sandbox.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -704,9 +704,9 @@ Instantiate a sandbox environment with internet access in which you can execute 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates a persistent E2B sandbox environment that can be used for multiple code execution steps. Run setup_commands and setup_code to prepare the environment with dependencies and initial state.
+This block creates an E2B sandbox and runs `setup_commands` followed by `setup_code`. Reuse the returned `sandbox_id` with Execute Code Step to continue working in the same environment. The `timeout` sets its lifetime in seconds at creation and is reapplied when connecting for desktop setup; expiration stops the sandbox and closes its preview. For example, `timeout=1800` allows 30 minutes from that connection, including setup time. Later code steps can reset the remaining lifetime through their own `timeout` input.
 
-The sandbox persists until its timeout expires or it's explicitly disposed. Use the returned sandbox_id with Execute Code Step blocks for subsequent code execution.
+With `enable_live_view=True`, provide a custom `template_id` containing both desktop dependencies and the E2B code interpreter. Blank IDs and the stock `base` and `desktop` templates are rejected, and interpreter availability is checked before an authenticated, interactive `live_url` is returned. Anyone holding that URL can view and control the desktop. The URL is emitted before setup, while `sandbox_id` is emitted only after setup succeeds. Failed setup or cancellation triggers cleanup of known desktop sandboxes; cancellation during provisioning returns promptly and schedules cleanup if provisioning later succeeds. Leave `enable_live_view=False` for ordinary code-only usage.
 <!-- END MANUAL -->
 
 ### Inputs
