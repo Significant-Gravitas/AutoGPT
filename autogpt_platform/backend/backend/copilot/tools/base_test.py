@@ -410,6 +410,17 @@ class TestDigestThreshold:
         assert message in str(result.output)
 
     @pytest.mark.asyncio
+    async def test_a_long_message_cannot_crowd_out_the_field_names(self):
+        """`view_agent_output` interpolates raw node errors into its message,
+        so an unbounded one would spend the whole outline on a stack trace."""
+        tool = _SchemaOutputTool(
+            output_size=_DIGEST_THRESHOLD * 3, message="E" * (_DIGEST_THRESHOLD // 2)
+        )
+        output = str((await _execute_with_flag(tool, flag_on=True)).output)
+        # Uncapped this is 0: the message alone consumes the whole budget.
+        assert sum(f"field_{i}" in output for i in range(40)) >= 10
+
+    @pytest.mark.asyncio
     async def test_the_persisted_text_is_the_text_the_offsets_index(self):
         """pydantic and json.dumps disagree on float exponents, so persisting
         the pydantic serialisation would shift every later window by a char."""
@@ -449,7 +460,7 @@ class TestOutline:
         data = {"a": {"deep": {"x": "v" * 4_000}}, "b": 1, "c": [1, 2, 3]}
         _, outline = _outline_of(data, 400)
         assert "b=1" in outline
-        assert "a={…1 keys @" in outline
+        assert "a={…1 keys" in outline
         assert "c=[…3 items @" in outline
         assert len(outline) <= 400
 
@@ -475,6 +486,15 @@ class TestOutline:
         assert window, outline
         start, length = int(window[1]), int(window[2])
         assert json.loads(body[start : start + length]) == data["block"]["inputs"]
+
+    def test_no_window_costs_more_to_read_back_than_the_whole_output(self):
+        """read_workspace_file base64-encodes its slice, so a window spanning
+        most of the file is a read the model must never be offered."""
+        data = {"tag": "x", "record": {f"k{i}": {"v": "v" * 200} for i in range(10)}}
+        body, outline = _outline_of(data, 900)
+        assert "record={…10 keys}" in outline  # spans the file: no window
+        widest = max(int(m) for m in re.findall(r"@\d+\+(\d+)", outline))
+        assert widest * 4 // 3 < len(body)
 
     def test_a_single_long_string_still_says_something(self):
         """Structure alone leaves the budget unspent, so the scalar cap widens."""

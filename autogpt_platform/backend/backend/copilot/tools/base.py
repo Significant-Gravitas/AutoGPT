@@ -41,6 +41,8 @@ _OUTLINE_SCALAR_CHARS = 120
 
 # Fields whose values are binary/base64 data — truncating them produces
 # garbage, so we replace them with a human-readable size summary instead.
+# Top-level only: the outline reads offsets built from the unsummarised text,
+# so a nested field added here would make the two drift.
 _BINARY_FIELD_NAMES = {"content_base64"}
 
 
@@ -224,6 +226,9 @@ def _render_outline(
     with the window that holds them."""
     lines: list[str] = []
     used = 0
+    # read_workspace_file base64-encodes its slice, so a window past three
+    # quarters of the file costs more to read back than the whole output did.
+    widest = offsets.get("$", (0, 0))[1] * 3 // 4
     queue: deque[tuple[str, Any]] = deque([("$", root)])
     while queue:
         path, node = queue.popleft()
@@ -235,15 +240,16 @@ def _render_outline(
                 braces = "{}" if isinstance(value, dict) else "[]"
                 unit = "keys" if isinstance(value, dict) else "items"
                 start, length = offsets.get(child, (0, 0))
+                window = f" @{start}+{length}" if length < widest else ""
                 parts.append(
-                    f"{key}={braces[0]}…{len(value)} {unit} "
-                    f"@{start}+{length}{braces[1]}"
+                    f"{key}={braces[0]}…{len(value)} {unit}{window}{braces[1]}"
                 )
                 queue.append((child, value))
             else:
-                # `message` is the tool's own instruction to the model; the cut
-                # lands mid-sentence and drops the half that constrains it.
-                cap = None if key == "message" else scalar_chars
+                # `message` is the tool's own instruction to the model and the
+                # 120-char cut lands mid-sentence; half the budget is as much
+                # as it can have without crowding out the field names.
+                cap = budget // 2 if key == "message" else scalar_chars
                 parts.append(f"{key}={_scalar(value, cap)}")
         braces = "{}" if is_map else "[]"
         line = f"{path}: {braces[0]}{', '.join(parts)}{braces[1]}"
