@@ -13,17 +13,25 @@ export function getCredentialTypeDisplayName(type: string): string {
   return typeDisplayMap[type as CredentialsMetaResponseType] || type;
 }
 
+// A triggered agent has both: its graph inputs AND the trigger block's config.
+// They are stored separately on a preset, so never fall back from one to the other.
 export function getAgentInputFields(agent: LibraryAgent): Record<string, any> {
-  const schema = (agent.trigger_setup_info?.config_schema ??
-    agent.input_schema) as unknown as {
-    properties?: Record<string, any>;
-  } | null;
-  if (!schema || !schema.properties) return {};
-  const properties = schema.properties as Record<string, any>;
-  const visibleEntries = Object.entries(properties).filter(
-    ([, sub]) => !sub?.hidden,
+  return getVisibleFields(agent.input_schema);
+}
+
+export function getTriggerConfigFields(
+  agent: LibraryAgent,
+): Record<string, any> {
+  return getVisibleFields(agent.trigger_setup_info?.config_schema);
+}
+
+function getVisibleFields(schema: unknown): Record<string, any> {
+  const properties = (schema as { properties?: Record<string, any> } | null)
+    ?.properties;
+  if (!properties) return {};
+  return Object.fromEntries(
+    Object.entries(properties).filter(([, sub]) => !sub?.hidden),
   );
-  return Object.fromEntries(visibleEntries);
 }
 
 export function getAgentCredentialsFields(
