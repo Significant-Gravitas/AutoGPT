@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { DotDistortionShader } from "@/components/ui/dot-distortion-shader";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import {
   getGreetingName,
   getInputPlaceholder,
@@ -41,6 +41,8 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
 }
 
 export function EmptySession({
@@ -52,6 +54,7 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  voiceToggle,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -187,6 +190,7 @@ export function EmptySession({
                 <ChatInput
                   inputId="chat-input-empty"
                   stacked
+                  voiceToggle={voiceToggle}
                   onSend={onSend}
                   disabled={isComposerDisabled}
                   isUploadingFiles={isUploadingFiles}

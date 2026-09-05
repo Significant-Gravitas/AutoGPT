@@ -26,6 +26,15 @@ import { WorkspaceFileCards } from "../WorkspaceFileCards/WorkspaceFileCards";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
+import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
+import { VoiceModeButton } from "../../voice/components/VoiceModeButton";
+import { useVoiceMode } from "../../voice/useVoiceMode";
+import { useVoiceSilenceTimeout } from "../../voice/useVoiceSilenceTimeout";
+import {
+  requestVoiceStart,
+  takeVoiceStart,
+} from "../../voice/pendingVoiceStart";
+import { unlockAudio } from "../../voice/speechPlayer";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { updateHistoryBreakdown } from "../../tokenDevtool/store";
@@ -176,6 +185,17 @@ export const ChatContainer = ({
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
 
+  const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
+  const silenceTimeoutMs = useVoiceSilenceTimeout();
+  const voice = useVoiceMode({
+    enabled: isVoiceModeEnabled,
+    messages,
+    isStreaming,
+    sessionId,
+    silenceTimeoutMs,
+    onSend: guardedOnSend,
+  });
+
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
   // translucent card. Height varies with the card's own content (tier badge,
@@ -209,6 +229,19 @@ export const ChatContainer = ({
     devtoolBreakdownKeyRef.current = key;
     updateHistoryBreakdown(sessionId, messages);
   }, [sessionId, messages, isStreaming]);
+
+  // A chat has to exist before voice mode can send into it, and creating one
+  // re-keys this whole subtree — so ask for voice mode and let the new mount
+  // start it. The unlock has to happen here, in the click.
+  async function handleStartVoiceInNewChat() {
+    unlockAudio();
+    requestVoiceStart();
+    try {
+      await onCreateSession();
+    } catch {
+      takeVoiceStart();
+    }
+  }
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors).
   const handleRetry = useCallback(() => {
@@ -325,6 +358,11 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
+                    <VoiceModeBar
+                      state={voice.state}
+                      statusLabel={voice.statusLabel}
+                      onStop={voice.stop}
+                    />
                     <Tooltip open={isLimitReached ? undefined : false}>
                       <TooltipTrigger asChild>
                         <div>
@@ -341,6 +379,19 @@ export const ChatContainer = ({
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
                             sessionId={sessionId}
+                            voiceToggle={
+                              isVoiceModeEnabled ? (
+                                <VoiceModeButton
+                                  isActive={voice.isActive}
+                                  disabled={
+                                    isInputDisabled ||
+                                    isSendLocked ||
+                                    voice.isStarting
+                                  }
+                                  onClick={voice.toggle}
+                                />
+                              ) : undefined
+                            }
                           />
                         </div>
                       </TooltipTrigger>
@@ -358,6 +409,17 @@ export const ChatContainer = ({
                 isCreatingSession={isCreatingSession}
                 onCreateSession={onCreateSession}
                 onSend={guardedOnSend}
+                voiceToggle={
+                  isVoiceModeEnabled ? (
+                    <VoiceModeButton
+                      isActive={false}
+                      disabled={
+                        isInputDisabled || isSendLocked || isCreatingSession
+                      }
+                      onClick={handleStartVoiceInNewChat}
+                    />
+                  ) : undefined
+                }
                 isUploadingFiles={isUploadingFiles}
                 droppedFiles={droppedFiles}
                 onDroppedFilesConsumed={onDroppedFilesConsumed}

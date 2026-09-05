@@ -4711,6 +4711,40 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["v2", "chat", "chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postV2Synthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -26093,6 +26127,34 @@
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
       },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["reply", "acknowledgement"],
+            "title": "Kind",
+            "description": "Picks the delivery instruction; a canned acknowledgement is read far too heavily by the one written for prose.",
+            "default": "reply"
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -26802,6 +26864,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [

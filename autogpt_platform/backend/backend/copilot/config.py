@@ -1346,6 +1346,47 @@ class ChatConfig(BaseSettings):
             f"CHAT_TITLE_MODEL to an ``anthropic/`` or ``claude-`` slug."
         )
 
+    # --- Voice mode TTS (see ``copilot/speech.py``) ---
+    voice_tts_model: str = Field(
+        default="gpt-4o-mini-tts",
+        description="OpenAI speech model used for voice-mode replies.",
+    )
+    voice_tts_voice: str = Field(
+        default="marin",
+        description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
+    )
+    voice_tts_instructions: str = Field(
+        default=(
+            "Speak like a colleague at the next desk: natural pace, warm and "
+            "engaged, never flat. Move briskly through comma-separated lists — "
+            "items get a light separation, not a pause each. No newsreader "
+            "delivery and no slowing down for emphasis."
+        ),
+        description="Delivery instruction for a spoken reply. gpt-4o-mini-tts "
+        "takes its pacing from this rather than from ``speed``.",
+    )
+    voice_tts_speed: float = Field(
+        default=1.2,
+        ge=0.25,
+        le=4.0,
+        description="Playback rate for synthesis. The instruction alone barely "
+        "moves comma-heavy listings; this does (12.6s to 10.3s at 1.3).",
+    )
+    voice_tts_ack_instructions: str = Field(
+        default=(
+            "A two-second aside, as if glancing up mid-task. Brisk, friendly, "
+            "with a little lift — not flat, not an announcement."
+        ),
+        description="Delivery instruction for the canned acknowledgements. They "
+        "are short fragments, which the reply instruction reads far too heavily.",
+    )
+    voice_tts_usd_per_1k_chars: float = Field(
+        default=0.02,
+        description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "
+        "per audio token, which the request does not report; ~$0.015/min of "
+        "speech at ~750 chars/min is the estimate behind this default.",
+    )
+
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
         "default": "prompts/chat_system.md",

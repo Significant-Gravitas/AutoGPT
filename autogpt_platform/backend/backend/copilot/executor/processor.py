@@ -22,6 +22,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.prompting import VOICE_TURN_PREFIX
 from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -618,12 +619,19 @@ class CoPilotProcessor:
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
+            # One line, on the message rather than the system prompt: a
+            # per-turn system prompt would bust the prompt cache every turn.
+            turn_message = entry.message or None
+            if turn_message and entry.voice:
+                turn_message = VOICE_TURN_PREFIX + turn_message
+
             raw_stream = stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=turn_message,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
+                voice=entry.voice,
                 file_ids=entry.file_ids,
                 model=entry.model,
                 permissions=entry.permissions,
