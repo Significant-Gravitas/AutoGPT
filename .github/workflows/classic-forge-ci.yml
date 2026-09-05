@@ -40,7 +40,7 @@ jobs:
           docker run -d -p 9000:9000 minio/minio:edge-cicd
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
