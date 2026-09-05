@@ -180,11 +180,13 @@ export function MCPToolDialog({
         callbackResult = await mcpProvider.mcpOAuthCallback(
           result.code,
           state_token,
+          result.iss,
         );
       } else {
         const cbResponse = await postV2ExchangeOauthCodeForMcpTokens({
           code: result.code,
           state_token,
+          iss: result.iss,
         });
         if (cbResponse.status !== 200) throw cbResponse.data;
         callbackResult = cbResponse.data;

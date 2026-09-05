@@ -336,6 +336,9 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+        finally:
+            # Release any legacy session; a no-op on stateless servers.
+            await client.close()
 
     async def _discover_tools(
         self,
@@ -415,6 +418,7 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
             input_schema = await self._lookup_tool_schema(client, tool_name)
             try:
@@ -430,7 +434,9 @@ class RunMCPToolTool(BaseTool):
                     session_id=session_id,
                 )
 
-        result = await client.call_tool(tool_name, tool_arguments)
+        result = await client.call_tool(
+            tool_name, tool_arguments, input_schema=input_schema
+        )
 
         if result.is_error:
             error_text = " ".join(
