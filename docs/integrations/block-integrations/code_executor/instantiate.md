@@ -1,6 +1,6 @@
 # Code Executor Instantiate
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Create a reusable E2B sandbox, run its setup, and optionally open an interactive desktop preview.
 <!-- END MANUAL -->
 
 ## Instantiate Code Sandbox
@@ -12,7 +12,7 @@ Instantiate a sandbox environment with internet access in which you can execute 
 <!-- MANUAL: how_it_works -->
 This block creates an E2B sandbox and runs `setup_commands` followed by `setup_code`. Reuse the returned `sandbox_id` with Execute Code Step to continue working in the same environment. The `timeout` accepts 1–3600 seconds and sets the lifetime at creation; connecting for desktop setup extends the remaining lifetime to at least that value. Expiration stops the sandbox and closes its preview. For example, `timeout=1800` allows at least 30 minutes from that connection, including setup time. Later code steps can extend, but cannot shorten, the remaining lifetime through their own `timeout` input.
 
-With `enable_live_view=True`, provide a custom `template_id` containing both desktop dependencies and the E2B code interpreter; build one using the [template instructions](https://github.com/Significant-Gravitas/AutoGPT/tree/dev/autogpt_platform/backend/scripts/e2b_desktop). This option is in advanced settings. Blank IDs and the stock `base` and `desktop` templates are rejected, and interpreter availability is checked before an interactive `live_url` is returned. The link contains an encrypted desktop credential and redirects only for the signed-in user who created the sandbox; sharing run results does not authorize another user. Sign in before opening it. Links expire after 24 hours and are only usable while the sandbox runs. The direct desktop URL shown after the redirect grants control to anyone who receives it. Both `live_url` and `sandbox_id` are emitted only after setup succeeds. Failed setup or cancellation triggers cleanup of known desktop sandboxes; cancellation during provisioning returns promptly and schedules cleanup if provisioning later succeeds. Leave `enable_live_view=False` for ordinary code-only usage.
+With `enable_live_view=True`, provide a custom `template_id` containing both desktop dependencies and the E2B code interpreter; build one using the [template instructions](../../e2b-desktop.md). This option is in advanced settings. Blank IDs and the stock `base` and `desktop` templates are rejected, and interpreter availability is checked before an interactive `live_url` is returned. The link contains an encrypted desktop credential and redirects only for the signed-in user who created the sandbox; sharing run results does not authorize another user. Sign in before opening it. Links expire after 24 hours and are only usable while the sandbox runs. The direct desktop URL shown after the redirect grants control to anyone who receives it. Both `live_url` and `sandbox_id` are emitted only after setup succeeds. Failed setup or cancellation triggers cleanup of known desktop sandboxes; cancellation during provisioning returns promptly and schedules cleanup if provisioning later succeeds. Leave `enable_live_view=False` for ordinary code-only usage.
 <!-- END MANUAL -->
 
 ### Inputs

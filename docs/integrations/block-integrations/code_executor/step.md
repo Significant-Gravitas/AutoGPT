@@ -1,6 +1,6 @@
 # Code Executor Step
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Run additional code in an existing E2B sandbox and manage its remaining lifetime.
 <!-- END MANUAL -->
 
 ## Execute Code Step

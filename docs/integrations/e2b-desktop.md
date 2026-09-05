@@ -13,7 +13,7 @@ From `autogpt_platform/backend`, with `E2B_API_KEY` configured in the environmen
 or `.env`:
 
 ```sh
-poetry run python scripts/e2b_desktop/build.py
+poetry run python -m backend.util.desktop_sdk
 ```
 
 This creates the `autogpt-code-desktop` template in that E2B account. Use

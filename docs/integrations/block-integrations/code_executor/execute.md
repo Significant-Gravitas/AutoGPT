@@ -1,6 +1,6 @@
 # Code Executor Execute
 <!-- MANUAL: file_description -->
-_Add a description of this category of blocks._
+Run code in an E2B sandbox and return its results, logs, and generated files.
 <!-- END MANUAL -->
 
 ## Execute Code

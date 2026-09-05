@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from e2b import CommandExitException, TimeoutException
 
-from backend.util.desktop_sdk import DesktopSandbox
+from backend.util.desktop_sdk import DesktopSandbox, main
 
 
 @pytest.mark.parametrize("probe_error", [False, True])
@@ -49,3 +49,28 @@ def test_probe_cleanup_failure_preserves_timeout(caplog):
     ):
         DesktopSandbox._wait_and_verify(sandbox, "probe", lambda r: False, timeout=1)
     assert caplog.records[-1].exc_info is not None
+
+
+@pytest.mark.parametrize(
+    "args,cpu,memory,alias",
+    [
+        ([], 8, 8192, "autogpt-code-desktop"),
+        (
+            ["--cpu-count", "4", "--memory-mb", "4096", "--alias", "small"],
+            4,
+            4096,
+            "small",
+        ),
+    ],
+)
+def test_build_resources(args, cpu, memory, alias):
+    with (
+        patch("sys.argv", ["backend.util.desktop_sdk", *args]),
+        patch("backend.util.desktop_sdk.load_dotenv"),
+        patch("backend.util.desktop_sdk.Template.build") as build,
+    ):
+        main()
+    assert build.call_count == 1
+    assert build.call_args.kwargs["cpu_count"] == cpu
+    assert build.call_args.kwargs["memory_mb"] == memory
+    assert build.call_args.kwargs["alias"] == alias
