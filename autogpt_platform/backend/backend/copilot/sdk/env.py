@@ -173,20 +173,25 @@ def build_sdk_env(
     # flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
-    # Pin the CLI's perceived context window at the 200K default.  1M context
-    # is GA (no beta header) on Sonnet 4.6+/5 and newer CLIs enable it by
-    # default via their model capability table (native_1m) or server-side
-    # flags; this kill-switch gates every 1M branch in the CLI's window
-    # resolution, so the autocompact trigger below stays anchored to 200K
-    # across SDK upgrades.  (The experimental-betas flag above no longer
-    # covers 1M — it stopped being a beta.)
-    env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+    # Pin the CLI's perceived context window explicitly.  This env var is the
+    # highest-precedence input to the CLI's window resolution, so it preempts
+    # the model table, the 1M capability flags and the server-side experiment
+    # branches that newer CLIs consult — without it the compaction trigger is
+    # an emergent property of whichever bundled CLI we happen to ship.
+    env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(config.claude_agent_context_window)
 
-    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
-    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
-    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
-    # writes happen, so there's no cost to cap) and an aggressive trigger
-    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # The window above is clamped by the model's own window, which this
+    # kill-switch holds at 200K; keeping it set past that point would swallow
+    # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the
+    # experimental-betas flag above does not cover it.
+    if config.claude_agent_context_window <= _CLI_DEFAULT_CONTEXT_WINDOW:
+        env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
+
+    # Trigger threshold, as a percentage of the window pinned above (CLI
+    # default: ~93%).  The override caps Anthropic cache-creation cost;
+    # Moonshot routes skip it because their OpenRouter endpoint returns
+    # ``cache_create=0`` (no cache writes happen, so there's no cost to cap)
+    # and an aggressive trigger cascades into 3+ compactions per turn.
     # Operators can also set the config to 0 to disable globally.
     if (
         not is_moonshot_model(model)
@@ -205,6 +210,10 @@ def build_sdk_env(
     )
 
     return env
+
+
+# What the CLI assumes any Claude model's window to be once 1M is gated off.
+_CLI_DEFAULT_CONTEXT_WINDOW = 200_000
 
 
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
