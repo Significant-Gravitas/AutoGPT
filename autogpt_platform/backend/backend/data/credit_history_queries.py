@@ -1,5 +1,5 @@
 _HISTORY_QUERY = """
-WITH wallet AS MATERIALIZED (
+WITH wallet AS (
     SELECT "transactionKey", "createdAt", amount, type::text AS transaction_type,
            metadata
     FROM {schema_prefix}__LEDGER__
@@ -17,6 +17,21 @@ WITH wallet AS MATERIALIZED (
              WHEN metadata->'input'->>'charge' = 'Execution Cost' THEN 'execution_fee'
              ELSE 'usage' END AS charge_type
     FROM wallet
+), heads AS (
+    SELECT group_id AS id, MAX("createdAt") AS transaction_time
+    FROM classified
+    GROUP BY group_id
+), page AS (
+    SELECT * FROM heads
+    WHERE ($4::timestamptz IS NULL
+           OR (transaction_time, id) < (($4::timestamptz AT TIME ZONE 'UTC'), $5::text))
+      AND ($6::timestamptz IS NULL
+           OR transaction_time < ($6::timestamptz AT TIME ZONE 'UTC'))
+    ORDER BY transaction_time DESC, id DESC
+    LIMIT $7::int
+), selected AS MATERIALIZED (
+    SELECT classified.*
+    FROM classified INNER JOIN page ON page.id = classified.group_id
 ), grouped AS (
     SELECT group_id AS id,
         CASE WHEN group_id LIKE 'execution:%' THEN group_id
@@ -43,21 +58,13 @@ WITH wallet AS MATERIALIZED (
         COALESCE(SUM(amount) FILTER (WHERE charge_type = 'adjustment'), 0)::bigint
             AS usage_adjustment_amount,
         COUNT(*)::int AS charges_total_count
-    FROM classified
+    FROM selected
     GROUP BY group_id
-), page AS (
-    SELECT * FROM grouped
-    WHERE ($4::timestamptz IS NULL
-           OR (transaction_time, id) < (($4::timestamptz AT TIME ZONE 'UTC'), $5::text))
-      AND ($6::timestamptz IS NULL
-           OR transaction_time < ($6::timestamptz AT TIME ZONE 'UTC'))
-    ORDER BY transaction_time DESC, id DESC
-    LIMIT $7::int
 ), selected_entries AS (
-    SELECT classified.*, ROW_NUMBER() OVER (
+    SELECT selected.*, ROW_NUMBER() OVER (
         PARTITION BY group_id ORDER BY "createdAt", "transactionKey"
     ) AS entry_number
-    FROM classified INNER JOIN page ON page.id = classified.group_id
+    FROM selected
 ), details AS (
     SELECT group_id, jsonb_agg(jsonb_build_object(
         'id', "transactionKey",
@@ -71,7 +78,7 @@ WITH wallet AS MATERIALIZED (
     GROUP BY group_id
 )
 SELECT page.*, COALESCE(details.charges, '[]'::jsonb) AS charges
-FROM page LEFT JOIN details ON details.group_id = page.id
+FROM grouped AS page LEFT JOIN details ON details.group_id = page.id
 ORDER BY page.transaction_time DESC, page.id DESC
 """
 
