@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -85,6 +85,19 @@ class VoiceSample(BaseModel):
     text: str
 
 
+ExpertWorkflowChainKind = Literal[
+    "integration", "input", "output", "trigger", "agent", "ai", "mcp", "human"
+]
+
+
+class ExpertWorkflowChainItem(BaseModel):
+    """One step in the workflow card's summary chain: a provider logo for
+    integration blocks, or a kind the frontend maps to an icon."""
+
+    kind: ExpertWorkflowChainKind
+    provider: str | None = None
+
+
 class ExpertWorkflowRef(BaseModel):
     id: str
     store_listing_version_id: str | None
@@ -97,6 +110,8 @@ class ExpertWorkflowRef(BaseModel):
     # created yet (e.g. missing credentials) — the workflow needs setup.
     schedule_cron: str | None = None
     schedule_id: str | None = None
+    # Up to three of the graph's most-used blocks, integrations first.
+    chain: list[ExpertWorkflowChainItem] = Field(default_factory=list)
 
 
 class ExpertIdentity(BaseModel):
@@ -142,6 +157,7 @@ class Expert(BaseModel):
     source_template_id: str | None
     is_archived: bool
     workflows: list[ExpertWorkflowRef]
+    credential_count: int = 0
     # Latest expert-attributed execution, for the /team card's status line.
     last_run_at: datetime | None = None
     last_run_status: str | None = None
@@ -180,6 +196,24 @@ class ExpertRun(BaseModel):
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
+
+
+class ExpertActivityDay(BaseModel):
+    """One calendar day, in the owner's timezone, of expert activity."""
+
+    day: date
+    sessions: int
+    runs: int
+
+
+class ExpertActivity(BaseModel):
+    """Daily chat-session and run counts behind the at-a-glance activity graph.
+
+    ``days`` is zero-filled, oldest first, and ends on the owner's today.
+    """
+
+    timezone: str
+    days: list[ExpertActivityDay]
 
 
 class ExpertDetachPreview(BaseModel):
@@ -247,6 +281,36 @@ class RaiseResult(BaseModel):
     failed_attachments: list[RaiseAttachmentFailure] = []
 
 
+class ExpertSkillsUpdate(BaseModel):
+    """The full list of skill names an expert should carry. Names new to the
+    expert must be library skills (default or uploaded); names already on
+    the expert are kept as-is so marketplace skills survive a round-trip."""
+
+    skills: list[str] = Field(max_length=50)
+    # Store listing versions to attach as marketplace skills; each resolves
+    # to the listing's public name, the same way the raise flow records them.
+    marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("skills", mode="before")
+    @classmethod
+    def strip_and_dedupe(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                return value
+            name = item.strip()
+            if not name or len(name) > 100:
+                raise ValueError("Skill names must be 1-100 characters")
+            if name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            cleaned.append(name)
+        return cleaned
+
+
 class ExpertSoulUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     identity: str = Field(min_length=1, max_length=EXPERT_IDENTITY_MAX_LENGTH)
@@ -262,6 +326,19 @@ class ExpertSoulUpdate(BaseModel):
     @classmethod
     def strip_optional_fields(cls, value: object) -> object:
         return _strip_optional_soul_field(value)
+
+
+class ExpertAvatarUpdate(BaseModel):
+    """Swap an expert's picture. ``None`` clears it back to the generated marble."""
+
+    avatar_url: str | None = Field(
+        default=None, max_length=EXPERT_AVATAR_URL_MAX_LENGTH
+    )
+
+    @field_validator("avatar_url")
+    @classmethod
+    def check_avatar_url(cls, value: str | None) -> str | None:
+        return validate_avatar_url(value)
 
 
 class ExpertSoulFieldsPatch(BaseModel):

@@ -4,20 +4,22 @@ import {
   useInstallExpertWorkflow,
   useListExperts,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useGetV2ListLibraryAgentsInfinite,
+} from "@/app/api/__generated__/endpoints/library/library";
 import {
   getV2GetSpecificAgent,
   useGetV2ListStoreAgents,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { InstallWorkflowSource, WorkflowInstallData } from "./helpers";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -57,19 +59,52 @@ export function useInstallWorkflowPicker({
   );
   const isPickingWorkflow = open && mode === "pick-workflow";
 
-  const libraryResultsQuery = useGetV2ListLibraryAgents(
-    {
-      search_term: debouncedSearchQuery || undefined,
-      page_size: RESULTS_PAGE_SIZE,
-      is_hidden: false,
+  const libraryParams = {
+    search_term: debouncedSearchQuery || undefined,
+    page_size: RESULTS_PAGE_SIZE,
+    is_hidden: false,
+  };
+  const libraryResultsQuery = useGetV2ListLibraryAgentsInfinite(libraryParams, {
+    query: {
+      queryKey: [
+        ...getGetV2ListLibraryAgentsQueryKey(libraryParams),
+        "infinite",
+      ],
+      initialPageParam: 1,
+      getNextPageParam: (last) =>
+        last.status === 200 &&
+        last.data.pagination.current_page < last.data.pagination.total_pages
+          ? last.data.pagination.current_page + 1
+          : undefined,
+      enabled: isPickingWorkflow && source === "library",
     },
-    {
-      query: {
-        select: (x) => (x.data as LibraryAgentResponse).agents,
-        enabled: isPickingWorkflow && source === "library",
-      },
-    },
-  );
+  });
+
+  const libraryResults = (libraryResultsQuery.data?.pages ?? [])
+    .flatMap((page) => (page.status === 200 ? page.data.agents : []))
+    .filter(
+      (agent) =>
+        !targetExpert?.workflows.some(
+          (workflow) => workflow.library_agent_id === agent.id,
+        ),
+    );
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } =
+    libraryResultsQuery;
+  const needsMoreLibraryResults =
+    isPickingWorkflow &&
+    source === "library" &&
+    !expertsQuery.isPending &&
+    libraryResults.length === 0 &&
+    hasNextPage;
+  useEffect(() => {
+    if (needsMoreLibraryResults && !isFetching && !isFetchNextPageError)
+      void fetchNextPage();
+  }, [
+    needsMoreLibraryResults,
+    isFetching,
+    isFetchNextPageError,
+    fetchNextPage,
+  ]);
 
   const marketplaceResultsQuery = useGetV2ListStoreAgents(
     {
@@ -163,16 +198,6 @@ export function useInstallWorkflowPicker({
     }
   }
 
-  // Only the library source can tell: a marketplace row carries no listing
-  // version until its detail is fetched at click time.
-  function isLibraryAgentInstalled(agent: LibraryAgent) {
-    return (
-      targetExpert?.workflows.some(
-        (workflow) => workflow.library_agent_id === agent.id,
-      ) ?? false
-    );
-  }
-
   const title =
     mode === "pick-expert"
       ? "Install on an expert"
@@ -184,14 +209,18 @@ export function useInstallWorkflowPicker({
   return {
     title,
     hiredExperts,
-    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,
     setSearchQuery,
-    libraryResults: libraryResultsQuery.data ?? [],
+    libraryResults,
+    hasMoreLibraryResults: hasNextPage,
+    loadMoreLibraryResults: fetchNextPage,
+    isLoadingMore: libraryResultsQuery.isFetchingNextPage,
     marketplaceResults: marketplaceResultsQuery.data ?? [],
-    isSearching: resultsQuery.isLoading,
+    isSearching:
+      resultsQuery.isLoading ||
+      (needsMoreLibraryResults && !isFetchNextPageError),
     pendingKey,
     installOnExpert,
     installLibraryAgent,
