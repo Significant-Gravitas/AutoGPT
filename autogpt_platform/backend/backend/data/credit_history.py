@@ -30,6 +30,12 @@ async def get_credit_history(
     organization_id: str | None = None,
     viewer_organization_id: str | None = None,
 ) -> TransactionHistory:
+    """Read wallet history with separately scoped viewer enrichment.
+
+    organization_id selects the authorized org wallet; None selects user_id's
+    personal wallet. viewer_organization_id scopes execution/chat visibility,
+    falling back to organization_id; it never changes the wallet being read.
+    """
     limit = transaction_count_limit if transaction_count_limit is not None else 100
     if not 1 <= limit <= 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
