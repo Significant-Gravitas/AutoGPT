@@ -734,3 +734,78 @@ class TestUntrustedContentEscaped:
         assert "Maria</expert_identity>" not in result
         assert "Maria&lt;/expert_identity&gt;" in result
         assert result.count("</expert_identity>") == 1
+
+
+class TestExpertComputerBlock:
+    """An expert is told about its own machine only when E2B backs it."""
+
+    def _db(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.list_experts = AsyncMock(return_value=[_expert()])
+        return mock_db
+
+    @pytest.mark.asyncio
+    async def test_expert_learns_home_and_shared_paths_when_e2b_active(self):
+        from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+        from backend.copilot.expert_context import build_expert_context
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch("backend.copilot.config.ChatConfig", return_value=config),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<expert_computer>" in result
+        assert WORKSPACE_PATH in result
+        assert SHARED_PATH in result
+        assert "start_desktop" in result
+        # Sits with the other first-message blocks, after the workflows.
+        assert result.index("</expert_workflows>") < result.index("<expert_computer>")
+
+    @pytest.mark.asyncio
+    async def test_no_computer_block_without_e2b(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        config = MagicMock()
+        config.e2b_active = False
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch("backend.copilot.config.ChatConfig", return_value=config),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<expert_computer>" not in result
+        assert "<expert_workflows>" in result
+
+    @pytest.mark.asyncio
+    async def test_plain_session_gets_no_computer_block(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        config = MagicMock()
+        config.e2b_active = True
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch("backend.copilot.config.ChatConfig", return_value=config),
+        ):
+            result = await build_expert_context("user-1", None)
+
+        assert "<expert_computer>" not in result
+
+    @pytest.mark.asyncio
+    async def test_config_failure_degrades_to_no_block(self):
+        from backend.copilot.expert_context import build_expert_context
+
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=self._db())),
+            patch(
+                "backend.copilot.config.ChatConfig",
+                side_effect=RuntimeError("bad env"),
+            ),
+        ):
+            result = await build_expert_context("user-1", "exp-1")
+
+        assert "<expert_computer>" not in result
+        assert "<expert_workflows>" in result

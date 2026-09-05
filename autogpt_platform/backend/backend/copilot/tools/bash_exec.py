@@ -77,7 +77,9 @@ class BashExecTool(BaseTool):
             "Killed after `timeout` seconds. Write anything that should persist "
             "across sessions or be visible on the user's desktop to ~/workspace — "
             "it is a durable volume shared live with start_desktop; files elsewhere "
-            "are scratch."
+            "are scratch. In an expert session this is the expert's own persistent "
+            "computer: ~/workspace is its home and ~/shared is the user's shared "
+            "workspace."
         )
 
     @property

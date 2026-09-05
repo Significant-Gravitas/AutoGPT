@@ -1760,16 +1760,19 @@ async def stream_chat_completion_baseline(
     e2b_api_key = config.active_e2b_api_key
     if e2b_api_key:
         try:
-            from backend.blocks.desktop._common import user_volume_name
+            from backend.blocks.desktop._common import workspace_volume_mounts
             from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
 
+            # An expert session runs on the expert's own persistent box;
+            # everything else gets a per-session sandbox.
             e2b_sandbox = await get_or_create_sandbox(
                 session_id,
                 api_key=e2b_api_key,
                 template=config.e2b_sandbox_template,
                 timeout=config.e2b_sandbox_timeout,
                 on_timeout=config.e2b_sandbox_on_timeout,
-                volume_name=user_volume_name(user_id) if user_id else None,
+                volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
+                expert_id=session.expert_id,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
@@ -2516,6 +2519,21 @@ async def stream_chat_completion_baseline(
         # observe a phantom in-flight call and skip its gate, so this must
         # run unconditionally.
         session.clear_inflight_tool_calls()
+
+        # --- Pause E2B sandbox to stop billing between turns (parity with
+        # the SDK path). Fire-and-forget: best-effort and must not block the
+        # cleanup below. An expert's box is left running while another of
+        # its turns is still active.
+        if e2b_sandbox is not None:
+            from backend.copilot.tools.e2b_sandbox import pause_sandbox_direct
+
+            pause_task = asyncio.create_task(
+                pause_sandbox_direct(
+                    e2b_sandbox, session_id, expert_id=session.expert_id
+                )
+            )
+            _background_tasks.add(pause_task)
+            pause_task.add_done_callback(_background_tasks.discard)
 
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.

@@ -1,3 +1,5 @@
+import logging
+
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi
 from fastapi import APIRouter, Security
@@ -28,7 +30,11 @@ from backend.api.features.experts.models import (
     RaiseResult,
     validate_avatar_url,
 )
+from backend.copilot.config import ChatConfig
+from backend.copilot.tools.e2b_sandbox import kill_expert_sandboxes
 from backend.util.exceptions import NotFoundError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/experts",
@@ -534,4 +540,16 @@ async def archive_expert(
         await experts_db.archive_expert(user_id, expert_id)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    # The expert's computer goes with it. Best-effort: the archive is already
+    # committed and a slow E2B call must not turn it into a 5xx. Its volume is
+    # deliberately kept — files outlive the machine.
+    if api_key := ChatConfig().active_e2b_api_key:
+        try:
+            await kill_expert_sandboxes(expert_id, api_key)
+        except Exception:
+            logger.warning(
+                "[E2B] Failed to kill sandboxes for archived expert %s",
+                expert_id[:12],
+                exc_info=True,
+            )
     return fastapi.Response(status_code=204)
