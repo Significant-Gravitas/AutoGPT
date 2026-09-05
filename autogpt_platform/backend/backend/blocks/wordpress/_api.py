@@ -108,7 +108,6 @@ def make_oauth_authorize_url(
         client_id: Your application's client ID from WordPress.com
         redirect_uri: The URI for the authorize response redirect
         scopes: Optional list of scopes. Defaults to single blog access if not provided.
-        blog: Optional blog URL or ID for a WordPress.com blog or Jetpack site.
 
     Returns:
         The authorization URL that the user should visit
@@ -457,8 +456,8 @@ async def create_post(
     Create a new post on a WordPress site.
 
     Args:
+        credentials: The WordPress credentials used to authorize the request
         site: Site ID or domain (e.g., "myblog.wordpress.com" or "123456789")
-        access_token: OAuth access token
         post_data: Post data using CreatePostRequest model
 
     Returns:
