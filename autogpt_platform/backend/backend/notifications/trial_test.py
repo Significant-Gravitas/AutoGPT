@@ -108,7 +108,11 @@ async def test_queue_failure_preserves_durable_notice_for_recovery(trial):
         "id": "sub_1",
         "customer": "cus_1",
         "status": "trialing",
-        "metadata": {"trial_enrollment_id": trial.id, "user_id": trial.user_id},
+        "metadata": {
+            "trial_enrollment_id": trial.id,
+            "user_id": trial.user_id,
+            "trial_checkout_attempt": str(trial.checkout_attempt),
+        },
         "trial_end": int(trial.ends_at.timestamp()),
     }
     persist = AsyncMock(return_value=MagicMock(id="notice-1", created=True))

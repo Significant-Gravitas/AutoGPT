@@ -9,6 +9,7 @@ from backend.data.trial_notifications import ClaimedTrialDelivery, TrialDelivery
 from backend.notifications.queue import queue_trial_delivery
 from backend.notifications.trial import trial_notice_is_current
 from backend.notifications.trial_postmark import TrialEmailSender
+from backend.notifications.trial_recovery import recover_missing_trial_notices
 from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,13 @@ async def _finish(
 
 
 async def recover_trial_notifications() -> None:
+    try:
+        await recover_missing_trial_notices()
+    finally:
+        await _wake_due_deliveries()
+
+
+async def _wake_due_deliveries() -> None:
     for delivery_id in await credit_db().get_due_trial_notifications():
         result = await queue_trial_delivery(delivery_id)
         if not result.success:

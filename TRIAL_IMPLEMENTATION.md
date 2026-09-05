@@ -151,8 +151,8 @@ dispatch, onboarding/billing UI, and trial-specific analytics.
   strict reservations. Audit concurrent/in-flight turns, provider caps, late
   settlement, background work, BYOK, and failure behavior before promising any
   hard spend ceiling.
-- Notification reliability: Redis claim/queue crash window, missed-reminder
-  recovery, removed-card notices, queue consumer retries, and visual email QA.
+- Notification reliability: validate the durable recovery path through the real
+  broker/RPC/provider, removed/restored-card notices, and visual email QA.
 - Expand API/frontend cancellation, confirmation, auth-switch and trial-budget
   tests; Storybook and desktop/mobile rendered UI validation.
 - Revalidate full backend CI and exact-head PR review. Migration and local check
@@ -340,3 +340,43 @@ Implementation checkpoint: `a415e380c3`. All configured commit hooks passed.
   stale checkout-attempt handling; real broker/RPC/worker/provider validation;
   failed-delivery monitoring and recovery operations; and visual email QA.
   The outbox is not yet a completed end-to-end email cutover or a live rollout.
+
+## Missing-notice and stale-delivery recovery checkpoint
+
+- Added a database scan for consumed trials missing their expected durable
+  notices, including upcoming three-day reminders without a webhook and expired
+  local trial snapshots needing a Stripe refresh. It uses keyset pagination;
+  one failing enrollment cannot starve later pages. Existing failed deliveries
+  stay failed and visible instead of being recreated with a new identity.
+- The existing one-minute notification recovery pass now refreshes each selected
+  subscription through DatabaseManager RPC, reloads the saved trial, and creates
+  the notices appropriate to its current state. Existing due deliveries are
+  still published when the missing-intent scan raises. Queue outages leave new
+  intents durable. Recovery is eventual; it does not send obsolete intermediate
+  state changes after the subscription has moved on.
+- Every new trial payload carries its semantic notice key. Before sending, the
+  worker refreshes Stripe and database state and checks the revision, accepted
+  terms, end date, subscription ownership, and checkout attempt. Old cancellation
+  revisions, changed dates, and removed cards suppress stale mail. Earlier owned
+  checkout attempts are acknowledged without another notice. Unidentified legacy
+  payloads fail closed; no trial feature version has been deployed yet.
+- Test-first checks reproduced 11 missing-notice database cases, 11 worker/policy
+  cases, and four stale-notice cases before implementation. All expected-failure
+  markers were removed. Final local verification: **445 notification/trial/billing
+  tests**, **177 trial API/rate-limit/SDK-budget tests**, and **29 disposable
+  PostgreSQL tests passed**. Whole-backend format, generated Prisma stubs, pyright,
+  and `git diff --check` passed. Existing test/dependency warnings remain.
+- The database suite includes actual missing welcome/reminder reconstruction and
+  immutable deduplication during a mocked queue outage. Stripe, broker transport,
+  and provider delivery in that test remain mocked; no real emails were sent.
+- CI at the preceding head `621e13a5f383d0cd4bda932d55373f7449b271cb` finished
+  with all backend Python versions, frontend tests, E2E, and image checks passing.
+  Backend patch coverage reached **83.38% / 80% required**. Frontend patch coverage
+  remained **46.15% / 70% required**, so the aggregate PR-status gate was red.
+  These results do not cover this newer checkpoint until CI reruns.
+- Still required: real broker/RPC/provider and rendered email validation; failed
+  delivery monitoring/recovery; audit reactivation of previously suppressed
+  notices after card restoration; hosted Checkout/card fallback and payment
+  recovery; concurrency/late-settlement spend guarantees; frontend coverage and
+  account-switching/UI QA; final offer choices, Stripe configuration, staging,
+  independent review, and the approved live rollout. Trial enrollment remains off.

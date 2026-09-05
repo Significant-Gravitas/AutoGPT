@@ -240,6 +240,7 @@ class SubscriptionEndedData(LifecycleData):
 
 
 class TrialUpdateData(LifecycleData):
+    notice_key: str | None = None
     kind: Literal[
         "started",
         "ending",

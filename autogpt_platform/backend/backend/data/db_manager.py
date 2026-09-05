@@ -93,6 +93,7 @@ from backend.data.credit import (
     get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
+    sync_subscription_from_stripe,
 )
 from backend.data.execution import (
     create_graph_execution,
@@ -152,6 +153,7 @@ from backend.data.subscription_trial import (
     get_subscription_trial,
     record_subscription_trial_cost,
 )
+from backend.data.trial_notification_recovery import get_trial_notice_candidates
 from backend.data.trial_notifications import (
     claim_trial_notification,
     enqueue_trial_notification,
@@ -350,6 +352,8 @@ class DatabaseManager(AppService):
     get_user_by_id = _(get_user_by_id)
     get_user_subscription_tier = _(get_user_subscription_tier)
     get_subscription_trial = _(get_subscription_trial)
+    sync_subscription_from_stripe = _(sync_subscription_from_stripe)
+    get_trial_notice_candidates = _(get_trial_notice_candidates)
     enqueue_trial_notification = _(enqueue_trial_notification)
     claim_trial_notification = _(claim_trial_notification)
     finish_trial_notification = _(finish_trial_notification)
@@ -738,6 +742,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_subscription_tier = d.get_user_subscription_tier
     get_subscription_trial = d.get_subscription_trial
+    sync_subscription_from_stripe = d.sync_subscription_from_stripe
+    get_trial_notice_candidates = d.get_trial_notice_candidates
     enqueue_trial_notification = d.enqueue_trial_notification
     claim_trial_notification = d.claim_trial_notification
     finish_trial_notification = d.finish_trial_notification

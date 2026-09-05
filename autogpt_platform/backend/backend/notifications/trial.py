@@ -37,10 +37,19 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not user_id:
         raise ValueError("Trial notification has no user identity")
     trial = await credit_db().get_subscription_trial(user_id)
-    if trial is None or trial.subscription_id != current["id"]:
+    if trial is None:
         raise ValueError("Trial notification has no matching enrollment")
-    if trial.customer_id != current.get("customer"):
-        raise ValueError("Trial notification customer does not match the enrollment")
+    if not _owns_subscription(trial, current):
+        raise ValueError("Trial notification ownership does not match the enrollment")
+    attempt = (current.get("metadata") or {}).get("trial_checkout_attempt", "")
+    if attempt.isdecimal() and int(attempt) < trial.checkout_attempt:
+        return True
+    if attempt != str(trial.checkout_attempt) or trial.subscription_id != current["id"]:
+        raise ValueError(
+            "Trial notification does not match the current checkout attempt"
+        )
+    if trial.consumed_at is None:
+        return True
     if trial.converted_at is not None and kind in (
         "ended",
         "canceled",
@@ -53,6 +62,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     user = await user_db().get_user_by_id(user_id)
     data = trial_notice_data(trial, kind, user.name or "there")
     claim = trial_notice_key(trial, kind)
+    data.notice_key = claim
     receipt = await credit_db().enqueue_trial_notification(
         user_id, trial.id, claim, data
     )
@@ -107,15 +117,48 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
 
 
 async def trial_notice_is_current(user_id: str, data: TrialUpdateData) -> bool:
+    if not data.notice_key:
+        return False
     trial = await credit_db().get_subscription_trial(user_id)
     if trial is None or trial.subscription_id is None:
-        return False
-    if data.offer_version != trial.offer.version:
         return False
     current = dict(
         await stripe_call(stripe.Subscription.retrieve_async, trial.subscription_id)
     )
+    if (
+        not _owns_subscription(trial, current)
+        or current.get("id") != trial.subscription_id
+    ):
+        return False
+    await credit_db().sync_subscription_from_stripe(current)
+    trial = await credit_db().get_subscription_trial(user_id)
+    if (
+        trial is None
+        or trial.consumed_at is None
+        or trial.subscription_id != current.get("id")
+        or (current.get("metadata") or {}).get("trial_checkout_attempt")
+        != str(trial.checkout_attempt)
+    ):
+        return False
+    if data.notice_key != trial_notice_key(trial, data.kind):
+        return False
+    expected = trial_notice_data(trial, data.kind, data.user_name)
+    if data.model_copy(update={"notice_key": None}) != expected:
+        return False
+    if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
+        current.get("cancel_at_period_end")
+    ):
+        return False
     return _notice_applies(trial, data.kind, current)
+
+
+def _owns_subscription(trial: TrialState, current: dict) -> bool:
+    metadata = current.get("metadata") or {}
+    return (
+        trial.customer_id == current.get("customer")
+        and trial.id == metadata.get("trial_enrollment_id")
+        and trial.user_id == metadata.get("user_id")
+    )
 
 
 async def on_trial_subscription_updated(subscription: dict, previous: dict) -> bool:

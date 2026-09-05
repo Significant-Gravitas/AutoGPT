@@ -60,6 +60,7 @@ def boundaries(delivery):
         patch.object(worker, "credit_db", return_value=db),
         patch.object(worker, "get_database_manager_async_client", return_value=db),
         patch.object(worker, "TrialEmailSender", return_value=sender),
+        patch.object(worker, "recover_missing_trial_notices", AsyncMock()),
         patch.object(
             worker, "trial_notice_is_current", AsyncMock(return_value=True)
         ) as current,
@@ -194,3 +195,24 @@ async def test_queue_outage_leaves_notice_due_for_next_recovery(boundaries):
         with pytest.raises(RuntimeError, match="unavailable"):
             await worker.recover_trial_notifications()
     db.mark_trial_notification_queued.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_intent_scan_failure_does_not_block_existing_deliveries(boundaries):
+    db, _, _ = boundaries
+    with (
+        patch.object(
+            worker,
+            "recover_missing_trial_notices",
+            AsyncMock(side_effect=RuntimeError("scan failed")),
+        ),
+        patch.object(
+            worker,
+            "queue_trial_delivery",
+            AsyncMock(return_value=NotificationResult(success=True)),
+        ) as queue,
+    ):
+        with pytest.raises(RuntimeError, match="scan failed"):
+            await worker.recover_trial_notifications()
+    queue.assert_awaited_once_with("notice-1")
+    db.mark_trial_notification_queued.assert_awaited_once_with("notice-1")
