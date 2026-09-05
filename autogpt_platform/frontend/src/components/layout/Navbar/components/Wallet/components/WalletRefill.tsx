@@ -13,6 +13,7 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 import { TopUpForm } from "@/components/layout/TopUpPrompt/TopUpForm/TopUpForm";
 import useCredits from "@/hooks/useCredits";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -38,49 +39,35 @@ const autoRefillSchema = z
   });
 
 export function WalletRefill() {
-  const { toast } = useToast();
-  const toastOnFail = useToastOnFail();
-
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
   const { autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
-    fetchInitialAutoTopUpConfig: true,
+    identityKey,
+    fetchInitialAutoTopUpConfig: identityKey !== null,
   });
 
-  const [isLoading, setIsLoading] = useState(false);
-
-  const autoRefillForm = useForm<z.infer<typeof autoRefillSchema>>({
-    resolver: zodResolver(autoRefillSchema),
-  });
-
-  // Pre-fill the auto-refill form with existing values
-  useEffect(() => {
-    if (
-      autoTopUpConfig &&
-      autoTopUpConfig.amount > 0 &&
-      autoTopUpConfig.threshold > 0 &&
-      !autoRefillForm.getFieldState("threshold").isTouched &&
-      !autoRefillForm.getFieldState("refillAmount").isTouched
-    ) {
-      autoRefillForm.setValue("threshold", autoTopUpConfig.threshold / 100);
-      autoRefillForm.setValue("refillAmount", autoTopUpConfig.amount / 100);
-    }
-  }, [autoTopUpConfig, autoRefillForm]);
-
-  const submitAutoTopUpConfig = useCallback(
-    async (data: z.infer<typeof autoRefillSchema>) => {
-      setIsLoading(true);
-      await updateAutoTopUpConfig(data.refillAmount * 100, data.threshold * 100)
-        .then(() => {
-          toast({
-            title: "Auto top-up config updated! 🎉",
-            variant: "success",
-          });
-        })
-        .catch(toastOnFail("update auto top-up config"));
-      setIsLoading(false);
-    },
-    [updateAutoTopUpConfig, toast, toastOnFail],
+  return (
+    <WalletRefillState
+      autoTopUpConfig={autoTopUpConfig}
+      identityKey={identityKey}
+      updateAutoTopUpConfig={updateAutoTopUpConfig}
+    />
   );
+}
 
+interface Props {
+  autoTopUpConfig: { amount: number; threshold: number } | null;
+  identityKey: string | null;
+  updateAutoTopUpConfig: (
+    amount: number,
+    threshold: number,
+  ) => Promise<boolean>;
+}
+
+function WalletRefillState({
+  autoTopUpConfig,
+  identityKey,
+  updateAutoTopUpConfig,
+}: Props) {
   return (
     <div className="mx-1 border-b border-zinc-300">
       <p className="mx-0 mt-4 font-sans text-xs font-medium text-violet-700">
@@ -114,56 +101,11 @@ export function WalletRefill() {
             <div className="mt-1 justify-start font-sans text-xs font-normal leading-tight text-zinc-500">
               Choose a one-time top-up or set up automatic refills.
             </div>
-
-            <Form {...autoRefillForm}>
-              <form
-                onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
-                className="my-6"
-              >
-                <FormField
-                  control={autoRefillForm.control}
-                  name="threshold"
-                  render={({ field }) => (
-                    <Input
-                      type="amount"
-                      label="Refill when balance drops below:"
-                      id={field.name}
-                      size="small"
-                      decimalCount={0}
-                      error={autoRefillForm.formState.errors.threshold?.message}
-                      amountPrefix="$"
-                      {...field}
-                    />
-                  )}
-                />
-                <FormField
-                  control={autoRefillForm.control}
-                  name="refillAmount"
-                  render={({ field }) => (
-                    <Input
-                      type="amount"
-                      label="Add this amount:"
-                      size="small"
-                      decimalCount={0}
-                      id={field.name}
-                      error={
-                        autoRefillForm.formState.errors.refillAmount?.message
-                      }
-                      amountPrefix="$"
-                      {...field}
-                    />
-                  )}
-                />
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  size="small"
-                  className="mt-5"
-                >
-                  Enable Auto-refill
-                </Button>
-              </form>
-            </Form>
+            <AutoRefillForm
+              key={identityKey ?? "logged-out"}
+              autoTopUpConfig={autoTopUpConfig}
+              updateAutoTopUpConfig={updateAutoTopUpConfig}
+            />
           </TabsContent>
           <div className="mb-3 justify-start font-sans text-xs font-normal leading-tight">
             <span className="text-zinc-500">
@@ -179,5 +121,104 @@ export function WalletRefill() {
         </div>
       </Tabs>
     </div>
+  );
+}
+
+interface AutoRefillFormProps {
+  autoTopUpConfig: { amount: number; threshold: number } | null;
+  updateAutoTopUpConfig: Props["updateAutoTopUpConfig"];
+}
+
+function AutoRefillForm({
+  autoTopUpConfig,
+  updateAutoTopUpConfig,
+}: AutoRefillFormProps) {
+  const { toast } = useToast();
+  const toastOnFail = useToastOnFail();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const autoRefillForm = useForm<z.infer<typeof autoRefillSchema>>({
+    resolver: zodResolver(autoRefillSchema),
+  });
+
+  // Pre-fill the auto-refill form with existing values
+  useEffect(() => {
+    if (
+      autoTopUpConfig &&
+      autoTopUpConfig.amount > 0 &&
+      autoTopUpConfig.threshold > 0 &&
+      !autoRefillForm.getFieldState("threshold").isTouched &&
+      !autoRefillForm.getFieldState("refillAmount").isTouched
+    ) {
+      autoRefillForm.setValue("threshold", autoTopUpConfig.threshold / 100);
+      autoRefillForm.setValue("refillAmount", autoTopUpConfig.amount / 100);
+    }
+  }, [autoTopUpConfig, autoRefillForm]);
+
+  const submitAutoTopUpConfig = useCallback(
+    async (data: z.infer<typeof autoRefillSchema>) => {
+      setIsLoading(true);
+      await updateAutoTopUpConfig(data.refillAmount * 100, data.threshold * 100)
+        .then((updated) => {
+          if (!updated) return;
+          toast({
+            title: "Auto top-up config updated! 🎉",
+            variant: "success",
+          });
+        })
+        .catch(toastOnFail("update auto top-up config"));
+      setIsLoading(false);
+    },
+    [updateAutoTopUpConfig, toast, toastOnFail],
+  );
+
+  return (
+    <Form {...autoRefillForm}>
+      <form
+        onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
+        className="my-6"
+      >
+        <FormField
+          control={autoRefillForm.control}
+          name="threshold"
+          render={({ field }) => (
+            <Input
+              type="amount"
+              label="Refill when balance drops below:"
+              id={field.name}
+              size="small"
+              decimalCount={0}
+              error={autoRefillForm.formState.errors.threshold?.message}
+              amountPrefix="$"
+              {...field}
+            />
+          )}
+        />
+        <FormField
+          control={autoRefillForm.control}
+          name="refillAmount"
+          render={({ field }) => (
+            <Input
+              type="amount"
+              label="Add this amount:"
+              size="small"
+              decimalCount={0}
+              id={field.name}
+              error={autoRefillForm.formState.errors.refillAmount?.message}
+              amountPrefix="$"
+              {...field}
+            />
+          )}
+        />
+        <Button
+          type="submit"
+          disabled={isLoading}
+          size="small"
+          className="mt-5"
+        >
+          Enable Auto-refill
+        </Button>
+      </form>
+    </Form>
   );
 }

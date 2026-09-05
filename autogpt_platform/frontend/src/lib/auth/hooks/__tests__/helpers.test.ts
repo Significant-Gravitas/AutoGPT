@@ -5,7 +5,6 @@ import type { User } from "../../types";
 const getCurrentUserMock = vi.fn();
 const validateSessionActionMock = vi.fn();
 const refreshSessionActionMock = vi.fn();
-const clearWebSocketDisconnectIntentMock = vi.fn();
 const setWebSocketDisconnectIntentMock = vi.fn();
 const getRedirectPathMock = vi.fn();
 const isLogoutEventMock = vi.fn();
@@ -17,7 +16,6 @@ vi.mock("../../actions", () => ({
 }));
 
 vi.mock("../../helpers", () => ({
-  clearWebSocketDisconnectIntent: () => clearWebSocketDisconnectIntentMock(),
   setWebSocketDisconnectIntent: () => setWebSocketDisconnectIntentMock(),
   getRedirectPath: (...args: unknown[]) => getRedirectPathMock(...args),
   isLogoutEvent: (...args: unknown[]) => isLogoutEventMock(...args),
@@ -43,7 +41,6 @@ beforeEach(() => {
   getCurrentUserMock.mockReset();
   validateSessionActionMock.mockReset();
   refreshSessionActionMock.mockReset();
-  clearWebSocketDisconnectIntentMock.mockReset();
   setWebSocketDisconnectIntentMock.mockReset();
   getRedirectPathMock.mockReset();
   isLogoutEventMock.mockReset();
@@ -55,7 +52,7 @@ afterEach(() => {
 });
 
 describe("fetchUser", () => {
-  it("returns the user and clears the websocket disconnect intent", async () => {
+  it("returns the user", async () => {
     const user = makeUser("user-1");
     getCurrentUserMock.mockResolvedValue({ user });
 
@@ -66,7 +63,6 @@ describe("fetchUser", () => {
       hasLoadedUser: true,
       isUserLoading: false,
     });
-    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
   it("keeps hasLoadedUser false when there is no user and no error", async () => {
@@ -79,7 +75,6 @@ describe("fetchUser", () => {
       hasLoadedUser: false,
       isUserLoading: false,
     });
-    expect(clearWebSocketDisconnectIntentMock).not.toHaveBeenCalled();
   });
 
   it("marks the user as loaded when the action reports an error", async () => {
@@ -144,7 +139,6 @@ describe("validateSession", () => {
       user: newUser,
       shouldUpdateUser: true,
     });
-    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
   it("skips the user update when the session user is unchanged", async () => {
@@ -190,17 +184,16 @@ describe("validateSession", () => {
 });
 
 describe("refreshSession", () => {
-  it("clears the websocket disconnect intent when a user is returned", async () => {
+  it("returns the refreshed user", async () => {
     const user = makeUser("user-1");
     refreshSessionActionMock.mockResolvedValue({ user });
 
     const result = await refreshSession();
 
     expect(result).toEqual({ user });
-    expect(clearWebSocketDisconnectIntentMock).toHaveBeenCalled();
   });
 
-  it("leaves the websocket disconnect intent alone when no user is returned", async () => {
+  it("returns the refresh error when no user is returned", async () => {
     refreshSessionActionMock.mockResolvedValue({
       user: null,
       error: "No active session",
@@ -209,7 +202,6 @@ describe("refreshSession", () => {
     const result = await refreshSession();
 
     expect(result).toEqual({ user: null, error: "No active session" });
-    expect(clearWebSocketDisconnectIntentMock).not.toHaveBeenCalled();
   });
 });
 

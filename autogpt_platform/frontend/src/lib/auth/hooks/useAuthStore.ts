@@ -1,11 +1,13 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
+import { resetQueryClientForIdentityChange } from "@/lib/react-query/queryClient";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
 import {
   broadcastLogout,
+  clearWebSocketDisconnectIntent,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
 } from "../helpers";
@@ -40,6 +42,7 @@ interface AuthStoreState {
   isUserLoading: boolean;
   isValidating: boolean;
   hasLoadedUser: boolean;
+  hasCompletedInitialAuthHydration: boolean;
   lastValidation: number;
   initializationPromise: Promise<void> | null;
   listenersCleanup: (() => void) | null;
@@ -54,7 +57,59 @@ interface AuthStoreState {
   cleanup: () => void;
 }
 
+let authRequestGeneration = 0;
+let validationRequestGeneration = 0;
+let pendingLogoutPromise: ReturnType<typeof serverLogout> | null = null;
+
+function beginAuthRequest(): number {
+  authRequestGeneration += 1;
+  return authRequestGeneration;
+}
+
+function beginNonValidationAuthRequest(): number {
+  validationRequestGeneration += 1;
+  return beginAuthRequest();
+}
+
+async function waitForPendingLogout(): Promise<boolean> {
+  while (pendingLogoutPromise) {
+    const pendingLogout = pendingLogoutPromise;
+    try {
+      await pendingLogout;
+    } catch {
+      return false;
+    }
+    if (pendingLogoutPromise === pendingLogout) {
+      pendingLogoutPromise = null;
+    }
+  }
+  return true;
+}
+
 export const useAuthStore = create<AuthStoreState>((set, get) => {
+  function stopLoadingIfCurrent(requestGeneration: number): void {
+    if (requestGeneration === authRequestGeneration) {
+      set({ isUserLoading: false });
+    }
+  }
+
+  function clearAuthenticatedState(): void {
+    const state = get();
+    const identityChangeWillResetQueries =
+      state.user !== null && state.hasCompletedInitialAuthHydration;
+    set({
+      user: null,
+      hasLoadedUser: false,
+      hasCompletedInitialAuthHydration: true,
+      isUserLoading: false,
+      isValidating: false,
+      initializationPromise: null,
+    });
+    if (!identityChangeWillResetQueries) {
+      void resetQueryClientForIdentityChange(null);
+    }
+  }
+
   function setCurrentRequestContext(params: InitializeParams): void {
     const state = get();
     if (
@@ -78,33 +133,6 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!initializationPromise) {
       initializationPromise = (async () => {
-        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
-        // This handles the case where hasLoadedUser might be stale after logout/login
-        if (!get().hasLoadedUser || !get().user) {
-          set({ isUserLoading: true });
-          const result = await fetchUser();
-          set(result);
-
-          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
-          // This handles race conditions after login where cookies might not be immediately available
-          if (!result.user) {
-            const validationResult = await validateSessionHelper({
-              path: params.path,
-              currentUser: null,
-            });
-
-            if (validationResult.user && validationResult.isValid) {
-              set({
-                user: validationResult.user,
-                hasLoadedUser: true,
-                isUserLoading: false,
-              });
-            }
-          }
-        } else {
-          set({ isUserLoading: false });
-        }
-
         const existingCleanup = get().listenersCleanup;
         if (existingCleanup) {
           existingCleanup();
@@ -115,6 +143,45 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           handleStorageEventInternal,
         );
         set({ listenersCleanup: cleanup.cleanup });
+
+        if (get().hasLoadedUser && get().user) {
+          set({ isUserLoading: false });
+          return;
+        }
+
+        const requestGeneration = beginNonValidationAuthRequest();
+        set({ isUserLoading: true, isValidating: false });
+        if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+          stopLoadingIfCurrent(requestGeneration);
+          return;
+        }
+        if (requestGeneration !== authRequestGeneration) return;
+
+        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
+        // This handles the case where hasLoadedUser might be stale after logout/login
+        const result = await fetchUser();
+        if (requestGeneration !== authRequestGeneration) return;
+        if (result.user) clearWebSocketDisconnectIntent();
+        set(result);
+
+        // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+        // This handles race conditions after login where cookies might not be immediately available
+        if (!result.user) {
+          const validationResult = await validateSessionHelper({
+            path: params.path,
+            currentUser: null,
+          });
+          if (requestGeneration !== authRequestGeneration) return;
+
+          if (validationResult.user && validationResult.isValid) {
+            clearWebSocketDisconnectIntent();
+            set({
+              user: validationResult.user,
+              hasLoadedUser: true,
+              isUserLoading: false,
+            });
+          }
+        }
       })();
 
       set({ initializationPromise });
@@ -123,11 +190,17 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     try {
       await initializationPromise;
     } finally {
-      set({ initializationPromise: null });
+      if (get().initializationPromise === initializationPromise) {
+        set({
+          initializationPromise: null,
+          hasCompletedInitialAuthHydration: true,
+        });
+      }
     }
   }
 
   async function logOut(params?: LogOutParams): Promise<void> {
+    beginNonValidationAuthRequest();
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
 
@@ -143,22 +216,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       set({ listenersCleanup: null });
     }
 
-    broadcastLogout();
+    clearAuthenticatedState();
 
-    // Clear React Query cache to prevent stale data from old user
-    if (typeof window !== "undefined") {
-      const { getQueryClient } = await import("@/lib/react-query/queryClient");
-      const queryClient = getQueryClient();
-      queryClient.clear();
+    const logoutPromise = serverLogout(options);
+    pendingLogoutPromise = logoutPromise;
+    try {
+      await logoutPromise;
+      broadcastLogout();
+    } finally {
+      if (pendingLogoutPromise === logoutPromise) {
+        pendingLogoutPromise = null;
+      }
     }
-
-    set({
-      user: null,
-      hasLoadedUser: false,
-      isUserLoading: false,
-    });
-
-    await serverLogout(options);
   }
 
   async function validateSessionInternal(
@@ -173,23 +242,28 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const now = Date.now();
     if (!params?.force && now - get().lastValidation < 2000) return true;
 
+    const requestGeneration = beginAuthRequest();
+    const validationGeneration = ++validationRequestGeneration;
     set({
       isValidating: true,
       lastValidation: now,
     });
 
     try {
+      if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+        stopLoadingIfCurrent(requestGeneration);
+        return false;
+      }
+      if (requestGeneration !== authRequestGeneration) return false;
       const result = await validateSessionHelper({
         path: pathname,
         currentUser: get().user,
       });
+      if (requestGeneration !== authRequestGeneration) return false;
+      if (result.user) clearWebSocketDisconnectIntent();
 
       if (!result.isValid) {
-        set({
-          user: null,
-          hasLoadedUser: false,
-          isUserLoading: false,
-        });
+        clearAuthenticatedState();
 
         if (result.redirectPath) {
           router.push(result.redirectPath);
@@ -211,7 +285,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
       return true;
     } finally {
-      set({ isValidating: false });
+      if (validationGeneration === validationRequestGeneration) {
+        set({ isValidating: false });
+      }
     }
   }
 
@@ -230,11 +306,8 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
     if (!result.shouldLogout) return;
 
-    set({
-      user: null,
-      hasLoadedUser: false,
-      isUserLoading: false,
-    });
+    beginNonValidationAuthRequest();
+    clearAuthenticatedState();
 
     const router = get().routerRef;
     if (router) {
@@ -246,20 +319,25 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   }
 
   async function refreshSessionInternal() {
+    const requestGeneration = beginNonValidationAuthRequest();
+    set({ isValidating: false });
+    if (pendingLogoutPromise && !(await waitForPendingLogout())) {
+      stopLoadingIfCurrent(requestGeneration);
+      return {};
+    }
+    if (requestGeneration !== authRequestGeneration) return {};
     const result = await refreshSessionHelper();
+    if (requestGeneration !== authRequestGeneration) return {};
 
     if (result.user) {
+      clearWebSocketDisconnectIntent();
       set({
         user: result.user,
         hasLoadedUser: true,
         isUserLoading: false,
       });
     } else if (result.error) {
-      set({
-        user: null,
-        hasLoadedUser: false,
-        isUserLoading: false,
-      });
+      clearAuthenticatedState();
     }
 
     return result;
@@ -278,6 +356,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     isUserLoading: true,
     isValidating: false,
     hasLoadedUser: false,
+    hasCompletedInitialAuthHydration: false,
     lastValidation: 0,
     initializationPromise: null,
     listenersCleanup: null,
@@ -292,3 +371,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     cleanup,
   };
 });
+
+if (typeof window !== "undefined") {
+  useAuthStore.subscribe((state, previousState) => {
+    const previousIdentityKey = previousState.user?.id ?? null;
+    const identityKey = state.user?.id ?? null;
+    if (previousIdentityKey === identityKey) return;
+    if (!previousState.hasCompletedInitialAuthHydration) return;
+    void resetQueryClientForIdentityChange(identityKey);
+  });
+}
