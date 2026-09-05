@@ -1,7 +1,16 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
+import { server } from "@/mocks/mock-server";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { ContextPanelToggle } from "../ContextPanelToggle";
+import { useSessionFiles } from "../components/FilesTab/useSessionFiles";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -90,5 +99,175 @@ describe("ContextPanelToggle", () => {
     render(<ContextPanelToggle />);
 
     expect(screen.getByLabelText("Hide artifacts")).toBeDefined();
+  });
+});
+
+const SESSION = "session-1";
+
+// The toggle renders the same bare icon whether the files are still in
+// flight or every one of them was filtered out, so a "stays unlabeled"
+// assertion would pass trivially. This probe gives those tests something to
+// await that proves the listing actually arrived.
+interface Props {
+  sessionId: string;
+}
+
+function LoadedFilesProbe({ sessionId }: Props) {
+  const { generated } = useSessionFiles(sessionId);
+  return <div data-testid="generated-count">{generated.length}</div>;
+}
+
+function realFile(): ListFilesResponse["files"][number] {
+  return {
+    id: "aaaaaaaa-0000-0000-0000-000000000001",
+    name: "result.csv",
+    path: "/sessions/session-1/result.csv",
+    mime_type: "text/csv",
+    size_bytes: 4096,
+    metadata: { origin: "agent" },
+    origin: "generated",
+    created_at: "2026-05-20T11:00:00Z",
+  };
+}
+
+// One entry per branch of `isInternalToolOutput`, each newer than the real
+// deliverable so a missing filter would surface it instead.
+function toolOutputs(): ListFilesResponse["files"] {
+  return [
+    {
+      id: "bbbbbbbb-0000-0000-0000-000000000002",
+      name: "toolu_01ABCdef.json",
+      path: "/sessions/session-1/tool-outputs/toolu_01ABCdef.json",
+      mime_type: "application/json",
+      size_bytes: 512,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T12:00:00Z",
+    },
+    {
+      id: "cccccccc-0000-0000-0000-000000000003",
+      name: "mcp_a1b2-c3d4.json",
+      path: "/sessions/session-1/tool-outputs/mcp_a1b2-c3d4.json",
+      mime_type: "application/json",
+      size_bytes: 256,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T13:00:00Z",
+    },
+    {
+      id: "dddddddd-0000-0000-0000-000000000004",
+      name: "toolu_02ZYXwvu.json",
+      path: "/sessions/session-1/tool-results/toolu_02ZYXwvu.json",
+      mime_type: "application/json",
+      size_bytes: 128,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T14:00:00Z",
+    },
+    // The id an SDK-transport session actually produces: `_execute_tool_sync`
+    // synthesizes `sdk-<uuid>` rather than forwarding the SDK's `toolu_*`, so
+    // this is the shape the default AutoPilot path parks in the directory.
+    {
+      id: "ffffffff-0000-0000-0000-000000000006",
+      name: "sdk-a1b2c3d4e5f6.json",
+      path: "/sessions/session-1/tool-outputs/sdk-a1b2c3d4e5f6.json",
+      mime_type: "application/json",
+      size_bytes: 320,
+      metadata: {},
+      origin: "generated",
+      created_at: "2026-05-20T16:00:00Z",
+    },
+  ];
+}
+
+function listing(files: ListFilesResponse["files"]): ListFilesResponse {
+  return { files, offset: 0, has_more: false };
+}
+
+describe("ContextPanelToggle internal tool output", () => {
+  test("wears the newest user-facing file, not a newer tool output", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(
+        listing([realFile(), ...toolOutputs()]),
+      ),
+    );
+    render(<ContextPanelToggle sessionId={SESSION} />);
+
+    const button = await screen.findByLabelText("Open result.csv");
+    fireEvent.click(button);
+
+    expect(panelState().activeArtifact?.id).toBe(
+      "aaaaaaaa-0000-0000-0000-000000000001",
+    );
+  });
+
+  test("still wears a deliverable whose name looks like an SDK tool id", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(
+        listing([
+          realFile(),
+          ...toolOutputs(),
+          {
+            id: "eeeeeeee-0000-0000-0000-000000000005",
+            name: "mcp_config.json",
+            path: "/sessions/session-1/mcp_config.json",
+            mime_type: "application/json",
+            size_bytes: 64,
+            metadata: {},
+            origin: "generated",
+            created_at: "2026-05-20T17:00:00Z",
+          },
+        ]),
+      ),
+    );
+    render(<ContextPanelToggle sessionId={SESSION} />);
+
+    expect(await screen.findByLabelText("Open mcp_config.json")).toBeDefined();
+  });
+
+  test("still wears a deliverable under the user's own tool-outputs folder", async () => {
+    server.use(
+      getListWorkspaceFilesMockHandler200(
+        listing([
+          realFile(),
+          ...toolOutputs(),
+          {
+            id: "99999999-0000-0000-0000-000000000007",
+            name: "data.json",
+            path: "/sessions/session-1/my-pipeline/tool-outputs/data.json",
+            mime_type: "application/json",
+            size_bytes: 96,
+            metadata: {},
+            origin: "generated",
+            created_at: "2026-05-20T17:00:00Z",
+          },
+        ]),
+      ),
+    );
+    render(<ContextPanelToggle sessionId={SESSION} />);
+
+    expect(await screen.findByLabelText("Open data.json")).toBeDefined();
+  });
+
+  test("stays unlabeled when every generated file is an internal tool output", async () => {
+    server.use(getListWorkspaceFilesMockHandler200(listing(toolOutputs())));
+    render(
+      <>
+        <ContextPanelToggle sessionId={SESSION} />
+        <LoadedFilesProbe sessionId={SESSION} />
+      </>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("generated-count").textContent).toBe(
+        String(toolOutputs().length),
+      ),
+    );
+    expect(screen.getByLabelText("Open artifacts")).toBeDefined();
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    expect(panelState().activeArtifact).toBeNull();
+    expect(panelState().activeTab).toBe("artifacts");
   });
 });

@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { useAreWorkspaceFileCardsOpen } from "../../useAreWorkspaceFileCardsOpen";
-import { fileItemToArtifactRef } from "./components/FilesTab/helpers";
+import {
+  fileItemToArtifactRef,
+  isInternalToolOutput,
+} from "./components/FilesTab/helpers";
 import {
   useSessionFiles,
   type SessionFile,
@@ -17,8 +20,11 @@ interface Props {
 }
 
 function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
-  if (generated.length === 0) return null;
-  return generated.reduce((latest, file) =>
+  const userFacing = generated.filter(
+    (file) => !isInternalToolOutput(file.item),
+  );
+  if (userFacing.length === 0) return null;
+  return userFacing.reduce((latest, file) =>
     new Date(file.item.created_at).getTime() >
     new Date(latest.item.created_at).getTime()
       ? file
@@ -29,7 +35,11 @@ function getLastGeneratedFile(generated: SessionFile[]): SessionFile | null {
 /** The chat's one top-right control: the artifacts toggle. It wears the name
  *  of the session's most recently generated file so the current working
  *  document stays visible, and clicking it opens that file directly in the
- *  artifact panel. Workspace files open from the thread chip instead. */
+ *  artifact panel. Workspace files open from the thread chip instead.
+ *
+ *  Internal tool output is not a document the user asked for, so it never
+ *  becomes the button's label or its click target — a session whose only
+ *  generated files are tool scratch keeps the bare icon. */
 export function ContextPanelToggle({ sessionId = null }: Props) {
   const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
   const hasArtifact = useCopilotUIStore(
