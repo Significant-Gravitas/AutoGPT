@@ -4,6 +4,7 @@ import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import pytest
@@ -41,14 +42,29 @@ pytestmark = pytest.mark.skipif(
 
 @pytest_asyncio.fixture
 async def user_id():
-    assert "127.0.0.1:15432/trial_test" in db.DATABASE_URL
+    target = urlparse(db.DATABASE_URL)
+    local = (target.hostname, target.port, target.path) == (
+        "127.0.0.1",
+        15432,
+        "/trial_test",
+    )
+    ci = os.environ.get("GITHUB_ACTIONS") == "true" and (
+        target.hostname,
+        target.port,
+        target.path,
+    ) == ("localhost", 5432, "/postgres")
+    assert (
+        local or ci
+    ), "Trial integration tests require an approved disposable database"
+    owns_connection = not db.is_connected()
     await db.connect()
     user_id = str(uuid4())
     await User.prisma().create(data={"id": user_id, "email": f"{user_id}@example.com"})
     yield user_id
     await CreditTransaction.prisma().delete_many(where={"userId": user_id})
     await User.prisma().delete(where={"id": user_id})
-    await db.disconnect()
+    if owns_connection:
+        await db.disconnect()
 
 
 def offer(credits: int = 300) -> AcceptedTrialOffer:

@@ -103,7 +103,7 @@ def test_trial_email_escapes_user_supplied_name(trial, urls):
 
 
 @pytest.mark.asyncio
-async def test_queue_failure_releases_claim_for_stripe_retry(trial):
+async def test_queue_failure_preserves_durable_notice_for_recovery(trial):
     raw = {
         "id": "sub_1",
         "customer": "cus_1",
@@ -111,6 +111,7 @@ async def test_queue_failure_releases_claim_for_stripe_retry(trial):
         "metadata": {"trial_enrollment_id": trial.id, "user_id": trial.user_id},
         "trial_end": int(trial.ends_at.timestamp()),
     }
+    persist = AsyncMock(return_value=MagicMock(id="notice-1", created=True))
     with (
         patch.object(
             notices.stripe.Subscription, "retrieve_async", AsyncMock(return_value=raw)
@@ -119,7 +120,8 @@ async def test_queue_failure_releases_claim_for_stripe_retry(trial):
             notices,
             "credit_db",
             return_value=MagicMock(
-                get_subscription_trial=AsyncMock(return_value=trial)
+                get_subscription_trial=AsyncMock(return_value=trial),
+                enqueue_trial_notification=persist,
             ),
         ),
         patch.object(
@@ -147,19 +149,16 @@ async def test_queue_failure_releases_claim_for_stripe_retry(trial):
                 ),
             ),
         ),
-        patch.object(notices, "claim_once", AsyncMock(return_value=True)),
-        patch.object(notices, "release_claim", AsyncMock()) as release,
         patch.object(
             notices,
-            "queue_notification_async",
+            "queue_trial_delivery",
             AsyncMock(return_value=NotificationResult(success=False)),
         ),
         patch.object(notices, "_track_billing_event") as track,
     ):
-        with pytest.raises(RuntimeError, match="Could not queue"):
-            await notices.notify_trial(raw, "started")
-    release.assert_awaited_once()
-    track.assert_not_called()
+        assert await notices.notify_trial(raw, "started")
+    persist.assert_awaited_once()
+    track.assert_called_once()
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):
@@ -174,6 +173,16 @@ def test_canceled_trial_suppresses_late_ending_reminder(trial):
 
 def test_failed_conversion_suppresses_paid_confirmation(trial):
     assert not notices._notice_applies(trial, "converted", {"status": "past_due"})
+
+
+def test_cancellation_notice_key_changes_only_with_durable_revision(trial):
+    first = notices.trial_notice_key(trial, "canceled")
+    assert notices.trial_notice_key(trial, "canceled") == first
+    trial.notification_revision += 1
+    assert notices.trial_notice_key(trial, "canceled") != first
+    assert notices.trial_notice_key(trial, "resumed") != notices.trial_notice_key(
+        trial, "canceled"
+    )
 
 
 @pytest.mark.asyncio

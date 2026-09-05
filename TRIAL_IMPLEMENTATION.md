@@ -155,8 +155,8 @@ dispatch, onboarding/billing UI, and trial-specific analytics.
   recovery, removed-card notices, queue consumer retries, and visual email QA.
 - Expand API/frontend cancellation, confirmation, auth-switch and trial-budget
   tests; Storybook and desktop/mobile rendered UI validation.
-- Revalidate the complete current migration (including TRIAL_UPDATE), full backend
-  CI, complete frontend checks, and exact-head PR review. No PR has been opened.
+- Revalidate full backend CI and exact-head PR review. Migration and local check
+  results are recorded below; the PR remains draft pending the launch gates.
 - Choose final offer values from analytics; configure trial flag, webhook reminder
   event subscription, staging, and the approved live rollout. Nothing is live yet.
 
@@ -222,7 +222,8 @@ still exist for follow-up validation. No live Stripe configuration was changed.
   trial-converted notice. Two test-first regressions reproduced the old behavior;
   first-invoice/renewal tests and a real database round-trip now pass. This does
   not make the notification queue durable: replay of the same invoice after the
-  Redis TTL and the claim-before-publish crash window still need an outbox.
+  Redis TTL and the claim-before-publish crash window motivated the outbox
+  implementation recorded below.
 
 ## Dev integration validation (2026-09-04)
 
@@ -279,7 +280,60 @@ still exist for follow-up validation. No live Stripe configuration was changed.
 
 ## Outstanding launch choices
 
+Draft [PR #14353](https://github.com/Significant-Gravitas/AutoGPT/pull/14353) is open
+against dev at `057bbc21d6e5d455c04851e7b15cfd47105ad82e`. The merge commit passed
+its configured hooks; both secret scanners also passed against the complete trial
+diff from the merged dev ref. CI was verified in progress at this exact head.
+The worktree was clean after that push. No merge or production activation occurred.
+
 The final offer amounts/duration/price and launch cutoff remain unset pending
 unit-economics data. The initial trial config must remain off until these values
 are chosen and the complete integration is verified. Onboarding credits are a
 separate wallet from the operator-side chat spend budget.
+
+## Trial email recovery checkpoint
+
+- Added a trial-only PostgreSQL outbox with immutable payloads, semantic unique
+  keys, owner-fenced five-minute leases, bounded retries, and retained terminal
+  outcomes. The new `trial_notifications_v1` queue carries only the durable ID.
+  A registered one-minute scheduler pass re-publishes due or abandoned deliveries;
+  the existing NotificationManager runs the consumer through DatabaseManager RPC.
+- The producer records the notice before publishing, acknowledges a durable
+  intent even if RabbitMQ is unavailable, and emits analytics only on first
+  creation. API and webhook cancellation notices share a persisted revision;
+  repeated cancel/resume cycles receive distinct identities.
+- A trial-only async Postmark sender requires configured credentials, preserves
+  both HTML/plain-text bodies and service-mail preference links, and attaches
+  `trial_notice_id`. Retried delivery searches Postmark for prior acceptance
+  before sending. Missing configuration, provider lookup failures, and unverified
+  recipients are retryable instead of being treated as a successful send.
+- Delivery work has a 240-second deadline inside the 300-second lease. This is
+  bounded at-least-once delivery, not an exactly-once guarantee: provider indexing
+  lag after an ambiguous send can still allow a duplicate. Exhausted attempts
+  remain visible as failed rows and are logged for operations.
+- Postmark authentication and the metadata-search API were verified with a
+  read-only lookup for a random nonexistent notice ID. No email was sent. Mocked
+  HTTP tests verify the actual Postmark request/response shape and failure paths.
+- Database tests caught raw JSON parsing and immediate-claim timing issues; both
+  are fixed. Initial intents are immediately due, while leases and retry/wake
+  scheduling use the database clock. A separate test exposed Prisma's emulated
+  enrollment-upsert race; enrollment now inserts under the unique user key and
+  reads the winning row after a conflict.
+- All **16 trial/outbox database integration tests passed**. They are now opted
+  into the isolated GitHub CI database, with exact local/CI target guards and
+  shared-connection ownership preserved. Both migrations applied from a fresh
+  pre-trial schema in `trial_outbox_migration_1788568049868`.
+- Expanded final isolated regression suite: **727 passed**, including all
+  notification tests, trial API/fulfillment, existing billing, rate limits, and
+  trial SDK budgets. Whole-backend formatting and type checks passed. The
+  frontend code and public API schema were not changed by this checkpoint.
+- CI at `057bbc21d6` exposed four Python 3.11 test failures (13,854 passed): two
+  tests relied on a local return-URL setting, and the shared service-email fixture
+  omitted TRIAL_UPDATE. Adding that fixture also caught a missing plain-text
+  preferences link. All are fixed locally. Patch-coverage gates were also red;
+  they remain launch gates, not checks to disable.
+- Remaining email work: recording/recovering notices when a process dies
+  between the subscription-state commit and notice creation; missed reminders;
+  stale checkout-attempt handling; real broker/RPC/worker/provider validation;
+  failed-delivery monitoring and recovery operations; and visual email QA.
+  The outbox is not yet a completed end-to-end email cutover or a live rollout.

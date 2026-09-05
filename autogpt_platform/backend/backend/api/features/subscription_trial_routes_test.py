@@ -10,6 +10,13 @@ from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
 
+@pytest.fixture(autouse=True)
+def billing_return_origin(monkeypatch):
+    settings = routes.Settings()
+    settings.config.frontend_base_url = "https://platform.example.com"
+    monkeypatch.setattr(routes, "Settings", lambda: settings)
+
+
 @pytest.fixture
 def trial() -> TrialState:
     now = datetime.now(UTC)
@@ -108,8 +115,13 @@ async def test_checkout_uses_authenticated_identity_and_server_return_urls(trial
     assert response.status_code == 200
     params = checkout.await_args.kwargs
     assert params["user_id"] == trial.user_id
-    assert params["success_url"].endswith("/onboarding?trial=success")
-    assert params["cancel_url"].endswith("/onboarding?trial=cancelled")
+    assert (
+        params["success_url"] == "https://platform.example.com/onboarding?trial=success"
+    )
+    assert (
+        params["cancel_url"]
+        == "https://platform.example.com/onboarding?trial=cancelled"
+    )
     assert params["metadata"]["datafast_visitor_id"] == "visitor-1"
 
 

@@ -263,6 +263,8 @@ async def _save_snapshot(
             "convertedAt": converted_at,
             "stripeConversionInvoiceId": conversion_invoice_id,
             "cancelAtPeriodEnd": snapshot.cancel_at_period_end,
+            "notificationRevision": trial.notification_revision
+            + int(trial.cancel_at_period_end != snapshot.cancel_at_period_end),
         },
     )
 

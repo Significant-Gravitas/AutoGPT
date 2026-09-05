@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, SubscriptionTrial
 from pydantic import BaseModel, TypeAdapter
 
@@ -27,6 +28,7 @@ class TrialState(BaseModel):
     consumed_at: datetime | None
     converted_at: datetime | None
     conversion_invoice_id: str | None = None
+    notification_revision: int = 0
     cancel_at_period_end: bool
     cost_microdollars: int
 
@@ -60,6 +62,7 @@ class TrialState(BaseModel):
             consumed_at=row.consumedAt,
             converted_at=row.convertedAt,
             conversion_invoice_id=row.stripeConversionInvoiceId,
+            notification_revision=row.notificationRevision,
             cancel_at_period_end=row.cancelAtPeriodEnd,
             cost_microdollars=row.costMicrodollars,
         )
@@ -92,10 +95,9 @@ async def reserve_subscription_trial(
     cancel_url: str,
     metadata: dict[str, str],
 ) -> TrialState:
-    row = await SubscriptionTrial.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": {
+    try:
+        row = await SubscriptionTrial.prisma().create(
+            data={
                 "userId": user_id,
                 "offer": SafeJson(offer.model_dump(mode="json")),
                 "stripeCustomerId": customer_id,
@@ -103,9 +105,11 @@ async def reserve_subscription_trial(
                 "checkoutCancelUrl": cancel_url,
                 "checkoutMetadata": SafeJson(metadata),
             },
-            "update": {},
-        },
-    )
+        )
+    except UniqueViolationError:
+        row = await SubscriptionTrial.prisma().find_unique_or_raise(
+            where={"userId": user_id}
+        )
     return TrialState.from_db(row)
 
 

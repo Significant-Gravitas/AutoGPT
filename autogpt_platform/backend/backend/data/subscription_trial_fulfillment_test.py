@@ -213,6 +213,37 @@ async def test_completed_card_checkout_grants_trial(trial, boundaries):
 
 
 @pytest.mark.asyncio
+async def test_replayed_cancellation_does_not_advance_notice_revision(
+    trial, boundaries
+):
+    now = datetime.now(UTC)
+    snapshot = fulfillment.SubscriptionSnapshot(
+        id="sub_1", customer="cus_1", status="trialing", cancel_at_period_end=True
+    )
+    await fulfillment._save_snapshot(
+        trial, snapshot, SubscriptionTier.TRIAL, now, boundaries, True
+    )
+    assert (
+        boundaries.subscriptiontrial.update.await_args.kwargs["data"][
+            "notificationRevision"
+        ]
+        == 1
+    )
+    canceled = trial.model_copy(
+        update={"cancel_at_period_end": True, "notification_revision": 1}
+    )
+    await fulfillment._save_snapshot(
+        canceled, snapshot, SubscriptionTier.TRIAL, now, boundaries, True
+    )
+    assert (
+        boundaries.subscriptiontrial.update.await_args.kwargs["data"][
+            "notificationRevision"
+        ]
+        == 1
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "items",
     [

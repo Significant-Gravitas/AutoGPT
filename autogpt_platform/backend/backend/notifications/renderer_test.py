@@ -27,6 +27,7 @@ from backend.data.notifications import (
     SubscriptionPlan,
     SubscriptionResumedData,
     SubscriptionWelcomeData,
+    TrialUpdateData,
     VerdictData,
     supports_list_unsubscribe,
 )
@@ -227,6 +228,14 @@ def test_the_preheader_still_comes_from_the_templates_second_line():
 
 
 SERVICE_PAYLOADS = {
+    NotificationType.TRIAL_UPDATE: TrialUpdateData(
+        user_name="Sam",
+        plan=PLAN,
+        kind="started",
+        ends_label="17 Sep 2026",
+        onboarding_credit_amount=300,
+        offer_version="trial-v1",
+    ),
     NotificationType.SUBSCRIPTION_WELCOME: WELCOME,
     NotificationType.SUBSCRIPTION_ENDED: ENDED,
     NotificationType.PAYMENT_FAILED: PaymentFailedData(

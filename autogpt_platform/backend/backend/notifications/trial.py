@@ -1,10 +1,10 @@
 """Trial notices use accepted terms and current subscription state."""
 
+import logging
 from datetime import UTC, datetime
 from typing import Literal
 
 import stripe
-from prisma.enums import NotificationType
 
 from backend.data.credit import (
     _invoice_subscription_id,
@@ -13,25 +13,20 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.db_accessors import credit_db, user_db
-from backend.data.notifications import (
-    NotificationEventModel,
-    SubscriptionPlan,
-    TrialUpdateData,
-)
+from backend.data.notifications import SubscriptionPlan, TrialUpdateData
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import TrialState
-from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
-from backend.notifications.queue import queue_notification_async
+from backend.notifications.queue import queue_trial_delivery
+
+logger = logging.getLogger(__name__)
 
 TrialNoticeKind = Literal[
     "started", "ending", "canceled", "resumed", "ended", "converted", "payment_failed"
 ]
 
 
-async def notify_trial(
-    subscription: dict, kind: TrialNoticeKind, episode: str = ""
-) -> bool:
+async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     metadata = subscription.get("metadata") or {}
     if not metadata.get("trial_enrollment_id"):
         return False
@@ -57,20 +52,19 @@ async def notify_trial(
         return True
     user = await user_db().get_user_by_id(user_id)
     data = trial_notice_data(trial, kind, user.name or "there")
-    claim = f"trial:{trial.id}:{kind}:{episode or trial.ends_at}"
-    if not await claim_once(claim):
-        return True
-    try:
-        result = await queue_notification_async(
-            NotificationEventModel[TrialUpdateData](
-                user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
-            )
+    claim = trial_notice_key(trial, kind)
+    receipt = await credit_db().enqueue_trial_notification(
+        user_id, trial.id, claim, data
+    )
+    result = await queue_trial_delivery(receipt.id)
+    if result.success:
+        await credit_db().mark_trial_notification_queued(receipt.id)
+    else:
+        logger.warning(
+            "Trial notice %s is durable and awaits queue recovery", receipt.id
         )
-        if not result.success:
-            raise RuntimeError(f"Could not queue trial {kind} notice")
-    except Exception:
-        await release_claim(claim)
-        raise
+    if not receipt.created:
+        return True
     _track_billing_event(
         f"subscription_trial_{kind}",
         user_id,
@@ -107,7 +101,7 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
         await notify_trial(subscription, "converted")
         return True
     if not paid and trial.converted_at is None:
-        await notify_trial(subscription, "payment_failed", str(invoice.get("id", "")))
+        await notify_trial(subscription, "payment_failed")
         return True
     return False
 
@@ -135,11 +129,23 @@ async def on_trial_subscription_updated(subscription: dict, previous: dict) -> b
         return False
     if "cancel_at_period_end" in previous:
         kind = "canceled" if trial.cancel_at_period_end else "resumed"
-        episode = str(
-            subscription.get("canceled_at") or previous.get("canceled_at") or ""
-        )
-        await notify_trial(subscription, kind, episode)
+        await notify_trial(subscription, kind)
     return True
+
+
+def trial_notice_key(trial: TrialState, kind: TrialNoticeKind) -> str:
+    key = f"trial:{trial.id}:{kind}"
+    if kind in ("canceled", "resumed"):
+        return f"{key}:{trial.notification_revision}"
+    if kind == "ending":
+        if trial.ends_at is None:
+            raise ValueError("Trial reminder requires an end date")
+        return f"{key}:{int(trial.ends_at.timestamp())}"
+    if kind == "converted":
+        if not trial.conversion_invoice_id:
+            raise ValueError("Trial conversion notice requires its invoice")
+        return f"{key}:{trial.conversion_invoice_id}"
+    return key
 
 
 def trial_notice_data(

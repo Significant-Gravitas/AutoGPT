@@ -206,30 +206,54 @@ enum SubscriptionTier {
 }
 
 model SubscriptionTrial {
-  id                        String    @id @default(uuid())
-  userId                    String    @unique
-  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        String                      @id @default(uuid())
+  userId                    String                      @unique
+  user                      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   offer                     Json
   stripeCustomerId          String
-  stripeCheckoutSessionId   String?   @unique
-  stripeSubscriptionId      String?   @unique
-  stripeConversionInvoiceId String?   @unique
-  checkoutAttempt           Int       @default(0)
+  stripeCheckoutSessionId   String?                     @unique
+  stripeSubscriptionId      String?                     @unique
+  stripeConversionInvoiceId String?                     @unique
+  notificationRevision      Int                         @default(0)
+  checkoutAttempt           Int                         @default(0)
   checkoutSuccessUrl        String
   checkoutCancelUrl         String
-  checkoutMetadata          Json      @default("{}")
-  status                    String    @default("checkout_pending")
+  checkoutMetadata          Json                        @default("{}")
+  status                    String                      @default("checkout_pending")
   cardVerifiedAt            DateTime?
   startedAt                 DateTime?
   endsAt                    DateTime?
   consumedAt                DateTime?
   convertedAt               DateTime?
-  cancelAtPeriodEnd         Boolean   @default(false)
-  costMicrodollars          BigInt    @default(0)
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  cancelAtPeriodEnd         Boolean                     @default(false)
+  costMicrodollars          BigInt                      @default(0)
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+  notifications             TrialNotificationDelivery[]
 
   @@index([status, endsAt])
+}
+
+model TrialNotificationDelivery {
+  id                String            @id @default(uuid())
+  trialId           String
+  trial             SubscriptionTrial @relation(fields: [trialId], references: [id], onDelete: Cascade)
+  userId            String
+  idempotencyKey    String            @unique
+  payload           Json
+  status            String            @default("pending")
+  attempts          Int               @default(0)
+  nextAttemptAt     DateTime          @default(now())
+  nextWakeAt        DateTime          @default(now())
+  leaseToken        String?
+  leaseExpiresAt    DateTime?
+  providerMessageId String?           @unique
+  acceptedAt        DateTime?
+  lastError         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([status, nextWakeAt])
 }
 
 model UserOnboarding {
