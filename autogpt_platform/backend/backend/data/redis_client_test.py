@@ -4,6 +4,7 @@ Patches the redis-py constructors + ``ping()`` so no real Redis is needed.
 """
 
 import asyncio
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -690,3 +691,51 @@ def test_sharded_pubsub_reconnect_after_forced_disconnect() -> None:
         ps2.close()
         client2.close()
         redis_client.disconnect()
+
+
+class TestServerReachable:
+    """Unit tests for the collection-time reachability probe."""
+
+    def test_true_for_a_live_tcp_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        with listener:
+            monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+            monkeypatch.setattr(redis_client, "PORT", port)
+            assert redis_client.server_reachable() is True
+
+    def test_false_when_connection_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.close()  # nothing is listening on the port anymore
+        monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+        monkeypatch.setattr(redis_client, "PORT", port)
+        assert redis_client.server_reachable() is False
+
+    def test_false_when_host_does_not_resolve(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fail_getaddrinfo(*args: object, **kwargs: object) -> list:
+            raise OSError("resolution failed")
+
+        monkeypatch.setattr(redis_client.socket, "getaddrinfo", _fail_getaddrinfo)
+        monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+        monkeypatch.setattr(redis_client, "PORT", 6379)
+        assert redis_client.server_reachable() is False
+
+    def test_false_when_the_deadline_is_already_spent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        with listener:
+            monkeypatch.setattr(redis_client, "HOST", "127.0.0.1")
+            monkeypatch.setattr(redis_client, "PORT", port)
+            assert redis_client.server_reachable(timeout=0) is False
