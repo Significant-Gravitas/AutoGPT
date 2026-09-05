@@ -295,7 +295,7 @@ def _enrich_item(
         return item
     item.execution_available = ref.execution_available
     item.execution_graph_version = execution.agentGraphVersion
-    item.execution_status = execution.executionStatus.value
+    item.execution_status = execution.executionStatus
     item.execution_started_at = execution.startedAt
     _add_related(item, execution, executions, refs)
     item.related_executions_has_more = len(item.related_executions) < child_counts.get(

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from prisma.enums import AgentExecutionStatus
+from prisma.enums import AgentExecutionStatus, ResourceVisibility
 from prisma.models import (
     AgentGraph,
     AgentGraphExecution,
@@ -22,9 +22,13 @@ def _graph(graph_id="graph", version=2, name="Original agent"):
 
 
 def _execution(execution_id="run", graph_id="graph", parent=None):
-    return MagicMock(
-        spec=AgentGraphExecution,
+    return AgentGraphExecution(
         id=execution_id,
+        createdAt=datetime(2026, 9, 5, 9, tzinfo=timezone.utc),
+        userId="user",
+        isDeleted=False,
+        isShared=False,
+        visibility=ResourceVisibility.PRIVATE,
         agentGraphId=graph_id,
         agentGraphVersion=2,
         parentGraphExecutionId=parent,
