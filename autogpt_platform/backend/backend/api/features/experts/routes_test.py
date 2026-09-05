@@ -18,6 +18,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.experts import experts_db
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
     Expert,
@@ -1128,6 +1129,25 @@ def test_remove_workflow_unknown_returns_404(
     response = client.delete("/experts/expert-1/workflows/missing")
 
     assert response.status_code == 404
+
+
+def test_remove_workflow_cleanup_failure_returns_retryable_503(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    remove = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.remove_workflow",
+        new_callable=AsyncMock,
+        side_effect=ExpertScheduleCleanupError("internal schedule ID"),
+    )
+
+    response = client.delete("/experts/expert-1/workflows/workflow-ref-1")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Could not remove the workflow schedule. Please try again."
+    }
+    remove.assert_awaited_once_with(test_user_id, "expert-1", "workflow-ref-1")
 
 
 def test_install_workflow_unknown_expert_returns_404(

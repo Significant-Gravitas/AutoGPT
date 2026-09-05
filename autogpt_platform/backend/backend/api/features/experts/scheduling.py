@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import prisma.models
 from prisma.enums import ResourceVisibility
 
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
@@ -107,7 +108,9 @@ async def delete_workflow_schedule(
 ) -> None:
     """Drop the schedule of a workflow being removed from an expert."""
     if not await _delete_schedule_best_effort(schedule_id, user_id, expert_id):
-        raise RuntimeError(f"Could not delete workflow schedule #{schedule_id}")
+        raise ExpertScheduleCleanupError(
+            f"Could not delete workflow schedule #{schedule_id}"
+        )
 
 
 async def _delete_schedule_best_effort(

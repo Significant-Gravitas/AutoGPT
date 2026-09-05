@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -462,7 +463,10 @@ async def install_expert_workflow(
     "/{expert_id}/workflows/{workflow_id}",
     operation_id="remove_expert_workflow",
     status_code=204,
-    responses={404: {"description": "Expert or workflow not found"}},
+    responses={
+        404: {"description": "Expert or workflow not found"},
+        503: {"description": "Workflow schedule cleanup temporarily unavailable"},
+    },
 )
 async def remove_expert_workflow(
     expert_id: str,
@@ -473,6 +477,11 @@ async def remove_expert_workflow(
         await experts_db.remove_workflow(user_id, expert_id, workflow_id)
     except NotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
+    except ExpertScheduleCleanupError as e:
+        raise fastapi.HTTPException(
+            status_code=503,
+            detail="Could not remove the workflow schedule. Please try again.",
+        ) from e
 
 
 @router.get(

@@ -5,6 +5,7 @@ import prisma.models
 import pytest
 
 from backend.api.features.experts import experts_db, scheduling
+from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.util.exceptions import NotFoundError
 
 
@@ -39,7 +40,7 @@ async def test_remove_workflow_preserves_row_until_schedule_is_deleted(
         if deleted:
             await experts_db.remove_workflow("owner-1", "expert-1", "workflow-1")
         else:
-            with pytest.raises(RuntimeError, match="schedule"):
+            with pytest.raises(ExpertScheduleCleanupError, match="schedule"):
                 await experts_db.remove_workflow("owner-1", "expert-1", "workflow-1")
 
     assert (
