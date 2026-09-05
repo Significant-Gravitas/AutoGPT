@@ -856,9 +856,12 @@ describe("ExpertDetailPage", () => {
     const button = await screen.findByRole("button", {
       name: "Change Maria's photo",
     });
-    const fileInput = button.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
+    const fileInput = screen.getByLabelText("Upload Maria photo");
+    expect(button.contains(fileInput)).toBe(false);
+    const pickerClick = vi.spyOn(fileInput, "click");
+    fireEvent.click(button);
+    expect(pickerClick).toHaveBeenCalledTimes(1);
+    pickerClick.mockRestore();
     const file = new File(["x"], "maria.png", { type: "image/png" });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
@@ -883,9 +886,8 @@ describe("ExpertDetailPage", () => {
     const button = await screen.findByRole("button", {
       name: "Change Maria's photo",
     });
-    const fileInput = button.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
+    const fileInput = screen.getByLabelText("Upload Maria photo");
+    expect(button.contains(fileInput)).toBe(false);
     fireEvent.change(fileInput, {
       target: { files: [new File(["x"], "maria.png", { type: "image/png" })] },
     });
