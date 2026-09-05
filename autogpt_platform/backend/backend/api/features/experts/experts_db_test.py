@@ -3672,7 +3672,8 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
 @pytest.mark.asyncio
 async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar():
     tz = "Pacific/Auckland"
-    today = datetime.now(ZoneInfo(tz)).date()
+    instant = datetime(2026, 1, 1, 11, 30, tzinfo=timezone.utc)
+    today = instant.astimezone(ZoneInfo(tz)).date()
     yesterday = today - timedelta(days=1)
     seen: list[tuple] = []
 
@@ -3692,7 +3693,9 @@ async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar(
             new=AsyncMock(return_value=SimpleNamespace(timezone=tz)),
         ),
         patch.object(experts_db, "query_raw_with_schema", new=fake_query),
+        patch.object(experts_db, "datetime", wraps=datetime) as clock,
     ):
+        clock.now.return_value = instant.astimezone(ZoneInfo(tz))
         activity = await experts_db.get_expert_activity("owner-1", "expert-1")
 
     assert activity.timezone == tz
@@ -3739,10 +3742,16 @@ async def test_get_expert_activity_counts_sessions_by_day(server: SpinTestServer
         await create_chat_session(owner.id, dry_run=False, expert_id=raised.expert.id)
     await create_chat_session(owner.id, dry_run=False)
 
-    activity = await experts_db.get_expert_activity(owner.id, raised.expert.id)
+    instant = datetime(2026, 1, 1, 23, 59, tzinfo=timezone.utc)
+    await prisma.models.ChatSession.prisma().update_many(
+        where={"userId": owner.id}, data={"createdAt": instant}
+    )
+    with patch.object(experts_db, "datetime", wraps=datetime) as clock:
+        clock.now.return_value = instant
+        activity = await experts_db.get_expert_activity(owner.id, raised.expert.id)
 
     assert activity.timezone == "UTC"
-    assert activity.days[-1].day == datetime.now(timezone.utc).date()
+    assert activity.days[-1].day == instant.date()
     assert activity.days[-1].sessions == 2
     assert sum(d.sessions for d in activity.days) == 2
     assert sum(d.runs for d in activity.days) == 0
