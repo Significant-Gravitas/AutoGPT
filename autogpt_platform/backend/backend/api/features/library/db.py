@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+import re
 from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
@@ -50,6 +51,23 @@ from .embeddings import schedule_library_agent_embedding
 logger = logging.getLogger(__name__)
 config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
+
+
+def _normalize_search_term(term: str) -> str:
+    """Normalize a search term for Prisma full-text search.
+
+    Prisma's ``search`` filter delegates to PostgreSQL's
+    ``plainto_tsquery`` (or ``websearch_to_tsquery``) which safely
+    handles plain text by AND-ing words together. This helper strips
+    stray tsquery operators (``&``, ``|``, ``!``, ``:``, ``*``,
+    parentheses) that a user might type accidentally, and collapses
+    whitespace so the query remains readable.
+    """
+    # Remove tsquery special characters that plainto_tsquery doesn't
+    # expect in raw form. plainto_tsquery treats input as plain text.
+    cleaned = re.sub(r"[&|!():*]+", " ", term)
+    # Collapse whitespace and strip
+    return " ".join(cleaned.split())
 
 
 async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
@@ -163,10 +181,16 @@ async def list_library_agents(
             }
         ]
 
+    # Normalize search term early so folder checks and search clause
+    # both use the same sanitized value. Normalization strips tsquery
+    # operators and collapses whitespace; an empty result means no
+    # search filter should be applied.
+    normalized = _normalize_search_term(search_term or "")
+
     # Apply folder filter (skip when searching — search spans all folders)
-    if folder_id is not None and not search_term:
+    if folder_id is not None and not normalized:
         where_clause["folderId"] = folder_id
-    elif include_root_only and not search_term:
+    elif include_root_only and not normalized:
         where_clause["folderId"] = None
 
     # Apply isHidden filter
@@ -174,22 +198,22 @@ async def list_library_agents(
         where_clause["isHidden"] = is_hidden
 
     # Build search filter if applicable
-    if search_term:
-        # Match both the snapshotted marketplace name/description (shown on the
-        # card for downloaded agents) and the underlying graph's own values, so
-        # searching the displayed title always finds the agent.
+    if normalized:
+        # Use Postgres full-text search for better relevance and performance.
+        # Matches both the snapshotted marketplace name/description (shown on
+        # the card for downloaded agents) and the underlying graph's own values.
         where_clause["OR"] = [
-            {"name": {"contains": search_term, "mode": "insensitive"}},
-            {"description": {"contains": search_term, "mode": "insensitive"}},
+            {"name": {"search": normalized}},
+            {"description": {"search": normalized}},
             {
                 "AgentGraph": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
+                    "is": {"name": {"search": normalized}}
                 }
             },
             {
                 "AgentGraph": {
                     "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
+                        "description": {"search": normalized}
                     }
                 }
             },
