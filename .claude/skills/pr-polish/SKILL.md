@@ -172,8 +172,9 @@ while clean_polls < required_clean:
 
     # 4. Pending-review gate — a /review with no bot answer yet.
     # Quiet is exactly what a bot still thinking looks like, so don't bank
-    # a clean poll on it. Bounded by REVIEW_WAIT_BUDGET so it can't hang.
-    if review_requested_but_unanswered(PR) and elapsed_since_review_request < REVIEW_WAIT_BUDGET:
+    # a clean poll on it. review_requested_but_unanswered() already returns
+    # false once REVIEW_WAIT_BUDGET is spent, so the loop cannot hang here.
+    if review_requested_but_unanswered(PR):
         sleep 60; continue
 
     clean_polls += 1
