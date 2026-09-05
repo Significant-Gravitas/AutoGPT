@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from prisma.enums import CreditTransactionType
+from pydantic import Json, TypeAdapter, field_validator
 
 from backend.data.credit_history_cursor import (
     CreditHistoryCursor,
@@ -13,7 +14,11 @@ from backend.data.credit_history_cursor import (
 from backend.data.credit_history_enrichment import enrich_credit_history
 from backend.data.credit_history_queries import credit_history_query
 from backend.data.db import query_raw_with_schema
-from backend.data.model import CreditTransactionItem, TransactionHistory
+from backend.data.model import (
+    CreditHistoryCharge,
+    CreditTransactionItem,
+    TransactionHistory,
+)
 
 
 async def get_credit_history(
@@ -84,6 +89,12 @@ class _HistoryRow(CreditTransactionItem):
     usage_has_block: bool = False
     usage_is_daily_reset: bool = False
 
+    @field_validator("charges", mode="before")
+    @classmethod
+    def parse_charges(cls, value: object) -> list[CreditHistoryCharge]:
+        # Prisma's typed raw-query decoder serializes JSON columns to strings.
+        return _HISTORY_CHARGES.validate_python(value)
+
 
 def _to_item(row: _HistoryRow, user_id: str) -> CreditTransactionItem:
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
@@ -138,3 +149,7 @@ _TRANSACTION_DESCRIPTIONS = {
     CreditTransactionType.CARD_CHECK: "Card verification",
     CreditTransactionType.SUBSCRIPTION: "Subscription payment",
 }
+
+_HISTORY_CHARGES = TypeAdapter(
+    list[CreditHistoryCharge] | Json[list[CreditHistoryCharge]]
+)

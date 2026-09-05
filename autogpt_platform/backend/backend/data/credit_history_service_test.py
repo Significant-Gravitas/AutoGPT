@@ -1,8 +1,11 @@
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
+from prisma._raw_query import deserialize_raw_results
 from prisma.enums import CreditTransactionType
+from pydantic import ValidationError
 
 from backend.data.credit_history import _HistoryRow, _to_item, get_credit_history
 from backend.data.credit_history_cursor import cursor_scope, decode_cursor
@@ -205,3 +208,42 @@ def test_raw_query_dates_are_unambiguously_utc():
     item = _to_item(row, "user")
     assert item.transaction_time == datetime(2026, 9, 5, 10, tzinfo=timezone.utc)
     assert item.charges[0].posted_at == datetime(2026, 9, 5, 9, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("serialized", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_prisma_raw_json_charges_are_parsed_at_the_history_boundary(
+    serialized, populated
+):
+    charges = (
+        [charge.model_dump(mode="json") for charge in history_row("run").charges]
+        if populated
+        else []
+    )
+    rows = deserialize_raw_results(
+        {
+            "columns": ["id", "amount", "charges_total_count", "charges"],
+            "types": ["string", "bigint", "int", "json"],
+            "rows": [
+                [
+                    "execution:run",
+                    "-50" if populated else "0",
+                    len(charges),
+                    json.dumps(charges) if serialized else charges,
+                ]
+            ],
+        },
+        model=_HistoryRow,
+    )
+    item = _to_item(rows[0], "user")
+    assert item.charges == (history_row("run").charges if populated else [])
+    assert item.amount == sum(charge.amount for charge in item.charges)
+    assert item.charges_total_count == len(item.charges)
+    assert not item.charges_truncated
+    assert json.loads(item.model_dump_json())["charges"] == charges
+
+
+@pytest.mark.parametrize("charges", ["invalid-json", "{}", '[{"id":"missing-fields"}]'])
+def test_malformed_database_charges_are_not_silently_discarded(charges):
+    with pytest.raises(ValidationError):
+        _HistoryRow.model_validate({"charges": charges})
