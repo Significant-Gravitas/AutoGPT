@@ -1,11 +1,9 @@
 import { fireEvent, render } from "@testing-library/react";
-import { useRef } from "react";
 import { describe, expect, test, vi } from "vitest";
 import { useFitListToDialog } from "../useFitListToDialog";
 
 function Harness() {
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const attachList = useFitListToDialog(listRef);
+  const { attachList } = useFitListToDialog<HTMLUListElement>();
   return (
     <div data-dialog-content>
       <div className="overflow-y-auto" data-testid="body">

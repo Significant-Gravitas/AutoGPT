@@ -14,7 +14,7 @@ import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/Fullsc
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon, LockIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResizeHandle";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { cn } from "@/lib/utils";
@@ -119,8 +119,10 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
     expert,
     onClose,
   });
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const hasMoreBelow = useBottomScrollShadow(scrollRef);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const hasMoreBelow = useBottomScrollShadow(scrollElement);
 
   return (
     <>
@@ -151,7 +153,10 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
 
       <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollRef} className="h-full overflow-y-auto px-5 py-5">
+          <div
+            ref={setScrollElement}
+            className="h-full overflow-y-auto px-5 py-5"
+          >
             <Text variant="small" className="mb-5 text-zinc-500">
               A living document that shapes every reply.
             </Text>

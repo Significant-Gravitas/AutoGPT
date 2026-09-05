@@ -1,21 +1,7 @@
-import {
-  MutableRefObject,
-  useCallback,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { useLayoutEffect, useState } from "react";
 
-export function useFitListToDialog<T extends HTMLElement>(
-  listRef: MutableRefObject<T | null>,
-) {
+export function useFitListToDialog<T extends HTMLElement>() {
   const [list, setList] = useState<T | null>(null);
-  const attachList = useCallback(
-    (element: T | null) => {
-      listRef.current = element;
-      setList(element);
-    },
-    [listRef],
-  );
 
   useLayoutEffect(() => {
     if (!list) return;
@@ -43,5 +29,5 @@ export function useFitListToDialog<T extends HTMLElement>(
       observer?.disconnect();
     };
   }, [list]);
-  return attachList;
+  return { attachList: setList, list };
 }

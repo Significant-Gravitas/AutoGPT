@@ -14,7 +14,6 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { Plug01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useRef } from "react";
 import { useBottomScrollShadow } from "../../../components/SoulDrawer/useBottomScrollShadow";
 import { useFitListToDialog } from "../useFitListToDialog";
 import { useExpertConnectServiceDialog } from "./useExpertConnectServiceDialog";
@@ -75,9 +74,8 @@ export function ExpertConnectServiceDialog({
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const hasMoreBelow = useBottomScrollShadow(listRef);
-  const attachList = useFitListToDialog(listRef);
+  const { attachList, list } = useFitListToDialog<HTMLUListElement>();
+  const hasMoreBelow = useBottomScrollShadow(list);
 
   return (
     <Dialog

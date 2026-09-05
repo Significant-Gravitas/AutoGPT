@@ -18,7 +18,7 @@ import {
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useFitListToDialog } from "./useFitListToDialog";
 
 type Source = "library" | "marketplace";
@@ -55,8 +55,7 @@ export function AddSkillDialog({
   onClose,
 }: Props) {
   const [query, setQuery] = useState("");
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const attachList = useFitListToDialog(listRef);
+  const { attachList } = useFitListToDialog<HTMLUListElement>();
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? skills.filter(

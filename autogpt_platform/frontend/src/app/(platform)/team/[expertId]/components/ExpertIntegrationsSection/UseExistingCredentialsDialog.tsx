@@ -15,7 +15,7 @@ import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/Integrat
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useBottomScrollShadow } from "../../../components/SoulDrawer/useBottomScrollShadow";
 import { useFitListToDialog } from "../useFitListToDialog";
 
@@ -64,9 +64,8 @@ export function UseExistingCredentialsDialog({
 }: Props) {
   const [query, setQuery] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const hasMoreBelow = useBottomScrollShadow(listRef);
-  const attachList = useFitListToDialog(listRef);
+  const { attachList, list } = useFitListToDialog<HTMLUListElement>();
+  const hasMoreBelow = useBottomScrollShadow(list);
 
   useEffect(() => {
     if (!open) {

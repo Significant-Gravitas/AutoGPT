@@ -10,7 +10,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ArrowRight01Icon, Calendar03Icon } from "@hugeicons/core-free-icons";
 import { useCreateScheduleDialog } from "./useCreateScheduleDialog";
-import { useRef } from "react";
 import { useFitListToDialog } from "./useFitListToDialog";
 
 interface Props {
@@ -28,8 +27,7 @@ export function CreateScheduleDialog({
 }: Props) {
   const { handleScheduleCreated } = useCreateScheduleDialog(expertId, onClose);
   const schedulable = workflows.filter((workflow) => workflow.library_agent_id);
-  const listRef = useRef<HTMLUListElement | null>(null);
-  const attachList = useFitListToDialog(listRef);
+  const { attachList } = useFitListToDialog<HTMLUListElement>();
 
   return (
     <Dialog
