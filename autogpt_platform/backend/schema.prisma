@@ -188,6 +188,7 @@ model User {
   PlatformUserLinks PlatformUserLink[]
 
   ExperimentAssignments ExperimentAssignment[]
+  Attribution          UserAttribution?
 }
 
 // One row per (user, experiment): the arm a user was bucketed into the first
@@ -210,6 +211,38 @@ model ExperimentAssignment {
   @@unique([userId, experimentKey])
   @@index([experimentKey, variant])
 }
+
+// Where a user came from, captured once around signup. Holds the identities
+// the analytics tools know the user by before they had a user id, so the
+// database can join marketing attribution (DataFast), product analytics
+// (PostHog) and feature-flag bucketing (LaunchDarkly, via the shared
+// anonymous id) to activation and revenue. Fields are filled at most once.
+model UserAttribution {
+  userId    String   @id
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // First-party anonymous id shared with PostHog and LaunchDarkly pre-login.
+  anonymousId       String?
+  // PostHog $device_id at the time of reporting, when it differs.
+  posthogDistinctId String?
+  datafastVisitorId String?
+  datafastSessionId String?
+
+  // First landing on the site, as seen by the browser that later signed up.
+  landingPath String?
+  referrer    String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  // "email" | "google" when the account was created in this browser session.
+  signupMethod String?
+
+  @@index([anonymousId])
+  @@index([datafastVisitorId])
+}
+
 
 
 enum ChatSessionStatus {
