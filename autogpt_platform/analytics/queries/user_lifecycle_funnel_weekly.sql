@@ -7,8 +7,10 @@
 --   analytics.user_lifecycle (so the definitions live in one place).
 --   Each stage is a count of users in the cohort who reached it, plus
 --   the share of the cohort. Stages that need time to mature (e.g.
---   activated within 14 days) are NULL for cohorts younger than that,
---   so a half-baked recent week never reads as a drop.
+--   activated within 14 days) are NULL until the whole cohort week has
+--   aged that long, counted from the week's last day (so week start plus
+--   7 days plus the window), so a half-baked recent week never reads as
+--   a drop.
 --
 -- SOURCE VIEWS
 --   analytics.user_lifecycle
@@ -61,23 +63,23 @@ SELECT
   TO_CHAR(cohort_week_start, 'IYYY-"W"IW')                               AS cohort_label,
   signups,
   onboarded,
-  CASE WHEN cohort_week_start + 7 <= CURRENT_DATE THEN first_task_7d END AS first_task_7d,
-  CASE WHEN cohort_week_start + 14 <= CURRENT_DATE THEN activated_14d END AS activated_14d,
+  CASE WHEN cohort_week_start + 14 <= CURRENT_DATE THEN first_task_7d END AS first_task_7d,
+  CASE WHEN cohort_week_start + 21 <= CURRENT_DATE THEN activated_14d END AS activated_14d,
   connected_integration,
   created_schedule,
   used_expert,
   purchased,
-  CASE WHEN cohort_week_start + 28 <= CURRENT_DATE THEN retained_w4 END  AS retained_w4,
+  CASE WHEN cohort_week_start + 35 <= CURRENT_DATE THEN retained_w4 END  AS retained_w4,
   onboarded::float / NULLIF(signups, 0)                                  AS pct_onboarded,
-  CASE WHEN cohort_week_start + 7 <= CURRENT_DATE
-       THEN first_task_7d::float / NULLIF(signups, 0) END                AS pct_first_task_7d,
   CASE WHEN cohort_week_start + 14 <= CURRENT_DATE
+       THEN first_task_7d::float / NULLIF(signups, 0) END                AS pct_first_task_7d,
+  CASE WHEN cohort_week_start + 21 <= CURRENT_DATE
        THEN activated_14d::float / NULLIF(signups, 0) END                AS pct_activated_14d,
   connected_integration::float / NULLIF(signups, 0)                      AS pct_connected_integration,
   created_schedule::float / NULLIF(signups, 0)                           AS pct_created_schedule,
   used_expert::float / NULLIF(signups, 0)                                AS pct_used_expert,
   purchased::float / NULLIF(signups, 0)                                  AS pct_purchased,
-  CASE WHEN cohort_week_start + 28 <= CURRENT_DATE
+  CASE WHEN cohort_week_start + 35 <= CURRENT_DATE
        THEN retained_w4::float / NULLIF(signups, 0) END                  AS pct_retained_w4
 FROM cohorts
 ORDER BY cohort_week_start
