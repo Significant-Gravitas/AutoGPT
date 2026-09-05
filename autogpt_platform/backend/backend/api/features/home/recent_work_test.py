@@ -145,6 +145,8 @@ def test_groups_runs_and_deliverables_under_the_actor_that_did_them() -> None:
     assert [run.id for run in notes_group.runs] == ["run-notes"]
     assert [item.id for item in notes_group.items] == ["e2"]
     assert notes_group.items[0].link is None
+    assert (notes_group.run_count, notes_group.integration_count) == (1, 1)
+    assert (maria_group.run_count, maria_group.file_count) == (1, 1)
 
 
 def test_an_executor_event_follows_its_run_to_the_expert() -> None:
@@ -240,7 +242,10 @@ def test_groups_are_capped_and_report_the_overflow() -> None:
     group = work.groups[0]
     assert len(group.runs) == _MAX_RUNS_PER_GROUP
     assert len(group.items) == _MAX_ITEMS_PER_GROUP
-    assert group.more_count == 5
+    # The header counts the whole week even though the rows are a slice.
+    assert group.run_count == _MAX_RUNS_PER_GROUP + 2
+    assert group.file_count == _MAX_ITEMS_PER_GROUP + 3
+    assert group.integration_count == 0
     assert work.total_count == _MAX_ITEMS_PER_GROUP + 3
 
 

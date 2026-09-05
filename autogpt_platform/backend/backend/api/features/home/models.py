@@ -153,9 +153,12 @@ class HomeRecentWorkGroup(BaseModel):
     latest_at: datetime
     runs: list[HomeBriefingOutcome] = Field(default_factory=list)
     items: list[HomeRecentWorkItem] = Field(default_factory=list)
-    # Runs and items past the per-group caps, so the group can say how much
-    # more there was without listing it.
-    more_count: int = 0
+    # Week totals per kind, uncapped, so the header can state how much the
+    # actor did even when the rows below are a slice of it.
+    run_count: int = 0
+    file_count: int = 0
+    integration_count: int = 0
+    schedule_count: int = 0
 
 
 class HomeRecentWork(BaseModel):

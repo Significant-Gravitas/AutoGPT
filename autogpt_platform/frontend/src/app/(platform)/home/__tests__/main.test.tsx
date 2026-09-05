@@ -187,7 +187,7 @@ const dashboard: HomeDashboardResponse = {
         latest_at: NOW,
         runs: [cameraResearch, schedulingFailure],
         items: [],
-        more_count: 13,
+        run_count: 14,
       },
     ],
   },
@@ -216,7 +216,7 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
-  expect(screen.getByText("Plus 13 more")).toBeDefined();
+  expect(screen.getByText("14 runs")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
   expect(
     screen.getByRole("link", { name: /View all 10 experts/ }),
