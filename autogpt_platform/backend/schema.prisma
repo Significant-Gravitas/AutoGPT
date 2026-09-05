@@ -186,7 +186,31 @@ model User {
   // Platform bot linking
   PlatformLinks     PlatformLink[]
   PlatformUserLinks PlatformUserLink[]
+
+  ExperimentAssignments ExperimentAssignment[]
 }
+
+// One row per (user, experiment): the arm a user was bucketed into the first
+// time the experiment was evaluated for them. Written once and never
+// overwritten, so analytics can join a stable arm to every later event
+// (runs, retention, spend) without depending on the flag provider's history.
+model ExperimentAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  experimentKey String
+  variant       String
+  // "posthog" when the frontend reports a PostHog-evaluated flag,
+  // "backend" when the server bucketed the user itself.
+  source        String
+
+  @@unique([userId, experimentKey])
+  @@index([experimentKey, variant])
+}
+
 
 enum ChatSessionStatus {
   idle
