@@ -1,12 +1,13 @@
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import fastapi.exceptions
 import prisma
 import pytest
 from prisma.enums import SubmissionStatus
+from prisma.models import AgentGraph, LibraryAgent, User
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
@@ -26,6 +27,7 @@ from backend.data.graph import (
     Node,
     NodeModel,
     get_graph,
+    get_graph_settings,
     graph_in_library_filter,
     migrate_llm_models,
     validate_graph_execution_permissions,
@@ -34,6 +36,7 @@ from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -2153,6 +2156,78 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
         "where"
     ]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+# ============================================================================
+# Tests for get_graph_settings version resolution (real DB)
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "running_version, expected_session_id, expected_safe_mode",
+    [
+        (1, "settings-v1", True),
+        (2, "settings-v2", False),
+        (3, "settings-v1", True),
+    ],
+    ids=[
+        "live-version-keeps-its-own-settings",
+        "archived-version-keeps-its-own-settings",
+        "version-without-an-entry-falls-back-to-the-live-one",
+    ],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_settings_resolves_against_the_running_version(
+    server: SpinTestServer,
+    running_version: int,
+    expected_session_id: str,
+    expected_safe_mode: bool,
+) -> None:
+    """An archived entry must not override the version actually running."""
+    user_id = f"graph-settings-{uuid4()}"
+    graph_id = str(uuid4())
+    await User.prisma().create(
+        data={"id": user_id, "email": f"{user_id}@example.com", "name": "Settings Test"}
+    )
+    try:
+        for version in (1, 2, 3):
+            await AgentGraph.prisma().create(
+                data={
+                    "id": graph_id,
+                    "version": version,
+                    "name": f"Settings Test v{version}",
+                    "description": "test",
+                    "userId": user_id,
+                    "isActive": version == 3,
+                }
+            )
+        for version, archived, safe_mode in ((1, False, True), (2, True, False)):
+            await LibraryAgent.prisma().create(
+                data={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version,
+                    "isArchived": archived,
+                    "isCreatedByUser": True,
+                    "settings": SafeJson(
+                        {
+                            "sensitive_action_safe_mode": safe_mode,
+                            "builder_chat_session_id": f"settings-v{version}",
+                        }
+                    ),
+                }
+            )
+
+        settings = await get_graph_settings(
+            user_id=user_id, graph_id=graph_id, graph_version=running_version
+        )
+
+        assert settings.builder_chat_session_id == expected_session_id
+        assert settings.sensitive_action_safe_mode is expected_safe_mode
+    finally:
+        await LibraryAgent.prisma().delete_many(where={"userId": user_id})
+        await AgentGraph.prisma().delete_many(where={"id": graph_id})
+        await User.prisma().delete_many(where={"id": user_id})
 
 
 # ============================================================================

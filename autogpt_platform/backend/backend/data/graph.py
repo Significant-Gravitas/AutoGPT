@@ -1678,18 +1678,37 @@ async def delete_graph(
     return entries_count
 
 
-async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
-    # Same membership question as the authorization predicates: an archived
-    # agent still runs, and falling back to defaults here would silently turn
-    # the user's sensitive_action_safe_mode back off.
-    lib = await LibraryAgent.prisma().find_first(
-        where={
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-        },
-        order={"agentGraphVersion": "desc"},
-    )
+async def get_graph_settings(
+    user_id: str, graph_id: str, graph_version: int | None = None
+) -> GraphSettings:
+    """Settings of the library entry for the version being run.
+
+    Falls back to the user's other live entries when that version has none,
+    which is how an owner running a version they never added to their library
+    still gets their own safe-mode settings instead of the defaults.
+    """
+    # Archived entries stay eligible -- an archived agent still runs -- but the
+    # running version's own entry wins, so a hidden version can never turn the
+    # user's sensitive_action_safe_mode back off.
+    lib = None
+    if graph_version is not None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
+                "isDeleted": False,
+            },
+        )
+    if lib is None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            },
+            order=[{"isArchived": "asc"}, {"agentGraphVersion": "desc"}],
+        )
     if not lib or not lib.settings:
         return GraphSettings()
 
