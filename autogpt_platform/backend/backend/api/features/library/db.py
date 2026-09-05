@@ -2068,8 +2068,8 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    # A preset may only reference a graph the caller can access (own / store /
-    # library); get_graph() enforces that and a foreign/unknown graph is None.
+    # A preset may only reference a graph the caller can access (owned, or in
+    # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent),
     # resolved here so callers can't forget it.
     graph = await graph_db.get_graph(

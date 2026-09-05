@@ -386,3 +386,17 @@ export function buildChainSegments(
 
   return segments;
 }
+
+/** A tool call whose result has not landed. Whatever it needs from the user
+ *  has not been asked for yet. A call paused on human-in-the-loop approval
+ *  is equally unresolved — only a denial or an output ends it. */
+export function isToolCallPending(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  const state = (part as ToolUIPart).state;
+  return (
+    state === "input-streaming" ||
+    state === "input-available" ||
+    state === "approval-requested" ||
+    state === "approval-responded"
+  );
+}

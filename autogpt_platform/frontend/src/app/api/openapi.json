@@ -1220,6 +1220,90 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/generate-test-data": {
+      "post": {
+        "tags": ["v2", "admin", "test-data"],
+        "summary": "Generate Test Data",
+        "description": "Generate test data for the platform.\n\nThis endpoint runs the test data generation scripts to populate the database\nwith sample users, agents, graphs, executions, store listings, and more.\n\nAvailable script types:\n- `e2e`: Creates a set of test users with graphs, library agents, presets,\n         and store submissions. Uses API functions for better compatibility.\n- `full`: Creates 100+ users with comprehensive test data using direct Prisma\n          calls. Generates more data but may take longer.\n\n**Warning**: This will add significant data to your database. Use with caution.\n**Note**: This endpoint is only available in local environments; requests from\nany shared/cloud environment are rejected and alerted on.",
+        "operationId": "postV2Generate test data",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTestDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateTestDataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/impersonation/notify": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "impersonation"],
+        "summary": "Notify Impersonation Start",
+        "description": "Emit a Discord audit alert when an admin starts impersonating a user.\n\nAdmin-only. The alert gates impersonation: callers must treat a non-2xx\nresponse as \"do not impersonate\".",
+        "operationId": "postV2Notify impersonation start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpersonationNotifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationNotifyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/memory/{user_id}/communities": {
       "get": {
         "tags": ["v2", "admin", "admin", "memory"],
@@ -6323,6 +6407,91 @@
         }
       }
     },
+    "/api/experts/{expert_id}/activity": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Activity",
+        "description": "Daily chat-session and run counts for the expert's activity graph.",
+        "operationId": "get_expert_activity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertActivity" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/avatar": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Avatar",
+        "operationId": "update_expert_avatar",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertAvatarUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/credentials": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6638,6 +6807,52 @@
         }
       }
     },
+    "/api/experts/{expert_id}/skills": {
+      "put": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Skills",
+        "operationId": "update_expert_skills",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertSkillsUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/soul": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6728,6 +6943,46 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/workflows/{workflow_id}": {
+      "delete": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Remove Expert Workflow",
+        "operationId": "remove_expert_workflow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          },
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Workflow Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert or workflow not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Workflow schedule cleanup temporarily unavailable"
           }
         }
       }
@@ -13323,7 +13578,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Admin Add Pending Agent to Library",
-        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can then load the graph: get_graph() grants a library\nversion that was submitted, and PENDING counts as submitted.",
         "operationId": "postV2Admin add pending agent to library",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -19435,6 +19690,11 @@
             "type": "array",
             "title": "Workflows"
           },
+          "credential_count": {
+            "type": "integer",
+            "title": "Credential Count",
+            "default": 0
+          },
           "last_run_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -19486,6 +19746,45 @@
           "workflows"
         ],
         "title": "Expert"
+      },
+      "ExpertActivity": {
+        "properties": {
+          "timezone": { "type": "string", "title": "Timezone" },
+          "days": {
+            "items": { "$ref": "#/components/schemas/ExpertActivityDay" },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "required": ["timezone", "days"],
+        "title": "ExpertActivity",
+        "description": "Daily chat-session and run counts behind the at-a-glance activity graph.\n\n``days`` is zero-filled, oldest first, and ends on the owner's today."
+      },
+      "ExpertActivityDay": {
+        "properties": {
+          "day": { "type": "string", "format": "date", "title": "Day" },
+          "sessions": { "type": "integer", "title": "Sessions" },
+          "runs": { "type": "integer", "title": "Runs" }
+        },
+        "type": "object",
+        "required": ["day", "sessions", "runs"],
+        "title": "ExpertActivityDay",
+        "description": "One calendar day, in the owner's timezone, of expert activity."
+      },
+      "ExpertAvatarUpdate": {
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "type": "object",
+        "title": "ExpertAvatarUpdate",
+        "description": "Swap an expert's picture. ``None`` clears it back to the generated marble."
       },
       "ExpertCredentialRef": {
         "properties": {
@@ -19615,6 +19914,26 @@
         "title": "ExpertRun",
         "description": "One expert-attributed execution, for the /team Work surface."
       },
+      "ExpertSkillsUpdate": {
+        "properties": {
+          "skills": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Skills"
+          },
+          "marketplace_listing_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Marketplace Listing Ids"
+          }
+        },
+        "type": "object",
+        "required": ["skills"],
+        "title": "ExpertSkillsUpdate",
+        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+      },
       "ExpertSoulUpdate": {
         "properties": {
           "name": {
@@ -19675,6 +19994,32 @@
         "title": "ExpertSoulUpdatedResponse",
         "description": "Response for the two-step Soul edit tools.\n\nCarries the diff so the model must surface exactly what changed. ``applied``\nis False for the update_expert_soul preview (nothing written yet; the\none-time ``confirmation_id`` references the stored proposal) and True once\nconfirm_expert_soul_update saves the edit."
       },
+      "ExpertWorkflowChainItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "integration",
+              "input",
+              "output",
+              "trigger",
+              "agent",
+              "ai",
+              "mcp",
+              "human"
+            ],
+            "title": "Kind"
+          },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "ExpertWorkflowChainItem",
+        "description": "One step in the workflow card's summary chain: a provider logo for\nintegration blocks, or a kind the frontend maps to an icon."
+      },
       "ExpertWorkflowRef": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -19705,6 +20050,11 @@
           "schedule_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Schedule Id"
+          },
+          "chain": {
+            "items": { "$ref": "#/components/schemas/ExpertWorkflowChainItem" },
+            "type": "array",
+            "title": "Chain"
           }
         },
         "type": "object",
@@ -19986,6 +20336,34 @@
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse"
+      },
+      "GenerateTestDataRequest": {
+        "properties": {
+          "script_type": {
+            "$ref": "#/components/schemas/TestDataScriptType",
+            "default": "e2e"
+          }
+        },
+        "type": "object",
+        "title": "GenerateTestDataRequest",
+        "description": "Request model for test data generation."
+      },
+      "GenerateTestDataResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "message": { "type": "string", "title": "Message" },
+          "details": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "GenerateTestDataResponse",
+        "description": "Response model for test data generation."
       },
       "GlobalSearchResponse": {
         "properties": {
@@ -21536,6 +21914,20 @@
         "type": "object",
         "required": ["image_url"],
         "title": "ImageURLResponse"
+      },
+      "ImpersonationNotifyRequest": {
+        "properties": {
+          "target_user_id": { "type": "string", "title": "Target User Id" }
+        },
+        "type": "object",
+        "required": ["target_user_id"],
+        "title": "ImpersonationNotifyRequest"
+      },
+      "ImpersonationNotifyResponse": {
+        "properties": { "alerted": { "type": "boolean", "title": "Alerted" } },
+        "type": "object",
+        "required": ["alerted"],
+        "title": "ImpersonationNotifyResponse"
       },
       "IngestionDrainStatus": {
         "type": "string",
@@ -27170,6 +27562,12 @@
           "created_at"
         ],
         "title": "TeamResponse"
+      },
+      "TestDataScriptType": {
+        "type": "string",
+        "enum": ["full", "e2e"],
+        "title": "TestDataScriptType",
+        "description": "Available test data generation scripts."
       },
       "TimezoneResponse": {
         "properties": {

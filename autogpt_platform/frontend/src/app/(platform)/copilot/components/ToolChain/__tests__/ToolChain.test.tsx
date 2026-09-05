@@ -1,6 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render as baseRender,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
@@ -448,3 +453,22 @@ describe("ToolChain", () => {
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
   });
 });
+
+// ToolChain sends the chain's follow-up turn itself, so it needs the actions
+// provider its production parents always supply.
+function render(ui: React.ReactElement) {
+  const { rerender, ...rest } = baseRender(
+    <CopilotChatActionsProvider onSend={vi.fn()}>
+      {ui}
+    </CopilotChatActionsProvider>,
+  );
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) =>
+      rerender(
+        <CopilotChatActionsProvider onSend={vi.fn()}>
+          {next}
+        </CopilotChatActionsProvider>,
+      ),
+  };
+}

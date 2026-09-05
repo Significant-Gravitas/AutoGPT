@@ -176,7 +176,7 @@ async def test_top_up_intent_attaches_datafast_metadata():
     mock_session = MagicMock()
     mock_session.id = "cs_test_topup"
     mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     credit_system = UserCredit()
     with (
         patch(
@@ -190,7 +190,7 @@ async def test_top_up_intent_attaches_datafast_metadata():
             return_value=None,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
@@ -214,7 +214,7 @@ async def test_create_subscription_checkout_attaches_datafast_metadata():
     metadata and the subscription_data metadata while keeping user_id."""
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_sub"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     with (
         patch(
             "backend.data.credit.get_subscription_price_id",
@@ -231,7 +231,7 @@ async def test_create_subscription_checkout_attaches_datafast_metadata():
             new_callable=AsyncMock,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
     ):
