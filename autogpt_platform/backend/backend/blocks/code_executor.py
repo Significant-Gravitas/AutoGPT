@@ -27,6 +27,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.desktop_preview import create_preview_link
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
@@ -135,10 +136,10 @@ class BaseE2BExecutorMixin:
         envs: Optional[dict[str, str]] = None,
     ):
         """
-        Unified code execution method that handles all three use cases:
-        1. Create new sandbox and execute (ExecuteCodeBlock)
-        2. Create new sandbox, execute, and return sandbox_id (InstantiateCodeSandboxBlock)
-        3. Connect to existing sandbox and execute (ExecuteCodeStepBlock)
+        Create or reconnect to a sandbox, then run setup commands and code.
+
+        Setup commands run on every invocation, including reconnects, so callers
+        reusing them must make them idempotent.
 
         Args:
             extract_files: If True and execution_context provided, extract files
@@ -148,12 +149,10 @@ class BaseE2BExecutorMixin:
         files: list[SandboxFileOutput] = []
         try:
             if sandbox_id:
-                # Connect to existing sandbox (ExecuteCodeStepBlock case)
                 sandbox = await AsyncSandbox.connect(
                     sandbox_id=sandbox_id, api_key=api_key, timeout=timeout
                 )
             else:
-                # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(
                     api_key=api_key, template=template_id, timeout=timeout
                 )
@@ -283,7 +282,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
         )
 
         timeout: int = SchemaField(
-            description="Execution timeout in seconds", default=300
+            description="Sandbox lifetime in seconds from creation", default=300
         )
 
         dispose_sandbox: bool = SchemaField(
@@ -439,9 +438,11 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         timeout: int = SchemaField(
             description=(
                 "Sandbox lifetime in seconds. Choose enough time to run setup and "
-                "test through the live URL."
+                "test through the live URL (up to 3600 seconds)."
             ),
             default=300,
+            ge=1,
+            le=3600,
         )
 
         enable_live_view: bool = SchemaField(
@@ -452,7 +453,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 "the same environment. The preview ends when the sandbox stops."
             ),
             default=False,
-            advanced=False,
+            advanced=True,
         )
 
         template_id: str = SchemaField(
@@ -469,8 +470,8 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         sandbox_id: str = SchemaField(description="ID of the sandbox instance")
         live_url: str = SchemaField(
             description=(
-                "Authenticated desktop URL, returned when live view is enabled. "
-                "Anyone with this URL can view and control the desktop while the sandbox runs."
+                "Desktop preview link for the signed-in user who created the sandbox. "
+                "Returned after setup when live view is enabled. The link expires after 24 hours."
             )
         )
         response: str = SchemaField(
@@ -511,21 +512,29 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        user_id: str = "",
+        **kwargs,
     ) -> BlockOutput:
         desktop_id = None
-        setup_complete = False
+        sandbox_handed_off = False
+        live_url = None
+        api_key = credentials.api_key.get_secret_value()
         try:
             if input_data.enable_live_view:
+                if not user_id:
+                    raise ValueError("Live view requires an authenticated user")
                 desktop_id, live_url = await create_desktop_sandbox(
-                    credentials.api_key.get_secret_value(),
-                    input_data.template_id,
-                    input_data.timeout,
+                    api_key=api_key,
+                    template_id=input_data.template_id,
+                    timeout=input_data.timeout,
                 )
-                yield "live_url", live_url
 
             _, text_output, stdout, stderr, sandbox_id, _ = await self.execute_code(
-                api_key=credentials.api_key.get_secret_value(),
+                api_key=api_key,
                 code=input_data.setup_code,
                 language=input_data.language,
                 template_id=input_data.template_id,
@@ -533,11 +542,13 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 timeout=input_data.timeout,
                 sandbox_id=desktop_id,
             )
-            setup_complete = bool(sandbox_id)
             if not sandbox_id:
                 yield "error", "Sandbox ID not found"
-            else:
-                yield "sandbox_id", sandbox_id
+                return
+            if live_url:
+                yield "live_url", create_preview_link(user_id, live_url)
+            sandbox_handed_off = True
+            yield "sandbox_id", sandbox_id
 
             if text_output:
                 yield "response", text_output
@@ -548,10 +559,8 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         except Exception as e:
             yield "error", str(e)
         finally:
-            if desktop_id and not setup_complete:
-                await kill_desktop_sandbox(
-                    credentials.api_key.get_secret_value(), desktop_id
-                )
+            if desktop_id and not sandbox_handed_off:
+                await kill_desktop_sandbox(api_key, desktop_id)
 
 
 class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
@@ -590,13 +599,14 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
 
         timeout: Optional[int] = SchemaField(
             description=(
-                "Sandbox lifetime in seconds from the start of this step. Set this "
-                "to leave time for manual testing through a live URL. If omitted, "
-                "E2B's default lifetime applies."
+                "Extend the remaining sandbox lifetime to at least this many seconds "
+                "when connecting (up to 3600). Cannot shorten a longer remaining lifetime. "
+                "If omitted, E2B's default extension applies. Use dispose_sandbox to stop early."
             ),
             default=None,
             ge=1,
-            advanced=True,
+            le=3600,
+            advanced=False,
         )
 
     class Output(BlockSchemaOutput):

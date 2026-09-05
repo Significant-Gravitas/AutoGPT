@@ -1,24 +1,34 @@
+"""Desktop provisioning runs off-loop; cancellation schedules cleanup of late results."""
+
 import asyncio
 import logging
+from asyncio import to_thread
+from typing import TYPE_CHECKING
 
 from e2b import AsyncSandbox, CommandExitException, TimeoutException
-from e2b_desktop import Sandbox as DesktopSandbox
+
+if TYPE_CHECKING:
+    from backend.util.desktop_sdk import DesktopSandbox
 
 logger = logging.getLogger(__name__)
 _cleanup_tasks: set[asyncio.Task[None]] = set()
+INTERPRETER_PORT = 49999
+INTERPRETER_READY_TIMEOUT = 10
+CLEANUP_TIMEOUT = 10
+TEMPLATE_DOCS_URL = "https://docs.agpt.co/integrations/block-integrations/misc/#instantiate-code-sandbox"
 
 
 async def create_desktop_sandbox(
     api_key: str, template_id: str, timeout: int
 ) -> tuple[str, str]:
     template_id = template_id.strip()
-    if not template_id or template_id in {"base", "desktop"}:
+    if not template_id or template_id.casefold() in {"base", "desktop"}:
         raise ValueError(
             "Live view requires a template_id with both desktop dependencies and "
-            "the E2B code interpreter. Build scripts/e2b_desktop/build.py first."
+            f"the E2B code interpreter. See {TEMPLATE_DOCS_URL}"
         )
     task = asyncio.create_task(
-        asyncio.to_thread(_create_desktop_sandbox, api_key, template_id, timeout)
+        to_thread(_create_desktop_sandbox, api_key, template_id, timeout)
     )
     try:
         return await asyncio.shield(task)
@@ -35,23 +45,39 @@ async def _cleanup_cancelled_creation(
     try:
         sandbox_id, _ = await task
     except Exception:
-        logger.warning("Desktop provisioning failed after cancellation")
+        logger.warning("Desktop provisioning failed after cancellation", exc_info=True)
         return
     await kill_desktop_sandbox(api_key, sandbox_id)
 
 
 async def kill_desktop_sandbox(api_key: str, sandbox_id: str) -> None:
+    task = asyncio.create_task(_kill_desktop_sandbox(api_key, sandbox_id))
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+    await asyncio.shield(task)
+
+
+async def _kill_desktop_sandbox(api_key: str, sandbox_id: str) -> None:
     try:
-        await AsyncSandbox.kill(sandbox_id=sandbox_id, api_key=api_key)
+        await asyncio.wait_for(
+            AsyncSandbox.kill(
+                sandbox_id=sandbox_id, api_key=api_key, request_timeout=CLEANUP_TIMEOUT
+            ),
+            timeout=CLEANUP_TIMEOUT,
+        )
     except Exception:
-        logger.warning("Could not clean up desktop sandbox %s", sandbox_id)
+        logger.warning(
+            "Could not clean up desktop sandbox %s", sandbox_id, exc_info=True
+        )
 
 
 def _create_desktop_sandbox(
     api_key: str, template_id: str, timeout: int
 ) -> tuple[str, str]:
+    from backend.util.desktop_sdk import DesktopSandbox
+
     sandbox = DesktopSandbox.create(
-        api_key=api_key, template=template_id, timeout=timeout
+        api_key=api_key, template=template_id, timeout=timeout, request_timeout=10
     )
     try:
         _check_code_interpreter(sandbox)
@@ -64,19 +90,24 @@ def _create_desktop_sandbox(
         try:
             sandbox.kill()
         except Exception:
-            logger.warning("Could not clean up desktop sandbox %s", sandbox.sandbox_id)
+            logger.warning(
+                "Could not clean up desktop sandbox %s",
+                sandbox.sandbox_id,
+                exc_info=True,
+            )
         raise
 
 
-def _check_code_interpreter(sandbox: DesktopSandbox) -> None:
+def _check_code_interpreter(sandbox: "DesktopSandbox") -> None:
     try:
         sandbox.commands.run(
-            "curl --fail --silent --max-time 10 http://localhost:49999/health >/dev/null",
-            timeout=15,
+            f"curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "
+            f"--retry-max-time {INTERPRETER_READY_TIMEOUT} --max-time {INTERPRETER_READY_TIMEOUT} "
+            f"http://localhost:{INTERPRETER_PORT}/health >/dev/null",
+            timeout=INTERPRETER_READY_TIMEOUT + 5,
         )
     except (CommandExitException, TimeoutException) as exc:
         raise ValueError(
             "The desktop template must also provide a running E2B code interpreter "
-            "on port 49999. Build scripts/e2b_desktop/build.py or fix the custom "
-            "template's interpreter startup command."
+            f"on port {INTERPRETER_PORT}. See {TEMPLATE_DOCS_URL}"
         ) from exc

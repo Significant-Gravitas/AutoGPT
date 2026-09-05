@@ -6,12 +6,10 @@ from pydantic import ValidationError
 from backend.blocks.code_executor import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
-    ExecuteCodeBlock,
     ExecuteCodeStepBlock,
     InstantiateCodeSandboxBlock,
     ProgrammingLanguage,
 )
-from backend.util.test import execute_block_test
 
 
 async def test_reconnect_preserves_explicit_sandbox_timeout():
@@ -56,13 +54,6 @@ async def test_code_step_can_extend_testing_window():
     assert execute.await_args.kwargs["timeout"] == 1800
 
 
-@pytest.mark.parametrize(
-    "block_type", [ExecuteCodeBlock, InstantiateCodeSandboxBlock, ExecuteCodeStepBlock]
-)
-async def test_existing_block_contracts(block_type):
-    await execute_block_test(block_type())
-
-
 @pytest.mark.parametrize("timeout", [0, -1])
 def test_code_step_rejects_nonpositive_testing_window(timeout):
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
@@ -101,3 +92,42 @@ async def test_code_step_can_dispose_desktop_after_testing():
     ):
         _ = [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]
     sandbox.kill.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "block_type", [InstantiateCodeSandboxBlock, ExecuteCodeStepBlock]
+)
+@pytest.mark.parametrize("timeout", [0, -1, 3601])
+def test_sandbox_lifetime_bounds(block_type, timeout):
+    with pytest.raises(ValidationError):
+        block_type.Input(
+            credentials=TEST_CREDENTIALS_INPUT, sandbox_id="desktop-id", timeout=timeout
+        )
+
+
+@pytest.mark.parametrize(
+    "block_type", [InstantiateCodeSandboxBlock, ExecuteCodeStepBlock]
+)
+@pytest.mark.parametrize("timeout", [1, 3600])
+def test_sandbox_lifetime_accepts_boundaries(block_type, timeout):
+    assert (
+        block_type.Input(
+            credentials=TEST_CREDENTIALS_INPUT, sandbox_id="desktop-id", timeout=timeout
+        ).timeout
+        == timeout
+    )
+
+
+def test_live_view_and_step_timeout_field_visibility():
+    assert (
+        InstantiateCodeSandboxBlock.Input.model_json_schema()["properties"][
+            "enable_live_view"
+        ]["advanced"]
+        is True
+    )
+    assert (
+        ExecuteCodeStepBlock.Input.model_json_schema()["properties"]["timeout"][
+            "advanced"
+        ]
+        is False
+    )

@@ -251,7 +251,7 @@ The sandbox includes pip and npm pre-installed. Set timeout to limit execution t
 | variables | Variables defined here can be used directly in your code. Each key (`variables_#_{name}`) is injected directly as a local variable with the same name (`{name}`) in your code. Values wired in from other blocks keep their type; default values set on this node come in as strings, so parse them in your code if you need a number or other type. | Dict[str, Any] | No |
 | code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
-| timeout | Execution timeout in seconds | int | No |
+| timeout | Sandbox lifetime in seconds from creation | int | No |
 | dispose_sandbox | Whether to dispose of the sandbox immediately after execution. If disabled, the sandbox will run until its timeout expires. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
@@ -285,9 +285,9 @@ Execute code in a previously instantiated sandbox.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block connects to the `sandbox_id` returned by Instantiate Code Sandbox and executes `step_code` in the same environment, preserving variables and installed packages. An optional positive `timeout` sets the remaining sandbox lifetime in seconds when this step connects; omitting it applies E2B's default lifetime. The sandbox stops and its desktop preview becomes unavailable when that lifetime expires.
+This block connects to the `sandbox_id` returned by Instantiate Code Sandbox and executes `step_code` in the same environment, preserving variables and installed packages. An optional `timeout` between 1 and 3600 extends the remaining sandbox lifetime to at least that many seconds when this step connects; it cannot shorten a longer remaining lifetime. Omitting it uses E2B's default extension. The sandbox stops and its desktop preview becomes unavailable when that lifetime expires.
 
-For manual testing after the final code change, use `timeout=1800` and `dispose_sandbox=False` to leave a 30-minute window starting when the step connects. Open the earlier `live_url` during that window, then run a step with `dispose_sandbox=True` to clean up immediately. An expired or invalid `sandbox_id` produces an error; this block does not create a replacement sandbox.
+For manual testing after the final code change, use `timeout=1800` and `dispose_sandbox=False` to leave at least a 30-minute window starting when the step connects. Open the earlier `live_url` during that window, then run a step with `dispose_sandbox=True` to clean up immediately. An expired or invalid `sandbox_id` produces an error; this block does not create a replacement sandbox.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -298,7 +298,7 @@ For manual testing after the final code change, use `timeout=1800` and `dispose_
 | step_code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
 | dispose_sandbox | Whether to dispose of the sandbox after executing this code. | bool | No |
-| timeout | Sandbox lifetime in seconds from the start of this step. Set this to leave time for manual testing through a live URL. If omitted, E2B's default lifetime applies. | int | No |
+| timeout | Extend the remaining sandbox lifetime to at least this many seconds when connecting (up to 3600). Cannot shorten a longer remaining lifetime. If omitted, E2B's default extension applies. Use dispose_sandbox to stop early. | int | No |
 
 ### Outputs
 
@@ -704,9 +704,9 @@ Instantiate a sandbox environment with internet access in which you can execute 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an E2B sandbox and runs `setup_commands` followed by `setup_code`. Reuse the returned `sandbox_id` with Execute Code Step to continue working in the same environment. The `timeout` sets its lifetime in seconds at creation and is reapplied when connecting for desktop setup; expiration stops the sandbox and closes its preview. For example, `timeout=1800` allows 30 minutes from that connection, including setup time. Later code steps can reset the remaining lifetime through their own `timeout` input.
+This block creates an E2B sandbox and runs `setup_commands` followed by `setup_code`. Reuse the returned `sandbox_id` with Execute Code Step to continue working in the same environment. The `timeout` accepts 1–3600 seconds and sets the lifetime at creation; connecting for desktop setup extends the remaining lifetime to at least that value. Expiration stops the sandbox and closes its preview. For example, `timeout=1800` allows at least 30 minutes from that connection, including setup time. Later code steps can extend, but cannot shorten, the remaining lifetime through their own `timeout` input.
 
-With `enable_live_view=True`, provide a custom `template_id` containing both desktop dependencies and the E2B code interpreter. Blank IDs and the stock `base` and `desktop` templates are rejected, and interpreter availability is checked before an authenticated, interactive `live_url` is returned. Anyone holding that URL can view and control the desktop. The URL is emitted before setup, while `sandbox_id` is emitted only after setup succeeds. Failed setup or cancellation triggers cleanup of known desktop sandboxes; cancellation during provisioning returns promptly and schedules cleanup if provisioning later succeeds. Leave `enable_live_view=False` for ordinary code-only usage.
+With `enable_live_view=True`, provide a custom `template_id` containing both desktop dependencies and the E2B code interpreter; build one using the [template instructions](https://github.com/Significant-Gravitas/AutoGPT/tree/dev/autogpt_platform/backend/scripts/e2b_desktop). This option is in advanced settings. Blank IDs and the stock `base` and `desktop` templates are rejected, and interpreter availability is checked before an interactive `live_url` is returned. The link contains an encrypted desktop credential and redirects only for the signed-in user who created the sandbox; sharing run results does not authorize another user. Sign in before opening it. Links expire after 24 hours and are only usable while the sandbox runs. The direct desktop URL shown after the redirect grants control to anyone who receives it. Both `live_url` and `sandbox_id` are emitted only after setup succeeds. Failed setup or cancellation triggers cleanup of known desktop sandboxes; cancellation during provisioning returns promptly and schedules cleanup if provisioning later succeeds. Leave `enable_live_view=False` for ordinary code-only usage.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -716,7 +716,7 @@ With `enable_live_view=True`, provide a custom `template_id` containing both des
 | setup_commands | Shell commands to set up the sandbox before running the code. You can use `curl` or `git` to install your desired Debian based package manager. `pip` and `npm` are pre-installed.  These commands are executed with `sh`, in the foreground. | List[str] | No |
 | setup_code | Code to execute in the sandbox | str | No |
 | language | Programming language to execute | "python" \| "js" \| "bash" \| "r" \| "java" | No |
-| timeout | Sandbox lifetime in seconds. Choose enough time to run setup and test through the live URL. | int | No |
+| timeout | Sandbox lifetime in seconds. Choose enough time to run setup and test through the live URL (up to 3600 seconds). | int | No |
 | enable_live_view | Start an interactive desktop preview and return live_url. Requires a custom template_id containing both the desktop and code interpreter. Use the returned sandbox_id with Execute Code Step to work in the same environment. The preview ends when the sandbox stops. | bool | No |
 | template_id | You can use an E2B sandbox template by entering its ID here. Check out the E2B docs for more details: [E2B - Sandbox template](https://e2b.dev/docs/sandbox-template) | str | No |
 
@@ -726,7 +726,7 @@ With `enable_live_view=True`, provide a custom `template_id` containing both des
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | sandbox_id | ID of the sandbox instance | str |
-| live_url | Authenticated desktop URL, returned when live view is enabled. Anyone with this URL can view and control the desktop while the sandbox runs. | str |
+| live_url | Desktop preview link for the signed-in user who created the sandbox. Returned after setup when live view is enabled. The link expires after 24 hours. | str |
 | response | Text result (if any) of the setup code execution | str |
 | stdout_logs | Standard output logs from execution | str |
 | stderr_logs | Standard error logs from execution | str |

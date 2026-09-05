@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from e2b import CommandExitException
@@ -12,7 +12,16 @@ from backend.blocks.code_executor import (
 from backend.blocks.code_executor_desktop import create_desktop_sandbox
 
 
-async def test_live_view_returns_url_and_uses_same_sandbox_for_setup():
+@pytest.fixture(autouse=True)
+def preview_link():
+    with patch(
+        "backend.blocks.code_executor.create_preview_link",
+        side_effect=lambda user_id, url: "https://platform.example/preview",
+    ) as create:
+        yield create
+
+
+async def test_live_view_returns_url_and_uses_same_sandbox_for_setup(preview_link):
     block = InstantiateCodeSandboxBlock()
     inputs = block.Input(
         credentials=TEST_CREDENTIALS_INPUT,
@@ -25,12 +34,20 @@ async def test_live_view_returns_url_and_uses_same_sandbox_for_setup():
     with (
         patch("backend.blocks.code_executor.create_desktop_sandbox", create),
         patch.object(block, "execute_code", execute),
+        patch("backend.blocks.code_executor.kill_desktop_sandbox", AsyncMock()) as kill,
     ):
         outputs = dict(
-            [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]
+            [
+                item
+                async for item in block.run(
+                    inputs, credentials=TEST_CREDENTIALS, user_id="owner"
+                )
+            ]
         )
+    kill.assert_not_awaited()
     assert outputs["sandbox_id"] == "desktop-id"
-    assert outputs["live_url"] == "https://preview.example/view"
+    assert outputs["live_url"] == "https://platform.example/preview"
+    preview_link.assert_called_once_with("owner", "https://preview.example/view")
     assert outputs["response"] == "ready"
     assert execute.await_args.kwargs["sandbox_id"] == "desktop-id"
 
@@ -44,13 +61,18 @@ async def test_default_does_not_start_desktop_or_emit_live_url():
         patch.object(block, "execute_code", execute),
     ):
         outputs = dict(
-            [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]
+            [
+                item
+                async for item in block.run(
+                    inputs, credentials=TEST_CREDENTIALS, user_id="owner"
+                )
+            ]
         )
     create.assert_not_called()
     assert outputs == {"sandbox_id": "code-id"}
 
 
-async def test_live_url_available_before_setup_but_id_waits_for_setup():
+async def test_live_url_and_id_wait_for_setup():
     block = InstantiateCodeSandboxBlock()
     inputs = block.Input(
         credentials=TEST_CREDENTIALS_INPUT, enable_live_view=True, template_id="custom"
@@ -63,9 +85,9 @@ async def test_live_url_available_before_setup_but_id_waits_for_setup():
         ),
         patch.object(block, "execute_code", execute),
     ):
-        outputs = block.run(inputs, credentials=TEST_CREDENTIALS)
-        assert await anext(outputs) == ("live_url", "https://preview.example")
-        execute.assert_not_awaited()
+        outputs = block.run(inputs, credentials=TEST_CREDENTIALS, user_id="owner")
+        assert await anext(outputs) == ("live_url", "https://platform.example/preview")
+        execute.assert_awaited_once()
         assert await anext(outputs) == ("sandbox_id", "desktop-id")
         execute.assert_awaited_once()
         await outputs.aclose()
@@ -87,14 +109,21 @@ async def test_failed_setup_cleans_up_desktop():
         patch("backend.blocks.code_executor.kill_desktop_sandbox", AsyncMock()) as kill,
     ):
         outputs = dict(
-            [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]
+            [
+                item
+                async for item in block.run(
+                    inputs, credentials=TEST_CREDENTIALS, user_id="owner"
+                )
+            ]
         )
     assert outputs["error"] == "setup"
+    assert "live_url" not in outputs
     assert "sandbox_id" not in outputs
     kill.assert_awaited_once_with("mock-e2b-api-key", "desktop-id")
 
 
-async def test_abandoned_live_url_output_cleans_up_desktop():
+@pytest.mark.parametrize("sandbox_id", ["desktop-id", ""])
+async def test_abandoned_or_missing_sandbox_id_cleans_up_desktop(sandbox_id):
     block = InstantiateCodeSandboxBlock()
     inputs = block.Input(
         credentials=TEST_CREDENTIALS_INPUT, enable_live_view=True, template_id="custom"
@@ -104,18 +133,25 @@ async def test_abandoned_live_url_output_cleans_up_desktop():
             "backend.blocks.code_executor.create_desktop_sandbox",
             AsyncMock(return_value=("desktop-id", "https://preview.example")),
         ),
+        patch.object(
+            block,
+            "execute_code",
+            AsyncMock(return_value=([], "", "", "", sandbox_id, [])),
+        ),
         patch("backend.blocks.code_executor.kill_desktop_sandbox", AsyncMock()) as kill,
     ):
-        outputs = block.run(inputs, credentials=TEST_CREDENTIALS)
+        outputs = block.run(inputs, credentials=TEST_CREDENTIALS, user_id="owner")
         await anext(outputs)
         await outputs.aclose()
     kill.assert_awaited_once_with("mock-e2b-api-key", "desktop-id")
 
 
-@pytest.mark.parametrize("template_id", ["", " ", "base", "desktop"])
+@pytest.mark.parametrize(
+    "template_id", ["", " ", "base", "desktop", "Desktop", " BASE "]
+)
 async def test_live_view_requires_combined_template(template_id):
     with (
-        patch("backend.blocks.code_executor_desktop.DesktopSandbox.create") as create,
+        patch("backend.util.desktop_sdk.DesktopSandbox.create") as create,
         pytest.raises(ValueError, match="both desktop dependencies"),
     ):
         await create_desktop_sandbox("key", template_id, 300)
@@ -130,11 +166,18 @@ async def test_desktop_stream_requires_auth_and_allows_interaction():
         "https://preview.example?password=stream-password"
     )
     with patch(
-        "backend.blocks.code_executor_desktop.DesktopSandbox.create",
+        "backend.util.desktop_sdk.DesktopSandbox.create",
         return_value=sandbox,
     ) as create:
         result = await create_desktop_sandbox("key", "custom", 600)
-    create.assert_called_once_with(api_key="key", template="custom", timeout=600)
+    create.assert_called_once_with(
+        api_key="key", template="custom", timeout=600, request_timeout=10
+    )
+    sandbox.commands.run.assert_called_once_with(
+        "curl --fail --silent --retry 10 --retry-connrefused --retry-delay 1 "
+        "--retry-max-time 10 --max-time 10 http://localhost:49999/health >/dev/null",
+        timeout=15,
+    )
     sandbox.stream.start.assert_called_once_with(require_auth=True)
     sandbox.stream.get_url.assert_called_once_with(
         auth_key="stream-password", view_only=False
@@ -143,18 +186,23 @@ async def test_desktop_stream_requires_auth_and_allows_interaction():
     sandbox.kill.assert_not_called()
 
 
-async def test_stream_failure_kills_created_sandbox():
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+async def test_stream_failure_kills_created_sandbox(cleanup_fails, caplog):
     sandbox = MagicMock()
     sandbox.stream.start.side_effect = RuntimeError("stream failed")
+    if cleanup_fails:
+        sandbox.kill.side_effect = RuntimeError("kill failed")
     with (
         patch(
-            "backend.blocks.code_executor_desktop.DesktopSandbox.create",
+            "backend.util.desktop_sdk.DesktopSandbox.create",
             return_value=sandbox,
         ),
         pytest.raises(RuntimeError, match="stream failed"),
     ):
         await create_desktop_sandbox("key", "custom", 300)
     sandbox.kill.assert_called_once()
+    if cleanup_fails:
+        assert caplog.records[-1].exc_info is not None
 
 
 async def test_missing_interpreter_fails_clearly_and_cleans_up():
@@ -164,7 +212,7 @@ async def test_missing_interpreter_fails_clearly_and_cleans_up():
     )
     with (
         patch(
-            "backend.blocks.code_executor_desktop.DesktopSandbox.create",
+            "backend.util.desktop_sdk.DesktopSandbox.create",
             return_value=sandbox,
         ),
         pytest.raises(ValueError, match="code interpreter"),
@@ -186,7 +234,7 @@ async def test_cancelled_creation_cleans_up_when_worker_finishes(worker_error, c
         return "desktop-id", "https://preview.example"
 
     with (
-        patch("backend.blocks.code_executor_desktop.asyncio.to_thread", worker),
+        patch("backend.blocks.code_executor_desktop.to_thread", worker),
         patch(
             "backend.blocks.code_executor_desktop.kill_desktop_sandbox", AsyncMock()
         ) as kill,
@@ -224,6 +272,9 @@ async def test_setup_commands_execute_in_reconnected_desktop_before_code():
             error=None, results=[], text="ready", logs=MagicMock(stdout=[], stderr=[])
         )
     )
+    calls = MagicMock()
+    calls.attach_mock(sandbox.commands.run, "setup")
+    calls.attach_mock(sandbox.run_code, "code")
     with patch(
         "backend.blocks.code_executor.AsyncSandbox.connect",
         AsyncMock(return_value=sandbox),
@@ -239,3 +290,23 @@ async def test_setup_commands_execute_in_reconnected_desktop_before_code():
         "git clone https://example.com/repo.git"
     )
     sandbox.run_code.assert_awaited_once()
+
+    assert calls.mock_calls[0] == call.setup("git clone https://example.com/repo.git")
+    assert calls.mock_calls[1] == call.code(
+        *sandbox.run_code.call_args.args, **sandbox.run_code.call_args.kwargs
+    )
+
+
+async def test_live_view_requires_owner_before_provisioning():
+    block = InstantiateCodeSandboxBlock()
+    inputs = block.Input(
+        credentials=TEST_CREDENTIALS_INPUT, enable_live_view=True, template_id="custom"
+    )
+    with patch(
+        "backend.blocks.code_executor.create_desktop_sandbox", AsyncMock()
+    ) as create:
+        outputs = dict(
+            [item async for item in block.run(inputs, credentials=TEST_CREDENTIALS)]
+        )
+    assert outputs == {"error": "Live view requires an authenticated user"}
+    create.assert_not_awaited()
