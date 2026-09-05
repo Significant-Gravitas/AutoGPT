@@ -6,6 +6,7 @@ import pytest
 
 from backend.copilot.moonshot import (
     is_moonshot_model,
+    moonshot_context_window,
     moonshot_supports_cache_control,
     override_cost_usd,
     rate_card_usd,
@@ -177,3 +178,31 @@ class TestSupportsCacheControl:
     )
     def test_non_moonshot_does_not_support_cache_control(self, model) -> None:
         assert moonshot_supports_cache_control(model) is False
+
+
+class TestMoonshotContextWindow:
+    """The catalog is the only place the real Kimi window is written down."""
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("moonshotai/kimi-k2.5", 262_144),
+            ("moonshotai/kimi-k2.6", 262_144),
+            ("moonshotai/kimi-k2-thinking", 262_144),
+            ("moonshotai/kimi-k3", 1_048_576),
+        ],
+    )
+    def test_reads_the_catalog_window(self, model, expected) -> None:
+        assert moonshot_context_window(model) == expected
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k9-unreleased",
+            "anthropic/claude-sonnet-5",
+            "",
+            None,
+        ],
+    )
+    def test_none_for_unlisted_and_non_moonshot(self, model) -> None:
+        assert moonshot_context_window(model) is None

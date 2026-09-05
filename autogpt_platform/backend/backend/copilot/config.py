@@ -442,9 +442,8 @@ class ChatConfig(BaseSettings):
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="Context window the SDK subprocess is held to, in tokens "
         "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
-        "raise it on a route that really serves 1M — past the provider's real "
-        "window the compaction trigger never fires (at 1M on Moonshot it lands "
-        "at 967K against Kimi's 262,144).",
+        "raise it on a route that really serves 1M; Moonshot routes cap it at "
+        "the SKU's catalog window, Anthropic routes take it as given.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
