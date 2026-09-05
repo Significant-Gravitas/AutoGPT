@@ -33,18 +33,6 @@ from backend.executor.utils import (
 )
 
 
-def _has_live_cluster() -> bool:
-    try:
-        c = redis_client.connect()
-    except Exception:  # noqa: BLE001 — any connect failure → skip
-        return False
-    try:
-        c.close()
-    except Exception:
-        pass
-    return True
-
-
 def _has_live_rabbit() -> bool:
     """Probe the rabbitmq host:port from settings; skip if unreachable."""
     import socket
@@ -62,7 +50,7 @@ def _has_live_rabbit() -> bool:
 
 
 cluster_only = pytest.mark.skipif(
-    not _has_live_cluster(),
+    not redis_client.server_reachable(),
     reason="local redis cluster not reachable; skip e2e integration",
 )
 rabbit_only = pytest.mark.skipif(
