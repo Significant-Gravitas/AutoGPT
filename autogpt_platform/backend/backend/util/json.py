@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
+_has_control_chars = POSTGRES_CONTROL_CHARS.search
+_strip_control_chars = POSTGRES_CONTROL_CHARS.sub
 
 
 def dumps(
@@ -151,16 +153,44 @@ def sanitize_string(value: str) -> str:
     newline, and carriage return.  Use this before inserting free-form text
     into PostgreSQL text/varchar columns.
     """
-    return POSTGRES_CONTROL_CHARS.sub("", value)
+    # Nearly all strings contain nothing to strip, and on a miss re.sub returns
+    # the string it was given rather than a copy, so the search costs the same
+    # scan and skips the substitution machinery.
+    if type(value) is str and not _has_control_chars(value):
+        return value
+    return _strip_control_chars("", value)
+
+
+def _sanitize_encoded(value: Any) -> Any:
+    """Strip control characters from a structure `to_dict` has already encoded.
+
+    Everything here is a plain dict, list, str, int, float, bool or None, so
+    this only has to walk the tree; it does not need to repeat the type
+    conversion `to_dict` just did.
+    """
+    kind = type(value)
+    if kind is str:
+        return _strip_control_chars("", value) if _has_control_chars(value) else value
+    if kind is dict:
+        return {_sanitize_encoded(k): _sanitize_encoded(v) for k, v in value.items()}
+    if kind is list:
+        return [_sanitize_encoded(v) for v in value]
+    if isinstance(value, str):
+        # A str subclass. re.sub returns a plain str, which is what the second
+        # to_dict pass used to produce here, so keep it unconditional.
+        return _strip_control_chars("", value)
+    return value
 
 
 def sanitize_json(data: Any) -> Any:
     try:
-        # Use two-pass approach for consistent string sanitization:
-        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
-        # 2. Then sanitize strings in the result
-        basic_result = to_dict(data)
-        return to_dict(basic_result, custom_encoder={str: sanitize_string})
+        # Two passes, as before:
+        # 1. to_dict converts Pydantic models and other complex types to basic
+        #    JSON-serializable types.
+        # 2. Walk that result and sanitize its strings. This used to be a second
+        #    to_dict call, which redid the full type dispatch on every node just
+        #    to run a regex over the strings.
+        return _sanitize_encoded(to_dict(data))
     except Exception as e:
         # Log the failure and fall back to string representation
         logger.error(
