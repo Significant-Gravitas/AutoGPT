@@ -9,6 +9,7 @@ from typing import Optional
 from openai.types.chat import ChatCompletionUserMessageParam
 
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import as_str
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     get_business_understanding,
@@ -213,7 +214,7 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
     index_key = _EMAIL_INDEX_KEY.format(form_id=form_id)
     questions_key = _QUESTIONS_KEY.format(form_id=form_id)
 
-    last_fetch = await redis.get(last_fetch_key)
+    last_fetch = as_str(await redis.get(last_fetch_key))
 
     if last_fetch:
         # Try to load existing index for incremental merge

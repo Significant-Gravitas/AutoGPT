@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from backend.data.redis_helpers import (
+    as_str,
     capped_rpush,
     capped_rpush_if_hash_field,
     claim_batch_dispatch_atomic,
@@ -423,3 +424,10 @@ async def test_claim_tombstones_age_out_individually() -> None:
         "{llm:batch}:dispatched:a",
         "{llm:batch}:dispatched:b",
     ]
+
+
+class TestAsStr:
+    def test_str_bytes_and_none(self):
+        assert as_str("x") == "x"
+        assert as_str(b"x") == "x"
+        assert as_str(None) is None

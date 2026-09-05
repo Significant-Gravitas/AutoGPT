@@ -31,12 +31,14 @@ export function InstallWorkflowPicker({
   const {
     title,
     hiredExperts,
-    isLibraryAgentInstalled,
     source,
     setSource,
     searchQuery,
     setSearchQuery,
     libraryResults,
+    hasMoreLibraryResults,
+    loadMoreLibraryResults,
+    isLoadingMore,
     marketplaceResults,
     isSearching,
     pendingKey,
@@ -181,23 +183,14 @@ export function InstallWorkflowPicker({
                             {workflowSubtitle(agent.description)}
                           </Text>
                         </div>
-                        {isLibraryAgentInstalled(agent) ? (
-                          <Text
-                            variant="small"
-                            className="shrink-0 !text-zinc-400"
-                          >
-                            Installed
-                          </Text>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="small"
-                            loading={pendingKey === agent.id}
-                            onClick={() => installLibraryAgent(agent)}
-                          >
-                            Install
-                          </Button>
-                        )}
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          loading={pendingKey === agent.id}
+                          onClick={() => installLibraryAgent(agent)}
+                        >
+                          Install
+                        </Button>
                       </div>
                     ))
                   : marketplaceResults.map((agent) => (
@@ -235,6 +228,16 @@ export function InstallWorkflowPicker({
                     ))}
               </div>
             )}
+            {source === "library" && hasMoreLibraryResults ? (
+              <Button
+                variant="secondary"
+                size="small"
+                loading={isLoadingMore}
+                onClick={() => loadMoreLibraryResults()}
+              >
+                Load more workflows
+              </Button>
+            ) : null}
           </div>
         )}
       </Dialog.Content>
