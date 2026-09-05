@@ -862,7 +862,25 @@ class UserTransaction(BaseModel):
     extra_data: str | None = None
 
 
+class CreditHistoryCharge(BaseModel):
+    id: str
+    posted_at: datetime
+    amount: int
+    charge_type: Literal["usage", "execution_fee", "adjustment", "transaction"]
+    block_name: str | None = None
+    node_execution_id: str | None = None
+
+
+class CreditHistoryRelatedExecution(BaseModel):
+    execution_id: str
+    agent_name: str | None = None
+    library_agent_id: str | None = None
+    execution_available: bool = False
+    amount: int | None = None
+
+
 class CreditTransactionItem(BaseModel):
+    id: str = ""
     transaction_key: str = ""
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
@@ -873,11 +891,37 @@ class CreditTransactionItem(BaseModel):
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
     user_id: str
+    activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
+        "other"
+    )
+    library_agent_id: str | None = None
+    agent_name: str | None = None
+    execution_started_at: datetime | None = None
+    execution_status: str | None = None
+    execution_graph_version: int | None = None
+    execution_available: bool = False
+    conversation_id: str | None = None
+    conversation_title: str | None = None
+    parent_execution_id: str | None = None
+    parent_agent_name: str | None = None
+    parent_library_agent_id: str | None = None
+    related_executions: list[CreditHistoryRelatedExecution] = Field(
+        default_factory=list
+    )
+    related_executions_has_more: bool = False
+    usage_charge_amount: int = 0
+    usage_fee_amount: int = 0
+    usage_adjustment_amount: int = 0
+    charges: list[CreditHistoryCharge] = Field(default_factory=list)
+    charges_total_count: int = 0
+    charges_truncated: bool = False
 
 
 class TransactionHistory(BaseModel):
     transactions: list[CreditTransactionItem]
     next_transaction_time: datetime | None
+    next_cursor: str | None = None
+    snapshot_at: datetime | None = None
 
 
 class RefundRequest(BaseModel):

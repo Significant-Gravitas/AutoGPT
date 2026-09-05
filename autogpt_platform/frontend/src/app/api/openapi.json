@@ -5690,6 +5690,15 @@
               "default": 100,
               "title": "Transaction Count Limit"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
           }
         ],
         "responses": {
@@ -18596,8 +18605,61 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditHistoryCharge": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "amount": { "type": "integer", "title": "Amount" },
+          "charge_type": {
+            "type": "string",
+            "enum": ["usage", "execution_fee", "adjustment", "transaction"],
+            "title": "Charge Type"
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name"
+          },
+          "node_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Execution Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "posted_at", "amount", "charge_type"],
+        "title": "CreditHistoryCharge"
+      },
+      "CreditHistoryRelatedExecution": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id"],
+        "title": "CreditHistoryRelatedExecution"
+      },
       "CreditTransactionItem": {
         "properties": {
+          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -18637,7 +18699,103 @@
             "title": "Usage Start Time",
             "default": "9999-12-31T23:59:59.999999Z"
           },
-          "user_id": { "type": "string", "title": "User Id" }
+          "user_id": { "type": "string", "title": "User Id" },
+          "activity_type": {
+            "type": "string",
+            "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
+            "title": "Activity Type",
+            "default": "other"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Execution Started At"
+          },
+          "execution_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Status"
+          },
+          "execution_graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Execution Graph Version"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "conversation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Title"
+          },
+          "parent_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Execution Id"
+          },
+          "parent_agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Agent Name"
+          },
+          "parent_library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Library Agent Id"
+          },
+          "related_executions": {
+            "items": {
+              "$ref": "#/components/schemas/CreditHistoryRelatedExecution"
+            },
+            "type": "array",
+            "title": "Related Executions"
+          },
+          "related_executions_has_more": {
+            "type": "boolean",
+            "title": "Related Executions Has More",
+            "default": false
+          },
+          "usage_charge_amount": {
+            "type": "integer",
+            "title": "Usage Charge Amount",
+            "default": 0
+          },
+          "usage_fee_amount": {
+            "type": "integer",
+            "title": "Usage Fee Amount",
+            "default": 0
+          },
+          "usage_adjustment_amount": {
+            "type": "integer",
+            "title": "Usage Adjustment Amount",
+            "default": 0
+          },
+          "charges": {
+            "items": { "$ref": "#/components/schemas/CreditHistoryCharge" },
+            "type": "array",
+            "title": "Charges"
+          },
+          "charges_total_count": {
+            "type": "integer",
+            "title": "Charges Total Count",
+            "default": 0
+          },
+          "charges_truncated": {
+            "type": "boolean",
+            "title": "Charges Truncated",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["user_id"],
@@ -28304,6 +28462,17 @@
               { "type": "null" }
             ],
             "title": "Next Transaction Time"
+          },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor"
+          },
+          "snapshot_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Snapshot At"
           }
         },
         "type": "object",
