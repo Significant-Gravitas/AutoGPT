@@ -1,16 +1,16 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { useFitListToDialog } from "../useFitListToDialog";
 
 function Harness() {
-  const listRef = useRef<HTMLUListElement>(null);
-  useFitListToDialog(listRef);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const attachList = useFitListToDialog(listRef);
   return (
     <div data-dialog-content>
       <div className="overflow-y-auto" data-testid="body">
         <p>title</p>
-        <ul ref={listRef} data-testid="list" />
+        <ul ref={attachList} data-testid="list" />
       </div>
     </div>
   );
@@ -37,7 +37,7 @@ function mockMetrics(
 
 describe("useFitListToDialog", () => {
   test("caps the list by exactly the body's overflow", () => {
-    const { getByTestId, rerender } = render(<Harness />);
+    const { getByTestId } = render(<Harness />);
     const body = getByTestId("body");
     const list = getByTestId("list");
     mockMetrics(body, list, {
@@ -46,13 +46,13 @@ describe("useFitListToDialog", () => {
       listHeight: 400,
     });
 
-    rerender(<Harness />);
+    fireEvent(window, new Event("resize"));
 
     expect(list.style.maxHeight).toBe("200px");
   });
 
   test("leaves the list unbounded when nothing overflows", () => {
-    const { getByTestId, rerender } = render(<Harness />);
+    const { getByTestId } = render(<Harness />);
     const body = getByTestId("body");
     const list = getByTestId("list");
     mockMetrics(body, list, {
@@ -61,13 +61,13 @@ describe("useFitListToDialog", () => {
       listHeight: 120,
     });
 
-    rerender(<Harness />);
+    fireEvent(window, new Event("resize"));
 
     expect(list.style.maxHeight).toBe("");
   });
 
   test("never shrinks the list below a usable minimum", () => {
-    const { getByTestId, rerender } = render(<Harness />);
+    const { getByTestId } = render(<Harness />);
     const body = getByTestId("body");
     const list = getByTestId("list");
     mockMetrics(body, list, {
@@ -76,8 +76,25 @@ describe("useFitListToDialog", () => {
       listHeight: 420,
     });
 
-    rerender(<Harness />);
+    fireEvent(window, new Event("resize"));
 
     expect(list.style.maxHeight).toBe("96px");
+  });
+  test("keeps observers stable on rerenders and cleans them up on unmount", () => {
+    const add = vi.spyOn(window, "addEventListener");
+    const remove = vi.spyOn(window, "removeEventListener");
+    const { rerender, unmount } = render(<Harness />);
+    const subscriptions = add.mock.calls.filter(
+      ([event]) => event === "resize",
+    ).length;
+    rerender(<Harness />);
+    rerender(<Harness />);
+    expect(add.mock.calls.filter(([event]) => event === "resize")).toHaveLength(
+      subscriptions,
+    );
+    unmount();
+    expect(remove.mock.calls.some(([event]) => event === "resize")).toBe(true);
+    add.mockRestore();
+    remove.mockRestore();
   });
 });

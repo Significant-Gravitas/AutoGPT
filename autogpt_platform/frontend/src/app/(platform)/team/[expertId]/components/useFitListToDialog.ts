@@ -1,13 +1,23 @@
-import { RefObject, useLayoutEffect, useState } from "react";
+import {
+  MutableRefObject,
+  useCallback,
+  useLayoutEffect,
+  useState,
+} from "react";
 
-/** Caps a list inside a Dialog so the list, not the dialog body, is the
- *  only thing that scrolls. Measured from the body's real overflow, so it
- *  holds for any title, description or footer around the list. */
-export function useFitListToDialog(listRef: RefObject<HTMLElement | null>) {
-  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+export function useFitListToDialog<T extends HTMLElement>(
+  listRef: MutableRefObject<T | null>,
+) {
+  const [list, setList] = useState<T | null>(null);
+  const attachList = useCallback(
+    (element: T | null) => {
+      listRef.current = element;
+      setList(element);
+    },
+    [listRef],
+  );
 
   useLayoutEffect(() => {
-    const list = listRef.current;
     if (!list) return;
     const body = list
       .closest("[data-dialog-content]")
@@ -21,19 +31,17 @@ export function useFitListToDialog(listRef: RefObject<HTMLElement | null>) {
       const next =
         overflow > 0 ? Math.max(96, list.offsetHeight - overflow) : undefined;
       list.style.maxHeight = next === undefined ? "" : `${next}px`;
-      setMaxHeight(next);
     }
-
     fit();
     window.addEventListener("resize", fit);
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
     observer?.observe(body);
+    observer?.observe(list);
     return () => {
       window.removeEventListener("resize", fit);
       observer?.disconnect();
     };
-  });
-
-  return maxHeight;
+  }, [list]);
+  return attachList;
 }

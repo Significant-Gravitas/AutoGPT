@@ -121,5 +121,6 @@ export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
     handleSelect,
     handleBackToList,
     handleContinue,
+    handleSuccess,
   };
 }

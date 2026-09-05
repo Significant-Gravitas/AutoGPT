@@ -64,9 +64,9 @@ export function UseExistingCredentialsDialog({
 }: Props) {
   const [query, setQuery] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
   const hasMoreBelow = useBottomScrollShadow(listRef);
-  useFitListToDialog(listRef);
+  const attachList = useFitListToDialog(listRef);
 
   useEffect(() => {
     if (!open) {
@@ -189,7 +189,7 @@ export function UseExistingCredentialsDialog({
               ) : (
                 <div className="relative">
                   <ul
-                    ref={listRef}
+                    ref={attachList}
                     className="grid grid-cols-2 gap-2 overflow-y-auto pr-1"
                     aria-label="Existing connections"
                   >

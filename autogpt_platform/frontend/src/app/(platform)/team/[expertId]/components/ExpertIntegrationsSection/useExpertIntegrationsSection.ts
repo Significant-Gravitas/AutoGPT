@@ -10,7 +10,7 @@ import { okData } from "@/app/api/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 export function useExpertIntegrationsSection(expertId: string) {
   const queryClient = useQueryClient();
@@ -20,7 +20,6 @@ export function useExpertIntegrationsSection(expertId: string) {
   // Whether the dialog we just closed actually created something. Closing
   // without a credential means the user backed out, and the picker they came
   // from should come back rather than the click going nowhere.
-  const didConnect = useRef(false);
 
   const grantedQuery = useListExpertCredentials(expertId, {
     query: { select: (response) => okData(response) ?? [] },
@@ -76,29 +75,21 @@ export function useExpertIntegrationsSection(expertId: string) {
   }
 
   function openConnect() {
-    didConnect.current = false;
     setIsConnecting(true);
   }
 
   // The dialog names the credential it created, so a credential the user
   // happens to add elsewhere while it is open is never swept in.
   function connectCredential(credential: CredentialsMetaResponse) {
-    didConnect.current = true;
     grant({ expertId, data: { credential_ids: [credential.id] } });
   }
 
   function grantExistingCredential(credentialId: string) {
-    didConnect.current = true;
     grant({ expertId, data: { credential_ids: [credentialId] } });
   }
 
   function closeConnect() {
     setIsConnecting(false);
-    didConnect.current = false;
-  }
-
-  function addIntegration(credentialId: string) {
-    grant({ expertId, data: { credential_ids: [credentialId] } });
   }
 
   function removeIntegration(credentialId: string) {
@@ -129,7 +120,6 @@ export function useExpertIntegrationsSection(expertId: string) {
     closeConnect,
     connectCredential,
     grantExistingCredential,
-    addIntegration,
     removeIntegration,
     isGranting,
     isRevoking,

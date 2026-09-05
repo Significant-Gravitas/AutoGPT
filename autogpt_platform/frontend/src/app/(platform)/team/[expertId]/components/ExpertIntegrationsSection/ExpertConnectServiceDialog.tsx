@@ -7,11 +7,12 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
+import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
-import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Plug01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRef } from "react";
 import { useBottomScrollShadow } from "../../../components/SoulDrawer/useBottomScrollShadow";
@@ -69,13 +70,14 @@ export function ExpertConnectServiceDialog({
     handleSelect,
     handleBackToList,
     handleContinue,
+    handleSuccess,
   } = useExpertConnectServiceDialog({ open, onConnected });
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
   const hasMoreBelow = useBottomScrollShadow(listRef);
-  useFitListToDialog(listRef);
+  const attachList = useFitListToDialog(listRef);
 
   return (
     <Dialog
@@ -112,7 +114,7 @@ export function ExpertConnectServiceDialog({
                       onSelectMethod={setSelectedMethod}
                       apiKeyForm={apiKeyForm}
                       onApiKeySubmit={handleApiKeySubmit}
-                      onDeviceAuthSuccess={handleBackToList}
+                      onDeviceAuthSuccess={handleSuccess}
                     />
                   </motion.div>
                 ) : (
@@ -155,21 +157,12 @@ export function ExpertConnectServiceDialog({
                       />
                     ) : (
                       <div className="flex flex-col gap-3">
-                        <div className="relative w-full">
-                          <Icon
-                            icon={Search01Icon}
-                            size={20}
-                            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#83838C]"
-                          />
-                          <input
-                            type="text"
-                            value={query}
-                            onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search services..."
-                            aria-label="Search services"
-                            className="h-[46px] w-full rounded-xl border border-[#DADADC] bg-white pl-12 pr-4 text-sm leading-[22px] text-[#1F1F20] transition-colors placeholder:text-[#83838C] focus:border-violet-500 focus:outline-none"
-                          />
-                        </div>
+                        <SearchInput
+                          value={query}
+                          onChange={setQuery}
+                          placeholder="Search services..."
+                          aria-label="Search services"
+                        />
                         {providers.length === 0 ? (
                           <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
                             <Icon
@@ -186,7 +179,7 @@ export function ExpertConnectServiceDialog({
                         ) : (
                           <div className="relative">
                             <ul
-                              ref={listRef}
+                              ref={attachList}
                               className="grid grid-cols-2 gap-2 overflow-y-auto pr-1"
                               aria-label="Services"
                             >

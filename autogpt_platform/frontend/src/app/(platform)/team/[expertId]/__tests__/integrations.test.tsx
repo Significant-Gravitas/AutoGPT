@@ -18,6 +18,32 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailPage from "../page";
 
+vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => ({
+  DeviceAuthConnectButton: ({
+    onSuccess,
+  }: {
+    onSuccess: (credential: {
+      id: string;
+      provider: string;
+      type: "oauth2";
+      title: string;
+    }) => void;
+  }) => (
+    <button
+      onClick={() =>
+        onSuccess({
+          id: "cred-device",
+          provider: "openai",
+          type: "oauth2",
+          title: "Device account",
+        })
+      }
+    >
+      Complete device approval
+    </button>
+  ),
+}));
+
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
@@ -455,6 +481,43 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
+  });
+
+  it("grants the approved device credential to the expert", async () => {
+    const granted: string[][] = [];
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "openai",
+            description: "Device account",
+            supported_auth_types: ["device_code"],
+          },
+        ]),
+      ),
+      http.post(
+        "*/api/experts/expert-maria/credentials",
+        async ({ request }) => {
+          const body = (await request.json()) as { credential_ids: string[] };
+          granted.push(body.credential_ids);
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+    render(<ExpertDetailPage />);
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    await userEvent.click(await screen.findByText("OpenAI"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Device/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Complete device approval" }),
+    );
+    await waitFor(() => expect(granted).toEqual([["cred-device"]]));
   });
 
   it("does not offer integrations when the expert's own list fails to load", async () => {

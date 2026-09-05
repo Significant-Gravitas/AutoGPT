@@ -1,8 +1,6 @@
 "use client";
 
-import { getGetExpertQueryKey } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
-import { getGetV1ListExecutionSchedulesForAUserQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { okData } from "@/app/api/helpers";
 import { RunAgentModal } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentModal/RunAgentModal";
@@ -10,9 +8,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { ArrowRight01Icon, Calendar03Icon } from "@hugeicons/core-free-icons";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCreateScheduleDialog } from "./useCreateScheduleDialog";
 import { useRef } from "react";
 import { useFitListToDialog } from "./useFitListToDialog";
 
@@ -29,24 +26,10 @@ export function CreateScheduleDialog({
   open,
   onClose,
 }: Props) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const { handleScheduleCreated } = useCreateScheduleDialog(expertId, onClose);
   const schedulable = workflows.filter((workflow) => workflow.library_agent_id);
-  const listRef = useRef<HTMLUListElement>(null);
-  useFitListToDialog(listRef);
-
-  async function handleScheduleCreated() {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: getGetExpertQueryKey(expertId),
-      }),
-    ]);
-    toast({ title: "Schedule created", variant: "success" });
-    onClose();
-  }
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const attachList = useFitListToDialog(listRef);
 
   return (
     <Dialog
@@ -67,7 +50,7 @@ export function CreateScheduleDialog({
             </Text>
           ) : (
             <ul
-              ref={listRef}
+              ref={attachList}
               className="flex flex-col gap-2 overflow-y-auto pr-1"
               aria-label="Schedulable workflows"
             >
