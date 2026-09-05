@@ -243,6 +243,19 @@ def test_counts_the_weeks_runs_and_orders_groups_by_latest_activity() -> None:
     assert [run.id for run in work.groups[1].runs] == ["failed", "done"]
 
 
+def test_deliverables_older_than_the_window_are_left_out() -> None:
+    events = [
+        _event(event_id="fresh", session_id="s1", minutes_ago=60),
+        _event(event_id="stale", session_id="s1", minutes_ago=8 * 24 * 60),
+    ]
+
+    work = _compose(events=events)
+
+    assert work.total_count == 1
+    assert [item.id for item in work.groups[0].items] == ["fresh"]
+    assert work.groups[0].latest_at == NOW - timedelta(minutes=60)
+
+
 def test_a_removed_expert_keeps_its_attribution_kind() -> None:
     work = _compose(events=[_event(event_id="e1", expert_id="gone", session_id="s1")])
 

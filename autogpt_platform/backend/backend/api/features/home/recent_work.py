@@ -84,7 +84,9 @@ def compose_recent_work(
     displayable = [
         event
         for event in events
-        if event.category in _ITEM_CATEGORIES and not _is_model_call(event)
+        if event.category in _ITEM_CATEGORIES
+        and not _is_model_call(event)
+        and as_utc(event.created_at) >= since
     ]
     for event in displayable:
         target = bucket(_event_key(event, exec_by_id))

@@ -84,7 +84,11 @@ export function WorkGroup({ group, timezone }: Props) {
   );
 }
 
-function ActorMark({ actor }: { actor: HomeWorkActor }) {
+interface ActorMarkProps {
+  actor: HomeWorkActor;
+}
+
+function ActorMark({ actor }: ActorMarkProps) {
   if (actor.kind === "expert" && actor.expert) {
     return (
       <ExpertAvatar

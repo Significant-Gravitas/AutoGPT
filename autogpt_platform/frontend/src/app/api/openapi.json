@@ -21591,13 +21591,8 @@
         "properties": {
           "window_started_at": {
             "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
             ],
             "title": "Window Started At"
           },
@@ -21612,9 +21607,7 @@
             "default": 0
           },
           "groups": {
-            "items": {
-              "$ref": "#/components/schemas/HomeRecentWorkGroup"
-            },
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkGroup" },
             "type": "array",
             "title": "Groups"
           },
@@ -21629,25 +21622,19 @@
       },
       "HomeRecentWorkGroup": {
         "properties": {
-          "actor": {
-            "$ref": "#/components/schemas/HomeWorkActor"
-          },
+          "actor": { "$ref": "#/components/schemas/HomeWorkActor" },
           "latest_at": {
             "type": "string",
             "format": "date-time",
             "title": "Latest At"
           },
           "runs": {
-            "items": {
-              "$ref": "#/components/schemas/HomeBriefingOutcome"
-            },
+            "items": { "$ref": "#/components/schemas/HomeBriefingOutcome" },
             "type": "array",
             "title": "Runs"
           },
           "items": {
-            "items": {
-              "$ref": "#/components/schemas/HomeRecentWorkItem"
-            },
+            "items": { "$ref": "#/components/schemas/HomeRecentWorkItem" },
             "type": "array",
             "title": "Items"
           },
@@ -21664,81 +21651,37 @@
       },
       "HomeRecentWorkItem": {
         "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
+          "id": { "type": "string", "title": "Id" },
           "category": {
             "type": "string",
             "enum": ["file", "integration", "schedule"],
             "title": "Category"
           },
-          "event_type": {
-            "type": "string",
-            "title": "Event Type"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
+          "event_type": { "type": "string", "title": "Event Type" },
+          "title": { "type": "string", "title": "Title" },
           "occurred_at": {
             "type": "string",
             "format": "date-time",
             "title": "Occurred At"
           },
           "provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Provider"
           },
           "file_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "File Id"
           },
           "mime_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Mime Type"
           },
           "session_title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Session Title"
           },
           "link": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
           }
         },
@@ -21833,29 +21776,15 @@
             "enum": ["expert", "workflow", "autopilot"],
             "title": "Kind"
           },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
+          "name": { "type": "string", "title": "Name" },
           "expert": {
             "anyOf": [
-              {
-                "$ref": "#/components/schemas/HomeExpert"
-              },
-              {
-                "type": "null"
-              }
+              { "$ref": "#/components/schemas/HomeExpert" },
+              { "type": "null" }
             ]
           },
           "link": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
           }
         },
