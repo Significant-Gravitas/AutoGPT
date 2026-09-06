@@ -58,8 +58,20 @@ def ledger(monkeypatch) -> TreeLedger:
 async def test_the_prompt_is_untouched_when_the_signal_does_not_apply(
     ledger, monkeypatch, envelope, flag
 ) -> None:
+    """Empty output alone would not prove the guard: the module swallows every
+    error, so a guard removed and a guard held both return ``""``. What
+    separates them is whether the ledger was read at all."""
     monkeypatch.setattr(budget_signal.config, "tree_budget_signal_enabled", flag)
+    reads: list[int] = []
+
+    async def _counted() -> TreeLedger:
+        reads.append(1)
+        raise AssertionError("read the ledger for a turn that has no signal")
+
+    monkeypatch.setattr(budget_signal, "get_tree_ledger", _counted)
+
     assert await build_turn_budget_block(envelope, "u") == ""
+    assert not reads
 
 
 @pytest.mark.asyncio
