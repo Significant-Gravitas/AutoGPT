@@ -1,6 +1,6 @@
 import { FieldProps, getFirstMatchingOption, mergeSchemas } from "@rjsf/utils";
 import { useRef, useState } from "react";
-import validator from "@rjsf/validator-ajv8";
+import { customValidator as validator } from "../../utils/custom-validator";
 import { getDefaultTypeIndex } from "./helpers";
 import { cleanUpHandleId } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
