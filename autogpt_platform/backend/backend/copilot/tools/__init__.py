@@ -18,6 +18,7 @@ from .bash_exec import BashExecTool
 from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
+from .consult_teammate import ConsultTeammateTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
@@ -123,6 +124,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
+    "consult_teammate": ConsultTeammateTool(),
     "delegate_to_expert": DelegateToExpertTool(),
     "list_team": ListTeamTool(),
     "TodoWrite": TodoWriteTool(),
@@ -213,6 +215,9 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     # and expert sessions alike), so it has its own group: the engines
     # disable it only when the user's hire-experts flag is off.
     "delegate_to_expert": "delegation",
+    # A consult is read-only and costs one bounded completion, but it is
+    # meaningless without teammates to ask, so it rides the same gate.
+    "consult_teammate": "delegation",
     # Read-only, but it shares the same gate: with the flag off there is no
     # team to list.
     "list_team": "delegation",

@@ -46,6 +46,38 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
+# How many teammate consults one turn may spend. A consult is a single
+# tool-less LLM call, so it cannot recurse — but nothing else stops a model
+# re-asking the same question until the turn's round budget runs out, and a
+# check re-run on unchanged work is a loop, not diligence.
+MAX_CONSULTS_PER_TURN = 3
+_consults_used: ContextVar[int] = ContextVar("_consults_used", default=0)
+
+
+def reset_consult_budget() -> None:
+    """Give the turn a fresh consult allowance. Called by both engines' setters."""
+    _consults_used.set(0)
+
+
+def take_consult_slot() -> str | None:
+    """Claim one consult, or return the refusal to hand the model.
+
+    Counting here rather than in the tool keeps the budget per *turn*: the
+    context var is set once per turn by ``set_execution_context`` and read by
+    every tool call inside it.
+    """
+    used = _consults_used.get()
+    if used >= MAX_CONSULTS_PER_TURN:
+        return (
+            f"You have already asked teammates to check work "
+            f"{used} times this turn. Act on the verdicts you have — "
+            "re-asking about work that has not changed is a loop, not a "
+            "second opinion."
+        )
+    _consults_used.set(used + 1)
+    return None
+
+
 # Current execution's capability filter.  None means "no restrictions".
 # Set by set_execution_context(); read by run_block and service.py.
 _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
@@ -81,6 +113,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    reset_consult_budget()
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:

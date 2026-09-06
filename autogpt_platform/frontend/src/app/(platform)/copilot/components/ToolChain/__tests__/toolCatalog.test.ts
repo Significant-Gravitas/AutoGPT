@@ -250,5 +250,22 @@ describe("getCatalogLabel", () => {
     expect(
       getCatalogLabel("handoff_to_expert", { prompt: "own it" }, "done")?.text,
     ).toBe('Handed over: "own it"');
+    expect(
+      getCatalogLabel(
+        "consult_teammate",
+        { question: "Does this commit us to a refund?" },
+        "running",
+      ),
+    ).toEqual({
+      category: "team",
+      text: 'Asking a teammate to check: "Does this commit us to a refund?"…',
+    });
+    expect(
+      getCatalogLabel(
+        "consult_teammate",
+        { question: "Does this commit us to a refund?" },
+        "done",
+      )?.text,
+    ).toBe('Teammate checked: "Does this commit us to a refund?"');
   });
 });

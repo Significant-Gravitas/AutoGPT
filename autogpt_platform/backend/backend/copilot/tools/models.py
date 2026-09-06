@@ -128,6 +128,7 @@ class ResponseType(str, Enum):
     EXPERT_CHANGE_PROPOSED = "expert_change_proposed"
     EXPERT_CHANGE_APPLIED = "expert_change_applied"
     TEAM_ROSTER = "team_roster"
+    TEAM_CONSULT = "team_consult"
 
 
 # Base response model
@@ -604,6 +605,30 @@ class TeamRosterResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TEAM_ROSTER
     experts: list[TeamExpertInfo] = Field(default_factory=list)
+
+
+class ConsultingExpertInfo(BaseModel):
+    """Identity of the teammate who gave a verdict, for the ToolChain card."""
+
+    id: str
+    name: str
+    role: str
+    avatar_url: str | None = None
+    color: str = ""
+
+
+class ConsultVerdictResponse(ToolResponseBase):
+    """One teammate's ruling on another's work, from ``consult_teammate``.
+
+    ``verdict`` is the machine-readable half of ``message`` and the two never
+    disagree: the card reads this field, the model reads the fenced prose.
+    """
+
+    type: ResponseType = ResponseType.TEAM_CONSULT
+    verdict: Literal["pass", "block", "insufficient"]
+    reason: str = ""
+    quotes: list[str] = Field(default_factory=list)
+    reviewer: ConsultingExpertInfo
 
 
 class ExpertChangeProposedResponse(ToolResponseBase):
