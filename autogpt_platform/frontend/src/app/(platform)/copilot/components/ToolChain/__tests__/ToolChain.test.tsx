@@ -201,6 +201,26 @@ describe("ToolChain", () => {
     expect(screen.getByText("Weighing the trade-offs")).toBeDefined();
   });
 
+  it("renders the canonical agent name in both the live heading and its row", () => {
+    const { container } = render(
+      <ToolChain
+        parts={[
+          toolPart("run_agent", "input-available", {
+            title: "Daily briefing",
+            input: { library_agent_id: "b71fd24c-7623-4a73-a000-000000000000" },
+          }),
+        ]}
+        isStreaming
+      />,
+    );
+
+    expect(getChainHeader(/running agent "Daily briefing"/i)).toBeDefined();
+    expect(screen.getAllByText('Running agent "Daily briefing"…')).toHaveLength(
+      2,
+    );
+    expect(container.textContent).not.toContain("b71fd24c");
+  });
+
   it("renders the provider icon when the tool output names a provider", async () => {
     const user = userEvent.setup();
     const { container } = render(

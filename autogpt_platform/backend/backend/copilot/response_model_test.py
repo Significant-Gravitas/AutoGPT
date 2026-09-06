@@ -9,7 +9,21 @@ from backend.copilot.response_model import (
     ResponseType,
     StreamCompactionProgress,
     StreamModeChanged,
+    StreamToolDisplayAvailable,
+    ToolDisplayData,
 )
+
+
+def test_tool_display_serializes_as_persistent_ai_sdk_data_part():
+    event = StreamToolDisplayAvailable(
+        id="call-1",
+        data=ToolDisplayData(toolCallId="call-1", displayName='Résumé "Daily"'),
+    )
+    assert json.loads(event.to_sse().removeprefix("data: ")) == {
+        "type": "data-tool-display",
+        "id": "call-1",
+        "data": {"toolCallId": "call-1", "displayName": 'Résumé "Daily"'},
+    }
 
 
 def test_mode_changed_serializes_as_ai_sdk_data_part():

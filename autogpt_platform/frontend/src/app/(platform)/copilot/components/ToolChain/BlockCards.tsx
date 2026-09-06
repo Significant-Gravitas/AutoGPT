@@ -8,6 +8,7 @@ import {
 import Image from "next/image";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import { CARD, HALF, RESULT_GRID } from "./ResultCards";
 import {
   inline,
@@ -77,7 +78,7 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium text-zinc-800">
-                {str(block, "name", "block_name") ?? inline(block)}
+                {getBlockDisplayName(block.name, block) ?? "Block"}
               </p>
               {str(block, "description") && (
                 <p className="truncate text-xs text-zinc-500">
@@ -98,7 +99,7 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
 }
 
 export function BlockOutputCard({ output }: BlockOutputCardProps) {
-  const name = str(output, "block_name", "block_id") ?? "Block";
+  const name = getBlockDisplayName(undefined, output) ?? "Block";
   const ok = output.success !== false;
   const entries = Object.entries(
     output.outputs && typeof output.outputs === "object"

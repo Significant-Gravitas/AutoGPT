@@ -69,6 +69,96 @@ function subSession(
 describe("SubSessionLive", () => {
   afterEach(cleanup);
 
+  it.each([
+    ["run_agent", "Daily briefing", "Running agent", "Daily briefing"],
+    [
+      "run_block",
+      "FillTextTemplateBlock",
+      "Running block",
+      "Fill Text Template",
+    ],
+    [
+      "continue_run_block",
+      "FillTextTemplateBlock",
+      "Continuing block run",
+      "Fill Text Template",
+    ],
+  ])(
+    "shows persisted names in a delegate's live %s steps",
+    async (tool, displayName, label, name) => {
+      server.use(
+        subSession(
+          [
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                {
+                  id: "run-1",
+                  display_name: displayName,
+                  function: {
+                    name: tool,
+                    arguments: JSON.stringify(
+                      tool === "run_agent"
+                        ? { library_agent_id: "library-id" }
+                        : tool === "run_block"
+                          ? { block_id: "block-id", input_data: {} }
+                          : { review_id: "review-id" },
+                    ),
+                  },
+                },
+              ],
+            },
+          ],
+          { chat_status: "running", active_stream: null },
+        ),
+      );
+      render(
+        <SubSessionCard
+          output={{ status: "running", sub_session_id: "sub-1" }}
+        />,
+      );
+      expect(await screen.findByText(`${label} "${name}"…`)).toBeDefined();
+    },
+  );
+
+  it("matches historical delegate output names by tool call ID", async () => {
+    server.use(
+      subSession(
+        [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              { id: "run-1", function: { name: "run_agent", arguments: "{}" } },
+              { id: "run-2", function: { name: "run_agent", arguments: "{}" } },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-2",
+            content: '{"agent_name":"Second workflow"}',
+            tool_calls: null,
+          },
+          {
+            role: "tool",
+            tool_call_id: "run-1",
+            content: '{"graph_name":"First workflow"}',
+            tool_calls: null,
+          },
+        ],
+        { chat_status: "idle", active_stream: null },
+      ),
+    );
+    render(
+      <SubSessionCard
+        output={{ status: "running", sub_session_id: "sub-1" }}
+      />,
+    );
+    expect(await screen.findByText('Ran agent "First workflow"')).toBeDefined();
+    expect(screen.getByText('Ran agent "Second workflow"')).toBeDefined();
+  });
+
   it("streams the delegate's recent tools and latest words while running", async () => {
     server.use(
       subSession([
