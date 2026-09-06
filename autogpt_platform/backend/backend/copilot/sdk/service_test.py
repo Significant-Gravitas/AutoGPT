@@ -1586,7 +1586,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
             yield ResultMessage(
                 subtype="success",
@@ -1631,7 +1631,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield None  # heartbeat
             yield ResultMessage(
                 subtype="success",
@@ -1680,7 +1680,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(
                 content=[
                     ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
@@ -1749,7 +1749,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="init", data={})
             yield AssistantMessage(
                 content=[
@@ -1811,7 +1811,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield ResultMessage(
                 subtype="error",
                 duration_ms=1,
@@ -1850,7 +1850,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="task_progress", data={"step": 1})
             yield ResultMessage(
                 subtype="success",
@@ -1889,7 +1889,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client, wake=None):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             # Two consecutive AssistantMessages with empty tool args —
             # the breaker counter should advance but not yet trip.
             for i in range(2):
@@ -2130,7 +2130,7 @@ class TestStreamEndedWithoutResultMessage:
         ctx = self._ctx()
         state = self._state()
 
-        async def empty_iter(_client, wake=None):
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
             # Drain immediately — no ResultMessage ever arrives. Mirrors
             # the CLI exiting on per-query ``max_budget_usd`` exhaustion
             # mid-tool-call.

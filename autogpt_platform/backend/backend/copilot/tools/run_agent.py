@@ -9,6 +9,7 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -881,6 +882,7 @@ class RunAgentTool(BaseTool):
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Execute — ``add_graph_execution`` ultimately calls
         # ``validate_and_construct_node_execution_input`` which raises
@@ -1158,6 +1160,7 @@ class RunAgentTool(BaseTool):
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Get user timezone
         user = await user_db().get_user_by_id(user_id)
