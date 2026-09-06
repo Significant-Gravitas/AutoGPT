@@ -571,7 +571,7 @@ async def create_library_agent(
     Adds an agent to the user's library (LibraryAgent table).
 
     Args:
-        agent: The agent/Graph to add to the library.
+        graph: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
         hitl_safe_mode: Whether HITL blocks require manual review (default True).
         sensitive_action_safe_mode: Whether sensitive action blocks require review.
