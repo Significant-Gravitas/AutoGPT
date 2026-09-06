@@ -155,8 +155,9 @@ async def test_run_block_returns_details_when_only_credentials_provided():
 
 
 def make_annotated_block(block_id: str = "annotated-block-id"):
-    """A block whose schema carries builder-UI annotations, plus a property
-    literally named ``secret`` so the strip can't be a blind key filter."""
+    """A block whose schema carries builder-UI annotations, plus properties
+    literally named ``secret`` and ``title`` so the strip can't be a blind
+    key filter."""
     mock = make_mock_block_with_inputs(block_id, "Annotated Block")
     mock.input_schema.jsonschema.return_value = {
         "properties": {
@@ -228,10 +229,10 @@ async def test_flag_on_strips_presentation_annotations_from_both_schemas():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_flag_on_keeps_a_property_that_shares_an_annotation_name():
-    """``secret`` is both a UI annotation and a legal field name."""
+async def test_flag_on_keeps_properties_that_share_an_annotation_name():
+    """``secret`` and ``title`` are both UI annotations and legal field names."""
     response = await _details_for(make_annotated_block(), flag_on=True)
-    assert "secret" in response.block.inputs["properties"]
+    assert {"secret", "title"} <= set(response.block.inputs["properties"])
     assert response.block.inputs["required"] == ["model"]
 
 
@@ -247,13 +248,6 @@ async def test_flag_on_keeps_a_title_the_property_name_does_not_give():
     response = await _details_for(make_annotated_block(), flag_on=True)
     prompt = response.block.inputs["properties"]["sys_prompt"]
     assert prompt["title"] == "System Prompt"
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_flag_on_keeps_a_property_named_title():
-    """``title`` is both a schema annotation and a legal field name."""
-    response = await _details_for(make_annotated_block(), flag_on=True)
-    assert "title" in response.block.inputs["properties"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
