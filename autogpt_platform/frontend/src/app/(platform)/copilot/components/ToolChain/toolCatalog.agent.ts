@@ -1,4 +1,4 @@
-import { quoted, type ToolMeta } from "./toolCatalog.shared";
+import { quoted, quotedName, type ToolMeta } from "./toolCatalog.shared";
 import { getAgentDisplayName } from "../../helpers/toolDisplay";
 
 export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
@@ -125,10 +125,7 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Running agent",
     done: "Ran agent",
     subject: (_input, context) =>
-      quoted(
-        { name: getAgentDisplayName(context.displayName, context.output) },
-        "name",
-      ),
+      quotedName(getAgentDisplayName(context.displayName, context.output)),
   },
   view_agent_output: {
     category: "agent",

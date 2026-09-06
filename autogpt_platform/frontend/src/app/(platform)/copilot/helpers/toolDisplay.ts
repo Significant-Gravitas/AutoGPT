@@ -1,6 +1,7 @@
 import type { ToolUIPart, UIMessage } from "ai";
 import { beautifyString } from "@/lib/utils";
 import { asObject } from "../components/ToolChain/resultHelpers";
+import { TOOL_DISPLAY_PART_TYPE } from "../messageParts";
 
 export function toolDisplayName(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -11,7 +12,7 @@ export function withToolDisplayNames(
 ): UIMessage["parts"] {
   const names = new Map<string, string>();
   for (const part of parts) {
-    if (part.type !== "data-tool-display" || !("data" in part)) continue;
+    if (part.type !== TOOL_DISPLAY_PART_TYPE || !("data" in part)) continue;
     const data = asObject(part.data);
     const toolCallID = toolDisplayName(data?.toolCallId);
     const name = toolDisplayName(data?.displayName);

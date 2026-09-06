@@ -7,6 +7,7 @@ import {
 
 export interface SessionRun {
   executionId: string;
+  /** Null without a resolved name; the row looks up libraryAgentId when present. */
   name: string | null;
   libraryAgentId: string | null;
   status: string | null;

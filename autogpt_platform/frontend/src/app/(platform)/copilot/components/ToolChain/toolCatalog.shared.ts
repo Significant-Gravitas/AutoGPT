@@ -46,6 +46,9 @@ export function quoted(
   key: string,
   maxLen = 50,
 ): string | null {
-  const value = strField(input, key);
+  return quotedName(strField(input, key), maxLen);
+}
+
+export function quotedName(value: string | null, maxLen = 50): string | null {
   return value ? `"${truncate(value, maxLen)}"` : null;
 }

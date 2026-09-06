@@ -1,9 +1,10 @@
 """Baseline tool names stream before execution finishes and survive hydration."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.baseline import service
 from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _baseline_tool_executor,
@@ -15,6 +16,7 @@ from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.sharing.models import sanitize_chat_message
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall
 
 
@@ -61,8 +63,37 @@ async def test_tool_display_streams_and_persists_before_tool_result(fails: bool)
     )
     assistant = state.session_messages[0]
     assert assistant.tool_calls[0]["display_name"] == "Daily report"
-    assert "display_name" not in messages[0]["tool_calls"][0]
     restored = ChatMessage.model_validate_json(assistant.model_dump_json())
     assert (
         sanitize_chat_message(restored).tool_calls[0]["display_name"] == "Daily report"
     )
+
+
+@pytest.mark.asyncio
+async def test_compression_receives_clean_tool_calls_without_mutating_saved_names():
+    call = {
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "run_agent", "arguments": '{"library_agent_id":"id-1"}'},
+    }
+    message = ChatMessage(
+        role="assistant", tool_calls=[{**call, "display_name": "Daily report"}]
+    )
+    compress = AsyncMock(
+        return_value=CompressResult(messages=[], token_count=10, was_compacted=False)
+    )
+    with (
+        patch("backend.copilot.baseline.service.compress_context", new=compress),
+        patch(
+            "backend.copilot.baseline.service._get_main_client",
+            return_value=MagicMock(),
+        ),
+    ):
+        await service._compress_session_messages(
+            [message], model="anthropic/claude-sonnet-4-6"
+        )
+
+    compress.assert_awaited_once()
+    assert compress.await_args is not None
+    assert compress.await_args.kwargs["messages"][0]["tool_calls"] == [call]
+    assert message.tool_calls == [{**call, "display_name": "Daily report"}]

@@ -389,8 +389,11 @@ async def _consume_sdk_until_done(
         tool_display_wake=ctx.tool_display.ready if ctx.tool_display else None,
     ):
         for display in ctx.tool_display.drain() if ctx.tool_display else []:
-            _dispatch_response(display, acc, ctx, state, False, ctx.log_prefix)
-            yield display
+            dispatched = _dispatch_response(
+                display, acc, ctx, state, False, ctx.log_prefix
+            )
+            if dispatched is not None:
+                yield dispatched
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()

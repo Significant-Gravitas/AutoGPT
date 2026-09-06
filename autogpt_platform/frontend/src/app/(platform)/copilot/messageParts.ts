@@ -5,6 +5,7 @@ import { DREAM_OPERATIONS_PART_TYPE } from "./dreamOperations";
 
 /** Transient copy for the Thinking indicator — never rendered inline. */
 export const STATUS_PART_TYPE = "data-status";
+export const TOOL_DISPLAY_PART_TYPE = "data-tool-display";
 /** Legacy resume metadata. */
 const CURSOR_PART_TYPE = "data-cursor";
 
@@ -23,7 +24,7 @@ const BOOKKEEPING_PART_TYPES: ReadonlySet<string> = new Set([
   STATUS_PART_TYPE,
   DREAM_OPERATIONS_PART_TYPE,
   COMPACTION_DATA_PART_TYPE,
-  "data-tool-display",
+  TOOL_DISPLAY_PART_TYPE,
 ]);
 
 export function isBookkeepingPart(part: { type: string }): boolean {

@@ -1,4 +1,4 @@
-"""Cancellation persists names through the complete baseline stream lifecycle."""
+"""Saved display names survive cancellation and stay out of provider requests."""
 
 import asyncio
 from collections.abc import Iterator
@@ -90,6 +90,52 @@ async def test_cancelled_stream_persists_named_calls_and_completed_sibling(
     assert {call["id"]: call["display_name"] for call in assistant.tool_calls} == names
     assert result.tool_call_id == "completed"
     assert result.content == "actual completed result"
+
+
+@pytest.mark.asyncio
+async def test_resumed_stream_sends_clean_tool_calls_and_retains_saved_names(
+    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
+) -> None:
+    call = {
+        "id": "saved-call",
+        "type": "function",
+        "function": {"name": "run_agent", "arguments": '{"library_agent_id":"id-1"}'},
+    }
+    assistant = ChatMessage(
+        role="assistant", tool_calls=[{**call, "display_name": "Daily report"}]
+    )
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "Existing conversation"
+    session.messages = [
+        ChatMessage(role="user", content="Run the workflow"),
+        assistant,
+        ChatMessage(role="tool", tool_call_id="saved-call", content="Completed"),
+        ChatMessage(role="user", content="Continue"),
+    ]
+    stream = MagicMock()
+    stream.__aiter__.return_value = []
+    stream.close = AsyncMock()
+    provider = AsyncMock(return_value=stream)
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    monkeypatch.setattr(service, "download_transcript", AsyncMock(return_value=None))
+
+    async with asyncio.timeout(5):
+        async for _ in service.stream_chat_completion_baseline(
+            session.session_id, user_id="user-1", session=session, is_user_message=False
+        ):
+            pass
+
+    provider.assert_awaited_once()
+    assert provider.await_args is not None
+    [sent_assistant] = [
+        message
+        for message in provider.await_args.kwargs["messages"]
+        if message["role"] == "assistant"
+    ]
+    assert sent_assistant["tool_calls"] == [call]
+    assert assistant.tool_calls == [{**call, "display_name": "Daily report"}]
+    [persisted] = baseline_io
+    assert persisted.messages[1].tool_calls == assistant.tool_calls
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import tool_display_context
 from backend.copilot.tools.run_agent import RunAgentTool
 
 
@@ -28,11 +29,7 @@ async def test_canonical_library_name_is_published_before_execution(wait_for_res
             "backend.copilot.tools.run_agent.get_or_create_library_agent",
             new=AsyncMock(return_value=library_agent),
         ),
-        patch(
-            "backend.copilot.tools.run_agent.emit_tool_display_name",
-            side_effect=published.append,
-            create=True,
-        ),
+        tool_display_context(published.append),
         patch(
             "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
             new=AsyncMock(side_effect=start_execution),
