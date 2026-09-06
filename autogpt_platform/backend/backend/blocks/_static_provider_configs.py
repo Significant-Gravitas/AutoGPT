@@ -21,7 +21,7 @@ from backend.sdk import ProviderBuilder
 
 _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     # LLM providers that share blocks/llm.py
-    "aiml_api": ("Unified access to 100+ AI models", ("api_key",)),
+    "aiml_api": ("Access 1,000+ AI models with a single API key", ("api_key",)),
     "anthropic": ("Claude language models", ("api_key",)),
     "codex": ("Use your ChatGPT plan with Codex App Server", ("oauth2",)),
     "groq": ("Fast LLM inference", ("api_key",)),
