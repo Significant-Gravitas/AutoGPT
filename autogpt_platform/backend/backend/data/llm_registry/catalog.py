@@ -175,7 +175,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="anthropic",
                 creator="anthropic",
                 context_window=200000,
-                max_output_tokens=64000,
+                max_output_tokens=128000,
                 price_tier=3,
                 cost=CatalogModelCost(
                     run_credits=9,
