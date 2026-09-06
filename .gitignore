@@ -218,3 +218,6 @@ supabase/.temp/
 
 # Copied from node_modules by frontend/scripts/copy-vad-assets.mjs
 autogpt_platform/frontend/public/vad/
+
+# Dependency and tool caches; vitest wrote one to the repo root once.
+node_modules/
