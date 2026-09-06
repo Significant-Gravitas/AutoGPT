@@ -651,7 +651,10 @@ class ChatConfig(BaseSettings):
     )
     e2b_desktop_template: str = Field(
         default="desktop",
-        description="E2B template for the on-demand start_desktop sandbox.",
+        description="E2B template for the on-demand start_desktop sandbox. E2B's "
+        "public 'desktop' is 8 vCPU / 8 GiB (~$0.53/h running); build a smaller "
+        "one on the team with `poetry run build-desktop-template` "
+        "(agpt-desktop-1x1: 1 vCPU / 1 GiB, ~$0.07/h) and set this to its alias.",
     )
     e2b_desktop_timeout: int = Field(
         default=900,

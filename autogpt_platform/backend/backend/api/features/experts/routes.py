@@ -393,6 +393,7 @@ async def start_expert_desktop(
             SandboxOwner(kind="expert", id=expert_id),
             mounts_for(user_id, expert_id),
             api_key,
+            user_id=user_id,
         )
     except Exception as exc:
         logger.error(

@@ -909,6 +909,8 @@ async def start_session_desktop(
             computer_owner(session_id, session.expert_id),
             mounts_for(user_id, session.expert_id),
             api_key,
+            user_id=user_id,
+            session_id=session_id,
         )
     except Exception as exc:
         logger.error(

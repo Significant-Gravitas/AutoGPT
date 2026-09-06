@@ -1,5 +1,5 @@
 import time
-from typing import Literal, Optional
+from typing import Literal, Mapping, Optional
 
 from backend.blocks._base import (
     Block,
@@ -9,6 +9,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.desktop._api import (
+    DESKTOP_TEMPLATE,
     WORKSPACE_PATH,
     DesktopSession,
     DesktopStream,
@@ -30,6 +31,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.sandbox_metadata import SandboxMetadata
 
 
 class CreateDesktopSandboxBlock(Block):
@@ -128,6 +130,7 @@ class CreateDesktopSandboxBlock(Block):
         height: int,
         timeout_minutes: int,
         volume_name: Optional[str],
+        metadata: Optional[Mapping[str, str]] = None,
     ) -> tuple[str, DesktopStream, PersistenceInfo, Optional[tuple[int, float]]]:
         if sandbox_id:
             session = await DesktopSession.connect(sandbox_id, api_key)
@@ -142,6 +145,7 @@ class CreateDesktopSandboxBlock(Block):
                 width=width,
                 height=height,
                 volume_mounts={WORKSPACE_PATH: volume_name} if volume_name else None,
+                metadata=metadata,
             )
         stream = await session.start_stream()
         return session.sandbox_id, stream, persistence, await session.resources()
@@ -165,6 +169,9 @@ class CreateDesktopSandboxBlock(Block):
                 volume_name=volume_name_for_scope(
                     input_data.workspace_scope, execution_context
                 ),
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "desktop", self.id, DESKTOP_TEMPLATE
+                ).as_e2b(),
             )
             yield "sandbox_id", sandbox_id
             yield "desktop_stream", stream.model_dump()

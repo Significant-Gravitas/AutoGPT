@@ -81,6 +81,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
 from backend.data.redis_client import get_redis_async
+from backend.util.sandbox_metadata import MountState, SandboxMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +182,28 @@ class SandboxOwner(BaseModel):
         return _EXPERT_ID_TTL if self.is_expert else _SANDBOX_ID_TTL
 
     def metadata(self, sandbox_kind: SandboxKind = "shell") -> dict[str, str]:
-        """Metadata stamped on the E2B sandbox so it can be found without Redis."""
+        """The identity keys a lookup filters on; a subset of ``creation_metadata``."""
         return {METADATA_OWNER: f"{self.kind}:{self.id}", METADATA_KIND: sandbox_kind}
+
+    def creation_metadata(
+        self,
+        sandbox_kind: SandboxKind = "shell",
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        template: str | None = None,
+        mounts: MountState | None = None,
+    ) -> dict[str, str]:
+        """Identity plus provenance, stamped on the box when it is created."""
+        return SandboxMetadata.for_copilot(
+            f"{self.kind}:{self.id}",
+            sandbox_kind,
+            user_id=user_id,
+            session_id=session_id,
+            expert_id=self.id if self.is_expert else None,
+            template=template,
+            mounts=mounts,
+        ).as_e2b()
 
     def __str__(self) -> str:
         return f"{self.kind} {self.id[:12]}"
@@ -380,6 +401,7 @@ async def get_or_create_sandbox(
     volume_mounts: Mapping[str, str] | None = None,
     *,
     expert_id: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncSandbox:
     """Return the existing E2B sandbox for this turn's owner or create a new one.
 
@@ -474,10 +496,13 @@ async def get_or_create_sandbox(
                             timeout=timeout,
                             lifecycle=lifecycle,
                             volume_mounts=mounts,
-                            metadata={
-                                **owner.metadata("shell"),
-                                METADATA_MOUNTS: "attached" if mounts else "none",
-                            },
+                            metadata=owner.creation_metadata(
+                                "shell",
+                                user_id=user_id,
+                                session_id=session_id,
+                                template=template,
+                                mounts="attached" if mounts else "none",
+                            ),
                         ),
                         timeout=_SANDBOX_CREATE_TIMEOUT_SECONDS,
                     )

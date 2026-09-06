@@ -1775,6 +1775,7 @@ async def stream_chat_completion_baseline(
                 on_timeout=config.e2b_sandbox_on_timeout,
                 volume_mounts=workspace_volume_mounts(user_id, session.expert_id),
                 expert_id=session.expert_id,
+                user_id=user_id,
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)

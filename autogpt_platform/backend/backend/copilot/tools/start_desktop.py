@@ -84,7 +84,11 @@ class StartDesktopTool(BaseTool):
         owner = computer_owner(session_id, expert_id)
         try:
             stream, created, shared = await open_desktop(
-                owner, mounts_for(user_id, expert_id), api_key
+                owner,
+                mounts_for(user_id, expert_id),
+                api_key,
+                user_id=user_id,
+                session_id=session_id,
             )
         except Exception as exc:
             logger.error("[E2B] start_desktop failed: %s", exc, exc_info=True)

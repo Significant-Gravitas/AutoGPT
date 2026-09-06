@@ -25,6 +25,7 @@ from backend.blocks.desktop._common import (
     user_volume_name,
     workspace_volume_mounts,
 )
+from backend.util.sandbox_metadata import deployment_env
 
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
@@ -823,6 +824,11 @@ class TestExpertShellBox:
         assert kwargs["metadata"] == {
             "autogpt_owner": f"expert:{_EXPERT_ID}",
             "autogpt_kind": "shell",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_session": _SESSION_ID,
+            "autogpt_expert": _EXPERT_ID,
+            "autogpt_template": "base",
             "autogpt_mounts": "attached",
         }
         # Creation lock and cached id both live under the expert key.
@@ -847,6 +853,10 @@ class TestExpertShellBox:
         assert kwargs["metadata"] == {
             "autogpt_owner": f"session:{_SESSION_ID}",
             "autogpt_kind": "shell",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_session": _SESSION_ID,
+            "autogpt_template": "base",
             "autogpt_mounts": "none",
         }
         assert kwargs["volume_mounts"] is None

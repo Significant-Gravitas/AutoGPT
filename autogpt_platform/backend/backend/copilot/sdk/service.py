@@ -4713,6 +4713,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     on_timeout=config.e2b_sandbox_on_timeout,
                     volume_mounts=workspace_volume_mounts(user_id, owner_expert_id),
                     expert_id=owner_expert_id,
+                    user_id=user_id,
                 )
                 # Publish the live box before the gather returns: if a sibling
                 # setup leg fails, the finally below still pauses it and
