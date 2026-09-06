@@ -88,6 +88,9 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
     """
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
@@ -98,9 +101,10 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
         or (old_url.hostname != new_url.hostname)
         or (old_url.port != new_url.port)
     ):
-        headers.pop("Authorization", None)
-        headers.pop("Proxy-Authorization", None)
-        headers.pop("Cookie", None)
+        # Header names are case-insensitive, and callers do send e.g.
+        # ``authorization``; matching on the exact key would miss those.
+        for name in [n for n in headers if n.lower() in SENSITIVE_HEADERS]:
+            headers.pop(name)
     return headers
 
 
