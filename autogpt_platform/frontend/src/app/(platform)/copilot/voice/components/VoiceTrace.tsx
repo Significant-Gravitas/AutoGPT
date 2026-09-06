@@ -4,17 +4,19 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { createLevelScale } from "../levelScale";
 import { takeMicLevel } from "../micLevel";
+import { readSpeechLevel } from "../speechLevel";
 
 /** One column per tick; the strip scrolls left as they arrive. */
-const COLUMNS = 48;
-export const TICK_MS = 100;
+const COLUMNS = 60;
+export const TICK_MS = 67;
 const MIN_SCALE = 0.06;
-/** Speech sits near 0.05–0.2 RMS, so the strip needs the gain to fill. */
-const MIC_GAIN = 4;
+
+export type TraceSource = "mic" | "speech" | "pulse";
 
 interface Props {
-  source: "mic" | "pulse";
+  source: TraceSource;
   className?: string;
   /** Bar colour, as a Tailwind background class. */
   color: string;
@@ -32,8 +34,13 @@ export function VoiceTrace({ source, className, color }: Props) {
 
   useEffect(() => {
     let tick = 0;
+    const scale = createLevelScale();
     const timer = setInterval(() => {
-      const next = source === "mic" ? micColumn() : pulseColumn(tick++);
+      // Read OUTSIDE the updater. Taking a level consumes it, and React
+      // re-invokes updaters (StrictMode does it every time in dev), so the
+      // second call saw an already-emptied peak — a flat line with the odd
+      // spike when a frame landed between the two.
+      const next = column(source, tick++, scale);
       setColumns((previous) => [...previous.slice(1), next]);
     }, TICK_MS);
     return () => clearInterval(timer);
@@ -41,10 +48,8 @@ export function VoiceTrace({ source, className, color }: Props) {
 
   return (
     <div
-      // Clips from the left, so the newest column survives a narrow
-      // composer — the oldest history is what you can afford to lose.
       className={cn(
-        "flex h-6 items-center justify-end gap-[2px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-[2px] overflow-hidden",
         className,
       )}
       aria-hidden="true"
@@ -52,7 +57,7 @@ export function VoiceTrace({ source, className, color }: Props) {
       {columns.map((level, index) => (
         <span
           key={index}
-          className={cn("w-[2px] rounded-full transition-none", color)}
+          className={cn("w-[2px] shrink-0 rounded-full", color)}
           style={{ height: `${Math.max(MIN_SCALE, level) * 100}%` }}
         />
       ))}
@@ -60,14 +65,25 @@ export function VoiceTrace({ source, className, color }: Props) {
   );
 }
 
-function micColumn(): number {
-  return Math.min(1, takeMicLevel() * MIC_GAIN);
+function column(
+  source: TraceSource,
+  tick: number,
+  scale: (level: number) => number,
+): number {
+  if (source === "mic") return scale(takeMicLevel());
+  if (source === "speech") {
+    const level = readSpeechLevel();
+    // No analyser — Web Audio unavailable, or the element was already routed
+    // elsewhere. Falling through to the pulse beats a dead flat line.
+    if (level !== null) return scale(level);
+  }
+  return pulse(tick);
 }
 
 /**
- * Nothing is coming in — the model is thinking, or talking. A travelling
- * bump reads as activity without pretending to be a measurement.
+ * Nothing to measure — the model is thinking. A travelling bump reads as
+ * activity without pretending to be a measurement.
  */
-function pulseColumn(tick: number): number {
-  return 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(tick / 2.2));
+function pulse(tick: number): number {
+  return 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(tick / 3.3));
 }

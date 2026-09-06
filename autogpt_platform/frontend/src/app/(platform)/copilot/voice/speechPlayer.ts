@@ -4,6 +4,8 @@
  * inside a user gesture, and later chunks arrive with no gesture of their own.
  */
 
+import { watchSpeech } from "./speechLevel";
+
 const SILENT_WAV =
   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
 
@@ -90,6 +92,9 @@ export function createSpeechPlayer({
 
   function playUrl(url: string): Promise<void> {
     const audio = unlockAudio();
+    // Routed here rather than at unlock: the graph can only be built while
+    // the context is running, and the toggle click is what starts it.
+    watchSpeech(audio);
     audio.src = url;
     return new Promise((resolve, reject) => {
       function settle(finish: () => void) {

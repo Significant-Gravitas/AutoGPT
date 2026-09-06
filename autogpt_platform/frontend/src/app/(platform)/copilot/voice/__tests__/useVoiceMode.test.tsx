@@ -45,7 +45,11 @@ vi.mock("../speechApi", () => ({
 const clicks: string[] = [];
 vi.mock("../clickSound", () => ({
   playClickSound: () => clicks.push("play"),
-  primeClickSound: () => clicks.push("prime"),
+}));
+
+vi.mock("../audioContext", () => ({
+  primeAudioContext: () => clicks.push("prime"),
+  runningAudioContext: () => null,
 }));
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({

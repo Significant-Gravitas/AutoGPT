@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { trackVoiceMode } from "@/services/copilot/voice-mode-analytics";
 
-import { playClickSound, primeClickSound } from "./clickSound";
+import { primeAudioContext } from "./audioContext";
+import { playClickSound } from "./clickSound";
 import {
   describeVoiceState,
   isMicOpen,
@@ -133,7 +134,7 @@ export function useVoiceMode({
     setStarting(true);
     // Unlocking here, inside the click, is what lets later chunks play at all.
     player().unlock();
-    primeClickSound();
+    primeAudioContext();
 
     let session: VadSession;
     try {

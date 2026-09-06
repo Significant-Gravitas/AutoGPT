@@ -9,35 +9,18 @@
  * cannot be late — the whole point is that it lands with the silence.
  */
 
+import { runningAudioContext } from "./audioContext";
+
 const ATTACK_S = 0.004;
 const DECAY_S = 0.09;
 const PEAK_GAIN = 0.18;
 const START_HZ = 660;
 const END_HZ = 520;
 
-type AudioContextCtor = new () => AudioContext;
-
-let context: AudioContext | null = null;
-
-/**
- * Call from a click. An AudioContext created outside a gesture starts
- * suspended and every later tone is silently dropped.
- */
-export function primeClickSound() {
-  const ctor = audioContextCtor();
-  if (!ctor) return;
-  try {
-    context ??= new ctor();
-    if (context.state === "suspended") void context.resume();
-  } catch {
-    context = null;
-  }
-}
-
 /** A soft downward pop. No-op if the browser never granted us a context. */
 export function playClickSound() {
-  primeClickSound();
-  if (!context || context.state !== "running") return;
+  const context = runningAudioContext();
+  if (!context) return;
   try {
     const now = context.currentTime;
     const oscillator = context.createOscillator();
@@ -60,15 +43,4 @@ export function playClickSound() {
   } catch {
     // A tone is never worth interrupting a conversation for.
   }
-}
-
-/** Test seam: jsdom has no Web Audio, and a real one leaks between suites. */
-export function resetClickSound() {
-  void context?.close().catch(() => undefined);
-  context = null;
-}
-
-function audioContextCtor(): AudioContextCtor | null {
-  if (typeof window === "undefined") return null;
-  return (window.AudioContext ?? null) as AudioContextCtor | null;
 }

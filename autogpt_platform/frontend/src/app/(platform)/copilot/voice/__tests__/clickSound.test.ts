@@ -1,21 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  playClickSound,
-  primeClickSound,
-  resetClickSound,
-} from "../clickSound";
+import { primeAudioContext, resetAudioContext } from "../audioContext";
+import { playClickSound } from "../clickSound";
 
 describe("clickSound", () => {
   afterEach(() => {
-    resetClickSound();
+    resetAudioContext();
     vi.unstubAllGlobals();
   });
 
   it("plays a short tone through the shared context", () => {
     const { oscillator, contexts } = stubAudio("running");
 
-    primeClickSound();
+    primeAudioContext();
     playClickSound();
     playClickSound();
 
@@ -33,7 +30,7 @@ describe("clickSound", () => {
   it("resumes a context the browser suspended", () => {
     const { contexts } = stubAudio("suspended");
 
-    primeClickSound();
+    primeAudioContext();
 
     expect(contexts[0].resume).toHaveBeenCalled();
   });
@@ -41,7 +38,7 @@ describe("clickSound", () => {
   it("stays silent rather than throwing when Web Audio is missing", () => {
     vi.stubGlobal("AudioContext", undefined);
 
-    expect(() => primeClickSound()).not.toThrow();
+    expect(() => primeAudioContext()).not.toThrow();
     expect(() => playClickSound()).not.toThrow();
   });
 
