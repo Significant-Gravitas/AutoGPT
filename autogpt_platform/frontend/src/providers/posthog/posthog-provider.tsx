@@ -1,6 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  captureFirstLanding,
+  getAnonymousID,
+  resetAnonymousID,
+} from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -13,14 +18,22 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (postHogCredentials.key) {
+      // Seed PostHog's anonymous identity with the first-party anonymous id
+      // LaunchDarkly and the backend also use, so pre-signup activity from
+      // every tool lands on the same person once identify() runs.
+      const anonymousID = getAnonymousID();
       posthog.init(postHogCredentials.key, {
         api_host: postHogCredentials.host,
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
         autocapture: true,
+        ...(anonymousID && {
+          bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
+        }),
       });
     }
+    captureFirstLanding();
   }, []);
 
   if (!isPostHogEnabled) return <>{children}</>;
@@ -45,6 +58,9 @@ export function PostHogUserTracker() {
         previousUserIdRef.current = user.id;
       }
     } else if (previousUserIdRef.current !== null) {
+      // Drop the shared anonymous id with PostHog's own reset, otherwise the
+      // next load bootstraps the previous user's visitor id straight back.
+      resetAnonymousID();
       posthog.reset();
       previousUserIdRef.current = null;
     }
