@@ -166,7 +166,7 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
     NotFoundError,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
@@ -1200,7 +1200,7 @@ async def update_subscription_tier(
             )
         return await get_subscription_status(user_id)
 
-    payment_enabled = await is_feature_enabled(
+    payment_enabled, payment_flag_authoritative = await evaluate_feature_flag(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
@@ -1233,6 +1233,20 @@ async def update_subscription_tier(
                 # never-paid).
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
+        if not payment_flag_authoritative:
+            # An unreadable flag reads False exactly like payment being off, and
+            # the DB flip below would strand a still-billing Stripe subscription.
+            logger.error(
+                f"Refusing to cancel subscription for user {user_id}: "
+                f"{Flag.ENABLE_PLATFORM_PAYMENT} could not be evaluated"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel your subscription right now. "
+                    "Please try again or contact support."
+                ),
+            )
         await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
