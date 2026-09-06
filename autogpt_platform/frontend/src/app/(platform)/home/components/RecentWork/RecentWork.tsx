@@ -2,7 +2,6 @@
 
 import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
@@ -13,44 +12,54 @@ interface Props {
   className?: string;
 }
 
+/** One card for what the agents did this week, grouped by who did it: each
+ *  expert, workflow, or Autopilot with the runs it finished and the files,
+ *  integration actions and schedules it produced. */
 export function RecentWork({ dashboard, className }: Props) {
+  const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
+  const completed = dashboard.recent_work?.completed_count ?? 0;
+  const failed = dashboard.recent_work?.failed_count ?? 0;
+  const isEmpty = groups.length === 0 && !briefing.narrative;
 
   return (
     <HomeTile
       className={className}
-      contentClassName="flex flex-col"
-      surfaceClassName="py-4 sm:py-4"
-      title={
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon
-            icon={WorkHistoryIcon}
-            size={18}
-            className="text-zinc-500"
-            aria-hidden="true"
-          />
-          <Text variant="h5" className="text-zinc-950">
-            Recent work
-          </Text>
-        </div>
-      }
-      header={
-        <Text variant="large" className="text-zinc-600">
-          What your agents produced this week.
-        </Text>
+      icon={WorkHistoryIcon}
+      title="Recent work"
+      meta={
+        <>
+          <span className="hidden sm:inline">This week</span>
+          <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
+            ·
+          </span>
+          <span className="tabular-nums">{completed} completed</span>
+          {failed > 0 ? (
+            <span className="tabular-nums text-rose-600">{failed} failed</span>
+          ) : null}
+        </>
       }
     >
-      {groups.length === 0 ? (
+      {isEmpty ? (
         <HomeTileEmpty
-          icon={WorkHistoryIcon}
-          title="No work delivered yet"
-          description="Files your agents write, integrations they use and schedules they set up will appear here."
+          title="Nothing to show yet"
+          description="Runs, files, integrations and schedules from your experts and workflows will appear here."
         />
       ) : (
-        <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
+        <div className="divide-y divide-zinc-200">
+          {briefing.narrative ? (
+            <Text
+              variant="body"
+              className="text-pretty px-4 py-3 text-[13px] leading-5 text-zinc-600"
+            >
+              {briefing.narrative}
+            </Text>
+          ) : null}
           {groups.map((group) => (
             <WorkGroup
-              key={group.items[0]?.id ?? group.actor.name}
+              key={
+                group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name
+              }
               group={group}
               timezone={dashboard.timezone}
             />

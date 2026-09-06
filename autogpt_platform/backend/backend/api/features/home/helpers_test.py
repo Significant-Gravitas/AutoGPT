@@ -1,10 +1,16 @@
 from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.library.model import LibraryAgentRef
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .activity import compose_upcoming_tasks
-from .helpers import experts_by_schedule, next_runs_by_expert, parse_datetime
+from .helpers import (
+    agent_refs_by_graph,
+    experts_by_schedule,
+    next_runs_by_expert,
+    parse_datetime,
+)
 
 SHARED_GRAPH = "graph-shared"
 
@@ -124,3 +130,18 @@ def test_parse_datetime_pins_naive_values_to_utc() -> None:
 
 def test_parse_datetime_returns_none_for_garbage() -> None:
     assert parse_datetime("not-a-timestamp") is None
+
+
+def test_a_removed_library_agent_still_names_its_runs_without_a_link() -> None:
+    refs = [
+        LibraryAgentRef(id="lib-live", graph_id="graph-live", name="Inbox triage"),
+        LibraryAgentRef(
+            id="lib-gone", graph_id="graph-gone", name="Sum Agent", is_deleted=True
+        ),
+    ]
+
+    agents = agent_refs_by_graph([], refs)
+
+    assert agents["graph-live"].library_agent_id == "lib-live"
+    assert agents["graph-gone"].name == "Sum Agent"
+    assert agents["graph-gone"].library_agent_id is None

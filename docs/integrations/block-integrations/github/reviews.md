@@ -145,6 +145,10 @@ Use this to check approval status, see who has reviewed, or analyze the review h
 |-------|-------------|------|----------|
 | repo | GitHub repository | str | Yes |
 | pr_number | Pull request number | int | Yes |
+| reviewer | Only include reviews by this user | str | No |
+| state | Only include reviews with this state. Note: 'pending' reviews are your own unsubmitted draft reviews, which are excluded by any other choice. | "all" \| "approved" \| "changes_requested" \| "commented" \| "dismissed" \| "pending" | No |
+| latest_only | Only include each reviewer's latest review, reflecting their current stance | bool | No |
+| limit | Maximum number of reviews to fetch | int | No |
 
 ### Outputs
 

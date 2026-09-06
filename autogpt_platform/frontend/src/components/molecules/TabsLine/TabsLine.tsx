@@ -41,12 +41,17 @@ interface TabsLineListProps
    * aligns flush with the list's left edge. Defaults to `false`.
    */
   flush?: boolean;
+  /**
+   * Overrides the active-tab underline colour, for surfaces that want a
+   * neutral accent instead of the default purple.
+   */
+  indicatorClassName?: string;
 }
 
 const TabsLineList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   TabsLineListProps
->(({ className, flush = false, ...props }, ref) => {
+>(({ className, flush = false, indicatorClassName, ...props }, ref) => {
   const { activeTabElement } = useTabsLine();
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -69,7 +74,10 @@ const TabsLineList = React.forwardRef<
       />
       {activeTabElement && (
         <div
-          className="transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out"
+          className={cn(
+            "transition-left transition-right absolute bottom-0 h-0.5 bg-purple-600 duration-200 ease-in-out",
+            indicatorClassName,
+          )}
           style={{
             left: activeTabElement.offsetLeft,
             width: activeTabElement.offsetWidth,

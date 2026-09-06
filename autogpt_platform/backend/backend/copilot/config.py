@@ -435,6 +435,17 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="Context window the SDK subprocess is held to, in tokens "
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
+        "raise it on a route that really serves 1M — past the provider's real "
+        "window the compaction trigger never fires (at 1M on Moonshot it lands "
+        "at 967K against Kimi's 262,144).",
+    )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
         ge=0,

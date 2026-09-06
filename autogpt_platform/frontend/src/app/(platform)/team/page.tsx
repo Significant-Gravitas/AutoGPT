@@ -1,26 +1,38 @@
 "use client";
 
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { AITeamIcon } from "@/components/atoms/AITeamIcon/AITeamIcon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InstallWorkflowPicker } from "@/components/molecules/InstallWorkflowPicker/InstallWorkflowPicker";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { KanbanIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { notFound } from "next/navigation";
-import { CreateMenu } from "./components/CreateMenu/CreateMenu";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
+import { PodBoard } from "./components/PodBoard/PodBoard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
+import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
-import { WhatRunsZone } from "./components/WhatRunsZone/WhatRunsZone";
-import { SECTION_INSET_CLASS, TEAM_GRID_CLASS } from "./helpers";
+import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
-  "container min-h-screen space-y-6 pb-20 pt-8 sm:px-8 md:px-12";
+  "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 pb-16 pt-6 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
+
+const TABS = [
+  { value: "overview", label: "Team Overview", icon: UserGroupIcon },
+  { value: "pods", label: "Pod board", icon: KanbanIcon },
+] as const;
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
@@ -30,7 +42,6 @@ export default function TeamPage() {
     podForExpert,
     podGroups,
     ungroupedExperts,
-    schedules,
     schedulesForExpert,
     isLoading,
     isError,
@@ -82,61 +93,85 @@ export default function TeamPage() {
   }
 
   return (
-    <main className={MAIN_CLASS}>
-      <div
-        className={cn(
-          "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
-          SECTION_INSET_CLASS,
-        )}
-      >
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2.5">
-            <AITeamIcon size={36} className="shrink-0 text-zinc-950" />
-            <Text variant="h3">Your Team</Text>
+    <div className="flex w-full">
+      <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Icon icon={UserGroupIcon} size={18} className="text-zinc-950" />
+              <Text variant="h5">Team</Text>
+            </div>
+            <Text variant="body" className="max-w-prose text-zinc-600">
+              Autopilot and your hired experts, ready to work.
+            </Text>
           </div>
-          <Text variant="body" className="max-w-prose text-zinc-600">
-            Autopilot and your hired experts, ready to work.
-          </Text>
+          <TeamHeaderActions onNewPod={openNewPod} />
         </div>
-        <CreateMenu onNewPod={openNewPod} />
-      </div>
-      <TeamRoster
-        isLoading={isLoading}
-        podGroups={podGroups}
-        ungroupedExperts={ungroupedExperts}
-        renderCard={renderCard}
-      />
 
-      {!isLoading && !isError && hiredExperts.length > 0 ? (
-        <WhatRunsZone experts={hiredExperts} schedules={schedules} />
-      ) : null}
+        {isError ? (
+          <ErrorCard
+            context="your team"
+            hint="We could not load your hired experts."
+            onRetry={() => refetch()}
+          />
+        ) : null}
 
-      {isError ? (
-        <ErrorCard
-          context="your team"
-          hint="We could not load your hired experts."
-          onRetry={() => refetch()}
+        <TabsLine defaultValue="overview">
+          <TabsLineList
+            flush
+            className="overflow-x-auto border-b-transparent"
+            indicatorClassName="bg-zinc-900"
+          >
+            {TABS.map((tab) => (
+              <TabsLineTrigger
+                key={tab.value}
+                value={tab.value}
+                className="gap-1.5 px-2.5 py-2 text-xs leading-5 data-[state=active]:text-zinc-900"
+              >
+                <Icon icon={tab.icon} size={14} />
+                {tab.label}
+              </TabsLineTrigger>
+            ))}
+          </TabsLineList>
+
+          <TabsLineContent value="overview" className="space-y-6">
+            <TeamRoster
+              isLoading={isLoading}
+              experts={hiredExperts}
+              schedulesForExpert={schedulesForExpert}
+              renderCard={renderCard}
+            />
+
+            {!isLoading && !isError && hiredExperts.length === 0 ? (
+              <EmptyTeamState />
+            ) : null}
+          </TabsLineContent>
+
+          <TabsLineContent value="pods">
+            <PodBoard
+              isLoading={isLoading}
+              podGroups={podGroups}
+              ungroupedExperts={ungroupedExperts}
+              onNewPod={openNewPod}
+            />
+          </TabsLineContent>
+        </TabsLine>
+
+        <InstallWorkflowPicker
+          mode="pick-workflow"
+          expertId={pickerExpertId ?? undefined}
+          open={pickerExpertId !== null}
+          onClose={closeWorkflowPicker}
         />
-      ) : null}
-      {!isLoading &&
-      !isError &&
-      hiredExperts.length === 0 &&
-      podGroups.length === 0 ? (
-        <EmptyTeamState />
-      ) : null}
-      <InstallWorkflowPicker
-        mode="pick-workflow"
-        expertId={pickerExpertId ?? undefined}
-        open={pickerExpertId !== null}
-        onClose={closeWorkflowPicker}
-      />
+        <NewPodDialog
+          open={isNewPodOpen}
+          onClose={closeNewPod}
+          onCreate={createPod}
+          isCreating={isCreatingPod}
+        />
+      </main>
+
       <SoulDrawer key={soulDrawerKey} expert={soulExpert} onClose={closeSoul} />
-      <NewPodDialog
-        open={isNewPodOpen}
-        onClose={closeNewPod}
-        onCreate={createPod}
-        isCreating={isCreatingPod}
-      />
-    </main>
+    </div>
   );
 }

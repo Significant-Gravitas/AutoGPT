@@ -62,6 +62,10 @@ export interface ConnectorRequest {
   fields: CredentialField[];
   selected: Record<string, CredentialsMetaInput | undefined>;
   onChange: (key: string, value?: CredentialsMetaInput) => void;
+  /** The user finished a sign-in on this row. Distinct from a credential
+   *  merely being present, which is also true of a card re-rendered from
+   *  chat history. */
+  onConnected: () => void;
 }
 
 export interface ConnectorRow {
@@ -71,6 +75,7 @@ export interface ConnectorRow {
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
+  onConnected: () => void;
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -94,10 +99,23 @@ export function toConnectorRows(
     for (const [key, schema] of request.fields) {
       const provider = schema.credentials_provider?.[0];
       if (!provider) continue;
-      const row = rows.get(provider) ?? { schema, targets: [] };
+      const row = rows.get(provider);
+      if (!row) {
+        rows.set(provider, {
+          schema,
+          targets: [{ request, key }],
+          selected: request.selected[key],
+        });
+        continue;
+      }
+      // One row answers every card that asked for this provider, so it must
+      // request the union of their scopes — keeping only the first card's
+      // leaves the others permanently unsatisfiable. Scopes only: merging
+      // `credentials_types` would offer a method some cards cannot accept, and
+      // that needs a per-card row rather than a wider one.
+      row.schema = withUnionedScopes(row.schema, schema);
       row.targets.push({ request, key });
       row.selected = row.selected ?? request.selected[key];
-      rows.set(provider, row);
     }
   }
 
@@ -110,5 +128,22 @@ export function toConnectorRows(
     selected: row.selected,
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
+    onConnected: () =>
+      row.targets.forEach(({ request }) => request.onConnected()),
   }));
+}
+
+/** Merges `incoming`'s scopes into `kept`, leaving every other schema field
+ *  as the first card set it. */
+function withUnionedScopes(
+  kept: CredentialField[1],
+  incoming: CredentialField[1],
+): CredentialField[1] {
+  const scopes = [
+    ...new Set([
+      ...(kept.credentials_scopes ?? []),
+      ...(incoming.credentials_scopes ?? []),
+    ]),
+  ];
+  return scopes.length > 0 ? { ...kept, credentials_scopes: scopes } : kept;
 }

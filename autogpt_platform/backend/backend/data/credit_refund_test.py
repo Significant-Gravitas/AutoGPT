@@ -162,7 +162,7 @@ async def test_deduct_credits_user_not_found(server: SpinTestServer):
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.data.credit.settings")
-@patch("stripe.Dispute.modify")
+@patch("stripe.Dispute.modify_async")
 @patch("backend.data.credit.get_user_by_id")
 async def test_handle_dispute_with_sufficient_balance(
     mock_get_user, mock_stripe_modify, mock_settings, server: SpinTestServer
@@ -215,7 +215,7 @@ async def test_handle_dispute_with_sufficient_balance(
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.data.credit.settings")
-@patch("stripe.Dispute.modify")
+@patch("stripe.Dispute.modify_async")
 @patch("backend.data.credit.get_user_by_id")
 async def test_handle_dispute_with_insufficient_balance(
     mock_get_user, mock_stripe_modify, mock_settings, server: SpinTestServer

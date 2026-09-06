@@ -4,6 +4,7 @@
     "bio": null,
     "boundaries": "",
     "color": "",
+    "credential_count": 0,
     "id": "raised-2",
     "identity": "I'm Nova, raised by you. I learn how you work and grow with you.",
     "is_archived": false,
@@ -14,7 +15,7 @@
     "pod_id": null,
     "protected_soul_rules": [
       "The expert discloses that it is AI when acting externally.",
-      "External actions require approval."
+      "The expert asks for approval before acting externally."
     ],
     "role": "Research Assistant",
     "schedules_paused_at": null,
@@ -27,6 +28,7 @@
     "weekly_spend": 0,
     "workflows": [
       {
+        "chain": [],
         "description": "Writes SEO-optimized blog posts",
         "graph_id": "graph-1",
         "id": "workflow-ref-1",

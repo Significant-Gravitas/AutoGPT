@@ -5,7 +5,7 @@ Provides token retrieval for connected integrations so that copilot tools
 hitting the database on every command.
 
 Cache semantics (handled automatically by TTLCache):
-- Token found → cached for _TOKEN_CACHE_TTL (5 min).  Avoids repeated DB hits
+- Token found → cached for _TOKEN_CACHE_TTL (60 s).  Avoids repeated DB hits
   for users who have credentials and are running many bash commands.
 - No credentials found → cached for _NULL_CACHE_TTL (60 s).  Avoids a DB hit
   on every E2B command for users who haven't connected an account yet, while
@@ -14,24 +14,27 @@ Cache semantics (handled automatically by TTLCache):
 Both caches are bounded to _CACHE_MAX_SIZE entries; cachetools evicts the
 least-recently-used entry when the limit is reached.
 
-Multi-worker note: both caches are in-process only.  Each worker/replica
-maintains its own independent cache, so a credential fetch may be duplicated
-across processes.  This is acceptable for the current goal (reduce DB hits per
-session per-process), but if cache efficiency across replicas becomes important
-a shared cache (e.g. Redis) should be used instead.
+Multi-worker note: the cached values are per-process, but invalidation is not.
+The API server and the copilot executor each hold their own copy of these
+caches, so a write in one cannot evict the other's; a subscription to the Redis
+creds-changed bus does.  See ``_ensure_cache_invalidation_listener``.
 """
 
+import asyncio
 import logging
+import threading
 from typing import cast
 
 from cachetools import TTLCache
 
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.integrations.creds_events import listen_creds_changed
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     register_creds_changed_hook,
 )
+from backend.util.retry import continuous_retry
 
 logger = logging.getLogger(__name__)
 
@@ -40,32 +43,70 @@ PROVIDER_ENV_VARS: dict[str, list[str]] = {
     slug: entry["env_vars"] for slug, entry in SUPPORTED_PROVIDERS.items()
 }
 
-_TOKEN_CACHE_TTL = 300.0  # seconds — for found tokens
+# 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
+# (a Redis blip drops the message), so the TTL is the floor on how long a stale
+# token can survive when it fails.  Five minutes was long enough for AutoPilot
+# to verify a re-authorization against the provider and report it as failed.
+_TOKEN_CACHE_TTL = 60.0  # seconds — for found tokens
 _NULL_CACHE_TTL = 60.0  # seconds — for "not connected" results
 _CACHE_MAX_SIZE = 10_000
 
+
+# Sentinel so ``pop`` keeps ``Cache.pop``'s "raise without a default" contract.
+_MISSING = object()
+
+
+class _LockedTTLCache(TTLCache):
+    """TTLCache with a lock: the invalidation listener evicts entries from its
+    own thread while copilot workers read them from theirs."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lock = threading.RLock()
+
+    def __getitem__(self, key):
+        with self._lock:
+            return super().__getitem__(key)
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self._lock:
+            super().__delitem__(key)
+
+    def __contains__(self, key):
+        with self._lock:
+            return super().__contains__(key)
+
+    def pop(self, key, default=_MISSING):
+        with self._lock:
+            if default is _MISSING:
+                return super().pop(key)
+            return super().pop(key, default)
+
+    def popitem(self):
+        with self._lock:
+            return super().popitem()
+
+
 # (user_id, provider) → token string.  TTLCache handles expiry + eviction.
-# Thread-safety note: TTLCache is NOT thread-safe, but that is acceptable here
-# because all callers (get_provider_token, invalidate_user_provider_cache) run
-# exclusively on the asyncio event loop.  There are no await points between a
-# cache read and its corresponding write within any function, so no concurrent
-# coroutine can interleave.  If ThreadPoolExecutor workers are ever added to
-# this path, a threading.RLock should be wrapped around these caches.
-_token_cache: TTLCache[tuple[str, str], str] = TTLCache(
+_token_cache: TTLCache[tuple[str, str], str] = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_TOKEN_CACHE_TTL
 )
 # Separate cache for "no credentials" results with a shorter TTL.
-_null_cache: TTLCache[tuple[str, str], bool] = TTLCache(
+_null_cache: TTLCache[tuple[str, str], bool] = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
 # GitHub user identity caches (keyed by user_id only, not provider tuple).
 # Declared here so invalidate_user_provider_cache() can reference them.
 _GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
-_gh_identity_cache: TTLCache[str, dict[str, str]] = TTLCache(
+_gh_identity_cache: TTLCache[str, dict[str, str]] = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
 )
-_gh_identity_null_cache: TTLCache[str, bool] = TTLCache(
+_gh_identity_null_cache: TTLCache[str, bool] = _LockedTTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
@@ -90,10 +131,9 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
         _gh_identity_null_cache.pop(user_id, None)
 
 
-# Register this module's cache-bust function with the credentials manager so
-# that any create/update/delete operation immediately evicts stale cache
-# entries.  This avoids a lazy import inside creds_manager and eliminates the
-# circular-import risk.
+# Same-process writes (a token refresh performed by this process) invalidate
+# through the hook, without a Redis round trip.  Writes in other processes
+# arrive over the bus instead.
 try:
     register_creds_changed_hook(invalidate_user_provider_cache)
 except RuntimeError:
@@ -109,11 +149,10 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     """Return the user's access token for *provider*, or ``None`` if not connected.
 
     OAuth2 tokens are preferred (refreshed if needed); API keys are the fallback.
-    Found tokens are cached for _TOKEN_CACHE_TTL (5 min).  "Not connected" results
-    are cached for _NULL_CACHE_TTL (60 s) to avoid a DB hit on every bash_exec
-    command for users who haven't connected yet, while still picking up a
-    newly-connected account within one minute.
+    Both found tokens and "not connected" results are cached for 60 s, and a
+    credential write in any process evicts the entry before that lapses.
     """
+    _ensure_cache_invalidation_listener()
     cache_key = (user_id, provider)
 
     if cache_key in _null_cache:
@@ -162,6 +201,8 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                 # preventing the LLM from receiving a non-functional token.
                 refresh_failed = True
                 continue
+            # A refresh here publishes, and this process's own listener may evict
+            # the entry just written; the cost is one extra lookup, not a leak.
             _token_cache[cache_key] = token
             return token
 
@@ -179,6 +220,36 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     if not refresh_failed:
         _null_cache[cache_key] = True
     return None
+
+
+def _ensure_cache_invalidation_listener() -> None:
+    """Subscribe this process to credential changes, once.
+
+    Started from the cache read path so that every process holding a cache
+    subscribes, and only those do — the in-process hook covers a write served
+    by this process, and this covers the ones served elsewhere.
+    """
+    global _listener_thread
+    with _listener_start_lock:
+        if _listener_thread is not None:
+            return
+        _listener_thread = threading.Thread(
+            target=lambda: asyncio.run(_consume_creds_changed_events()),
+            name="creds-cache-invalidation",
+            daemon=True,
+        )
+        _listener_thread.start()
+
+
+@continuous_retry(retry_delay=5.0)
+async def _consume_creds_changed_events() -> None:
+    async for event in listen_creds_changed():
+        invalidate_user_provider_cache(event.user_id, event.provider)
+    raise RuntimeError("creds-changed subscription ended; resubscribing")
+
+
+_listener_start_lock = threading.Lock()
+_listener_thread: threading.Thread | None = None
 
 
 async def get_integration_env_vars(user_id: str) -> dict[str, str]:

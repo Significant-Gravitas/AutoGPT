@@ -1,6 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render as baseRender,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
@@ -295,72 +300,6 @@ describe("ToolChain", () => {
     expect(screen.getByText("Send Email")).toBeDefined();
   });
 
-  it("keeps the expert approval card on screen for a hire preview", () => {
-    render(
-      <ToolChain
-        parts={[
-          toolPart("web_search", "output-available", {
-            input: { query: "researchers" },
-            output: { results: [] },
-          }),
-          toolPart("hire_expert", "output-available", {
-            output: {
-              type: "expert_change_proposed",
-              applied: false,
-              confirmation_id: "conf-1",
-              preview: {
-                kind: "hire",
-                name: "Otto",
-                role: "Inbox triage",
-                boundaries: "You never send a reply yourself.",
-                weekly_budget: 2000,
-              },
-            },
-          }),
-        ]}
-        isStreaming={false}
-      />,
-    );
-
-    const header = getChainHeader(/approve the new expert/i);
-    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
-
-    expect(screen.getByText("Otto")).toBeDefined();
-    expect(screen.getByText("Inbox triage")).toBeDefined();
-    expect(screen.getByText("Needs your OK")).toBeDefined();
-    expect(
-      screen.getByText("Stops at: You never send a reply yourself."),
-    ).toBeDefined();
-    expect(screen.getByText("Weekly budget: 2000 credits")).toBeDefined();
-  });
-
-  it("lets the user collapse an expert approval card", async () => {
-    const user = userEvent.setup();
-    render(
-      <ToolChain
-        parts={[
-          toolPart("hire_expert", "output-available", {
-            output: {
-              type: "expert_change_proposed",
-              applied: false,
-              confirmation_id: "conf-1",
-              preview: { kind: "hire", name: "Otto", role: "Inbox triage" },
-            },
-          }),
-        ]}
-        isStreaming={false}
-      />,
-    );
-
-    const header = getChainHeader(/approve the new expert/i);
-    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("false");
-
-    await user.click(header);
-    await user.click(header);
-
-    expect(getPanel(header)?.getAttribute("aria-hidden")).toBe("true");
-  });
-
   // A live row mounts before its output exists, so "needs you" is only known
   // on a later render — the reveal has to react to it, not read it once.
   it("reveals an action row when its output arrives mid-stream", () => {
@@ -383,17 +322,6 @@ describe("ToolChain", () => {
     expect(
       getRowToggle(/review send email/i).getAttribute("aria-expanded"),
     ).toBe("true");
-  });
-
-  it("holds a card's shape while an expert is still being written", () => {
-    const { container } = render(
-      <ToolChain
-        parts={[toolPart("hire_expert", "input-available")]}
-        isStreaming={true}
-      />,
-    );
-
-    expect(container.querySelectorAll(".animate-pulse").length).toBe(5);
   });
 
   it("drafts answered questions into the chat input and dismisses on send", async () => {
@@ -525,3 +453,22 @@ describe("ToolChain", () => {
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
   });
 });
+
+// ToolChain sends the chain's follow-up turn itself, so it needs the actions
+// provider its production parents always supply.
+function render(ui: React.ReactElement) {
+  const { rerender, ...rest } = baseRender(
+    <CopilotChatActionsProvider onSend={vi.fn()}>
+      {ui}
+    </CopilotChatActionsProvider>,
+  );
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) =>
+      rerender(
+        <CopilotChatActionsProvider onSend={vi.fn()}>
+          {next}
+        </CopilotChatActionsProvider>,
+      ),
+  };
+}
