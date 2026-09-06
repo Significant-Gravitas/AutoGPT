@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
-from backend.blocks.llm import LLM_PROVIDER_NAMES
+from backend.blocks.llm import LLM_EXCLUSIVE_PROVIDER_NAMES
 from backend.copilot.briefing.models import BriefingRunItem
 from backend.copilot.briefing.outcome import as_utc
 from backend.data.activity_event import ActivityEvent
@@ -178,7 +178,10 @@ def _actor(
 
 def _is_model_call(event: ActivityEvent) -> bool:
     """Rows written before LLM credential use stopped being recorded."""
-    return event.category == "INTEGRATION" and event.provider in LLM_PROVIDER_NAMES
+    return (
+        event.category == "INTEGRATION"
+        and event.provider in LLM_EXCLUSIVE_PROVIDER_NAMES
+    )
 
 
 def _compose_item(
