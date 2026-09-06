@@ -151,6 +151,18 @@ def test_claude_sonnet_5_bills_at_authored_rates():
     assert MODEL_METADATA[s5].max_output_tokens == 128000
 
 
+def test_claude_opus_5_bills_at_authored_rates():
+    opus = LLMModel("claude-opus-5")
+    assert MODEL_COST[opus] == 14
+    assert TOKEN_COST[opus].model_dump() == {
+        "input": 750.0,
+        "output": 3750.0,
+        "cache_read": 75.0,
+        "cache_creation": 938.0,
+    }
+    assert MODEL_METADATA[opus].max_output_tokens == 128000
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""

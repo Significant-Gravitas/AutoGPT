@@ -6,7 +6,6 @@ import backend.copilot.model_router as router
 import backend.data.llm_registry.registry as registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_normalize import normalize_model_for_transport
-from backend.data.llm_registry.llm_models import LLMModel
 from backend.util.settings import BehaveAs
 
 
@@ -45,10 +44,11 @@ async def test_thinking_advanced_routes_opus_5_without_catalog_refusal(
     assert cfg.thinking_standard_model == "anthropic/claude-sonnet-5"
 
 
-def test_opus_5_has_copilot_metadata_and_provider_prices():
+def test_opus_5_has_public_metadata_and_provider_prices():
     model = router.catalog_lookup("anthropic/claude-opus-5")
     assert model is not None
     assert model.is_enabled
+    assert model.visibility == "GA"
     assert model.display_name == "Claude Opus 5"
     assert model.metadata.context_window == 200_000
     assert model.metadata.max_output_tokens == 128_000
@@ -56,4 +56,3 @@ def test_opus_5_has_copilot_metadata_and_provider_prices():
     assert model.cost is not None
     assert model.cost.provider_input_usd_per_1m == 5.0
     assert model.cost.provider_output_usd_per_1m == 25.0
-    assert "claude-opus-5" not in {m.value for m in LLMModel}

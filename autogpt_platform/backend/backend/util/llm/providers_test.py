@@ -428,6 +428,54 @@ class TestOpenAIResponses:
 
 class TestAnthropicMessages:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "answer, expected",
+        [
+            (anthropic.types.TextBlock(type="text", text="ok"), "ok"),
+            (
+                anthropic.types.ToolUseBlock(
+                    type="tool_use", id="tool-1", name="answer", input={"value": 42}
+                ),
+                "answer",
+            ),
+        ],
+    )
+    async def test_preserves_response_after_thinking(self, answer, expected):
+        response = anthropic.types.Message(
+            id="msg-1",
+            type="message",
+            role="assistant",
+            model="claude-opus-5",
+            content=[
+                anthropic.types.ThinkingBlock(
+                    type="thinking", thinking="reasoning", signature="signature"
+                ),
+                answer,
+            ],
+            stop_reason="tool_use" if answer.type == "tool_use" else "end_turn",
+            usage=anthropic.types.Usage(input_tokens=5, output_tokens=7),
+        )
+        async_create = AsyncMock(return_value=response)
+        with patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=SimpleNamespace(messages=SimpleNamespace(create=async_create)),
+        ):
+            result = await call_provider(
+                provider="anthropic",
+                model="claude-opus-5",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=200,
+            )
+        assert isinstance(result, ProviderResponse)
+        assert result.content == expected
+        assert result.reasoning == "reasoning"
+        assert result.completion_tokens == 7
+        if answer.type == "tool_use":
+            assert result.tool_calls is not None
+            assert result.tool_calls[0].function.arguments == '{"value": 42}'
+
+    @pytest.mark.asyncio
     async def test_dispatches_to_anthropic_messages_create_and_normalizes_usage(
         self,
     ):
@@ -1877,13 +1925,23 @@ class TestDownloadBatchResults:
         assert row.error is None
 
     @pytest.mark.asyncio
-    async def test_extracts_tool_use_input_as_json(self):
+    @pytest.mark.parametrize("thinking_first", [False, True])
+    async def test_extracts_tool_use_input_as_json(self, thinking_first):
         """Step 5 leans on this: when the dream pass uses
         ``tool_choice={"type":"tool","name":...}`` to force structured
         output, the result is one ``tool_use`` block whose ``input``
         IS the structured payload. Flattening it to a JSON string is
         what the dream parser then validates against the Pydantic
         schema."""
+        thinking = (
+            [
+                anthropic.types.ThinkingBlock(
+                    type="thinking", thinking="reasoning", signature="signature"
+                )
+            ]
+            if thinking_first
+            else []
+        )
         results_iter = _fake_async_iter(
             [
                 SimpleNamespace(
@@ -1891,9 +1949,12 @@ class TestDownloadBatchResults:
                     result=SimpleNamespace(
                         type="succeeded",
                         message=SimpleNamespace(
-                            content=[
-                                SimpleNamespace(
+                            content=thinking
+                            + [
+                                anthropic.types.ToolUseBlock(
                                     type="tool_use",
+                                    id="tool-1",
+                                    name="submit_dream_ops",
                                     input={
                                         "writes": [],
                                         "summary_for_user": "ok",
