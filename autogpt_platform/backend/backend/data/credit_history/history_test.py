@@ -8,7 +8,7 @@ from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, Organization, OrgCreditTransaction, User
 
 from backend.data.credit_history import get_credit_history
-from backend.data.credit_history_queries import credit_history_query
+from backend.data.credit_history.queries import credit_history_query
 from backend.data.db import get_database_schema, prisma
 from backend.util.json import SafeJson
 
@@ -20,7 +20,7 @@ async def history_wallet(server, monkeypatch):
         data={"id": user_id, "email": f"history-{user_id}@example.com"}
     )
     monkeypatch.setattr(
-        "backend.data.credit_history.enrich_credit_history",
+        "backend.data.credit_history.service.enrich_credit_history",
         AsyncMock(side_effect=lambda items, **kwargs: items),
     )
     yield user_id

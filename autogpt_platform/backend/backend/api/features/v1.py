@@ -1701,22 +1701,17 @@ async def get_credit_history(
     cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
-        raise HTTPException(
-            status_code=400, detail="Transaction count limit must be between 1 and 1000"
-        )
+        raise ValueError("Transaction count limit must be between 1 and 1000")
 
     credit_model = await get_credit_model(user_id, ctx.org_id)
-    try:
-        return await credit_model.get_transaction_history(
-            user_id=user_id,
-            transaction_time_ceiling=transaction_time,
-            transaction_count_limit=transaction_count_limit,
-            transaction_type=transaction_type,
-            cursor=cursor,
-            viewer_organization_id=ctx.org_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return await credit_model.get_transaction_history(
+        user_id=user_id,
+        transaction_time_ceiling=transaction_time,
+        transaction_count_limit=transaction_count_limit,
+        transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
+    )
 
 
 @v1_router.get(

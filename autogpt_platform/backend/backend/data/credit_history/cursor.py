@@ -53,6 +53,9 @@ def decode_cursor(cursor: str, scope: str) -> CreditHistoryCursor:
 
 
 def encode_cursor(position: CreditHistoryCursor) -> str:
+    # Cursors are unsigned, untrusted pagination state. The server derives the
+    # expected scope and query's ledger owner separately from the authorized
+    # request; the scope hash is only a reuse check, not authorization.
     return (
         base64.urlsafe_b64encode(position.model_dump_json().encode())
         .decode()

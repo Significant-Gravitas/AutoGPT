@@ -11,7 +11,7 @@ from prisma.models import (
     StoreListingVersion,
 )
 
-from backend.data import credit_history_enrichment as history
+from backend.data.credit_history import enrichment as history
 from backend.data.model import CreditTransactionItem
 
 

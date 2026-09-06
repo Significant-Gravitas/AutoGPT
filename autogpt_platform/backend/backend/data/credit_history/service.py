@@ -4,15 +4,15 @@ from typing import Literal
 from prisma.enums import CreditTransactionType
 from pydantic import Json, TypeAdapter, field_validator
 
-from backend.data.credit_history_cursor import (
+from backend.data.credit_history.cursor import (
     CreditHistoryCursor,
     as_utc,
     cursor_scope,
     decode_cursor,
     encode_cursor,
 )
-from backend.data.credit_history_enrichment import enrich_credit_history
-from backend.data.credit_history_queries import credit_history_query
+from backend.data.credit_history.enrichment import enrich_credit_history
+from backend.data.credit_history.queries import credit_history_query
 from backend.data.db import query_raw_with_schema
 from backend.data.model import (
     CreditHistoryCharge,
@@ -35,6 +35,11 @@ async def get_credit_history(
     organization_id selects the authorized org wallet; None selects user_id's
     personal wallet. viewer_organization_id scopes execution/chat visibility,
     falling back to organization_id; it never changes the wallet being read.
+
+    Org history is organization-wide, with no initiator or team filtering:
+    active members can read ledger run/graph/node IDs and charge block names.
+    Viewer-scoped enrichment restricts agent names and navigation links, not
+    those ledger fields.
     """
     limit = transaction_count_limit if transaction_count_limit is not None else 100
     if not 1 <= limit <= 1000:

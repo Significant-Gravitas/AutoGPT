@@ -7,8 +7,12 @@ from prisma._raw_query import deserialize_raw_results
 from prisma.enums import CreditTransactionType
 from pydantic import ValidationError
 
-from backend.data.credit_history import _HistoryRow, _to_item, get_credit_history
-from backend.data.credit_history_cursor import cursor_scope, decode_cursor
+from backend.data.credit_history.cursor import cursor_scope, decode_cursor
+from backend.data.credit_history.service import (
+    _HistoryRow,
+    _to_item,
+    get_credit_history,
+)
 from backend.data.model import CreditHistoryCharge, CreditTransactionItem
 
 
@@ -48,8 +52,12 @@ async def test_page_cursor_preserves_snapshot_and_exact_position(monkeypatch):
         return_value=[history_row("execution:run-2"), history_row("execution:run-1")]
     )
     enrichment = AsyncMock(side_effect=lambda items, **kwargs: items)
-    monkeypatch.setattr("backend.data.credit_history.query_raw_with_schema", query)
-    monkeypatch.setattr("backend.data.credit_history.enrich_credit_history", enrichment)
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.query_raw_with_schema", query
+    )
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.enrich_credit_history", enrichment
+    )
     first = await get_credit_history("user", transaction_count_limit=1)
     assert len(first.transactions) == 1
     assert first.next_cursor
@@ -74,9 +82,11 @@ async def test_page_cursor_preserves_snapshot_and_exact_position(monkeypatch):
 @pytest.mark.asyncio
 async def test_org_uses_same_query_contract_and_scope(monkeypatch):
     query = AsyncMock(return_value=[history_row("execution:run-1")])
-    monkeypatch.setattr("backend.data.credit_history.query_raw_with_schema", query)
     monkeypatch.setattr(
-        "backend.data.credit_history.enrich_credit_history",
+        "backend.data.credit_history.service.query_raw_with_schema", query
+    )
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.enrich_credit_history",
         AsyncMock(side_effect=lambda items, **kwargs: items),
     )
     ceiling = datetime(2026, 9, 5, 12, tzinfo=timezone(timedelta(hours=2)))
@@ -101,8 +111,12 @@ async def test_viewer_context_does_not_switch_the_wallet(monkeypatch):
         return_value=[history_row("execution:run-2"), history_row("execution:run-1")]
     )
     enrichment = AsyncMock(side_effect=lambda items, **kwargs: items)
-    monkeypatch.setattr("backend.data.credit_history.query_raw_with_schema", query)
-    monkeypatch.setattr("backend.data.credit_history.enrich_credit_history", enrichment)
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.query_raw_with_schema", query
+    )
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.enrich_credit_history", enrichment
+    )
     page = await get_credit_history(
         "user", transaction_count_limit=1, viewer_organization_id="current-context"
     )
@@ -188,14 +202,16 @@ def test_reason_only_usage_does_not_invent_a_block(is_reset, expected):
 )
 async def test_legacy_description_uses_safe_enriched_name(monkeypatch, name, expected):
     monkeypatch.setattr(
-        "backend.data.credit_history.query_raw_with_schema",
+        "backend.data.credit_history.service.query_raw_with_schema",
         AsyncMock(return_value=[history_row("execution:run")]),
     )
 
     async def enrich(items, **kwargs):
         return [item.model_copy(update={"agent_name": name}) for item in items]
 
-    monkeypatch.setattr("backend.data.credit_history.enrich_credit_history", enrich)
+    monkeypatch.setattr(
+        "backend.data.credit_history.service.enrich_credit_history", enrich
+    )
     result = await get_credit_history("user")
     assert result.transactions[0].description == expected
 

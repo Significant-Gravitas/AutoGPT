@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from backend.data.credit_history_cursor import (
+from backend.data.credit_history.cursor import (
     CreditHistoryCursor,
     as_utc,
     cursor_scope,

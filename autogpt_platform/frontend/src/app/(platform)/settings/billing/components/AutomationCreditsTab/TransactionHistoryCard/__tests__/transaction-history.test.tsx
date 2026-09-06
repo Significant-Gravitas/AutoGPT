@@ -130,6 +130,28 @@ describe("Transaction history receipts", () => {
     expect(screen.queryByRole("link", { name: /View task/ })).toBeNull();
   });
 
+  it("keeps the agent link when its run is unavailable without creating a dead task link", async () => {
+    server.use(
+      http.get("*/api/credits/transactions", () =>
+        HttpResponse.json({
+          transactions: [{ ...run, execution_available: false }],
+          next_cursor: null,
+        }),
+      ),
+    );
+    render(<TransactionHistoryCard />);
+    expect(
+      (
+        await screen.findByRole("link", { name: "Morning briefing" })
+      ).getAttribute("href"),
+    ).toBe(`/library/agents/${libraryID}`);
+    fireEvent.click(
+      screen.getByRole("button", { name: /details for Morning briefing/i }),
+    );
+    expect(screen.queryByRole("link", { name: /View task/ })).toBeNull();
+    expect(screen.getByText("Run unavailable")).toBeDefined();
+  });
+
   it("keeps complete totals when the charge-entry list is limited", async () => {
     server.use(
       http.get("*/api/credits/transactions", () =>

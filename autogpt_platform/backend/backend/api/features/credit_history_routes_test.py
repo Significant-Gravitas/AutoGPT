@@ -1,10 +1,13 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
-from fastapi import HTTPException
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from backend.api.features.v1 import get_credit_history
+from backend.api.features.v1 import get_credit_history, v1_router
+from backend.api.rest_api import handle_internal_http_error
 from backend.data.credit import UserCreditBase
 from backend.data.model import TransactionHistory
 
@@ -21,19 +24,28 @@ CONTEXT = RequestContext(
 )
 
 
-@pytest.mark.asyncio
+@pytest.fixture
+def client():
+    app = FastAPI()
+    app.include_router(v1_router)
+    app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    app.dependency_overrides[requires_user] = lambda: None
+    app.dependency_overrides[get_user_id] = lambda: "user"
+    app.dependency_overrides[get_request_context] = lambda: CONTEXT
+    return TestClient(app)
+
+
 @pytest.mark.parametrize("limit", [0, -1, 1001])
-async def test_invalid_history_limit_returns_400(limit):
-    with pytest.raises(HTTPException) as error:
-        await get_credit_history(
-            user_id="user", ctx=CONTEXT, transaction_count_limit=limit
-        )
-    assert error.value.status_code == 400
-    assert "Transaction count limit" in error.value.detail
+def test_invalid_history_limit_returns_400(client, limit):
+    response = client.get(
+        "/credits/transactions", params={"transaction_count_limit": limit}
+    )
+    assert response.status_code == 400
+    assert "Transaction count limit" in response.json()["detail"]
+    assert response.json()["message"] == "Failed to process GET /credits/transactions"
 
 
-@pytest.mark.asyncio
-async def test_invalid_cursor_returns_400(monkeypatch):
+def test_invalid_cursor_returns_400(client, monkeypatch):
     model = AsyncMock(spec=UserCreditBase)
     model.get_transaction_history.side_effect = ValueError(
         "Invalid credit history cursor"
@@ -41,10 +53,10 @@ async def test_invalid_cursor_returns_400(monkeypatch):
     monkeypatch.setattr(
         "backend.api.features.v1.get_credit_model", AsyncMock(return_value=model)
     )
-    with pytest.raises(HTTPException) as error:
-        await get_credit_history(user_id="user", ctx=CONTEXT, cursor="invalid")
-    assert error.value.status_code == 400
-    assert error.value.detail == "Invalid credit history cursor"
+    response = client.get("/credits/transactions", params={"cursor": "invalid"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid credit history cursor"
+    assert response.json()["message"] == "Failed to process GET /credits/transactions"
 
 
 @pytest.mark.asyncio
