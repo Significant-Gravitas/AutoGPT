@@ -9,8 +9,11 @@ import { reportMicLevel } from "../micLevel";
 import { readSpeechLevel } from "../speechLevel";
 
 import { VoiceModeBar } from "../components/VoiceModeBar";
-import { TICK_MS } from "../components/VoiceTrace";
+import { MIN_SCALE, TICK_MS } from "../components/VoiceTrace";
 import { VoiceModeButton } from "../components/VoiceModeButton";
+
+/** Height of a bar at rest, as the percentage the style carries. */
+const REST = MIN_SCALE * 100;
 
 describe("VoiceModeBar", () => {
   it("stays out of the way when voice mode is off", () => {
@@ -105,9 +108,9 @@ describe("VoiceModeBar", () => {
     const { container } = render(
       <VoiceModeBar state="speaking" statusLabel="Speaking" onStop={vi.fn()} />,
     );
-    act(() => void vi.advanceTimersByTime(TICK_MS * 4));
+    act(() => void vi.advanceTimersByTime(TICK_MS * 8));
 
-    expect(newestColumn(container)).toBeGreaterThan(10);
+    expect(newestColumn(container)).toBeGreaterThan(20);
     vi.useRealTimers();
   });
 
@@ -127,7 +130,7 @@ describe("VoiceModeBar", () => {
 
     reportMicLevel(0.001);
     act(() => void vi.advanceTimersByTime(TICK_MS));
-    expect(newestColumn(container)).toBeLessThan(10);
+    expect(newestColumn(container)).toBeLessThanOrEqual(REST);
     vi.useRealTimers();
   });
 
@@ -152,7 +155,7 @@ describe("VoiceModeBar", () => {
       <VoiceModeBar state="thinking" statusLabel="Thinking" onStop={vi.fn()} />,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS));
-    expect(newestColumn(container)).toBeLessThanOrEqual(6);
+    expect(newestColumn(container)).toBeLessThanOrEqual(REST);
     act(() => void vi.advanceTimersByTime(TICK_MS * 7));
     expect(newestColumn(container)).toBeGreaterThan(20);
     vi.useRealTimers();

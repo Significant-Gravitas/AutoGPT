@@ -10,7 +10,7 @@ vi.mock("../micLevel", () => ({
 }));
 vi.mock("../speechLevel", () => ({ readSpeechLevel: () => null }));
 
-import { TICK_MS, VoiceTrace } from "../components/VoiceTrace";
+import { MIN_SCALE, TICK_MS, VoiceTrace } from "../components/VoiceTrace";
 
 describe("VoiceTrace", () => {
   it("consumes one level per tick, even under StrictMode", () => {
@@ -42,7 +42,7 @@ describe("VoiceTrace", () => {
       </StrictMode>,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 20));
-    expect(tallest(container)).toBeLessThan(10);
+    expect(tallest(container)).toBeLessThanOrEqual(MIN_SCALE * 100);
 
     takeMicLevel.mockImplementation(() => 0.05);
     act(() => void vi.advanceTimersByTime(TICK_MS * 5));

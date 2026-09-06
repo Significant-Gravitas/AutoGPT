@@ -9,9 +9,17 @@ import { takeMicLevel } from "../micLevel";
 import { readSpeechLevel } from "../speechLevel";
 
 /** One column per tick; the strip scrolls left as they arrive. */
-const COLUMNS = 60;
-export const TICK_MS = 67;
-const MIN_SCALE = 0.06;
+const COLUMNS = 45;
+/** 20 Hz. At 15 the one-pitch jump per tick read as choppy. */
+export const TICK_MS = 50;
+/** Bar width and strip height, in px — the Tailwind classes below. */
+const BAR_PX = 4;
+const STRIP_PX = 24;
+/**
+ * At rest a bar is exactly as tall as it is wide, so `rounded-full` makes
+ * it a dot. Any shorter and it is a sliver whose corners cannot round.
+ */
+export const MIN_SCALE = BAR_PX / STRIP_PX;
 const PULSE_PEAK = 0.7;
 /** In ticks per radian — about one breath every 1.4 s. */
 const PULSE_PERIOD = 3.3;
@@ -61,7 +69,7 @@ export function VoiceTrace({ source, className, color }: Props) {
   return (
     <div
       className={cn(
-        "flex h-6 items-center justify-center gap-[3px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-[4px] overflow-hidden",
         className,
       )}
       aria-hidden="true"
@@ -69,7 +77,7 @@ export function VoiceTrace({ source, className, color }: Props) {
       {columns.map(({ level, color: recorded }, index) => (
         <span
           key={index}
-          className={cn("w-[3px] shrink-0 rounded-full", recorded)}
+          className={cn("w-[4px] shrink-0 rounded-full", recorded)}
           style={{ height: `${Math.max(MIN_SCALE, level) * 100}%` }}
         />
       ))}
