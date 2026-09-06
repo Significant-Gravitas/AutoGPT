@@ -19,6 +19,10 @@ on:
       # Block display names come from _CAMELCASE_EXCEPTIONS here; editing it renames blocks.
       - "autogpt_platform/backend/backend/util/text.py"
       - ".github/workflows/docs-block-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check-docs-sync:
