@@ -1281,9 +1281,7 @@ def _baseline_conversation_updater(
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
-    Also records structured ChatMessage entries in ``state.session_messages``
-    so the full tool-call history is persisted to the session (not just the
-    concatenated assistant text).
+    Also finishes the pending tool round for session persistence.
     """
     _mutate_openai_messages(messages, response, tool_results)
     _record_turn_to_transcript(
@@ -1292,12 +1290,7 @@ def _baseline_conversation_updater(
         transcript_builder=transcript_builder,
         model=model,
     )
-    # Record structured messages for session persistence so tool calls
-    # and tool results survive across turns and mode switches.
     if state is not None and tool_results:
-        _begin_baseline_tool_round(state, response)
-        for result in tool_results:
-            state.tool_persistence.record_result(result)
         state.tool_persistence.finish(state.session_messages)
 
 

@@ -4,7 +4,6 @@ import asyncio
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
     from backend.copilot.model import ChatMessage
 
 _TOKEN_KEY = "__agpt_display_token"
-_current_call_id: ContextVar[str | None] = ContextVar("sdk_tool_call_id", default=None)
 
 
 class _CallBinding(BaseModel):
@@ -57,12 +55,8 @@ class SDKToolDisplayBridge:
         binding = self._bindings.pop(token, None) if isinstance(token, str) else None
         if binding is not None and binding.tool_name != tool_name:
             binding = None
-        call_token = _current_call_id.set(binding.call_id if binding else None)
-        try:
-            with tool_display_context(lambda name: self._publish(binding, name)):
-                yield strip_display_token(arguments)
-        finally:
-            _current_call_id.reset(call_token)
+        with tool_display_context(lambda name: self._publish(binding, name)):
+            yield strip_display_token(arguments)
 
     def drain(self) -> list[StreamToolDisplayAvailable]:
         pending, self._pending = self._pending, []
@@ -89,10 +83,6 @@ class SDKToolDisplayBridge:
             )
         )
         self.ready.set()
-
-
-def get_sdk_tool_call_id() -> str | None:
-    return _current_call_id.get()
 
 
 def strip_display_token(arguments: dict[str, Any]) -> dict[str, Any]:

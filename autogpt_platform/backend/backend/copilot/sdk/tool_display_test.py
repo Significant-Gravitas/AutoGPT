@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from backend.copilot.sdk.tool_display import SDKToolDisplayBridge, get_sdk_tool_call_id
+from backend.copilot.sdk.tool_display import SDKToolDisplayBridge
 from backend.copilot.tool_display import emit_tool_display_name, tool_display_context
 
 
@@ -12,9 +12,7 @@ def test_display_context_uses_provider_id_and_keeps_arguments_clean():
     tagged = bridge.prepare_call("run_agent", original, "toolu-a")
     with bridge.execution_context("run_agent", tagged) as arguments:
         assert arguments == original
-        assert get_sdk_tool_call_id() == "toolu-a"
         emit_tool_display_name("Daily Digest")
-    assert get_sdk_tool_call_id() is None
     [event] = bridge.drain()
     assert event.id == "toolu-a"
     assert event.data.toolCallId == "toolu-a"
@@ -68,7 +66,7 @@ def test_exception_resets_context_and_token_is_single_use():
     with pytest.raises(RuntimeError):
         with bridge.execution_context("run_agent", tagged):
             raise RuntimeError("test")
-    assert get_sdk_tool_call_id() is None
+    emit_tool_display_name("Outside failed execution")
     with bridge.execution_context("run_agent", tagged):
         emit_tool_display_name("Duplicate")
     assert bridge.drain() == []

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,6 +12,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamToolDisplayAvailable,
     StreamToolInputAvailable,
+    StreamToolOutputAvailable,
     ToolDisplayData,
 )
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
@@ -23,11 +25,12 @@ from backend.copilot.sdk.service import (
 )
 from backend.copilot.sdk.tool_adapter import (
     _build_input_schema,
+    _execute_tool_sync,
     _make_truncating_wrapper,
     pop_pending_tool_output,
     set_execution_context,
 )
-from backend.copilot.sdk.tool_display import SDKToolDisplayBridge, get_sdk_tool_call_id
+from backend.copilot.sdk.tool_display import SDKToolDisplayBridge
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -42,6 +45,31 @@ def make_session():
         started_at=now,
         updated_at=now,
     )
+
+
+@pytest.mark.asyncio
+async def test_display_bridge_preserves_domain_execution_ids():
+    bridge = SDKToolDisplayBridge()
+    tagged = bridge.prepare_call("run_agent", {}, "toolu-provider")
+    base_tool = MagicMock()
+
+    async def execute(*, tool_call_id, **kwargs):
+        emit_tool_display_name("Daily Digest")
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id,
+            output=f"tool-outputs/{tool_call_id}.json",
+        )
+
+    base_tool.execute = AsyncMock(side_effect=execute)
+    with bridge.execution_context("run_agent", tagged) as arguments:
+        result = await _execute_tool_sync(base_tool, "user", make_session(), arguments)
+
+    execution_id = base_tool.execute.call_args.kwargs["tool_call_id"]
+    assert re.fullmatch(r"sdk-[0-9a-f]{12}", execution_id)
+    assert result["content"][0]["text"] == f"tool-outputs/{execution_id}.json"
+    [display] = bridge.drain()
+    assert display.data.toolCallId == "toolu-provider"
+    assert display.data.displayName == "Daily Digest"
 
 
 @pytest.mark.parametrize(
@@ -93,7 +121,6 @@ async def test_hook_to_mcp_handler_keeps_provider_identity_and_clean_stash(
 
     async def execute(clean_args):
         assert clean_args == args
-        assert get_sdk_tool_call_id() == "toolu-provider"
         emit_tool_display_name(display_name)
         return {
             "content": [{"type": "text", "text": json.dumps({name_key: display_name})}]

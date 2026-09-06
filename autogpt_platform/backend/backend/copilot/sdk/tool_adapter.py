@@ -55,7 +55,7 @@ from .e2b_file_tools import (
     get_read_tool_handler,
     get_write_tool_handler,
 )
-from .tool_display import SDKToolDisplayBridge, get_sdk_tool_call_id
+from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -320,7 +320,7 @@ async def _execute_tool_sync(
     30-min idle safety net (SECRT-2247). A genuine hang is handled by the
     broader session lifecycle (user closes the tab / cancel endpoint).
     """
-    effective_id = get_sdk_tool_call_id() or f"sdk-{uuid.uuid4().hex[:12]}"
+    effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
         session=session,

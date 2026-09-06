@@ -8,21 +8,15 @@ from backend.util.tool_call_loop import ToolCallResult
 
 class BaselineToolPersistence(BaseModel):
     pending_message: ChatMessage | None = None
-    display_names: dict[str, str] = Field(default_factory=dict)
     results: dict[str, ToolCallResult] = Field(default_factory=dict)
 
     def begin(self, message: ChatMessage, messages: list[ChatMessage]) -> None:
         if self.pending_message is not None:
             return
         self.pending_message = message
-        for call in message.tool_calls or []:
-            name = self.display_names.get(call["id"])
-            if name:
-                call["display_name"] = name
         messages.append(message)
 
     def set_display_name(self, tool_call_id: str, name: str) -> None:
-        self.display_names[tool_call_id] = name
         message = self.pending_message
         if message is None:
             return
@@ -39,8 +33,8 @@ class BaselineToolPersistence(BaseModel):
     def finish(self, messages: list[ChatMessage]) -> None:
         """Flush actual results once, leaving interrupted calls visibly pending.
 
-        Orphan cleanup excludes unfinished calls from subsequent provider
-        context; append-only history still retains their resolved names.
+        Provider context drops incomplete rounds; saved history retains
+        the named calls and their actual results.
         """
         if self.pending_message is None:
             return
@@ -51,4 +45,3 @@ class BaselineToolPersistence(BaseModel):
         )
         self.pending_message = None
         self.results.clear()
-        self.display_names.clear()
