@@ -325,7 +325,7 @@ export const ChatContainer = ({
                         />
                       </div>
                     )}
-                    <Tooltip open={isLimitReached ? undefined : false}>
+                    <Tooltip open={!!isLimitReached}>
                       <TooltipTrigger asChild>
                         <div>
                           <ChatInput
