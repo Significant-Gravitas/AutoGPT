@@ -10,10 +10,12 @@ import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_FLOW_TIMED_OUT,
   OAUTH_ERROR_POPUP_BLOCKED,
+  OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
+import { trackCredentialConnectionFailure } from "@/services/credentials/connection-analytics";
 import { useEffect, useRef, useState } from "react";
 import {
   countSupportedTypes,
@@ -322,6 +324,10 @@ export function useCredentialsInput({
           );
 
           if (!hasAllRequiredScopes) {
+            trackCredentialConnectionFailure(
+              "credential_scope_shortfall_blocked_selection",
+              { provider },
+            );
             setOAuthError(
               "Connection failed: the granted permissions don't match what's required. " +
                 "Please contact the application administrator.",
@@ -357,8 +363,16 @@ export function useCredentialsInput({
       ) {
         // User closed the popup or clicked cancel — not an error
       } else if (message === OAUTH_ERROR_FLOW_TIMED_OUT) {
+        trackCredentialConnectionFailure("credential_oauth_flow_timed_out", {
+          provider,
+        });
         setOAuthError(OAUTH_ERROR_FLOW_TIMED_OUT);
       } else {
+        if (message === OAUTH_ERROR_POPUP_BLOCKED_NO_TAB) {
+          trackCredentialConnectionFailure("credential_oauth_popup_blocked", {
+            provider,
+          });
+        }
         setOAuthError(`OAuth error: ${message}`);
       }
     } finally {

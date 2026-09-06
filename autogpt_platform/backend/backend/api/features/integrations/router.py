@@ -93,6 +93,7 @@ from .codex import (
     revoke_codex_credentials,
 )
 from .codex import router as codex_router
+from .failure_events import CredentialFailure, report_credential_failure
 from .models import (
     ProviderConstants,
     ProviderMetadata,
@@ -327,7 +328,13 @@ async def callback(
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {user_id}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.PROVIDER_REGISTRATION_WRONG,
+            "invalid_state_token",
+            f"Invalid or expired state token for user {user_id}",
+            provider=provider.value,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
@@ -356,10 +363,15 @@ async def callback(
 
         # Check if the granted scopes are sufficient for the requested scopes
         if not set(scopes).issubset(set(credentials.scopes)):
-            # For now, we'll just log the warning and continue
-            logger.warning(
+            # Stored and accepted anyway; the frontend then refuses to select it,
+            # so this is the only record that the credential is short.
+            report_credential_failure(
+                logger,
+                CredentialFailure.SCOPES_TOO_NARROW,
+                "granted_scopes_narrower",
                 f"Granted scopes {credentials.scopes} for provider {provider.value} "
-                f"do not include all requested scopes {scopes}"
+                f"do not include all requested scopes {scopes}",
+                provider=provider.value,
             )
 
     except Exception as e:
@@ -452,7 +464,13 @@ async def _throttle_upstream(
     try:
         return await asyncio.wait_for(_claim(), timeout=_THROTTLE_TIMEOUT_SECONDS)
     except Exception as e:
-        logger.warning(f"Device auth throttle unavailable, allowing through: {e}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.DEVICE_CODE_RACE,
+            "throttle_unavailable",
+            f"Device auth throttle unavailable, allowing through: {e}",
+            provider=provider_key(provider),
+        )
         return False
 
 
@@ -477,7 +495,13 @@ async def _credential_for_grant(
     try:
         return await creds_manager.store.get_creds_by_id(user_id, credential_id)
     except Exception as e:
-        logger.warning(f"Could not read stored credential for {provider}: {e}")
+        report_credential_failure(
+            logger,
+            CredentialFailure.DEVICE_CODE_RACE,
+            "credential_unreadable",
+            f"Could not read stored credential for {provider}: {e}",
+            provider=provider_key(provider),
+        )
         return None
 
 
@@ -730,11 +754,13 @@ async def _ensure_managed_credentials_bounded(user_id: str) -> None:
             timeout=_MANAGED_PROVISION_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
-        logger.warning(
-            "Managed credential sweep exceeded %.1fs for user=%s; "
+        report_credential_failure(
+            logger,
+            CredentialFailure.MANAGED_PROVISIONING_LATE,
+            "sweep_timeout",
+            f"Managed credential sweep exceeded {_MANAGED_PROVISION_TIMEOUT_S:.1f}s; "
             "continuing without it — provisioning will complete in background",
-            _MANAGED_PROVISION_TIMEOUT_S,
-            user_id,
+            user_id=user_id,
         )
         asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
 
@@ -1865,7 +1891,14 @@ async def list_providers(
 
         load_all_blocks()
     except Exception as e:
-        logger.warning(f"Failed to load blocks for provider metadata: {e}")
+        # The list still returns, one provider short — every card for a missing
+        # provider then renders as a permanent loading state, not an error.
+        report_credential_failure(
+            logger,
+            CredentialFailure.PROVIDER_UNKNOWN_TO_FRONTEND,
+            "block_load_failed",
+            f"Failed to load blocks for provider metadata: {e}",
+        )
 
     all_providers = get_all_provider_names()
     if user_id is None or not await has_codex_access_for_discovery(user_id):
