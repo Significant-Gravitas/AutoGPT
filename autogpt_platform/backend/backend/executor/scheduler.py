@@ -19,7 +19,6 @@ from apscheduler.events import (
 )
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
@@ -43,6 +42,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
+from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -1675,6 +1675,7 @@ def _job_to_info(
 
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
+    _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     def __init__(self, register_system_tasks: bool = True):
         self.register_system_tasks = register_system_tasks
@@ -1725,6 +1726,29 @@ class Scheduler(AppService):
         # Configure executors to limit concurrency without skipping jobs
         from apscheduler.executors.pool import ThreadPoolExecutor
 
+        self._persistent_jobstores = {
+            Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                # this one is pre-existing so it keeps the
+                # default table name.
+                tablename="apscheduler_jobs",
+            ),
+            Jobstores.BATCHED_NOTIFICATIONS.value: ResilientSQLAlchemyJobStore(
+                engine=create_engine(
+                    url=db_url,
+                    pool_size=self.db_pool_size(),
+                    max_overflow=0,
+                ),
+                metadata=MetaData(schema=db_schema),
+                tablename="apscheduler_jobs_batched_notifications",
+            ),
+        }
+
         self.scheduler = BackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
@@ -1737,26 +1761,7 @@ class Scheduler(AppService):
                 "misfire_grace_time": None,  # No time limit for missed jobs
             },
             jobstores={
-                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    # this one is pre-existing so it keeps the
-                    # default table name.
-                    tablename="apscheduler_jobs",
-                ),
-                Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
-                    engine=create_engine(
-                        url=db_url,
-                        pool_size=self.db_pool_size(),
-                        max_overflow=0,
-                    ),
-                    metadata=MetaData(schema=db_schema),
-                    tablename="apscheduler_jobs_batched_notifications",
-                ),
+                **self._persistent_jobstores,
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             },
@@ -1910,6 +1915,7 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
         self.scheduler.start()
+        self._report_parked_jobs()
 
         # Run embedding backfill immediately on startup
         # This ensures blocks/docs are searchable right away, not after 6 hours
@@ -1925,6 +1931,20 @@ class Scheduler(AppService):
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
+
+    def _report_parked_jobs(self) -> None:
+        """Parking is recoverable but silent — startup has to say it happened."""
+        for alias, store in self._persistent_jobstores.items():
+            try:
+                parked = store.get_parked_job_ids()
+            except Exception as e:
+                logger.error(f"Could not check jobstore '{alias}' for parked jobs: {e}")
+                continue
+            if parked:
+                logger.error(
+                    f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
+                    f"not run until repaired: {parked}"
+                )
 
     def cleanup(self):
         if self.scheduler:
@@ -2348,6 +2368,14 @@ class Scheduler(AppService):
         send_due_briefings()
 
     @expose
+    def get_parked_jobs(self) -> dict[str, list[str]]:
+        """Job ids the scheduler could not restore, per jobstore."""
+        return {
+            alias: store.get_parked_job_ids()
+            for alias, store in self._persistent_jobstores.items()
+        }
+
+    @expose
     def execute_report_late_executions(self):
         return report_late_executions()
 
@@ -2760,6 +2788,8 @@ class SchedulerClient(AppServiceClient):
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+
+    get_parked_jobs = endpoint_to_async(Scheduler.get_parked_jobs)
 
     add_community_rebuild_schedule = endpoint_to_async(
         Scheduler.add_community_rebuild_schedule
