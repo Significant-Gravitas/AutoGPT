@@ -25,6 +25,8 @@ def _db_execution(*, status: ExecutionStatus, stats: dict):
         organizationId=None,
         teamId=None,
         expertId=None,
+        triggerSource=None,
+        triggerRef=None,
     )
 
 

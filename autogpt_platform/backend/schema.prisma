@@ -1261,6 +1261,15 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // How the run was started (values: backend.data.execution.ExecutionTrigger).
+  // Persisted so analytics can separate human-initiated runs from schedule,
+  // webhook, API and copilot-initiated ones instead of inferring it from the
+  // preset / expert / parent columns. Null for rows that predate the column.
+  triggerSource String?
+  // What started the run, for that source: schedule id, webhook id, chat
+  // session id, API key id, or the UI surface for manual runs.
+  triggerRef    String?
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?

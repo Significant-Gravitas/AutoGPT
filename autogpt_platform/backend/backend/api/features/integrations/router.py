@@ -22,6 +22,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
 from backend.data.db_accessors import experts_db
+from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -75,6 +76,7 @@ from backend.integrations.oauth import (
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.webhooks import get_webhook_manager
+from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
@@ -379,6 +381,12 @@ async def callback(
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
+    )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="oauth",
     )
 
     return to_meta_response(credentials)
@@ -707,6 +715,12 @@ async def device_auth_poll(
         logger.debug(
             f"Device auth approved for user {user_id} and provider {provider.value}"
         )
+        product_analytics.track_integration_connected(
+            user_id=user_id,
+            provider=provider.value,
+            credential_type=credentials.type,
+            method="device_code",
+        )
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -940,6 +954,12 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to store credentials",
         )
+    product_analytics.track_integration_connected(
+        user_id=user_id,
+        provider=provider.value,
+        credential_type=credentials.type,
+        method="manual",
+    )
     return to_meta_response(credentials)
 
 
@@ -1192,13 +1212,21 @@ async def _execute_webhook_node_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=node.graph_id,
             graph_version=node.graph_version,
             nodes_input_masks={node.id: {"payload": payload}},
             organization_id=org_id,
             team_id=ws_id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=node.graph_id,
+            graph_exec_id=graph_exec.id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1297,7 +1325,7 @@ async def _execute_webhook_preset_trigger(
             from backend.api.features.orgs.db import get_user_default_team
 
             org_id, ws_id = await get_user_default_team(webhook.user_id)
-        await add_graph_execution(
+        graph_exec = await add_graph_execution(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
@@ -1307,6 +1335,16 @@ async def _execute_webhook_preset_trigger(
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
+            trigger=ExecutionTrigger.WEBHOOK,
+            trigger_ref=webhook_id,
+        )
+        product_analytics.track_trigger_fired(
+            user_id=webhook.user_id,
+            webhook_id=webhook_id,
+            graph_id=preset.graph_id,
+            graph_exec_id=graph_exec.id,
+            expert_id=preset.expert_id,
+            preset_id=preset.id,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
