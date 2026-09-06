@@ -98,10 +98,23 @@ export function toConnectorRows(
     for (const [key, schema] of request.fields) {
       const provider = schema.credentials_provider?.[0];
       if (!provider) continue;
-      const row = rows.get(provider) ?? { schema, targets: [] };
+      const row = rows.get(provider);
+      if (!row) {
+        rows.set(provider, {
+          schema,
+          targets: [{ request, key }],
+          selected: request.selected[key],
+        });
+        continue;
+      }
+      // One row answers every card that asked for this provider, so it must
+      // request the union of their scopes — keeping only the first card's
+      // leaves the others permanently unsatisfiable. Scopes only: merging
+      // `credentials_types` would offer a method some cards cannot accept, and
+      // that needs a per-card row rather than a wider one.
+      row.schema = withUnionedScopes(row.schema, schema);
       row.targets.push({ request, key });
       row.selected = row.selected ?? request.selected[key];
-      rows.set(provider, row);
     }
   }
 
@@ -117,4 +130,19 @@ export function toConnectorRows(
     onConnected: () =>
       row.targets.forEach(({ request }) => request.onConnected()),
   }));
+}
+
+/** Merges `incoming`'s scopes into `kept`, leaving every other schema field
+ *  as the first card set it. */
+function withUnionedScopes(
+  kept: CredentialField[1],
+  incoming: CredentialField[1],
+): CredentialField[1] {
+  const scopes = [
+    ...new Set([
+      ...(kept.credentials_scopes ?? []),
+      ...(incoming.credentials_scopes ?? []),
+    ]),
+  ];
+  return scopes.length > 0 ? { ...kept, credentials_scopes: scopes } : kept;
 }

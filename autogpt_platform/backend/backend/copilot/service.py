@@ -50,6 +50,9 @@ _TITLE_MAX_WORDS = 6
 _TITLE_MAX_CHARS = 50
 _TITLE_ELLIPSIS = "..."
 _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
+# A 20-token title must not inherit the block-sized LLM default; it runs in a
+# background task holding a slot in the shared aux-client pool.
+_TITLE_TIMEOUT_SECONDS = 30
 
 
 def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
@@ -873,6 +876,7 @@ async def _generate_session_title(
                 },
             ],
             max_tokens=20,
+            timeout_seconds=_TITLE_TIMEOUT_SECONDS,
             extra_body=extra_body or None,
         )
     except Exception as e:

@@ -81,7 +81,10 @@ async def build_home_dashboard(
     # All depend on the gathered data (graph ids / session ids / timezone) but
     # not on each other, so these reads cost no extra round-trip.
     library_refs, persisted_briefing, session_titles = await asyncio.gather(
-        library_db.get_library_agent_refs_by_graph_ids(user_id, graph_ids),
+        # Removed agents keep naming their past runs on the Recent work card.
+        library_db.get_library_agent_refs_by_graph_ids(
+            user_id, graph_ids, include_deleted=True
+        ),
         _persisted_briefing(user_id=user_id, timezone_name=data.timezone_name, now=now),
         _get_session_titles(user_id=user_id, session_ids=work_session_ids),
     )

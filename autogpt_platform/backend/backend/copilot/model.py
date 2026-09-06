@@ -877,7 +877,7 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
     async_redis = await get_redis_async()
-    raw_session: bytes | None = await async_redis.get(redis_key)
+    raw_session = await async_redis.get(redis_key)
 
     if raw_session is None:
         return None
