@@ -2924,6 +2924,406 @@ class TestPersonalOrgBootstrapOnDemand:
         self.create_org.assert_not_called()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECRT-2453: Manage teams by target ws_id, independent of active-team header
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _mgmt_ctx(
+    *,
+    user_id=USER_ID,
+    org_id=ORG_ID,
+    team_id=None,
+    org_owner=False,
+    org_admin=False,
+    team_admin=False,
+) -> RequestContext:
+    return RequestContext(
+        user_id=user_id,
+        org_id=org_id,
+        team_id=team_id,
+        is_org_owner=org_owner,
+        is_org_admin=org_admin,
+        is_org_billing_manager=False,
+        is_team_admin=team_admin,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+
+
+class TestTeamManagementByTeamId:
+    """Mutating team routes authorize against the target team in the URL path.
+
+    Allowed for an admin of that team OR an org admin (MANAGE_WORKSPACES),
+    regardless of the caller's active-team (X-Team-Id) context. Exercises the
+    real ``_authorize_team_management`` helper against a mocked Prisma boundary.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _mock_prisma(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+
+    @pytest.fixture
+    def _app_and_client(self):
+        from fastapi.responses import JSONResponse
+
+        from backend.api.features.orgs.team_routes import router
+
+        app = fastapi.FastAPI()
+        app.include_router(router, prefix="/api/orgs/{org_id}/workspaces")
+
+        # Mirror the production mapping of NotFoundError -> 404 (registered on
+        # the real app in rest_api.py) so cross-org lookups surface as 404.
+        async def _not_found(request, exc):
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+        app.add_exception_handler(NotFoundError, _not_found)
+        self.app = app
+        client = fastapi.testclient.TestClient(app)
+        yield app, client
+        app.dependency_overrides.clear()
+
+    def _use_ctx(self, ctx: RequestContext):
+        from autogpt_libs.auth import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: ctx
+
+    # --- team settings update (PATCH /{ws_id}) ------------------------------
+
+    def test_team_admin_updates_settings_without_active_team_context(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+            )
+        )
+        self.prisma.team.update = AsyncMock()
+        # No active team: team_id is None (no X-Team-Id header).
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None, team_admin=False))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 200
+        self.prisma.team.update.assert_awaited_once()
+
+    def test_org_admin_updates_team_they_do_not_belong_to(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # Org admin is not a member of the target team.
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 200
+        self.prisma.team.update.assert_awaited_once()
+        # Org permission short-circuits before the team-admin lookup.
+        self.prisma.teammember.find_unique.assert_not_awaited()
+
+    def test_plain_org_member_cannot_update_team(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 403
+        self.prisma.team.update.assert_not_awaited()
+
+    def test_admin_of_different_team_cannot_update_target(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # No admin row for the *target* team, even though the caller's active
+        # team ("ws-other") has them as admin.
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(
+            _mgmt_ctx(user_id=OTHER_USER_ID, team_id="ws-other", team_admin=True)
+        )
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 403
+        self.prisma.team.update.assert_not_awaited()
+
+    # --- member role update (PATCH /{ws_id}/members/{uid}) ------------------
+
+    def _stub_member_update(self):
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        self.prisma.teammember.update = AsyncMock()
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)]
+        )
+
+    def test_team_admin_updates_member_without_active_team_context(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self._stub_member_update()
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+            )
+        )
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
+            json={"is_admin": True},
+        )
+
+        assert resp.status_code == 200
+        self.prisma.teammember.update.assert_awaited_once()
+
+    def test_org_admin_updates_member_of_team_they_do_not_belong_to(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self._stub_member_update()
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
+            json={"is_admin": True},
+        )
+
+        assert resp.status_code == 200
+        self.prisma.teammember.update.assert_awaited_once()
+        self.prisma.teammember.find_unique.assert_not_awaited()
+
+    def test_plain_org_member_cannot_update_member(self, _app_and_client):
+        _, client = _app_and_client
+        self._stub_member_update()
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
+            json={"is_admin": True},
+        )
+
+        assert resp.status_code == 403
+        self.prisma.teammember.update.assert_not_awaited()
+
+    def test_admin_of_different_team_cannot_update_member(self, _app_and_client):
+        _, client = _app_and_client
+        self._stub_member_update()
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self._use_ctx(
+            _mgmt_ctx(user_id=OTHER_USER_ID, team_id="ws-other", team_admin=True)
+        )
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}",
+            json={"is_admin": True},
+        )
+
+        assert resp.status_code == 403
+        self.prisma.teammember.update.assert_not_awaited()
+
+    # --- member add (POST /{ws_id}/members) ---------------------------------
+
+    def test_team_admin_adds_member_without_active_team_context(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # Caller is an active admin of the target team; no X-Team-Id header.
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+            )
+        )
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=MagicMock())
+        self.prisma.teammember.create = AsyncMock(
+            return_value=_make_ws_member(workspaceId=WS_ID, userId=OTHER_USER_ID)
+        )
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, team_id=None))
+
+        resp = client.post(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members",
+            json={"user_id": OTHER_USER_ID},
+        )
+
+        assert resp.status_code == 200
+        self.prisma.teammember.create.assert_awaited_once()
+
+    def test_plain_org_member_cannot_add_member(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.teammember.create = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID))
+
+        resp = client.post(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members",
+            json={"user_id": "user-new"},
+        )
+
+        assert resp.status_code == 403
+        self.prisma.teammember.create.assert_not_awaited()
+
+    # --- member removal (DELETE /{ws_id}/members/{uid}) ---------------------
+
+    def test_org_admin_removes_member_of_team_they_do_not_belong_to(
+        self, _app_and_client
+    ):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # Only remove_team_member's target lookup hits this (org permission
+        # short-circuits before is_team_admin); target is not an admin.
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=False
+            )
+        )
+        self.prisma.teammember.delete = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.delete(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}"
+        )
+
+        assert resp.status_code == 204
+        self.prisma.teammember.delete.assert_awaited_once()
+
+    def test_admin_of_different_team_cannot_remove_member(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # No membership row for the *target* team despite the caller's active
+        # team ("ws-other") having them as admin.
+        self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.teammember.delete = AsyncMock()
+        self._use_ctx(
+            _mgmt_ctx(user_id=OTHER_USER_ID, team_id="ws-other", team_admin=True)
+        )
+
+        resp = client.delete(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}/members/{OTHER_USER_ID}"
+        )
+
+        assert resp.status_code == 403
+        self.prisma.teammember.delete.assert_not_awaited()
+
+    # --- is_team_admin denial branches --------------------------------------
+
+    def test_active_non_admin_member_cannot_update_team(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # Caller IS an active member of the target team — but not an admin.
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=False, status="ACTIVE"
+            )
+        )
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 403
+        self.prisma.team.update.assert_not_awaited()
+
+    @pytest.mark.parametrize("member_status", ["INVITED", "SUSPENDED"])
+    def test_non_active_team_admin_cannot_update_team(
+        self, _app_and_client, member_status
+    ):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, isDefault=False)
+        )
+        # Caller has an admin row for the target team, but is not ACTIVE.
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=True, status=member_status
+            )
+        )
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 403
+        self.prisma.team.update.assert_not_awaited()
+
+    # --- cross-org guard ----------------------------------------------------
+
+    def test_caller_from_other_org_is_rejected_before_any_lookup(self, _app_and_client):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock()
+        self.prisma.team.update = AsyncMock()
+        # Caller's header org context differs from the org in the URL path.
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_id="org-bbb", org_admin=True))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        assert resp.status_code == 403
+        self.prisma.team.find_unique.assert_not_awaited()
+        self.prisma.team.update.assert_not_awaited()
+
+    def test_target_team_in_other_org_is_rejected(self, _app_and_client):
+        _, client = _app_and_client
+        # Target team belongs to a different org than the caller's context.
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(id=WS_ID, orgId="org-other", isDefault=False)
+        )
+        self.prisma.teammember.find_unique = AsyncMock(
+            return_value=_make_ws_member(
+                workspaceId=WS_ID, userId=USER_ID, isAdmin=True
+            )
+        )
+        self.prisma.team.update = AsyncMock()
+        self._use_ctx(_mgmt_ctx(user_id=USER_ID, org_admin=True))
+
+        resp = client.patch(
+            f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}", json={"name": "Renamed"}
+        )
+
+        # get_team raises NotFoundError because the team is not in ORG_ID.
+        assert resp.status_code == 404
+        self.prisma.team.update.assert_not_awaited()
+
+
 class TestCanonicalPersonalOrgOrdering:
     """The personal-org lookup must agree with auth's oldest-first rule so
     every path resolves the same canonical org when a user briefly has more
