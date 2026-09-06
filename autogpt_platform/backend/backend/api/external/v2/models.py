@@ -419,6 +419,7 @@ class AgentRunSchedule(BaseModel):
 class AgentRunScheduleCreateRequest(BaseModel):
     """Request to create a schedule."""
 
+    graph_id: str = Field(description="Graph to run on this schedule")
     name: str = Field(description="Display name for the schedule")
     cron: str = Field(description="Cron expression (e.g., '0 9 * * *' for 9am daily)")
     inputs: dict[str, Any] = Field(
@@ -1597,17 +1598,22 @@ class MarketplaceAgentSubmissionCreateRequest(BaseModel):
 
 
 class MarketplaceAgentSubmissionEditRequest(BaseModel):
-    """Request to edit a marketplace submission."""
+    """The full replacement listing for a submission.
+
+    Every field is written, so this is the whole listing, not a patch: the
+    defaulted fields blanked a listing's description, images and categories for
+    any caller that sent only the field it meant to change.
+    """
 
     name: str = Field(description="Agent display name")
-    sub_heading: str = Field(default="", description="Short tagline")
-    description: str = Field(default="", description="Full description")
-    image_urls: list[str] = Field(default_factory=list, description="Image URLs")
+    sub_heading: str = Field(description="Short tagline")
+    description: str = Field(description="Full description")
+    image_urls: list[str] = Field(description="Image URLs")
     video_url: Optional[str] = Field(default=None, description="Demo video URL")
     agent_output_demo_url: Optional[str] = Field(
         default=None, description="Agent output demo URL"
     )
-    categories: list[str] = Field(default_factory=list, description="Categories")
+    categories: list[str] = Field(description="Categories")
     changes_summary: Optional[str] = Field(
         default="Update submission", description="Summary of changes"
     )

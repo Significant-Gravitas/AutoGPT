@@ -7,7 +7,7 @@ Provides endpoints for managing agent presets (saved run configurations).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
@@ -16,9 +16,9 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.api.features.library.model import (
     TriggeredPresetSetupRequest as _TriggeredPresetSetupRequest,
 )
-from backend.data.credit import get_credit_model
 from backend.executor import utils as execution_utils
 
+from ..idempotency import idempotency_key, idempotent_run, replayed_run
 from ..models import (
     AgentGraphRun,
     AgentPreset,
@@ -30,6 +30,7 @@ from ..models import (
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
 from ..tenancy import TenantContext, in_tenant, require_permission
+from .helpers import assert_can_pay
 
 logger = logging.getLogger(__name__)
 
@@ -193,54 +194,54 @@ async def delete_preset(
 
 
 @presets_router.post(
-    path="/presets/{preset_id}/execute",
-    summary="Execute agent preset",
-    operation_id="executeAgentRunPreset",
+    path="/presets/{preset_id}/runs",
+    summary="Run agent preset",
+    operation_id="runAgentRunPreset",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def execute_preset(
+async def run_preset(
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
+    idempotency: Optional[str] = Depends(idempotency_key),
     auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
-    Execute a preset, optionally overriding saved inputs and credentials.
+    Run a preset, optionally overriding its saved inputs and credentials.
+
+    Send an `Idempotency-Key` to make a retry safe: a second request carrying the
+    same key returns the run the first one started rather than starting another.
 
     **Rate limit:** 60 requests per minute per user.
     """
     await graph_exec_limiter.check(auth.user_id)
 
-    # Check credit balance
-    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
-    current_balance = await user_credit_model.get_credits(auth.user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
+    async with idempotent_run(idempotency, auth.user_id) as claim:
+        if claim.existing_run_id:
+            return await replayed_run(claim, auth)
+
+        await assert_can_pay(auth)
+
+        preset = in_tenant(
+            await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
+            auth,
+            f"Preset #{preset_id}",
         )
 
-    # Fetch preset
-    preset = in_tenant(
-        await library_db.get_preset(user_id=auth.user_id, preset_id=preset_id),
-        auth,
-        f"Preset #{preset_id}",
-    )
-
-    # Merge preset inputs with overrides
-    merged_inputs = {**preset.inputs, **request.inputs}
-    merged_credentials = {**preset.credentials, **request.credentials_inputs}
-
-    result = await execution_utils.add_graph_execution(
-        graph_id=preset.graph_id,
-        user_id=auth.user_id,
-        inputs=merged_inputs,
-        graph_version=preset.graph_version,
-        graph_credentials_inputs=merged_credentials,
-        preset_id=preset_id,
-        organization_id=auth.organization_id,
-        team_id=auth.team_id,
-    )
-    return AgentGraphRun.from_internal(result)
+        result = await execution_utils.add_graph_execution(
+            graph_id=preset.graph_id,
+            user_id=auth.user_id,
+            inputs={**preset.inputs, **request.inputs},
+            graph_version=preset.graph_version,
+            graph_credentials_inputs={
+                **preset.credentials,
+                **request.credentials_inputs,
+            },
+            preset_id=preset_id,
+            organization_id=auth.organization_id,
+            team_id=auth.team_id,
+        )
+        await claim.record(result.id)
+        return AgentGraphRun.from_internal(result)
 
 
 async def _assert_preset_in_tenant(preset_id: str, auth: TenantContext) -> None:

@@ -9,9 +9,9 @@ from starlette import status
 
 from backend.api.features.library import db as library_db
 from backend.data import graph as graph_db
-from backend.data.credit import get_credit_model
 from backend.executor import utils as execution_utils
 
+from ..idempotency import idempotency_key, idempotent_run, replayed_run
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
@@ -23,6 +23,7 @@ from ..models import (
 from ..pagination import Page, PageRequest, page_request
 from ..rate_limit import graph_exec_limiter
 from ..tenancy import TenantContext, in_tenant, require_permission
+from .helpers import assert_can_pay
 
 logger = logging.getLogger(__name__)
 
@@ -163,41 +164,42 @@ async def fork_library_agent(
 async def execute_agent(
     request: AgentRunRequest,
     agent_id: str,
+    idempotency: Optional[str] = Depends(idempotency_key),
     auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
     Execute an agent from the library.
 
+    Send an `Idempotency-Key` to make a retry safe: a second request carrying the
+    same key returns the run the first one started rather than starting another.
+
     **Rate limit:** 60 requests per minute per user.
     """
     await graph_exec_limiter.check(auth.user_id)
 
-    # Check credit balance
-    user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
-    current_balance = await user_credit_model.get_credits(auth.user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
+    async with idempotent_run(idempotency, auth.user_id) as claim:
+        if claim.existing_run_id:
+            return await replayed_run(claim, auth)
+
+        await assert_can_pay(auth)
+
+        library_agent = in_tenant(
+            await library_db.get_library_agent(id=agent_id, user_id=auth.user_id),
+            auth,
+            f"Agent #{agent_id}",
         )
 
-    # Get the library agent to find the graph ID and version
-    library_agent = in_tenant(
-        await library_db.get_library_agent(id=agent_id, user_id=auth.user_id),
-        auth,
-        f"Agent #{agent_id}",
-    )
-
-    result = await execution_utils.add_graph_execution(
-        graph_id=library_agent.graph_id,
-        user_id=auth.user_id,
-        inputs=request.inputs,
-        graph_version=library_agent.graph_version,
-        graph_credentials_inputs=request.credentials_inputs,
-        organization_id=auth.organization_id,
-        team_id=auth.team_id,
-    )
-    return AgentGraphRun.from_internal(result)
+        result = await execution_utils.add_graph_execution(
+            graph_id=library_agent.graph_id,
+            user_id=auth.user_id,
+            inputs=request.inputs,
+            graph_version=library_agent.graph_version,
+            graph_credentials_inputs=request.credentials_inputs,
+            organization_id=auth.organization_id,
+            team_id=auth.team_id,
+        )
+        await claim.record(result.id)
+        return AgentGraphRun.from_internal(result)
 
 
 @agents_router.get(

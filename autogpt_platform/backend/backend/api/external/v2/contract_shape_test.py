@@ -264,3 +264,27 @@ def _one_block_graph_credentials_schema() -> dict[str, Any]:
         links=[],
     )
     return graph.credentials_input_schema
+
+
+# ============================================================================
+# A write says what it replaces
+# ============================================================================
+
+
+def test_a_submission_edit_cannot_silently_blank_what_it_omits() -> None:
+    """`PUT` writes every field, so a defaulted one is data loss: a caller that
+    sent `{"name": "..."}` erased the listing's description, images and
+    categories. Required fields make the omission a 422 instead."""
+    from .app import v2_app
+
+    edit = v2_app.openapi()["components"]["schemas"][
+        "MarketplaceAgentSubmissionEditRequest"
+    ]
+    written_by_the_route = {
+        "name",
+        "sub_heading",
+        "description",
+        "image_urls",
+        "categories",
+    }
+    assert written_by_the_route <= set(edit.get("required", []))
