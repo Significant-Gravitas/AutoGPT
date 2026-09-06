@@ -97,6 +97,35 @@ class TestReportCredentialFailure:
         assert record.failure_class == "class_08_scopes_too_narrow"
         assert record.reason == "granted_scopes_narrower"
 
+    def test_the_fields_reach_gcp_cloud_logging(self):
+        """`json_fields` is the only extra GCP's handler carries through."""
+        import io as _io
+        import json
+
+        from google.cloud.logging.handlers import StructuredLogHandler
+
+        stream = _io.StringIO()
+        logger = logging.getLogger("backend.credential_failure_gcp_probe")
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        handler = StructuredLogHandler(stream=stream)
+        logger.addHandler(handler)
+        try:
+            report_credential_failure(
+                logger,
+                CredentialFailure.MANAGED_PROVISIONING_LATE,
+                "sweep_timeout",
+                "sweep timed out",
+                user_id="user-1",
+            )
+        finally:
+            logger.removeHandler(handler)
+
+        entry = json.loads(stream.getvalue().strip().splitlines()[-1])
+        assert entry["failure_class"] == "class_12_managed_provisioning_late"
+        assert entry["reason"] == "sweep_timeout"
+        assert entry["user_id"] == "user-1"
+
     def test_the_sentry_event_carries_the_tags_and_does_not_leak_them(self):
         captured: list[dict] = []
 

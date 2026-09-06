@@ -42,12 +42,15 @@ def report_credential_failure(
     Only `failure_class`, `reason` and `provider` become tags — anything
     per-user or per-request stays an extra, because Sentry tags are indexed
     and high-cardinality values there are what makes a project unqueryable.
+    `json_fields` is the only key GCP's StructuredLogHandler carries through,
+    so the same fields are queryable in Cloud Logging.
     """
     tags = {"failure_class": failure_class.value, "reason": reason}
     if provider is not None:
         tags["provider"] = provider
+    fields = {**tags, **context}
 
     with sentry_sdk.new_scope() as scope:
         for tag, value in tags.items():
             scope.set_tag(tag, value)
-        logger.error(message, extra={**tags, **context})
+        logger.error(message, extra={**fields, "json_fields": fields})
