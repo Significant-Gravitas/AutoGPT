@@ -33,11 +33,13 @@ from backend.executor.scheduler import (
     _reschedule_one_shot_after_cap,
     _reschedule_one_shot_after_expert_unavailable,
     _self_delete_copilot_turn_schedule,
+    _self_delete_morning_briefing_schedule,
     reconcile_stripe_tiers,
 )
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
+    UserPaywalledError,
 )
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
@@ -301,6 +303,8 @@ async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_non
         team_id="team-sched",
         expert_id=None,
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     mock_get_session.assert_not_awaited()  # we created a new one, no lookup
     mock_schedule_turn.assert_awaited_once()
@@ -342,6 +346,8 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         team_id="team-sched",
         expert_id="expert-1",
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
 
@@ -562,6 +568,8 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
         team_id=None,
         expert_id=None,
         origin="automation",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-legacy-session"
     mock_self_delete.assert_not_awaited()
@@ -1080,6 +1088,42 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_graph_quietly_skips_paywalled_user(caplog):
+    args = GraphExecutionJobArgs(
+        schedule_id="sched-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=3,
+        cron="* * * * *",
+        input_data={},
+        input_credentials={},
+    )
+    mock_add = AsyncMock(
+        side_effect=UserPaywalledError("A subscription is required to run agents.")
+    )
+    mock_db = MagicMock()
+    mock_db.increment_onboarding_runs = AsyncMock()
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.execution_utils.add_graph_execution", new=mock_add),
+        patch(
+            f"{_SCHEDULER_PATH}.get_database_manager_async_client",
+            return_value=mock_db,
+        ),
+        caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
+    ):
+        await _execute_graph(**args.model_dump(mode="json"))
+
+    mock_db.increment_onboarding_runs.assert_not_awaited()
+    assert any(
+        record.levelno == logging.INFO
+        and "Skipping scheduled run for graph #graph-1" in record.getMessage()
+        for record in caplog.records
+    )
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -1739,5 +1783,124 @@ class TestMorningBriefingSchedule:
 
         assert any(
             r.levelno == logging.ERROR and "Morning briefing failed" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def _remove(self, existing=None, user_id="user-1"):
+        sched = Scheduler.__new__(Scheduler)
+        sched.scheduler = MagicMock()
+        sched.scheduler.get_job.return_value = existing
+        sched._invalidate_jobs_cache = MagicMock()
+        result = Scheduler.remove_morning_briefing_schedule(sched, user_id=user_id)
+        return sched, result
+
+    def test_removing_deletes_the_job_and_invalidates_the_read_cache(self):
+        job = MagicMock(id="morning_briefing_user-1")
+
+        sched, result = self._remove(existing=job)
+
+        job.remove.assert_called_once()
+        sched._invalidate_jobs_cache.assert_called_once()
+        assert result == {
+            "id": "morning_briefing_user-1",
+            "user_id": "user-1",
+            "removed": True,
+        }
+
+    def test_removing_a_job_that_is_already_gone_is_a_no_op(self):
+        """The job body retries on every fire, so a second pass must not
+        raise once the first one removed the schedule."""
+        sched, result = self._remove(existing=None)
+
+        sched._invalidate_jobs_cache.assert_not_called()
+        assert result["removed"] is False
+
+    def test_job_body_removes_the_schedule_once_the_flag_is_off(self):
+        """Without this the cron outlives the feature, firing daily forever
+        to return flag_disabled."""
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}.run_async",
+                side_effect=[{"status": "skipped", "reason": "flag_disabled"}, None],
+            ),
+            patch(
+                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
+                new=MagicMock(),
+            ) as self_delete,
+        ):
+            execute_morning_briefing("user-1")
+
+        self_delete.assert_called_once_with("user-1")
+
+    @pytest.mark.parametrize(
+        "result",
+        [
+            {"status": "skipped", "reason": "nothing_to_say"},
+            {"status": "skipped", "reason": "already_delivered"},
+            # An unreachable LaunchDarkly must cost one morning, not the cron.
+            {"status": "skipped", "reason": "flag_unavailable"},
+            {"status": "delivered", "briefing_id": "b-1", "session_id": "s-1"},
+        ],
+    )
+    def test_job_body_keeps_the_schedule_on_every_other_outcome(self, result):
+        from backend.executor.scheduler import execute_morning_briefing
+
+        with (
+            patch(
+                "backend.copilot.briefing.generate.generate_and_deliver_briefing",
+                new=MagicMock(),
+            ),
+            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=[result]),
+            patch(
+                f"{_SCHEDULER_PATH}._self_delete_morning_briefing_schedule",
+                new=MagicMock(),
+            ) as self_delete,
+        ):
+            execute_morning_briefing("user-1")
+
+        self_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_self_delete_also_clears_the_registration_marker(self):
+        """A marker left behind would suppress lazy re-registration for the
+        rest of its TTL if the flag is turned back on."""
+        client = MagicMock()
+        client.remove_morning_briefing_schedule = AsyncMock()
+        with (
+            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
+            patch(
+                "backend.copilot.briefing.scheduling."
+                "clear_briefing_registration_marker",
+                new=AsyncMock(),
+            ) as clear_marker,
+        ):
+            await _self_delete_morning_briefing_schedule("user-1")
+
+        client.remove_morning_briefing_schedule.assert_awaited_once_with(
+            user_id="user-1"
+        )
+        clear_marker.assert_awaited_once_with("user-1")
+
+    @pytest.mark.asyncio
+    async def test_self_delete_swallows_a_scheduler_rpc_failure(self, caplog):
+        """It runs inside a job body; raising here would fail the whole run."""
+        client = MagicMock()
+        client.remove_morning_briefing_schedule = AsyncMock(
+            side_effect=RuntimeError("pyro down")
+        )
+        with (
+            patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=client),
+            caplog.at_level(logging.WARNING),
+        ):
+            await _self_delete_morning_briefing_schedule("user-1")
+
+        assert any(
+            "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
         )

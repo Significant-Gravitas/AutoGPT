@@ -6,7 +6,6 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore } from "../../store";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
-import { EXPERT_CHANGE_TOOLS } from "./ExpertCards";
 import type { ChainRow } from "./helpers";
 import { ProviderIcon, RowIcon } from "./RowIcon";
 import { useSubSessionEffectiveStatus } from "./SubSessionLive/useSubSessionEffectiveStatus";
@@ -120,22 +119,10 @@ export function ChainRowView({ row, isLast }: Props) {
     );
   const liveReasoning =
     isReasoning && row.state === "running" && !!row.reasoningText;
-  // An expert being hired/raised has no output until it lands — the skeleton
-  // card stands in for it, so the row has something to show while running.
-  const pendingExpertChange =
-    !!row.tool &&
-    EXPERT_CHANGE_TOOLS.has(row.tool) &&
-    row.output === undefined &&
-    row.state === "running";
   const hasContent = isReasoning
     ? !!row.reasoningText
     : !row.supersededSubSession &&
-      ((row.output !== undefined && row.output !== "") ||
-        liveSubSession ||
-        pendingExpertChange);
-  useEffect(() => {
-    if (pendingExpertChange) setOpen(true);
-  }, [pendingExpertChange]);
+      ((row.output !== undefined && row.output !== "") || liveSubSession);
   const showContent = liveReasoning || (open && hasContent);
   const rowText = (
     <SwapText
@@ -204,7 +191,7 @@ export function ChainRowView({ row, isLast }: Props) {
         <div className={ACCORDION_PANEL + " " + accordionState(showContent)}>
           <div
             aria-hidden={!showContent}
-            inert={!showContent ? ("" as unknown as boolean) : undefined}
+            inert={!showContent || undefined}
             className="min-h-0 overflow-hidden"
           >
             <div

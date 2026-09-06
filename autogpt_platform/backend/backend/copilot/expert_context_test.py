@@ -255,8 +255,8 @@ class TestBuildExpertIdentitySuffix:
         assert "Never invent customer evidence." in result
         assert "<what_ive_learned>" not in result
         assert "Nothing recorded yet." not in result
-        assert "discloses that it is AI" in result
-        assert "External actions require approval" in result
+        for rule in PROTECTED_SOUL_RULES:
+            assert rule and rule in result
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):

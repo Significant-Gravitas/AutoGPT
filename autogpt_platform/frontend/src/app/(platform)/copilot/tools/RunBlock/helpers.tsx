@@ -3,9 +3,9 @@ import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOu
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { beautifyString } from "@/lib/utils";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import {
   AlertDiamondIcon,
   PlayCircleIcon,
@@ -210,10 +210,9 @@ export function getBlockNamesById(
   if (response?.status !== 200) return undefined;
   const names = new Map<string, string>();
   for (const block of response.data) {
-    if (typeof block.id === "string" && typeof block.name === "string") {
-      // Same display treatment as the blocks menu: beautify and
-      // drop the redundant "Block" suffix
-      names.set(block.id, beautifyString(block.name).replace(/ Block$/, ""));
+    const name = getBlockDisplayName(block.name);
+    if (typeof block.id === "string" && name) {
+      names.set(block.id, name);
     }
   }
   return names;

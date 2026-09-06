@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 
@@ -122,6 +122,53 @@ class HomeWeekSummary(BaseModel):
     daily: list[HomeDailyActivity]
 
 
+class HomeWorkActor(BaseModel):
+    # "expert" = a hired expert did it, "workflow" = a library workflow ran on
+    # its own, "autopilot" = the default copilot assistant.
+    kind: Literal["expert", "workflow", "autopilot"]
+    name: str
+    expert: HomeExpert | None = None
+    link: str | None = None
+
+
+class HomeRecentWorkItem(BaseModel):
+    id: str
+    category: Literal["file", "integration", "schedule"]
+    event_type: str
+    title: str
+    occurred_at: datetime
+    provider: str | None = None
+    file_id: str | None = None
+    mime_type: str | None = None
+    # The copilot thread the item came out of, when there was one.
+    session_title: str | None = None
+    link: str | None = None
+
+
+class HomeRecentWorkGroup(BaseModel):
+    """Everything one actor did this week: the runs it finished and the
+    durable things it produced."""
+
+    actor: HomeWorkActor
+    latest_at: datetime
+    runs: list[HomeBriefingOutcome] = Field(default_factory=list)
+    items: list[HomeRecentWorkItem] = Field(default_factory=list)
+    # Week totals per kind, uncapped, so the header can state how much the
+    # actor did even when the rows below are a slice of it.
+    run_count: int = 0
+    file_count: int = 0
+    integration_count: int = 0
+    schedule_count: int = 0
+
+
+class HomeRecentWork(BaseModel):
+    window_started_at: datetime | None = None
+    completed_count: int = 0
+    failed_count: int = 0
+    groups: list[HomeRecentWorkGroup] = Field(default_factory=list)
+    total_count: int = 0
+
+
 class HomeDashboardResponse(BaseModel):
     generated_at: datetime
     timezone: str
@@ -132,3 +179,6 @@ class HomeDashboardResponse(BaseModel):
     team: HomeTeamSummary
     agents: list[HomeAgentStatus]
     week: HomeWeekSummary
+    # Optional with a default so pre-existing clients (and their fixtures)
+    # keep validating; the backend always populates it.
+    recent_work: HomeRecentWork = Field(default_factory=HomeRecentWork)

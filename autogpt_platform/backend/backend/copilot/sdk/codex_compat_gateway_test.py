@@ -7,12 +7,11 @@ from typing import cast
 
 import pytest
 from aiohttp import ClientSession
-from openai_codex.generated.v2_all import AgentMessageDeltaNotification
-from openai_codex.models import Notification
 
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     _safe_tool_name,
+    _serialize_messages,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -20,6 +19,7 @@ from backend.integrations.codex.models import (
     CodexDynamicToolSpec,
     CodexInvocationRequest,
     CodexInvocationResult,
+    CodexStreamEvent,
     CodexTokenUsage,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -55,14 +55,8 @@ class _FakeAgentSession:
                 )
             if event_handler is not None:
                 await event_handler(
-                    Notification(
-                        method="item/agentMessage/delta",
-                        payload=AgentMessageDeltaNotification(
-                            delta="done" if self.use_tool else "hello",
-                            itemId="item-1",
-                            threadId="thread-1",
-                            turnId="turn-1",
-                        ),
+                    CodexStreamEvent(
+                        type="text_delta", delta="done" if self.use_tool else "hello"
                     )
                 )
             return _result("done" if self.use_tool else "hello")
@@ -95,17 +89,7 @@ class _FinalWithoutDeltaSession:
         event_handler=None,
     ) -> CodexInvocationResult:
         assert event_handler is not None
-        await event_handler(
-            Notification(
-                method="item/agentMessage/delta",
-                payload=AgentMessageDeltaNotification(
-                    delta="before tool",
-                    itemId="item-before",
-                    threadId="thread-before",
-                    turnId="turn-before",
-                ),
-            )
-        )
+        await event_handler(CodexStreamEvent(type="text_delta", delta="before tool"))
         await tool_handler(
             CodexDynamicToolCall(
                 thread_id="thread-before",
@@ -144,15 +128,7 @@ class _CollidingCallSession:
         self.results[invocation_index] = result
         assert event_handler is not None
         await event_handler(
-            Notification(
-                method="item/agentMessage/delta",
-                payload=AgentMessageDeltaNotification(
-                    delta=f"completed:{result.content}",
-                    itemId=f"item-{invocation_index}",
-                    threadId=f"thread-{invocation_index}",
-                    turnId=f"turn-{invocation_index}",
-                ),
-            )
+            CodexStreamEvent(type="text_delta", delta=f"completed:{result.content}")
         )
         return _result(f"completed:{result.content}")
 
@@ -822,3 +798,29 @@ async def test_rejects_missing_gateway_capability() -> None:
             payload = await response.json()
         assert response.status == 401
         assert payload["error"]["type"] == "authentication_error"
+
+
+def test_serialize_messages_keeps_inline_system_turns() -> None:
+    serialized = _serialize_messages(
+        [
+            {"role": "user", "content": "hello"},
+            {
+                "role": "system",
+                "content": "<system-reminder>stay on task</system-reminder>",
+            },
+            {"role": "assistant", "content": "sure"},
+        ]
+    )
+    transcript = json.loads(serialized[serialized.index("[") :])
+
+    assert [message["role"] for message in transcript] == [
+        "user",
+        "system",
+        "assistant",
+    ]
+    assert transcript[1]["content"] == "<system-reminder>stay on task</system-reminder>"
+
+
+def test_serialize_messages_rejects_unknown_roles() -> None:
+    with pytest.raises(ValueError):
+        _serialize_messages([{"role": "tool", "content": "result"}])

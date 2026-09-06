@@ -15,7 +15,7 @@ import pytest
 from pydantic import BaseModel
 
 from backend.copilot.transport_routing import ProviderRoutingKwargs
-from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS, ProviderResponse
+from backend.util.llm.providers import ProviderResponse
 
 from .llm import (
     DreamLLMError,
@@ -261,7 +261,7 @@ class TestStructuredCompletionDelegation:
         assert call_provider_mock.call_args.kwargs["timeout_seconds"] == 600
 
     @pytest.mark.asyncio
-    async def test_omitted_timeout_falls_back_to_shared_default(self):
+    async def test_omitted_timeout_defers_to_call_provider(self):
         """Callers that don't pass a phase budget (none in-tree, but the
         signature allows it) keep the conservative shared default rather
         than an unbounded request."""
@@ -282,10 +282,10 @@ class TestStructuredCompletionDelegation:
                 response_model=_SampleOutput,
             )
 
-        assert (
-            call_provider_mock.call_args.kwargs["timeout_seconds"]
-            == DEFAULT_REQUEST_TIMEOUT_SECONDS
-        )
+        # Forwards the sentinel rather than a def-time snapshot of the setting,
+        # so call_provider resolves the live value — same contract as every
+        # other entry point.
+        assert call_provider_mock.call_args.kwargs["timeout_seconds"] is None
 
     @pytest.mark.asyncio
     async def test_routes_to_ollama_under_local_transport(self):

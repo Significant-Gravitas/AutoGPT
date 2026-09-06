@@ -2,11 +2,9 @@ import {
   getArchiveExpertMockHandler,
   getArchiveExpertMockHandler401,
   getGetExpertDetachPreviewMockHandler,
-  getInstallExpertWorkflowMockHandler,
-  getInstallExpertWorkflowMockHandler404,
-  getInstallExpertWorkflowMockHandler422,
   getAssignExpertPodMockHandler,
   getCreateExpertPodMockHandler,
+  getListExpertCredentialsMockHandler,
   getListExpertPodsMockHandler,
   getListExpertPodsMockHandler401,
   getListExpertsMockHandler,
@@ -17,7 +15,6 @@ import {
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetV2ListLibraryAgentsMockHandler200,
-  getGetV2ListLibraryAgentsMockHandler401,
   getGetV2ListLibraryAgentsResponseMock200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -37,6 +34,11 @@ import userEvent from "@testing-library/user-event";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
+
+vi.mock("framer-motion", async (importActual) => {
+  const actual = await importActual<typeof import("framer-motion")>();
+  return { ...actual, useReducedMotion: () => true };
+});
 
 const toastMock = vi.hoisted(() => vi.fn());
 const { setFlagStatusMock } = vi.hoisted(() => ({
@@ -62,49 +64,6 @@ function libraryResponse(
   };
 }
 
-function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
-  return {
-    id: "lib-agent",
-    graph_id: "graph-agent",
-    graph_version: 1,
-    name: "Research Assistant",
-    description: "",
-    creator_name: "Acme Labs",
-    creator_image_url: "",
-    image_url: null,
-    status: "COMPLETED",
-    created_at: new Date(),
-    updated_at: new Date(),
-    input_schema: {},
-    output_schema: {},
-    credentials_input_schema: {},
-    has_external_trigger: false,
-    has_human_in_the_loop: false,
-    has_sensitive_action: false,
-    new_output: false,
-    can_access_graph: true,
-    is_latest_version: true,
-    is_favorite: false,
-    marketplace_listing: null,
-    store_listing_version_id: null,
-    ...over,
-  } as unknown as LibraryAgent;
-}
-
-const adoptableAgent = makeLibraryAgent({
-  id: "lib-research",
-  graph_id: "graph-research",
-  name: "Research Assistant",
-  store_listing_version_id: "slv-adopt",
-});
-
-const localOnlyAgent = makeLibraryAgent({
-  id: "lib-local",
-  graph_id: "graph-local",
-  name: "My Private Agent",
-  store_listing_version_id: null,
-});
-
 function makeSchedule(
   over: Partial<GraphExecutionJobInfo> = {},
 ): GraphExecutionJobInfo {
@@ -122,10 +81,17 @@ function makeSchedule(
   };
 }
 
+/** Reads the value of one of the expert card's stat rows by its label. */
+function getStatValue(card: HTMLElement, label: string) {
+  const row = within(card).getByText(label).closest("div");
+  return row?.querySelector("dd")?.textContent;
+}
+
 beforeEach(() => {
   server.use(
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertPodsMockHandler([]),
+    getListExpertCredentialsMockHandler([]),
     getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
   );
 });
@@ -177,8 +143,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 async function openNewPodDialog(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: /create/i }));
-  await user.click(await screen.findByRole("menuitem", { name: "New pod" }));
+  await user.click(await screen.findByRole("button", { name: "New Pod" }));
+}
+
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(await screen.findByRole("tab", { name }));
 }
 
 const hiredMaria: Expert = {
@@ -194,7 +163,7 @@ const hiredMaria: Expert = {
   boundaries: "Never invent customer evidence.",
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
-    "External actions require approval.",
+    "The expert asks for approval before acting externally.",
   ],
   is_template: false,
   source_template_id: "template-maria",
@@ -240,7 +209,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     const autopilot = await screen.findByText("Autopilot");
-    expect(screen.getByText(/runs the shop/i)).toBeDefined();
+    expect(screen.getByText("Head of AI")).toBeDefined();
 
     const maria = await screen.findByText("Maria");
     expect(
@@ -249,40 +218,28 @@ describe("TeamPage", () => {
     ).toBeTruthy();
   });
 
-  test("Create menu exposes accessible hire and build actions", async () => {
-    const user = userEvent.setup();
+  test("header exposes New Expert and New Pod actions", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
-    const trigger = await screen.findByRole("button", { name: /create/i });
-    // The Radix trigger advertises its menu to assistive tech and keyboard users.
-    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    const newExpert = await screen.findByRole("link", { name: "New Expert" });
+    expect(newExpert.getAttribute("href")).toBe("/raise");
 
-    await user.click(trigger);
-
-    const hire = await screen.findByRole("menuitem", {
-      name: "Hire an expert",
-    });
-    expect(hire.getAttribute("href")).toBe("/marketplace#experts");
-
-    const build = screen.getByRole("menuitem", {
-      name: "Build an agent from scratch",
-    });
-    expect(build.getAttribute("href")).toBe("/build");
-
-    expect(screen.getByRole("menuitem", { name: "New pod" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "New Pod" })).toBeDefined();
   });
 
-  test("renders hired experts with a workflow count instead of chips", async () => {
+  test("renders hired experts with a stat strip instead of chips", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Marketing Strategist")).toBeDefined();
-    expect(screen.getByText("2 workflows")).toBeDefined();
     const card = screen.getByRole("link", { name: "View Maria" });
+    expect(within(card).getByText("Idle")).toBeDefined();
+    expect(getStatValue(card, "Workflows")).toBe("2");
+    expect(getStatValue(card, "Skills")).toBe("0");
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
   });
@@ -313,7 +270,24 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
-  test("shows a schedule count with the next run on the expert card", async () => {
+  test("counts the integrations an expert has been granted", async () => {
+    const credentialRequests = vi.fn();
+    server.use(
+      getListExpertsMockHandler([{ ...hiredMaria, credential_count: 2 }]),
+      http.get("*/api/experts/:expertId/credentials", () => {
+        credentialRequests();
+        return HttpResponse.json([]);
+      }),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    await waitFor(() => expect(getStatValue(card, "Integrations")).toBe("2"));
+    expect(credentialRequests).not.toHaveBeenCalled();
+  });
+
+  test("counts an expert's schedules on their card", async () => {
     const inTwoDays = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
     const mariaSchedule = makeSchedule({
       next_run_time: inTwoDays.toISOString(),
@@ -325,8 +299,10 @@ describe("TeamPage", () => {
 
     render(<TeamPage />);
 
-    await screen.findByText("Maria");
-    expect(await screen.findByText(/1 schedule · next in/)).toBeDefined();
+    // Maria renders on both her card and the timeline lane once scheduled.
+    await screen.findAllByText("Maria");
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(getStatValue(card, "Schedules")).toBe("1");
   });
 
   test("marks scheduled workflows without a schedule as needing setup", async () => {
@@ -346,6 +322,20 @@ describe("TeamPage", () => {
 
     await screen.findByText("Maria");
     expect(screen.getByText(/1 needs setup/)).toBeDefined();
+    expect(screen.getByText("Needs you")).toBeDefined();
+  });
+
+  test("marks an expert with an active run as working", async () => {
+    server.use(
+      getListExpertsMockHandler([
+        { ...hiredMaria, last_run_status: "RUNNING" },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    expect(within(card).getByText("Working")).toBeDefined();
   });
 
   test("shows weekly spend as a progress bar on the expert card", async () => {
@@ -359,7 +349,7 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    expect(screen.getByText("Spend this week")).toBeDefined();
+    expect(screen.getByText("Budget")).toBeDefined();
     expect(screen.getByText("$12 / $50")).toBeDefined();
   });
 
@@ -394,7 +384,9 @@ describe("TeamPage", () => {
 
     await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
 
-    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(
+      screen.getByRole("complementary", { name: "Maria's Soul" }),
+    ).toBeDefined();
     expect(
       (screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value,
     ).toBe("Maria");
@@ -422,29 +414,39 @@ describe("TeamPage", () => {
       ),
     ).toBeDefined();
     expect(
-      screen.getByText("External actions require approval."),
+      screen.getByText(
+        "The expert asks for approval before acting externally.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "These rules are part of every expert's soul and cannot be edited.",
+      ),
     ).toBeDefined();
     expect(screen.getAllByRole("textbox")).toHaveLength(4);
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
-  test("keeps the Soul drawer mounted for its exit animation", async () => {
+  test("closes the Soul panel from its cancel action", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
     await user.click(await screen.findByRole("button", { name: "Edit Soul" }));
-    const dialog = screen.getByRole("dialog", { name: "Maria's Soul" });
+    expect(
+      screen.getByRole("complementary", { name: "Maria's Soul" }),
+    ).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
-      expect(dialog.getAttribute("data-state")).toBe("closed");
+      expect(
+        screen.queryByRole("complementary", { name: "Maria's Soul" }),
+      ).toBeNull();
     });
-    expect(dialog.textContent).toContain("Maria's Soul");
   });
 
-  test("opens only the Soul drawer when activated with the keyboard", async () => {
+  test("opens only the Soul panel when activated with the keyboard", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([hiredMaria]));
 
@@ -454,7 +456,9 @@ describe("TeamPage", () => {
     editSoul.focus();
     await user.keyboard("{Enter}");
 
-    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(
+      screen.getByRole("complementary", { name: "Maria's Soul" }),
+    ).toBeDefined();
     expect(screen.queryByRole("dialog", { name: "Maria" })).toBeNull();
   });
 
@@ -573,7 +577,9 @@ describe("TeamPage", () => {
     expect((voiceInput as HTMLTextAreaElement).value).toBe(
       "Calm and conversational.",
     );
-    expect(screen.getByRole("dialog", { name: "Maria's Soul" })).toBeDefined();
+    expect(
+      screen.getByRole("complementary", { name: "Maria's Soul" }),
+    ).toBeDefined();
   });
 
   test("states what firing pauses from the detach preview", async () => {
@@ -857,6 +863,7 @@ describe("TeamPage", () => {
   });
 
   test("groups experts under their pod with ungrouped members below", async () => {
+    const user = userEvent.setup();
     const growthPod: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
@@ -882,6 +889,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await openTab(user, "Pod board");
 
     const podHeader = await screen.findByRole("heading", { name: "Growth" });
     const maria = await screen.findByText("Maria");
@@ -905,6 +913,7 @@ describe("TeamPage", () => {
   });
 
   test("shows a pod with no members instead of hiding it", async () => {
+    const user = userEvent.setup();
     const emptyPod: ExpertPod = {
       id: "pod-empty",
       name: "Support",
@@ -916,6 +925,7 @@ describe("TeamPage", () => {
     );
 
     render(<TeamPage />);
+    await openTab(user, "Pod board");
 
     const podHeader = await screen.findByRole("heading", { name: "Support" });
     const emptyCopy = await screen.findByText("No experts in this pod yet.");
@@ -1071,11 +1081,11 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    // The trigger names the pod the expert is already in.
+    // The trigger is icon-only, so the pod it is already in has to come
+    // through in the accessible name.
     const trigger = screen.getByRole("button", {
       name: "Move to pod (currently Growth)",
     });
-    expect(trigger.textContent).toContain("Growth");
     await user.click(trigger);
     await user.click(
       await screen.findByRole("menuitem", { name: "Remove from pod" }),
@@ -1174,357 +1184,6 @@ describe("TeamPage", () => {
     expect(screen.queryByRole("button", { name: "Edit Soul" })).toBeNull();
   });
 
-  test("groups installed workflows under each expert in the What runs zone", async () => {
-    const john: Expert = {
-      ...hiredMaria,
-      id: "expert-john",
-      name: "John",
-      workflows: [
-        {
-          id: "wf-j",
-          store_listing_version_id: "slv-j",
-          library_agent_id: "lib-j",
-          graph_id: "graph-j",
-          name: "Lead Scraper",
-          description: null,
-        },
-      ],
-    };
-    server.use(getListExpertsMockHandler([scheduledMaria, john]));
-
-    render(<TeamPage />);
-
-    const zone = await screen.findByRole("region", { name: "What runs" });
-    const mariaGroup = within(zone).getByRole("region", {
-      name: "Maria runs",
-    });
-    expect(within(mariaGroup).getByText("Content Calendar")).toBeDefined();
-    expect(within(mariaGroup).getByText("SEO Audit")).toBeDefined();
-    expect(within(mariaGroup).queryByText("Lead Scraper")).toBeNull();
-
-    const johnGroup = within(zone).getByRole("region", { name: "John runs" });
-    expect(within(johnGroup).getByText("Lead Scraper")).toBeDefined();
-    expect(within(johnGroup).queryByText("Content Calendar")).toBeNull();
-  });
-
-  test("shows a quiet empty message for an expert with nothing installed", async () => {
-    const emptyMaria: Expert = { ...hiredMaria, workflows: [] };
-    server.use(getListExpertsMockHandler([emptyMaria]));
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    expect(within(group).getByText(/nothing installed yet/i)).toBeDefined();
-  });
-
-  test("lists adoptable and local-only agents under Your workflows", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent, localOnlyAgent]),
-      ),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-    expect(within(agents).getByText("My Private Agent")).toBeDefined();
-    expect(within(agents).getByRole("button", { name: "Adopt" })).toBeDefined();
-    const localOnly = within(agents).getByText("Local only");
-    expect(localOnly).toBeDefined();
-    await user.hover(localOnly);
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Publish this agent to the Marketplace before adopting it.",
-    );
-  });
-
-  test("hides already-installed agents from Your workflows", async () => {
-    const installedAgent = makeLibraryAgent({
-      id: "lib-installed",
-      graph_id: "graph-1",
-      name: "Content Calendar",
-      store_listing_version_id: "slv-1",
-    });
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([installedAgent, adoptableAgent]),
-      ),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-    expect(within(agents).queryByText("My Private Agent")).toBeNull();
-    expect(
-      within(agents).getAllByRole("button", { name: "Adopt" }),
-    ).toHaveLength(1);
-  });
-
-  test("adopts an agent onto the selected expert via the install endpoint", async () => {
-    const user = userEvent.setup();
-    let installExpertId: string | undefined;
-    let installBody: unknown;
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler(async (info) => {
-        installExpertId = info.params.expertId as string;
-        installBody = await info.request.json();
-        return {
-          id: "wf-adopted",
-          store_listing_version_id: "slv-adopt",
-          library_agent_id: "lib-research",
-          graph_id: "graph-research",
-          name: "Research Assistant",
-          description: null,
-        };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-
-    await waitFor(() => expect(installExpertId).toBe("expert-maria"));
-    expect(installBody).toEqual({ store_listing_version_id: "slv-adopt" });
-    expect(within(agents).queryByText("Research Assistant")).toBeNull();
-  });
-
-  test("asks which expert to adopt into when more than one is hired", async () => {
-    const user = userEvent.setup();
-    const john: Expert = {
-      ...hiredMaria,
-      id: "expert-john",
-      name: "John",
-      workflows: [],
-    };
-    let installExpertId: string | undefined;
-    server.use(
-      getListExpertsMockHandler([hiredMaria, john]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler((info) => {
-        installExpertId = info.params.expertId as string;
-        return {
-          id: "wf-adopted",
-          store_listing_version_id: "slv-adopt",
-          library_agent_id: "lib-research",
-          graph_id: "graph-research",
-          name: "Research Assistant",
-          description: null,
-        };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-    expect(screen.queryByText(/undo anytime/i)).toBeNull();
-    await user.click(
-      await screen.findByRole("button", {
-        name: /Adds this agent to John's workflows/i,
-      }),
-    );
-
-    await waitFor(() => expect(installExpertId).toBe("expert-john"));
-  });
-
-  test("offers an exact version only to experts that have not adopted it", async () => {
-    const user = userEvent.setup();
-    const mariaWithAgent: Expert = {
-      ...hiredMaria,
-      workflows: [
-        ...hiredMaria.workflows,
-        {
-          id: "wf-adopted",
-          store_listing_version_id: "slv-adopt",
-          library_agent_id: "lib-research",
-          graph_id: "graph-research",
-          name: "Research Assistant",
-          description: null,
-        },
-      ],
-    };
-    const john: Expert = {
-      ...hiredMaria,
-      id: "expert-john",
-      name: "John",
-      workflows: [],
-    };
-    let installExpertId: string | undefined;
-    server.use(
-      getListExpertsMockHandler([mariaWithAgent, john]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler((info) => {
-        installExpertId = info.params.expertId as string;
-        return {
-          id: "wf-john",
-          store_listing_version_id: "slv-adopt",
-          library_agent_id: "lib-research",
-          graph_id: "graph-research",
-          name: "Research Assistant",
-          description: null,
-        };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-
-    await waitFor(() => expect(installExpertId).toBe("expert-john"));
-    expect(screen.queryByText("Choose an expert")).toBeNull();
-  });
-
-  test("filter chips switch between members and agents in the zone", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-    );
-
-    render(<TeamPage />);
-
-    await screen.findByRole("region", { name: "Maria runs" });
-    await screen.findByRole("region", { name: "Your workflows" });
-
-    await user.click(screen.getByRole("button", { name: "Agents" }));
-    expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
-    expect(
-      screen.getByRole("region", { name: "Your workflows" }),
-    ).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "Members" }));
-    expect(screen.getByRole("region", { name: "Maria runs" })).toBeDefined();
-    expect(screen.queryByRole("region", { name: "Your workflows" })).toBeNull();
-  });
-
-  test("keeps only workflows with actual jobs when Scheduled is active", async () => {
-    const user = userEvent.setup();
-    const manuallyScheduledMaria: Expert = {
-      ...hiredMaria,
-      workflows: [
-        { ...hiredMaria.workflows[0], schedule_id: null, schedule_cron: null },
-        hiredMaria.workflows[1],
-      ],
-    };
-    server.use(
-      getListExpertsMockHandler([manuallyScheduledMaria]),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([makeSchedule()]),
-    );
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    expect(within(group).getByText("Content Calendar")).toBeDefined();
-    expect(within(group).getByText("SEO Audit")).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "Scheduled" }));
-
-    const scheduledGroup = screen.getByRole("region", { name: "Maria runs" });
-    expect(within(scheduledGroup).getByText("Content Calendar")).toBeDefined();
-    expect(within(scheduledGroup).queryByText("SEO Audit")).toBeNull();
-  });
-
-  test("does not treat a deleted scheduler job as scheduled", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([scheduledMaria]));
-
-    render(<TeamPage />);
-
-    await screen.findByRole("region", { name: "Maria runs" });
-    await user.click(screen.getByRole("button", { name: "Scheduled" }));
-
-    expect(screen.queryByRole("region", { name: "Maria runs" })).toBeNull();
-    expect(screen.getByText("No scheduled workflows yet.")).toBeDefined();
-  });
-
-  test("shows every actual schedule attached to a workflow", async () => {
-    server.use(
-      getListExpertsMockHandler([scheduledMaria]),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([
-        makeSchedule(),
-        makeSchedule({ id: "sched-2", cron: "0 9 * * 1" }),
-      ]),
-    );
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    expect(within(group).getByText("Every day at 07:40")).toBeDefined();
-    expect(within(group).getByText("Every Monday at 09:00")).toBeDefined();
-  });
-
-  test("shows paused instead of recurrence for a paused workflow", async () => {
-    const pausedMaria: Expert = {
-      ...scheduledMaria,
-      schedules_paused_at: new Date("2026-08-14T12:00:00Z"),
-      workflows: scheduledMaria.workflows.map((workflow) => ({
-        ...workflow,
-        schedule_id: null,
-      })),
-    };
-    server.use(
-      getListExpertsMockHandler([pausedMaria]),
-      getGetV1ListExecutionSchedulesForAUserMockHandler([makeSchedule()]),
-    );
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    const workflow = within(group).getAllByTestId("what-runs-workflow-row")[0];
-    expect(within(group).getAllByText("Paused")).toHaveLength(1);
-    expect(within(workflow).queryByText("Paused")).toBeNull();
-    expect(within(workflow).queryByText("Every day at 07:40")).toBeNull();
-    expect(within(workflow).queryByText("Needs setup")).toBeNull();
-  });
-
-  test("links a workflow with a missing job to its setup page", async () => {
-    const staleMaria: Expert = {
-      ...hiredMaria,
-      workflows: [
-        {
-          ...hiredMaria.workflows[0],
-          schedule_cron: "40 7 * * *",
-          schedule_id: "deleted-schedule",
-        },
-      ],
-    };
-    server.use(getListExpertsMockHandler([staleMaria]));
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    expect(within(group).getByText("Needs setup")).toBeDefined();
-    expect(
-      within(group).getByRole("link", { name: "Set up" }).getAttribute("href"),
-    ).toBe("/library/agents/lib-1");
-  });
-
   test("does not mark the card as needing setup when a stale id has a live job", async () => {
     const staleButLiveMaria: Expert = {
       ...hiredMaria,
@@ -1545,288 +1204,5 @@ describe("TeamPage", () => {
 
     const card = await screen.findByRole("link", { name: "View Maria" });
     expect(within(card).queryByText(/needs setup/i)).toBeNull();
-  });
-
-  test("shows feedback and re-enables Adopt when adoption fails", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler422(),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Couldn't adopt Research Assistant",
-          variant: "destructive",
-        }),
-      ),
-    );
-    const adoptButton = within(agents).getByRole("button", { name: "Adopt" });
-    expect(adoptButton.hasAttribute("disabled")).toBe(false);
-  });
-
-  test("explains when an adopt version is no longer available", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler404(),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    await user.click(within(agents).getByRole("button", { name: "Adopt" }));
-
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: "This Marketplace version is no longer available.",
-        }),
-      ),
-    );
-  });
-
-  test("tracks pending adoption by library agent id", async () => {
-    const user = userEvent.setup();
-    let installCalls = 0;
-    const sameGraphAgent = makeLibraryAgent({
-      ...adoptableAgent,
-      id: "lib-research-v2",
-      name: "Research Assistant v2",
-    });
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent, sameGraphAgent]),
-      ),
-      getInstallExpertWorkflowMockHandler(async () => {
-        installCalls += 1;
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        return {
-          id: "wf-adopted",
-          store_listing_version_id: "slv-adopt",
-          library_agent_id: "lib-research",
-          graph_id: "graph-research",
-          name: "Research Assistant",
-          description: null,
-        };
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    const rows = within(agents).getAllByTestId("what-runs-agent-row");
-    const firstAdopt = within(rows[0]).getByRole("button", { name: "Adopt" });
-    const secondAdopt = within(rows[1]).getByRole("button", { name: "Adopt" });
-    await user.click(firstAdopt);
-    await waitFor(() => expect(firstAdopt.hasAttribute("disabled")).toBe(true));
-    expect(secondAdopt.hasAttribute("disabled")).toBe(false);
-    await user.click(firstAdopt);
-
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ variant: "success" }),
-      ),
-    );
-    expect(installCalls).toBe(1);
-  });
-
-  test("shows a retry state when loading your agents fails", async () => {
-    const user = userEvent.setup();
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler401(),
-    );
-
-    render(<TeamPage />);
-
-    expect(
-      await screen.findByText(/could not load your workflows/i),
-    ).toBeDefined();
-
-    server.use(
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([adoptableAgent]),
-      ),
-    );
-    await user.click(screen.getByRole("button", { name: "Retry" }));
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-  });
-
-  test("shows filter-specific empty states for Workflows and Scheduled", async () => {
-    const user = userEvent.setup();
-    const emptyMaria: Expert = { ...hiredMaria, workflows: [] };
-    server.use(getListExpertsMockHandler([emptyMaria]));
-
-    render(<TeamPage />);
-
-    await screen.findByRole("region", { name: "What runs" });
-
-    await user.click(screen.getByRole("button", { name: "Workflows" }));
-    expect(screen.getByText("No workflows installed yet.")).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "Scheduled" }));
-    expect(screen.getByText("No scheduled workflows yet.")).toBeDefined();
-  });
-
-  test("tells an empty library apart from a fully adopted one", async () => {
-    server.use(getListExpertsMockHandler([hiredMaria]));
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(
-      await within(agents).findByText("No available workflows to adopt."),
-    ).toBeDefined();
-  });
-
-  test("loads additional non-hidden library pages on demand", async () => {
-    const user = userEvent.setup();
-    const secondAgent = makeLibraryAgent({
-      id: "lib-second",
-      graph_id: "graph-second",
-      name: "Second-page Agent",
-      store_listing_version_id: "slv-second",
-    });
-    const requestedPages: string[] = [];
-    const hiddenFilters: string[] = [];
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
-        const params = new URL(request.url).searchParams;
-        const page = params.get("page") ?? "1";
-        requestedPages.push(page);
-        hiddenFilters.push(params.get("is_hidden") ?? "missing");
-        return page === "2"
-          ? libraryResponse([secondAgent], 101, 2)
-          : libraryResponse([adoptableAgent], 101, 1);
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-    expect(within(agents).queryByText("Second-page Agent")).toBeNull();
-    expect(requestedPages).toEqual(["1"]);
-
-    await user.click(
-      within(agents).getByRole("button", { name: "Load more workflows" }),
-    );
-
-    expect(await within(agents).findByText("Second-page Agent")).toBeDefined();
-    expect(requestedPages).toEqual(["1", "2"]);
-    expect(hiddenFilters).toEqual(["false", "false"]);
-  });
-
-  test("does not claim every agent is adopted while more pages remain", async () => {
-    const installedAgent = makeLibraryAgent({
-      id: "lib-installed",
-      graph_id: "graph-1",
-      name: "Content Calendar",
-      store_listing_version_id: "slv-1",
-    });
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      getGetV2ListLibraryAgentsMockHandler200(
-        libraryResponse([installedAgent], 101, 1),
-      ),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(
-      within(agents).queryByText("Every workflow is already on your team."),
-    ).toBeNull();
-    expect(
-      within(agents).getByRole("button", { name: "Load more workflows" }),
-    ).toBeDefined();
-  });
-
-  test("keeps page one visible and retries when loading page two fails", async () => {
-    const user = userEvent.setup();
-    let pageTwoFails = true;
-    const secondAgent = makeLibraryAgent({
-      id: "lib-second",
-      graph_id: "graph-second",
-      name: "Recovered Agent",
-      store_listing_version_id: "slv-second",
-    });
-    server.use(
-      getListExpertsMockHandler([hiredMaria]),
-      http.get("/api/proxy/api/library/agents", ({ request }) => {
-        const page = new URL(request.url).searchParams.get("page") ?? "1";
-        if (page === "2" && pageTwoFails) {
-          return HttpResponse.json({ detail: "expired" }, { status: 401 });
-        }
-        return HttpResponse.json(
-          page === "2"
-            ? libraryResponse([secondAgent], 101, 2)
-            : libraryResponse([adoptableAgent], 101, 1),
-        );
-      }),
-    );
-
-    render(<TeamPage />);
-
-    const agents = await screen.findByRole("region", {
-      name: "Your workflows",
-    });
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-    await user.click(
-      within(agents).getByRole("button", { name: "Load more workflows" }),
-    );
-
-    expect(
-      await within(agents).findByText("We could not load more workflows."),
-    ).toBeDefined();
-    expect(within(agents).getByText("Research Assistant")).toBeDefined();
-
-    pageTwoFails = false;
-    await user.click(
-      within(agents).getByRole("button", { name: "Retry loading more" }),
-    );
-
-    expect(await within(agents).findByText("Recovered Agent")).toBeDefined();
-  });
-
-  test("shows last-run status as a chip beside the workflow count", async () => {
-    server.use(getListExpertsMockHandler([scheduledMaria]));
-
-    render(<TeamPage />);
-
-    const group = await screen.findByRole("region", { name: "Maria runs" });
-    expect(within(group).getByText("Maria · 2 workflows")).toBeDefined();
-    expect(within(group).getByText(/Last run succeeded/)).toBeDefined();
   });
 });

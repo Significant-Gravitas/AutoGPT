@@ -9,6 +9,7 @@ from backend.api.features.library.model import LibraryAgentPresetCreatable
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
@@ -387,6 +388,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 params=params,
                 session_id=session_id,
+                expert_id=session.expert_id,
             )
             if prereq_error:
                 return prereq_error
@@ -614,6 +616,7 @@ class RunAgentTool(BaseTool):
         user_id: str,
         params: "RunAgentInput",
         session_id: str,
+        expert_id: str | None = None,
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
@@ -625,7 +628,7 @@ class RunAgentTool(BaseTool):
             (graph_credentials, error_response) — error_response is None when ready.
         """
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph
+            user_id, graph, expert_id
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
@@ -879,6 +882,7 @@ class RunAgentTool(BaseTool):
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Execute — ``add_graph_execution`` ultimately calls
         # ``validate_and_construct_node_execution_input`` which raises
@@ -1156,6 +1160,7 @@ class RunAgentTool(BaseTool):
 
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Get user timezone
         user = await user_db().get_user_by_id(user_id)

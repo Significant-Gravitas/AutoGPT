@@ -16,8 +16,9 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.enums import SubmissionStatus
 
-from backend.data.graph import get_graph_as_admin
+from backend.data.graph import get_graph, get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
 from .store_admin_routes import router as store_admin_router
@@ -295,8 +296,13 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
+    # `skip_access_check` is required: the agent isn't in the user's library
+    # yet, so get_graph() would deny the install it is being called for.
     mock_regular.assert_awaited_once_with(
-        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
+        graph_id=GRAPH_ID,
+        version=GRAPH_VERSION,
+        user_id="regular-user-id",
+        skip_access_check=True,
     )
     mock_admin.assert_not_awaited()
     mock_prisma.return_value.find_first.assert_awaited_once()
@@ -308,7 +314,9 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 @pytest.mark.asyncio
 async def test_library_member_can_view_pending_agent_in_builder() -> None:
     """After adding a pending agent to their library, the user should be
-    able to load the graph in the builder via get_graph()."""
+    able to load the graph in the builder via get_graph(). This is why
+    PENDING counts as submitted — requiring APPROVED would break review.
+    """
     mock_graph = _make_mock_graph()
     mock_graph_model = MagicMock(name="GraphModel")
     mock_library_agent = MagicMock()
@@ -316,9 +324,6 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
@@ -326,12 +331,9 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         ),
     ):
         mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
         mock_lib_prisma.return_value.find_first = AsyncMock(
             return_value=mock_library_agent
         )
-
-        from backend.data.graph import get_graph
 
         result = await get_graph(
             graph_id=GRAPH_ID,
@@ -340,3 +342,11 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         )
 
     assert result is mock_graph_model, "Library membership should grant graph access"
+    # Review would break if PENDING were not an accepted status.
+    lib_where = mock_lib_prisma.return_value.find_first.await_args.kwargs["where"]
+    statuses = set(
+        lib_where["AgentGraph"]["is"]["StoreListingVersions"]["some"][
+            "submissionStatus"
+        ]["in"]
+    )
+    assert SubmissionStatus.PENDING in statuses

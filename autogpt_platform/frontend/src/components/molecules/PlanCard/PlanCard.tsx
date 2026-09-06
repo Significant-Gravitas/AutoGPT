@@ -25,6 +25,10 @@ interface Props {
   // "charged-today" shows the prorated amount billed now; "billing-period"
   // shows a plain "billed monthly/annually" caption instead (paywall surface).
   priceCaption?: "charged-today" | "billing-period";
+  // Names the surface this card is rendered on to tag its CTA for DataFast.
+  // Omitted, the card reports nothing — each surface opts in so a shared goal
+  // never mixes clicks from the onboarding paywall and the upgrade modal.
+  ctaGoalSurface?: string;
 }
 
 export function PlanCard({
@@ -36,6 +40,7 @@ export function PlanCard({
   loading = false,
   disabled = false,
   priceCaption = "charged-today",
+  ctaGoalSurface,
 }: Props) {
   const { primaryPrice, chargedToday } = computePlanPricing({
     plan,
@@ -255,6 +260,12 @@ export function PlanCard({
               className="w-full"
               loading={loading}
               disabled={disabled}
+              {...(ctaGoalSurface && {
+                "data-fast-goal": "plan_cta_click",
+                "data-fast-goal-plan": plan.key.toLowerCase(),
+                "data-fast-goal-cycle": isYearly ? "yearly" : "monthly",
+                "data-fast-goal-surface": ctaGoalSurface,
+              })}
             >
               {plan.cta}
             </Button>

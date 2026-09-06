@@ -15,6 +15,7 @@ from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
 )
+from backend.integrations.creds_events import publish_creds_changed
 from backend.integrations.oauth import (
     CREDENTIALS_BY_PROVIDER,
     DEVICE_HANDLERS_BY_NAME,
@@ -43,6 +44,10 @@ def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
     application startup (e.g. by the copilot module) without creating an
     import cycle.
 
+    In-process only.  Cross-process invalidation rides on
+    :func:`~backend.integrations.creds_events.publish_creds_changed`, which
+    :func:`_invoke_creds_changed_hook` calls alongside this hook.
+
     Raises:
         RuntimeError: If a hook is already registered.  Call
             :func:`unregister_creds_changed_hook` first if replacement is needed.
@@ -65,8 +70,12 @@ def unregister_creds_changed_hook() -> None:
     _on_creds_changed = None
 
 
-def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
-    """Invoke the registered creds-changed hook (if any)."""
+async def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
+    """Notify this process's hook, then every other process over Redis.
+
+    The hook alone is not enough: it evicts only the writing process's caches,
+    and the copilot executor holds its own in a different process.
+    """
     if _on_creds_changed is not None:
         try:
             _on_creds_changed(user_id, provider)
@@ -77,6 +86,7 @@ def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
                 provider,
                 exc_info=True,
             )
+    await publish_creds_changed(user_id, provider)
 
 
 class IntegrationCredentialsManager:
@@ -124,7 +134,7 @@ class IntegrationCredentialsManager:
     async def create(self, user_id: str, credentials: Credentials) -> None:
         result = await self.store.add_creds(user_id, credentials)
         # Notify listeners so downstream caches are invalidated immediately.
-        _invoke_creds_changed_hook(user_id, credentials.provider)
+        await _invoke_creds_changed_hook(user_id, credentials.provider)
         return result
 
     async def exists(self, user_id: str, credentials_id: str) -> bool:
@@ -165,12 +175,25 @@ class IntegrationCredentialsManager:
         and updating them elsewhere until the lock is released.
         See the class docstring for more info.
         """
-        # Use a low-priority (!time_sensitive) locking queue on top of the general lock
-        # to allow priority access for refreshing/updating the tokens.
+        # Refresh before taking the long-lived lease lock. A rotating OAuth
+        # provider refreshes under that same credential lock; calling get()
+        # after acquiring it would make acquire() wait on its own lock.
+        refreshed = await self.get(user_id, credentials_id)
+        if not refreshed:
+            raise ValueError(
+                f"Credentials #{credentials_id} for user #{user_id} not found"
+            )
+
+        # Use a low-priority (!time_sensitive) locking queue on top of the
+        # general lock to allow priority access for refreshing/updating the
+        # tokens.
         async with self._locked(user_id, credentials_id, "!time_sensitive"):
             lock = await self._acquire_lock(user_id, credentials_id)
         try:
-            credentials = await self.get(user_id, credentials_id, lock=False)
+            # Reload under the lease lock. Another writer may have replaced or
+            # deleted the row between the pre-refresh and this acquisition;
+            # the lease must expose the stored winner, never the stale snapshot.
+            credentials = await self.store.get_creds_by_id(user_id, credentials_id)
             if not credentials:
                 raise ValueError(
                     f"Credentials #{credentials_id} for user #{user_id} not found"
@@ -269,6 +292,22 @@ class IntegrationCredentialsManager:
         handler: "BaseOAuthHandler | BaseDeviceAuthHandler | None" = None,
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
+            # A different worker may have completed the refresh while this one
+            # waited for the refresh mutex. Re-read before deciding, otherwise
+            # rotating providers can receive the same old refresh token twice.
+            current = await self.store.get_creds_by_id(user_id, credentials.id)
+            if current is None:
+                raise ValueError(
+                    f"Credentials #{credentials.id} for user #{user_id} not found"
+                )
+            if current.type != "oauth2":
+                raise TypeError(
+                    f"Credentials #{credentials.id} for user #{user_id} changed "
+                    f"type to {current.type!r} during OAuth refresh"
+                )
+            if current.provider != credentials.provider:
+                raise RuntimeError("Credential provider changed during refresh")
+            credentials = current
             oauth_handler = handler or await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
@@ -281,7 +320,9 @@ class IntegrationCredentialsManager:
                 try:
                     fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                     await self.store.update_creds(user_id, fresh_credentials)
-                    _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
+                    await _invoke_creds_changed_hook(
+                        user_id, fresh_credentials.provider
+                    )
                     credentials = fresh_credentials
                 finally:
                     if (await _lock.locked()) and (await _lock.owned()):
@@ -317,7 +358,7 @@ class IntegrationCredentialsManager:
             )
             fresh_credentials = await oauth_handler.refresh_tokens(credentials)
             await self.store.update_creds(user_id, fresh_credentials)
-            _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
+            await _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
             credentials = fresh_credentials
         return credentials
 
@@ -325,7 +366,7 @@ class IntegrationCredentialsManager:
         async with self._locked(user_id, updated.id):
             await self.store.update_creds(user_id, updated)
         # Notify listeners so the updated credential is picked up immediately.
-        _invoke_creds_changed_hook(user_id, updated.provider)
+        await _invoke_creds_changed_hook(user_id, updated.provider)
 
     async def upsert_single_provider(
         self,
@@ -357,7 +398,7 @@ class IntegrationCredentialsManager:
         credentials: Credentials,
     ) -> Credentials:
         stored = await self.store.upsert_single_provider_creds(user_id, credentials)
-        _invoke_creds_changed_hook(user_id, stored.provider)
+        await _invoke_creds_changed_hook(user_id, stored.provider)
         return stored
 
     async def update_acquired(
@@ -375,7 +416,15 @@ class IntegrationCredentialsManager:
             raise RuntimeError(
                 f"Cannot update credentials #{updated.id} without its owned lock"
             )
-        if updated.type != "oauth2" or updated.refresh_strategy != "provider_runtime":
+        provider_runtime_checkpoint = (
+            updated.type == "oauth2" and updated.refresh_strategy == "provider_runtime"
+        )
+        codex_http_migration = (
+            updated.type == "oauth2"
+            and updated.provider == "codex"
+            and updated.refresh_strategy == "oauth_handler"
+        )
+        if not (provider_runtime_checkpoint or codex_http_migration):
             raise RuntimeError("Acquired updates require provider-runtime credentials")
 
         current = await self.store.get_creds_by_id(user_id, updated.id)
@@ -389,7 +438,7 @@ class IntegrationCredentialsManager:
         ):
             raise RuntimeError("Provider-runtime credential identity changed")
         await self.store.update_creds(user_id, updated)
-        _invoke_creds_changed_hook(user_id, updated.provider)
+        await _invoke_creds_changed_hook(user_id, updated.provider)
 
     async def delete_acquired(
         self,
@@ -416,7 +465,7 @@ class IntegrationCredentialsManager:
         ):
             raise RuntimeError("Credential identity changed before deletion")
         await self.store.delete_creds_by_id(user_id, credentials.id)
-        _invoke_creds_changed_hook(user_id, credentials.provider)
+        await _invoke_creds_changed_hook(user_id, credentials.provider)
 
     async def delete(self, user_id: str, credentials_id: str) -> None:
         async with self._locked(user_id, credentials_id):
@@ -425,7 +474,7 @@ class IntegrationCredentialsManager:
             creds = await self.store.get_creds_by_id(user_id, credentials_id)
             await self.store.delete_creds_by_id(user_id, credentials_id)
         if creds:
-            _invoke_creds_changed_hook(user_id, creds.provider)
+            await _invoke_creds_changed_hook(user_id, creds.provider)
 
     # -- Locking utilities -- #
 

@@ -14,6 +14,7 @@ export interface DialogCtx {
   isForceOpen: boolean;
   isLargeScreen: boolean;
   styling: CSSProperties | undefined;
+  className?: string;
 }
 
 export const DialogCtx = createContext<DialogCtx>({

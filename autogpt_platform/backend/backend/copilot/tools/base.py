@@ -8,7 +8,8 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.data.db_accessors import workspace_db
+from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -107,6 +108,32 @@ async def _persist_and_summarize(
     )
 
 
+async def _record_activity(
+    tool: "BaseTool",
+    user_id: str,
+    session: ChatSession,
+    result: "ToolResponseBase",
+    kwargs: dict[str, Any],
+) -> None:
+    """Persist the tool call's activity event, if the tool reports one.
+
+    Best-effort by contract: the audit log must never break the tool call
+    that produced it, so every failure is swallowed after a warning.
+    """
+    try:
+        draft = tool.activity_event(session=session, result=result, **kwargs)
+        if draft is None:
+            return
+        draft.session_id = draft.session_id or session.session_id
+        draft.expert_id = draft.expert_id or session.expert_id
+        draft.organization_id = draft.organization_id or session.organization_id
+        await activity_event_db().create_activity_event(user_id=user_id, draft=draft)
+    except Exception:
+        logger.warning(
+            "Failed to record activity event for tool %s", tool.name, exc_info=True
+        )
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -139,6 +166,22 @@ class BaseTool:
         never offered an option that will immediately fail.
         """
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: "ToolResponseBase",
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        """Describe the durable work this call performed.
+
+        Side-effecting tools override this to report what they did (file
+        written, schedule created, integration used) for the activity log.
+        Read-only tools keep the default None. Called only on successful
+        ``_execute`` returns; overrides narrow on their success response
+        type, which skips error responses for free.
+        """
+        return None
 
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
@@ -186,6 +229,8 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **kwargs)
+            if user_id:
+                await _record_activity(self, user_id, session, result, kwargs)
             raw_output = result.model_dump_json(exclude_none=True)
 
             if (

@@ -1,5 +1,6 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { ToolUIPart } from "ai";
+import { extractToolOutputsFromRaw } from "../../../helpers/convertChatSessionToUiMessages";
 import {
   getAnimationText,
   getToolCategory,
@@ -16,6 +17,8 @@ export const POLL_CAP_MS = 5 * 60_000;
 export interface LiveStep {
   name: string;
   input: unknown;
+  displayName?: unknown;
+  output?: unknown;
 }
 
 export function isSessionLive(session: SessionDetailResponse): boolean {
@@ -45,17 +48,25 @@ export function collectCurrentTurn(session: SessionDetailResponse) {
   const messages =
     lastUserIndex === -1 ? allMessages : allMessages.slice(lastUserIndex + 1);
   const steps: LiveStep[] = [];
+  const outputs = extractToolOutputsFromRaw(messages);
   let latestText: string | null = null;
   for (const msg of messages) {
     const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
     for (const rawCall of toolCalls) {
       if (!rawCall || typeof rawCall !== "object") continue;
       const call = rawCall as {
+        id?: unknown;
+        display_name?: unknown;
         function?: { name?: unknown; arguments?: unknown };
       };
       const name = String(call.function?.name ?? "").trim();
       if (name)
-        steps.push({ name, input: parseArguments(call.function?.arguments) });
+        steps.push({
+          name,
+          input: parseArguments(call.function?.arguments),
+          displayName: call.display_name,
+          output: typeof call.id === "string" ? outputs.get(call.id) : undefined,
+        });
     }
     if (
       msg.role === "assistant" &&
@@ -76,7 +87,10 @@ export function toMiniRow(
   running: boolean,
 ): ChainRow {
   const state = running ? "running" : "done";
-  const catalog = getCatalogLabel(step.name, step.input, state);
+  const catalog = getCatalogLabel(step.name, step.input, state, {
+    displayName: step.displayName,
+    output: step.output,
+  });
   const category = catalog?.category ?? getToolCategory(step.name);
   const text =
     catalog?.text ??
