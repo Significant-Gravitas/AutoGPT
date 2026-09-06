@@ -6,11 +6,7 @@ import { consent } from "@/services/consent/cookies";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev = environment.isProd() || environment.isDev();
-const isCloud = environment.isCloud();
-const isDisabled = process.env.DISABLE_SENTRY === "true";
-
-const shouldEnable = !isDisabled && isProdOrDev && isCloud;
+const shouldEnable = environment.isSentryEnabled();
 
 // Check for monitoring consent (includes session replay)
 const hasMonitoringConsent = consent.hasConsentFor("monitoring");
