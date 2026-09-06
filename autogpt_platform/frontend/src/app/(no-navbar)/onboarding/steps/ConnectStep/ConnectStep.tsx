@@ -8,6 +8,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { DeviceAuthConnectButton } from "@/components/contextual/DeviceAuth/DeviceAuthConnectButton";
 
 import { useConnectStep } from "./useConnectStep";
 
@@ -24,8 +25,15 @@ import { useConnectStep } from "./useConnectStep";
  * configured them, should not have to link an account to get past a wizard.
  */
 export function ConnectStep() {
-  const { connect, isConnecting, skip, isAlreadyLinked, models } =
-    useConnectStep();
+  const {
+    connect,
+    finishConnection,
+    isConnecting,
+    skip,
+    isAlreadyLinked,
+    linkedSubscription,
+    models,
+  } = useConnectStep();
 
   return (
     <FadeIn>
@@ -38,8 +46,8 @@ export function ConnectStep() {
           <Text variant="h3">Power your agents in one sign-in</Text>
           <Text variant="lead" as="span" className="!text-zinc-500">
             {isAlreadyLinked
-              ? "Your ChatGPT plan is connected. Agents will run on it instead of spending AutoGPT credits."
-              : "Connect the ChatGPT plan you already have and AutoGPT runs with no API keys and no billing setup."}
+              ? `Your ${linkedSubscription ?? "AI subscription"} is connected. Agents will run on it instead of spending AutoGPT credits.`
+              : "Connect a ChatGPT plan or Microsoft Copilot add-on you already have and AutoGPT runs with no API keys and no billing setup."}
             {models && !isAlreadyLinked ? ` You get ${models}.` : ""}
           </Text>
         </div>
@@ -63,6 +71,29 @@ export function ConnectStep() {
 
           {!isAlreadyLinked && (
             <>
+              <Text
+                variant="small"
+                as="span"
+                className="uppercase tracking-[0.08em] !text-zinc-400"
+              >
+                or
+              </Text>
+              <div className="w-full rounded-xl border border-zinc-200 p-4">
+                <DeviceAuthConnectButton
+                  provider="microsoft_365_copilot"
+                  providerName="Microsoft 365 Copilot"
+                  onSuccess={finishConnection}
+                />
+                <Text
+                  variant="small"
+                  as="span"
+                  className="mt-3 block !text-zinc-400"
+                >
+                  Requires a paid Microsoft Copilot or Copilot Business add-on
+                  from your work or school organization. The included Microsoft
+                  365 Copilot Chat does not qualify.
+                </Text>
+              </div>
               <Text
                 variant="small"
                 as="span"

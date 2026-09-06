@@ -983,8 +983,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     microsoft_client_id: str = Field(
         default="",
         description="Entra application (client) ID, shared by Microsoft "
-        "integrations. Set together with the client secret and tenant ID to "
-        "mount the Teams bot adapter on the main API.",
+        "integrations. Microsoft 365 Copilot device auth falls back to "
+        "AutoGPT's public client ID when this is empty; set it together with "
+        "the server-only client secret and tenant ID to mount the Teams bot "
+        "adapter.",
     )
     microsoft_client_secret: str = Field(
         default="",
