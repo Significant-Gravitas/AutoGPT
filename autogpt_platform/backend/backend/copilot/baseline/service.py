@@ -38,6 +38,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -2011,6 +2012,18 @@ async def stream_chat_completion_baseline(
             )
             for pm in drained_at_start_pending:
                 openai_messages.append(format_pending_as_user_message(pm))
+
+    # Live budget, every turn — the first-turn ``<budget_context>`` above is
+    # stale from turn two onward and says nothing about the tree. After the
+    # pending fold so it lands on the message the model reads last, and never
+    # on ``user_message_for_transcript``: that would persist one stale figure
+    # per turn, the same trap the warm-context injection below names.
+    budget_status = await build_turn_budget_block(envelope, user_id)
+    if budget_status:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                msg["content"] = budget_status + str(msg.get("content") or "")
+                break
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.

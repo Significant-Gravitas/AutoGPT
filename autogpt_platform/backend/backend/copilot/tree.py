@@ -322,10 +322,7 @@ class TreeLedger:
         # so concurrent admits can overshoot by up to ``max_nodes`` turns — see
         # the module docstring; the node cap is the bound that holds.
         if envelope.depth > 0 and int(spent) >= int(ceiling):
-            raise TreeRefusal(
-                "This task has spent its budget; report what you have instead "
-                "of starting more work."
-            )
+            raise TreeRefusal(_spend_refusal(int(spent), int(ceiling)))
         nodes = await self._hincrby(key, "nodes", 1)
         if nodes > int(max_nodes):
             await self._hincrby(key, "nodes", -1)
@@ -347,6 +344,18 @@ class TreeLedger:
         if not await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
             return
         await self._hincrby(key, "spent", microdollars)
+
+    async def claim_wrapup(self, tree_id: str) -> bool:
+        """True for the one turn that first crosses the wrap-up threshold.
+
+        ``HSETNX`` is what makes it once-per-tree under concurrent turns, and
+        the ``hexists`` guard keeps it from conjuring a ledger for a tree that
+        never spawned anything.
+        """
+        key = self.key(tree_id)
+        if not await cast(Awaitable[bool], self._redis.hexists(key, "ceiling")):
+            return False
+        return await cast(Awaitable[bool], self._redis.hsetnx(key, "wrapup", "1"))
 
     async def snapshot(self, tree_id: str) -> dict[str, int]:
         raw = await cast(
@@ -371,6 +380,26 @@ class TreeLedger:
         value = await cast(Awaitable[int], self._redis.hincrby(key, field, amount))
         await cast(Awaitable[bool], self._redis.expire(key, MAX_TURN_LIFETIME_SECONDS))
         return value
+
+
+def _spend_refusal(spent: int, ceiling: int) -> str:
+    """Say what is left and what to do instead — an error the model can act on.
+
+    A zero ceiling is not an empty wallet: it is a tier that may not spend at
+    all, and telling that model to "wrap up with what you have" hides why.
+    """
+    if ceiling <= 0:
+        return (
+            "This account has no subscription, so it cannot start sub-sessions. "
+            "Complete the remaining work directly with your tools, or wrap up "
+            "with the results you already have. Do not retry."
+        )
+    return (
+        f"Budget limit reached (${spent / 1_000_000:.2f} spent of the "
+        f"${ceiling / 1_000_000:.2f} maximum for this task). New sub-sessions "
+        "cannot be started. Complete the remaining work directly with your "
+        "tools, or wrap up with the results you already have. Do not retry."
+    )
 
 
 async def get_tree_ledger() -> TreeLedger:

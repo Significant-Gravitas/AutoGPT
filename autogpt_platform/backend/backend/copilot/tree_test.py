@@ -312,6 +312,41 @@ async def test_spend_ceiling_refuses_children_but_not_the_root() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_spend_refusal_states_the_numbers_and_the_way_out() -> None:
+    ledger = TreeLedger(cast(AsyncRedisClient, FakeRedis()))
+    await ledger.open("t", ceiling_microdollars=500_000, max_nodes=10)
+    root = root_envelope("t")
+    await ledger.charge("t", 520_000)
+    with pytest.raises(TreeRefusal) as refused:
+        await ledger.admit(_child(root))
+    assert "$0.52 spent of the $0.50 maximum" in refused.value.message
+    assert "Complete the remaining work directly with your tools" in (
+        refused.value.message
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_tier_that_may_not_spend_is_told_so_not_told_it_is_broke() -> None:
+    ledger = TreeLedger(cast(AsyncRedisClient, FakeRedis()))
+    await ledger.open("t", ceiling_microdollars=0, max_nodes=10)
+    with pytest.raises(TreeRefusal) as refused:
+        await ledger.admit(_child(root_envelope("t")))
+    assert "no subscription" in refused.value.message
+    assert "budget" not in refused.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_the_wrap_up_is_claimable_once_and_never_conjures_a_tree() -> None:
+    redis = FakeRedis()
+    ledger = TreeLedger(cast(AsyncRedisClient, redis))
+    assert not await ledger.claim_wrapup("ghost")
+    assert "copilot:tree:ghost" not in redis.hashes
+    await ledger.open("t", ceiling_microdollars=500_000, max_nodes=10)
+    assert await ledger.claim_wrapup("t")
+    assert not await ledger.claim_wrapup("t")
+
+
+@pytest.mark.asyncio
 async def test_charge_to_unknown_tree_is_ignored() -> None:
     redis = FakeRedis()
     await TreeLedger(cast(AsyncRedisClient, redis)).charge("ghost", 1)
