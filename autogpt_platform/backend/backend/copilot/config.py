@@ -462,13 +462,30 @@ class ChatConfig(BaseSettings):
         description="Absolute cap on a tree ceiling, in microdollars ($10.00), "
         "applied after the tier-scaled fraction and the floor. The effective "
         "ceiling is min(remaining budget, max(fraction x tier daily, floor), "
-        "this cap). Checked at turn start, so overshoot is at most one turn.",
+        "this cap). Admission reads settled spend, so a tree can overshoot by "
+        "up to (max_nodes - 1) concurrently admitted turns; the node cap is "
+        "what bounds it.",
     )
     tree_max_nodes: int = Field(
         default=8,
         ge=1,
         description="Max turns (root included) one root turn may spawn, "
         "counted per tree rather than per node so it is enforceable atomically.",
+    )
+    tree_budget_signal_enabled: bool = Field(
+        default=True,
+        description="Prepend a one-line <budget_status> block to every turn's "
+        "message, and the wrap-up checkpoint once the tree crosses "
+        "``tree_wrapup_threshold``. Off, or on a turn with no tree envelope, "
+        "the prompt is byte-identical to what it was before.",
+    )
+    tree_wrapup_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Share of a tree's ceiling at which the wrap-up checkpoint "
+        "is injected, once per tree. Below 1.0 on purpose: the instruction is "
+        "only useful while there is still budget to act on it.",
     )
     claude_agent_context_window: int = Field(
         default=200_000,

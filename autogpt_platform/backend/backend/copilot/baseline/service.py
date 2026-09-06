@@ -38,6 +38,7 @@ from backend.copilot.baseline.reasoning import (
     anthropic_thinking_extra_body,
     reasoning_extra_body,
 )
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -1974,6 +1975,17 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Live budget, every turn — the first-turn ``<budget_context>`` above is
+    # stale from turn two onward and says nothing about the tree. Not
+    # persisted: ``openai_messages`` is rebuilt from history each turn, so a
+    # resumed session never replays yesterday's numbers.
+    budget_status = await build_turn_budget_block(envelope, user_id)
+    if budget_status:
+        for msg in reversed(openai_messages):
+            if msg["role"] == "user":
+                msg["content"] = budget_status + str(msg.get("content") or "")
+                break
 
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
