@@ -1,14 +1,17 @@
-"""An owner's computer on E2B: what exists, and how to get its desktop up.
+"""An owner's computer on E2B: what exists, and how to turn its screen on.
 
-Both the expert page's Computer tab and the copilot side panel's Computer
-view read from here, so they agree on what "the box" is: the owner's shell
-sandbox and its on-demand desktop, found through the same E2B metadata the
-lifecycle module stamps on every sandbox (``copilot/tools/e2b_sandbox``).
+One box per owner: the same sandbox ``bash_exec`` runs in, on our desktop
+image (``backend.util.e2b_template``).  Nothing graphical runs until someone
+asks for the screen.  ``open_desktop`` starts X, XFCE and the VNC stream *in
+that box* and hands back the live stream, whether the ask comes from the
+``start_desktop`` tool inside a turn or from the Computer tab and side
+panel.  The box pauses at turn end like any other and comes back with the
+screen exactly as it was.
 
-``describe_computer`` only lists — it never connects, so a paused box stays
-paused (connecting is what E2B's auto-resume reacts to).  ``open_desktop`` is
-the one write: it creates or resumes the owner's desktop and hands back the
-live stream, exactly as the ``start_desktop`` tool does from inside a turn.
+``describe_computer`` only lists: it never connects, so a paused box stays
+paused (connecting is what E2B's auto-resume reacts to).  Whether the screen
+is on is remembered in Redis next to the box id, because asking the box
+would wake it.
 """
 
 import logging
@@ -26,9 +29,8 @@ from backend.blocks.desktop._common import (
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools.e2b_sandbox import (
     METADATA_MOUNTS,
-    SandboxKind,
     SandboxOwner,
-    find_owned_sandbox_id,
+    get_or_create_owner_sandbox,
     list_owned_sandboxes,
 )
 from backend.data.redis_client import get_redis_async
@@ -39,9 +41,8 @@ _DESKTOP_RESOLUTION = (1280, 720)
 
 
 class SandboxSummary(BaseModel):
-    """One of the owner's sandboxes as E2B reports it, without waking it."""
+    """The owner's box as E2B reports it, without waking it."""
 
-    kind: SandboxKind
     sandbox_id: str
     state: Literal["running", "paused"]
     started_at: datetime
@@ -52,13 +53,13 @@ class SandboxSummary(BaseModel):
 
 
 class ComputerInfo(BaseModel):
-    """The owner's computer: its boxes and the volumes they mount."""
+    """The owner's computer: its one box, whether its screen is on, its volumes."""
 
     owner_kind: Literal["session", "expert"]
     owner_id: str
     e2b_active: bool
-    shell: Optional[SandboxSummary] = None
-    desktop: Optional[SandboxSummary] = None
+    box: Optional[SandboxSummary] = None
+    screen_on: bool = False
     # path -> volume name; empty when the owner has no volumes (no user).
     mounts: dict[str, str] = {}
     workspace_path: str = WORKSPACE_PATH
@@ -72,7 +73,7 @@ def computer_owner(session_id: str, expert_id: Optional[str]) -> SandboxOwner:
 async def describe_computer(
     owner: SandboxOwner, mounts: Mapping[str, str]
 ) -> ComputerInfo:
-    """List the owner's shell and desktop boxes without resuming either."""
+    """List the owner's box and screen state without resuming anything."""
     api_key = chat_config.active_e2b_api_key
     info = ComputerInfo(
         owner_kind=owner.kind,
@@ -82,25 +83,20 @@ async def describe_computer(
     )
     if not api_key:
         return info
-    for kind in ("shell", "desktop"):
-        boxes = await list_owned_sandboxes(owner, kind, api_key)
-        if not boxes:
-            continue
-        box = boxes[0]
-        summary = SandboxSummary(
-            kind=kind,
-            sandbox_id=box.sandbox_id,
-            state="running" if box.state.value == "running" else "paused",
-            started_at=box.started_at,
-            cpu_count=box.cpu_count,
-            memory_mb=box.memory_mb,
-            template_id=box.template_id,
-            mounts_attached=(box.metadata or {}).get(METADATA_MOUNTS) == "attached",
-        )
-        if kind == "shell":
-            info.shell = summary
-        else:
-            info.desktop = summary
+    boxes = await list_owned_sandboxes(owner, api_key)
+    if not boxes:
+        return info
+    box = boxes[0]
+    info.box = SandboxSummary(
+        sandbox_id=box.sandbox_id,
+        state="running" if box.state.value == "running" else "paused",
+        started_at=box.started_at,
+        cpu_count=box.cpu_count,
+        memory_mb=box.memory_mb,
+        template_id=box.template_id,
+        mounts_attached=(box.metadata or {}).get(METADATA_MOUNTS) == "attached",
+    )
+    info.screen_on = await screen_is_on(owner, box.sandbox_id)
     return info
 
 
@@ -112,48 +108,48 @@ async def open_desktop(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> tuple[DesktopStream, bool, bool]:
-    """Return ``(stream, created, shared)`` — resuming the owner's desktop if it exists.
+    """Turn the screen on in the owner's box and return ``(stream, first_time, shared)``.
 
-    Shared by the ``start_desktop`` tool and the HTTP endpoints, so a desktop
-    opened from the expert page is the same box the expert's next turn finds.
+    Finds or creates the owner's box the same way a turn does, then starts
+    the display and stream inside it.  Opening from outside a turn does not
+    count as one, so the turn-end pause still fires when the agent finishes;
+    an idle box opened from the UI is paused by the lifecycle timeout instead.
     *user_id* / *session_id* are provenance only, stamped on a newly created box.
     """
-    redis = await get_redis_async()
-    key = owner.key("desktop")
-    raw = await redis.get(key)
-    sandbox_id = raw.decode() if isinstance(raw, bytes) else raw
-    if not sandbox_id:
-        # An expert's desktop outlives the Redis cache; E2B metadata is the record.
-        sandbox_id = await find_owned_sandbox_id(owner, "desktop", api_key)
-    if sandbox_id:
-        try:
-            desktop = await DesktopSession.connect(sandbox_id, api_key)
-            await desktop.ensure_display(*_DESKTOP_RESOLUTION)
-            await redis.set(key, sandbox_id, ex=owner.ttl)
-            stream = await desktop.start_stream()
-            return stream, False, await desktop.is_workspace_mounted()
-        except Exception as exc:
-            logger.warning("[E2B] Desktop %.12s reconnect failed: %s", sandbox_id, exc)
-            await redis.delete(key)
-
-    desktop, persistence = await DesktopSession.create(
-        api_key=api_key,
-        timeout_seconds=chat_config.e2b_desktop_timeout,
-        width=_DESKTOP_RESOLUTION[0],
-        height=_DESKTOP_RESOLUTION[1],
-        volume_mounts=dict(mounts) or None,
-        template=chat_config.e2b_desktop_template,
-        metadata=owner.creation_metadata(
-            "desktop",
-            user_id=user_id,
-            session_id=session_id,
-            template=chat_config.e2b_desktop_template,
-            mounts="attached" if mounts else "none",
-        ),
+    sandbox = await get_or_create_owner_sandbox(
+        owner,
+        api_key,
+        timeout=chat_config.e2b_sandbox_timeout,
+        template=chat_config.e2b_sandbox_template,
+        on_timeout=chat_config.e2b_sandbox_on_timeout,
+        volume_mounts=mounts,
+        user_id=user_id,
+        session_id=session_id,
+        count_turn=False,
     )
-    await redis.set(key, desktop.sandbox_id, ex=owner.ttl)
+    was_on = await screen_is_on(owner, sandbox.sandbox_id)
+    desktop = DesktopSession(sandbox)
+    await desktop.ensure_display(*_DESKTOP_RESOLUTION)
+    shared = await desktop.is_workspace_mounted()
+    if shared and not was_on:
+        # Browser downloads and saved files land in the durable home.
+        await desktop.ensure_persistent_home()
     stream = await desktop.start_stream()
-    return stream, True, persistence.volume_mounted
+    await _remember_screen(owner, sandbox.sandbox_id)
+    return stream, not was_on, shared
+
+
+async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:
+    """Whether ``open_desktop`` has run on *this* box (a replaced box starts off)."""
+    redis = await get_redis_async()
+    raw = await redis.get(owner.display_key())
+    value = raw.decode() if isinstance(raw, bytes) else raw
+    return value == sandbox_id
+
+
+async def _remember_screen(owner: SandboxOwner, sandbox_id: str) -> None:
+    redis = await get_redis_async()
+    await redis.set(owner.display_key(), sandbox_id, ex=owner.ttl)
 
 
 def mounts_for(user_id: Optional[str], expert_id: Optional[str]) -> dict[str, str]:
