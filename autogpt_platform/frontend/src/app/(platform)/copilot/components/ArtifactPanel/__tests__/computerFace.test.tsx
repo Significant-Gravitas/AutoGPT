@@ -95,8 +95,7 @@ describe("ComputerPanelContent", () => {
         owner_kind: "expert",
         owner_id: "exp-1",
         e2b_active: true,
-        shell: {
-          kind: "shell",
+        box: {
           sandbox_id: "sb",
           state: "paused",
           started_at: new Date("2026-09-05T12:00:00Z"),
@@ -105,7 +104,7 @@ describe("ComputerPanelContent", () => {
           template_id: "base",
           mounts_attached: true,
         },
-        desktop: null,
+        screen_on: false,
         mounts: {},
         workspace_path: "/home/user/workspace",
         shared_path: "/home/user/shared",
@@ -122,7 +121,7 @@ describe("ComputerPanelContent", () => {
     expect(await screen.findByText("Suspended")).toBeDefined();
     expect(screen.getByText(/expert's own computer/)).toBeDefined();
     await userEvent.click(
-      screen.getByRole("button", { name: "Start desktop" }),
+      screen.getByRole("button", { name: "Turn on screen" }),
     );
     await waitFor(
       () =>

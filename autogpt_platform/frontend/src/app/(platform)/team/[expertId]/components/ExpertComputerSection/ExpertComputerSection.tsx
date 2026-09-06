@@ -1,6 +1,5 @@
 "use client";
 
-import type { SandboxSummary } from "@/app/api/__generated__/models/sandboxSummary";
 import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -10,12 +9,12 @@ import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/r
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { ComputerIcon, ComputerTerminalIcon } from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
 import {
   describeMount,
   desktopActionLabel,
   formatResources,
   formatSandboxState,
+  formatScreen,
 } from "./helpers";
 import { useExpertComputerSection } from "./useExpertComputerSection";
 
@@ -23,52 +22,6 @@ interface Props {
   expertId: string;
   expertName: string;
   enabled: boolean;
-}
-
-function SandboxCard({
-  title,
-  icon,
-  summary,
-  idleHint,
-}: {
-  title: string;
-  icon: IconSvgElement;
-  summary: SandboxSummary | null | undefined;
-  idleHint: string;
-}) {
-  const running = summary?.state === "running";
-  const resources = formatResources(summary);
-  return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Icon icon={icon} size={16} className="text-zinc-500" />
-          <Text variant="small-medium">{title}</Text>
-        </div>
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-xs font-medium",
-            running
-              ? "bg-emerald-50 text-emerald-700"
-              : summary
-                ? "bg-zinc-100 text-zinc-600"
-                : "bg-zinc-50 text-zinc-500",
-          )}
-        >
-          {running ? "Running" : summary ? "Suspended" : "None"}
-        </span>
-      </div>
-      <Text variant="small" className="mt-2 text-zinc-600">
-        {summary ? formatSandboxState(summary) : idleHint}
-      </Text>
-      {resources ? (
-        <Text variant="small" className="mt-1 text-zinc-500">
-          {resources}
-          {summary?.mounts_attached === false ? " · no volumes attached" : ""}
-        </Text>
-      ) : null}
-    </div>
-  );
 }
 
 export function ExpertComputerSection({
@@ -105,6 +58,9 @@ export function ExpertComputerSection({
     );
   }
 
+  const box = computer.box;
+  const running = box?.state === "running";
+  const resources = formatResources(box);
   const mounts = Object.entries(computer.mounts ?? {});
 
   return (
@@ -113,9 +69,10 @@ export function ExpertComputerSection({
         <div>
           <Text variant="large-medium">{`${expertName}'s computer`}</Text>
           <Text variant="small" className="mt-1 max-w-prose text-zinc-500">
-            A persistent cloud machine only {expertName} uses. It is suspended
-            when idle and costs nothing while suspended; installed tools, logins
-            and files stay put between chats.
+            One persistent cloud machine only {expertName} uses: the shell it
+            runs commands in and, when needed, its screen. It is suspended
+            between turns and costs nothing while suspended; installed tools,
+            logins and files stay put.
           </Text>
         </div>
         <Button
@@ -138,19 +95,46 @@ export function ExpertComputerSection({
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SandboxCard
-          title="Shell"
-          icon={ComputerTerminalIcon}
-          summary={computer.shell}
-          idleHint="Created on the first message that runs a command."
-        />
-        <SandboxCard
-          title="Desktop"
-          icon={ComputerIcon}
-          summary={computer.desktop}
-          idleHint="Created the first time a task needs a browser or GUI app."
-        />
+      <div className="rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Icon
+              icon={ComputerTerminalIcon}
+              size={16}
+              className="text-zinc-500"
+            />
+            <Text variant="small-medium">Machine</Text>
+          </div>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-xs font-medium",
+              running
+                ? "bg-emerald-50 text-emerald-700"
+                : box
+                  ? "bg-zinc-100 text-zinc-600"
+                  : "bg-zinc-50 text-zinc-500",
+            )}
+          >
+            {running ? "Running" : box ? "Suspended" : "None"}
+          </span>
+        </div>
+        <Text variant="small" className="mt-2 text-zinc-600">
+          {box
+            ? formatSandboxState(box)
+            : "Created on the first message that runs a command."}
+        </Text>
+        {resources ? (
+          <Text variant="small" className="mt-1 text-zinc-500">
+            {resources}
+            {box?.mounts_attached === false ? " · no volumes attached" : ""}
+          </Text>
+        ) : null}
+        <div className="mt-3 flex items-center gap-2 border-t border-zinc-100 pt-3">
+          <Icon icon={ComputerIcon} size={16} className="text-zinc-500" />
+          <Text variant="small" className="text-zinc-600">
+            {formatScreen(computer)}
+          </Text>
+        </div>
       </div>
 
       {mounts.length > 0 ? (
