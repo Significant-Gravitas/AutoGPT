@@ -77,6 +77,19 @@ async def test_a_failed_run_releases_its_key_for_a_retry(
     redis.delete.assert_awaited_once_with(f"v2:idem:{USER_ID}:{KEY}")
 
 
+async def test_a_run_that_started_keeps_its_key_even_if_the_response_fails(
+    redis: mock.AsyncMock,
+) -> None:
+    """Releasing here would let the retry start a second run and charge again —
+    the first one is already enqueued."""
+    with pytest.raises(RuntimeError):
+        async with idempotent_run(KEY, USER_ID) as claim:
+            await claim.record("run-1")
+            raise RuntimeError("serialising the response failed")
+
+    redis.delete.assert_not_awaited()
+
+
 async def test_no_key_means_no_claim(redis: mock.AsyncMock) -> None:
     async with idempotent_run(None, USER_ID) as claim:
         assert claim.existing_run_id is None

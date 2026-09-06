@@ -78,6 +78,8 @@ async def idempotent_run(key: Optional[str], user_id: str) -> AsyncIterator["Run
         yield claim
     except Exception:
         # No run came of it, so the key must not stay claimed against a retry.
+        # A run that started and then failed to serialise keeps its key: the
+        # charge already happened, and a retry must find it rather than repeat it.
         await claim.release()
         raise
 
@@ -104,6 +106,7 @@ class RunClaim:
         self.key = key
         self.user_id = user_id
         self.holds_key = False
+        self.recorded = False
         self.existing_run_id: Optional[str] = None
 
     @property
@@ -136,11 +139,12 @@ class RunClaim:
         try:
             redis = await get_redis_async()
             await redis.set(self.redis_key, run_id, ex=_TTL_SECONDS)
+            self.recorded = True
         except Exception as e:
             logger.warning(f"Could not record idempotent run {run_id}: {e}")
 
     async def release(self) -> None:
-        if not self.holds_key:
+        if not self.holds_key or self.recorded:
             return
         try:
             redis = await get_redis_async()
