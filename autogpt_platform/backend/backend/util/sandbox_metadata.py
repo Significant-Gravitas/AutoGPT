@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
 
 METADATA_PREFIX = "autogpt_"
-SERVICE_KEY = "service"  # pragma: allowlist secret
+SERVICE_FIELD = "service"
 SERVICE = "autogpt-platform"
 
 SandboxSource = Literal["copilot", "block"]
@@ -118,7 +118,7 @@ class SandboxMetadata(BaseModel):
         Unknown ``autogpt_*`` keys (from a newer or older build) are ignored;
         a box missing the identity keys is treated as not ours.
         """
-        if metadata.get(SERVICE_KEY) != SERVICE:
+        if metadata.get(SERVICE_FIELD) != SERVICE:
             return None
         fields = {
             key.removeprefix(METADATA_PREFIX): value
@@ -133,7 +133,7 @@ class SandboxMetadata(BaseModel):
 
     def as_e2b(self) -> dict[str, str]:
         """Flatten to E2B's ``dict[str, str]``: unset fields dropped, keys prefixed."""
-        return {SERVICE_KEY: SERVICE} | {
+        return {SERVICE_FIELD: SERVICE} | {
             f"{METADATA_PREFIX}{key}": value
             for key, value in self.model_dump(exclude_none=True).items()
         }
