@@ -25,13 +25,6 @@ from backend.blocks.code_executor import (
     InstantiateCodeSandboxBlock,
 )
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
-from backend.blocks.desktop.actions import DesktopActionBlock
-from backend.blocks.desktop.command import DesktopCommandBlock
-from backend.blocks.desktop.files import DesktopFileBlock
-from backend.blocks.desktop.sandbox import (
-    CreateDesktopSandboxBlock,
-    StopDesktopSandboxBlock,
-)
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -1073,35 +1066,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # E2B desktop blocks: on our account the "desktop" template resolves to
-    # 8 vCPU + 8 GiB RAM ≈ $0.000148/s (measured 2026-09-05; each block's
-    # cost_meter reports the real size per run). Charge 1 credit per 5 seconds
-    # of walltime; same pre-flight-0 + reconciliation model as the
-    # code-execution blocks above. Revisit the credit rate against the
-    # measured provider cost before this leaves preview.
-    **{
-        block: [
-            BlockCost(
-                cost_amount=1,
-                cost_type=BlockCostType.SECOND,
-                cost_divisor=5,
-                cost_filter={
-                    "credentials": {
-                        "id": e2b_credentials.id,
-                        "provider": e2b_credentials.provider,
-                        "type": e2b_credentials.type,
-                    }
-                },
-            )
-        ]
-        for block in (
-            CreateDesktopSandboxBlock,
-            DesktopActionBlock,
-            DesktopCommandBlock,
-            DesktopFileBlock,
-            StopDesktopSandboxBlock,
-        )
-    },
     # FAL video generation: Veo/Seedance tier $0.25-0.30/s, Lite tier
     # ~$0.05-0.10/s. 15 cr/s (~$0.15/s) covers the Lite tier with 1.5x
     # margin; higher tiers still slightly under-bill until the block
