@@ -9,6 +9,7 @@ Route files should import models from here rather than defining them locally.
 
 from __future__ import annotations
 
+from datetime import date as date_
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Optional, Self, TypeAlias
@@ -287,6 +288,37 @@ class GraphSetActiveVersionRequest(BaseModel):
 # ============================================================================
 
 
+class BlockType(str, Enum):
+    """What kind of block this is.
+
+    The internal enum's values are UI labels ("Human In The Loop"); v2 publishes
+    identifiers, so its own values are the member names.
+    """
+
+    STANDARD = "STANDARD"
+    INPUT = "INPUT"
+    OUTPUT = "OUTPUT"
+    NOTE = "NOTE"
+    WEBHOOK = "WEBHOOK"
+    WEBHOOK_MANUAL = "WEBHOOK_MANUAL"
+    AGENT = "AGENT"
+    AI = "AI"
+    AYRSHARE = "AYRSHARE"
+    HUMAN_IN_THE_LOOP = "HUMAN_IN_THE_LOOP"
+    MCP_TOOL = "MCP_TOOL"
+
+
+class BlockCostType(str, Enum):
+    """What a block's cost is charged per."""
+
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
+
+
 class BlockInfo(BaseModel):
     """A building block that can be used in graphs."""
 
@@ -298,7 +330,7 @@ class BlockInfo(BaseModel):
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     static_output: bool
-    block_type: block_types.BlockType
+    block_type: BlockType
     costs: list["BlockCostInfo"]
 
     @classmethod
@@ -317,12 +349,12 @@ class BlockInfo(BaseModel):
             input_schema=b.input_schema.jsonschema(),
             output_schema=b.output_schema.jsonschema(),
             static_output=b.static_output,
-            block_type=b.block_type,
+            block_type=BlockType[b.block_type.name],
             costs=[
                 BlockCostInfo(
-                    cost_type=c.cost_type,
+                    cost_type=BlockCostType(c.cost_type.value),
                     cost_filter=c.cost_filter,
-                    cost_amount=c.cost_amount,
+                    cost_cents=c.cost_amount,
                 )
                 for c in get_block_cost(b)
             ],
@@ -339,14 +371,12 @@ class BlockCategoryInfo(BaseModel):
 class BlockCostInfo(BaseModel):
     """Cost information for a block."""
 
-    cost_type: block_types.BlockCostType = Field(
-        description="Type of cost (e.g., 'run', 'byte', 'second')"
-    )
+    cost_type: BlockCostType = Field(description="What the cost is charged per")
     cost_filter: dict[str, Any] = Field(
         description="Partial node input that, if it matches the input "
         "for an execution of this block, applies this cost to it"
     )
-    cost_amount: int = Field(description="Cost (× $0.01) per {cost_type}")
+    cost_cents: int = Field(description="Cost per {cost_type}, in cents")
 
 
 class BlockContributorInfo(BaseModel):
@@ -366,36 +396,34 @@ class AgentRunSchedule(BaseModel):
     graph_id: str
     graph_version: int
     cron: str = Field(description="Cron expression for the schedule")
-    input_data: dict[str, Any] = Field(
-        description="Input data for scheduled executions"
-    )
+    timezone: str = Field(description="Timezone the cron expression is read in")
+    inputs: dict[str, Any] = Field(description="Input values for each scheduled run")
     next_run_time: Optional[datetime]
-    is_enabled: bool
 
     @classmethod
     def from_internal(cls, job: GraphExecutionJobInfo) -> Self:
-        next_run = (
-            datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
-        )
         return cls(
             id=job.id,
             name=job.name or "",
             graph_id=job.graph_id,
             graph_version=job.graph_version,
             cron=job.cron,
-            input_data=job.input_data,
-            next_run_time=next_run,
-            is_enabled=True,
+            timezone=job.timezone,
+            inputs=job.input_data,
+            next_run_time=(
+                datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
+            ),
         )
 
 
 class AgentRunScheduleCreateRequest(BaseModel):
     """Request to create a schedule."""
 
+    graph_id: str = Field(description="Graph to run on this schedule")
     name: str = Field(description="Display name for the schedule")
     cron: str = Field(description="Cron expression (e.g., '0 9 * * *' for 9am daily)")
-    input_data: dict[str, Any] = Field(
-        default_factory=dict, description="Input data for scheduled executions"
+    inputs: dict[str, Any] = Field(
+        default_factory=dict, description="Input values for each scheduled run"
     )
     credentials_inputs: dict[str, Any] = Field(
         default_factory=dict, description="Credentials for the schedule"
@@ -656,7 +684,7 @@ class AgentPresetCreateRequest(BaseModel):
     name: str = Field(description="Preset name")
     description: str = Field(default="", description="Preset description")
     inputs: dict[str, Any] = Field(default_factory=dict, description="Input values")
-    credentials: dict[str, Any] = Field(
+    credentials_inputs: dict[str, Any] = Field(
         default_factory=dict, description="Credential references"
     )
     is_active: bool = Field(default=True, description="Whether the preset is active")
@@ -668,7 +696,7 @@ class AgentPresetUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     inputs: Optional[dict[str, Any]] = None
-    credentials: Optional[dict[str, Any]] = None
+    credentials_inputs: Optional[dict[str, Any]] = None
     is_active: Optional[bool] = None
 
 
@@ -680,7 +708,7 @@ class AgentTriggerSetupRequest(BaseModel):
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
     trigger_config: dict[str, Any] = Field(description="Trigger block configuration")
-    agent_credentials: dict[str, Any] = Field(
+    credentials_inputs: dict[str, Any] = Field(
         default_factory=dict, description="Credential references"
     )
 
@@ -721,7 +749,7 @@ class AgentGraphRun(TenantedResource):
     started_at: datetime | None
     ended_at: datetime | None
     inputs: Optional[dict[str, Any]]
-    credential_inputs: Optional[dict[str, CredentialInputInfo]] = Field(
+    credentials_inputs: Optional[dict[str, CredentialInputInfo]] = Field(
         default=None,
         description="Credential inputs used in this run (metadata only, no secrets)",
     )
@@ -732,8 +760,8 @@ class AgentGraphRun(TenantedResource):
     share_token: Optional[str] = Field(
         default=None, description="Share token for public access"
     )
-    cost: int = Field(description="Cost in cents ($)")
-    duration: float = Field(description="Duration in seconds")
+    cost_cents: int = Field(description="Cost in cents")
+    duration_seconds: float = Field(description="Wall-clock duration")
     node_exec_count: int = Field(description="Number of nodes executed")
     correctness_score: float | None = Field(
         description=(
@@ -752,12 +780,12 @@ class AgentGraphRun(TenantedResource):
             started_at=exec.started_at,
             ended_at=exec.ended_at,
             inputs=exec.inputs,
-            credential_inputs=cls._map_credential_inputs(exec),
+            credentials_inputs=cls._map_credential_inputs(exec),
             preset_id=exec.preset_id,
             is_shared=exec.is_shared,
             share_token=exec.share_token,
-            cost=exec.stats.cost if exec.stats else 0,
-            duration=exec.stats.duration if exec.stats else 0,
+            cost_cents=exec.stats.cost if exec.stats else 0,
+            duration_seconds=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
             correctness_score=exec.stats.correctness_score if exec.stats else None,
             organization_id=exec.organization_id,
@@ -799,13 +827,13 @@ class AgentGraphRunDetails(AgentGraphRun):
             started_at=exec.started_at,
             ended_at=exec.ended_at,
             inputs=exec.inputs,
-            credential_inputs=cls._map_credential_inputs(exec),
+            credentials_inputs=cls._map_credential_inputs(exec),
             preset_id=exec.preset_id,
             is_shared=exec.is_shared,
             share_token=exec.share_token,
             outputs=exec.outputs,
-            cost=exec.stats.cost if exec.stats else 0,
-            duration=exec.stats.duration if exec.stats else 0,
+            cost_cents=exec.stats.cost if exec.stats else 0,
+            duration_seconds=exec.stats.duration if exec.stats else 0,
             node_exec_count=exec.stats.node_exec_count if exec.stats else 0,
             correctness_score=exec.stats.correctness_score if exec.stats else None,
             organization_id=exec.organization_id,
@@ -814,8 +842,8 @@ class AgentGraphRunDetails(AgentGraphRun):
                 AgentNodeExecution(
                     node_id=node.node_id,
                     status=node.status.value,
-                    input_data=node.input_data,
-                    output_data=node.output_data,
+                    inputs=node.input_data,
+                    outputs=node.output_data,
                     started_at=node.start_time,
                     ended_at=node.end_time,
                 )
@@ -829,8 +857,8 @@ class AgentNodeExecution(BaseModel):
 
     node_id: str
     status: RunStatus
-    input_data: dict[str, Any] = Field(description="Input values keyed by pin name")
-    output_data: dict[str, list[Any]] = Field(
+    inputs: dict[str, Any] = Field(description="Input values keyed by pin name")
+    outputs: dict[str, list[Any]] = Field(
         description="Output values keyed by pin name, each with a list of results",
     )
     started_at: datetime | None
@@ -925,7 +953,7 @@ class AgentRunReviewsSubmitResponse(BaseModel):
 class CreditBalance(BaseModel):
     """User's credit balance."""
 
-    balance: int = Field(description="Current credit balance")
+    balance_cents: int = Field(description="Current credit balance, in cents")
 
 
 TransactionType: TypeAlias = Literal[
@@ -948,7 +976,9 @@ class CreditTransaction(BaseModel):
     """A credit transaction."""
 
     transaction_key: str
-    amount: int = Field(description="Transaction amount (positive or negative)")
+    amount_cents: int = Field(
+        description="Transaction amount in cents (positive or negative)"
+    )
     type: TransactionType
     transaction_time: datetime
     description: Optional[str]
@@ -966,7 +996,7 @@ class CreditTransaction(BaseModel):
             )
         return cls(
             transaction_key=t.transaction_key,
-            amount=t.amount,
+            amount_cents=t.amount,
             type=t.transaction_type.value,
             transaction_time=t.transaction_time,
             description=t.description,
@@ -987,11 +1017,11 @@ class SubscriptionStatus(BaseModel):
     """Current subscription status and tier pricing."""
 
     tier: SubscriptionTierValue
-    monthly_cost: int = Field(description="Current plan cost in cents")
-    tier_costs: dict[str, int] = Field(
+    monthly_cost_cents: int = Field(description="Current plan cost in cents")
+    tier_costs_cents: dict[str, int] = Field(
         description="Available tier → monthly cost in cents"
     )
-    tier_costs_yearly: dict[str, int] = Field(
+    tier_costs_yearly_cents: dict[str, int] = Field(
         default_factory=dict,
         description="Available tier → yearly cost in cents",
     )
@@ -1004,9 +1034,8 @@ class SubscriptionStatus(BaseModel):
         description="Unused portion of current plan available as upgrade credit"
     )
     has_active_stripe_subscription: bool = False
-    current_period_end: Optional[int] = Field(
-        default=None,
-        description="Unix timestamp of current billing period end",
+    current_period_end: Optional[datetime] = Field(
+        default=None, description="End of the current billing period"
     )
     pending_tier: Optional[SubscriptionTierValue] = None
     pending_tier_effective_at: Optional[datetime] = None
@@ -1068,7 +1097,7 @@ class AgentAutomationCost(BaseModel):
 class TopAutomationCostRun(BaseModel):
     """A high-cost run by automation credit spend."""
 
-    execution_id: str
+    run_id: str
     graph_id: str
     cost_cents: int
     started_at: datetime
@@ -1080,7 +1109,7 @@ class TopAutomationCostRun(BaseModel):
 class DailyAutomationCost(BaseModel):
     """Daily automation credit cost aggregation."""
 
-    date: str = Field(description="Calendar date (YYYY-MM-DD)")
+    date: date_
     cost_cents: int
     run_count: int
 
@@ -1113,7 +1142,7 @@ class AutomationCostSummary(BaseModel):
             ],
             top_runs=[
                 TopAutomationCostRun(
-                    execution_id=r.execution_id,
+                    run_id=r.execution_id,
                     graph_id=r.graph_id,
                     cost_cents=r.cost_cents,
                     started_at=r.started_at,
@@ -1125,7 +1154,7 @@ class AutomationCostSummary(BaseModel):
             ],
             daily=[
                 DailyAutomationCost(
-                    date=d.date.isoformat(),
+                    date=d.date,
                     cost_cents=d.cost_cents,
                     run_count=d.run_count,
                 )
@@ -1304,8 +1333,16 @@ CredentialCreateRequest = (
 class CredentialRequirement(BaseModel):
     """A credential requirement for an agent (graph)."""
 
+    field_name: str = Field(
+        description="Key to supply this credential under in `credentials_inputs`"
+    )
     provider: str = Field(description="Required provider name")
-    required_scopes: list[str] = Field(description="Required scopes")
+    supported_types: list[CredentialType] = Field(
+        description="Credential types this requirement accepts"
+    )
+    required_scopes: list[str] = Field(
+        description="Scopes an OAuth credential must carry to satisfy this"
+    )
     matching_credentials: list[CredentialInfo] = Field(
         description="User's credentials that match this requirement",
     )
@@ -1354,7 +1391,7 @@ class MarketplaceAgent(BaseModel):
     creator_avatar: str
     runs: int = Field(description="Number of times this agent has been run")
     rating: float = Field(description="Average rating")
-    image_url: str
+    image_url: Optional[str]
 
     @classmethod
     def from_internal(cls, agent: StoreAgent) -> Self:
@@ -1405,7 +1442,7 @@ class MarketplaceAgentDetails(MarketplaceAgent):
             categories=agent.categories,
             runs=agent.runs,
             rating=agent.rating,
-            image_url=agent.agent_image[0] if agent.agent_image else "",
+            image_url=agent.agent_image[0] if agent.agent_image else None,
             image_urls=agent.agent_image,
             video_url=agent.agent_video or None,
             agent_output_demo_url=agent.agent_output_demo,
@@ -1561,17 +1598,22 @@ class MarketplaceAgentSubmissionCreateRequest(BaseModel):
 
 
 class MarketplaceAgentSubmissionEditRequest(BaseModel):
-    """Request to edit a marketplace submission."""
+    """The full replacement listing for a submission.
+
+    Every field is written, so this is the whole listing, not a patch: the
+    defaulted fields blanked a listing's description, images and categories for
+    any caller that sent only the field it meant to change.
+    """
 
     name: str = Field(description="Agent display name")
-    sub_heading: str = Field(default="", description="Short tagline")
-    description: str = Field(default="", description="Full description")
-    image_urls: list[str] = Field(default_factory=list, description="Image URLs")
+    sub_heading: str = Field(description="Short tagline")
+    description: str = Field(description="Full description")
+    image_urls: list[str] = Field(description="Image URLs")
     video_url: Optional[str] = Field(default=None, description="Demo video URL")
     agent_output_demo_url: Optional[str] = Field(
         default=None, description="Agent output demo URL"
     )
-    categories: list[str] = Field(default_factory=list, description="Categories")
+    categories: list[str] = Field(description="Categories")
     changes_summary: Optional[str] = Field(
         default="Update submission", description="Summary of changes"
     )
