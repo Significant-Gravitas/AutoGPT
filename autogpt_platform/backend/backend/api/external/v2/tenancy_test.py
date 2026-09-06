@@ -172,7 +172,7 @@ async def test_billing_uses_the_org_credit_model(
     balance = await get_balance(auth=_key_for(ORG_A))
 
     assert credit_model.await_args.args == (USER_ID, ORG_A)
-    assert balance.balance == 42
+    assert balance.balance_cents == 42
 
 
 @pytest.mark.asyncio

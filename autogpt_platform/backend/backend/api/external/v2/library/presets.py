@@ -97,7 +97,7 @@ async def create_preset(
         name=request.name,
         description=request.description,
         inputs=request.inputs,
-        credentials=request.credentials,
+        credentials=request.credentials_inputs,
         is_active=request.is_active,
     )
 
@@ -125,7 +125,7 @@ async def setup_trigger(
 
     The agent's `trigger_setup_info` describes the required trigger configuration
     schema and credentials. Use it to populate `trigger_config` and
-    `agent_credentials`.
+    `credentials_inputs`.
     """
     # Use internal trigger setup endpoint to avoid logic duplication:
     from backend.api.features.library.routes.presets import (
@@ -138,7 +138,7 @@ async def setup_trigger(
         graph_id=request.graph_id,
         graph_version=request.graph_version,
         trigger_config=request.trigger_config,
-        agent_credentials=request.agent_credentials,
+        agent_credentials=request.credentials_inputs,
     )
 
     preset = await _internal_setup_trigger(
@@ -167,7 +167,7 @@ async def update_preset(
         name=request.name,
         description=request.description,
         inputs=request.inputs,
-        credentials=request.credentials,
+        credentials=request.credentials_inputs,
         is_active=request.is_active,
     )
     return AgentPreset.from_internal(preset)

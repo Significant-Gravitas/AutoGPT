@@ -133,7 +133,7 @@ async def create_graph_schedule(
         graph_version=graph.version,
         name=request.name,
         cron=request.cron,
-        input_data=request.input_data,
+        input_data=request.inputs,
         input_credentials=request.credentials_inputs,
         user_timezone=user_timezone,
         organization_id=auth.organization_id,

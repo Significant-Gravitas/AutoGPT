@@ -7,7 +7,7 @@ subscription status, invoices, and execution cost summary.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import stripe
@@ -61,7 +61,7 @@ async def get_balance(
     user_credit_model = await get_credit_model(auth.user_id, auth.organization_id)
     balance = await user_credit_model.get_credits(auth.user_id)
 
-    return CreditBalance(balance=balance)
+    return CreditBalance(balance_cents=balance)
 
 
 @credits_router.get(
@@ -178,14 +178,20 @@ async def get_subscription_status(
 
     response = SubscriptionStatus(
         tier=tier.value,
-        monthly_cost=current_monthly_cost,
-        tier_costs=tier_costs,
-        tier_costs_yearly=tier_costs_yearly,
+        monthly_cost_cents=current_monthly_cost,
+        tier_costs_cents=tier_costs,
+        tier_costs_yearly_cents=tier_costs_yearly,
         billing_cycle=user_cycle,
         tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
-        current_period_end=current_period_end,
+        # Stripe reports the period end as a unix timestamp; every other v2
+        # timestamp is an ISO datetime, so it is converted at the boundary.
+        current_period_end=(
+            datetime.fromtimestamp(current_period_end, tz=timezone.utc)
+            if current_period_end is not None
+            else None
+        ),
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending
