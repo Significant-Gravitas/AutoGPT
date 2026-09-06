@@ -30,7 +30,7 @@ export function VoiceModeBar({
       <VoiceTrace
         source={micOpen ? "mic" : "pulse"}
         color={micOpen ? "bg-emerald-500" : "bg-zinc-400"}
-        className="min-w-0 flex-1 justify-center"
+        className="min-w-0 flex-1"
       />
       <span className="sr-only" role="status" aria-live="polite">
         {statusLabel}

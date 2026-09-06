@@ -41,7 +41,12 @@ export function VoiceTrace({ source, className, color }: Props) {
 
   return (
     <div
-      className={cn("flex h-6 items-center gap-[2px]", className)}
+      // Clips from the left, so the newest column survives a narrow
+      // composer — the oldest history is what you can afford to lose.
+      className={cn(
+        "flex h-6 items-center justify-end gap-[2px] overflow-hidden",
+        className,
+      )}
       aria-hidden="true"
     >
       {columns.map((level, index) => (
