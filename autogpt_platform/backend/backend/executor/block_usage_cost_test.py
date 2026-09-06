@@ -5,11 +5,9 @@ import math
 import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
-from backend.blocks.code_executor import (
-    ExecuteCodeBlock,
-    ExecuteCodeStepBlock,
-    InstantiateCodeSandboxBlock,
-)
+from backend.blocks.code_executor.execute import ExecuteCodeBlock
+from backend.blocks.code_executor.instantiate import InstantiateCodeSandboxBlock
+from backend.blocks.code_executor.step import ExecuteCodeStepBlock
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock

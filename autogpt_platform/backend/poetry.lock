@@ -1495,6 +1495,23 @@ e2b = ">=2.7.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
 
 [[package]]
+name = "e2b-desktop"
+version = "2.3.0"
+description = "E2B Desktop Sandbox - Deskstop sandbox in cloud powered by E2B"
+optional = false
+python-versions = "<4.0,>=3.10"
+groups = ["main"]
+files = [
+    {file = "e2b_desktop-2.3.0-py3-none-any.whl", hash = "sha256:2ece0ac9fd01141c19bfb1ade5b595b30ffadb3d705a83ec8e0dec83c05a2020"},
+    {file = "e2b_desktop-2.3.0.tar.gz", hash = "sha256:b7b8c2b0a9ad949e9f2d045e2c363c64fe3dc2ae0190ecb34152061f340c638d"},
+]
+
+[package.dependencies]
+e2b = ">=2.6.0,<3.0.0"
+pillow = ">=11.1.0,<12.0.0"
+requests = ">=2.32.3,<3.0.0"
+
+[[package]]
 name = "elevenlabs"
 version = "1.59.0"
 description = ""
@@ -8633,4 +8650,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "79c0fee02fecaddc1610ffbe81c5a45170e7986b93a44e75f293af0cb7409448"
+content-hash = "92e22bbc7137f3857e605a1a0b8a2aeabe1bd7b10fcbc19c47b097d5c1d7ba4e"

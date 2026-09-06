@@ -5767,6 +5767,36 @@
         }
       }
     },
+    "/api/desktop-preview": {
+      "get": {
+        "tags": ["v1"],
+        "summary": "Open Desktop Preview",
+        "operationId": "getV1OpenDesktopPreview",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 8192, "title": "Token" }
+          }
+        ],
+        "responses": {
+          "307": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/email/": {
       "post": {
         "tags": ["v1", "email"],

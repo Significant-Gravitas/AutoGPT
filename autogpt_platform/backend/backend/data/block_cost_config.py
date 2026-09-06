@@ -19,11 +19,9 @@ from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.claude_code import ClaudeCodeBlock
-from backend.blocks.code_executor import (
-    ExecuteCodeBlock,
-    ExecuteCodeStepBlock,
-    InstantiateCodeSandboxBlock,
-)
+from backend.blocks.code_executor.execute import ExecuteCodeBlock
+from backend.blocks.code_executor.instantiate import InstantiateCodeSandboxBlock
+from backend.blocks.code_executor.step import ExecuteCodeStepBlock
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
