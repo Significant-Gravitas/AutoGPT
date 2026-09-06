@@ -73,6 +73,8 @@ export function useVoiceMode({
   const chunkBuffer = useRef("");
   const replyDone = useRef(false);
   const spokeThisTurn = useRef(false);
+  /** One synthesis failure per turn is news; the next four are noise. */
+  const reportedThisTurn = useRef(false);
   const lastMessageId = useRef("");
   const turnIndex = useRef(0);
   /** Speech end, for the two latencies the funnel measures. */
@@ -328,6 +330,7 @@ export function useVoiceMode({
   function startTurn() {
     replyDone.current = false;
     spokeThisTurn.current = false;
+    reportedThisTurn.current = false;
     lastMessageId.current = "";
     chunkBuffer.current = "";
     reader.current.reset();
@@ -387,6 +390,11 @@ export function useVoiceMode({
         },
         onError: (error) => {
           trackVoiceMode("voice_mode_error", { stage: "synthesis" });
+          // A reply is one request per sentence, so an outage that refuses
+          // the first refuses them all — and the user reads the same red box
+          // once per sentence.
+          if (reportedThisTurn.current) return;
+          reportedThisTurn.current = true;
           report(error);
         },
       });

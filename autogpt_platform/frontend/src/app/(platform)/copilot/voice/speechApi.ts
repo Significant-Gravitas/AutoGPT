@@ -19,7 +19,7 @@ export async function synthesizeSpeech(
   );
 
   if (!response.ok) {
-    throw new Error(`Speech synthesis failed (${response.status})`);
+    throw new Error(speechFailure(response.status));
   }
 
   return response.blob();
@@ -37,4 +37,22 @@ export async function transcribeUtterance(audio: Blob): Promise<string> {
 
   const data = await response.json();
   return typeof data.text === "string" ? data.text : "";
+}
+
+/**
+ * The spend pre-flight refuses before it synthesises, so these are the
+ * statuses a user actually meets. A bare code tells them nothing about what
+ * to do next.
+ */
+function speechFailure(status: number): string {
+  if (status === 429) {
+    return "You've reached your AutoPilot usage limit — voice replies are paused until it resets.";
+  }
+  if (status === 402) {
+    return "Voice replies need an active AutoPilot subscription.";
+  }
+  if (status === 503) {
+    return "Voice replies are unavailable right now. Try again shortly.";
+  }
+  return `Speech synthesis failed (${status})`;
 }

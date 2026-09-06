@@ -52,8 +52,10 @@ vi.mock("../audioContext", () => ({
   runningAudioContext: () => null,
 }));
 
+// Hoisted: `vi.mock` factories run before module-level consts exist.
+const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast }),
 }));
 
 const tracked: [string, Record<string, unknown> | undefined][] = [];
@@ -62,6 +64,7 @@ vi.mock("@/services/copilot/voice-mode-analytics", () => ({
     tracked.push([event, props]),
 }));
 
+import { synthesizeSpeech } from "../speechApi";
 import {
   isVoiceTurn,
   requestVoiceStart,
@@ -77,6 +80,13 @@ describe("useVoiceMode", () => {
     takeVoiceStart();
     spoken.length = 0;
     clicks.length = 0;
+    toast.mockClear();
+    // A rejection set by one test would otherwise outlive it: restoreAllMocks
+    // does not reach an implementation set on a module mock.
+    vi.mocked(synthesizeSpeech).mockImplementation(async (text: string) => {
+      spoken.push(text);
+      return new Blob([text]);
+    });
     sessions.length = 0;
     vadLoad = Promise.resolve();
     transcribe = async () => transcript;
@@ -151,6 +161,24 @@ describe("useVoiceMode", () => {
 
     expect(spoken).toContain("First sentence.");
     expect(spoken).not.toContain("Second half");
+  });
+
+  it("reports a synthesis outage once a turn, not once a sentence", async () => {
+    // Every sentence is its own request, so whatever refuses the first
+    // refuses them all — and 429 (over the usage cap) is exactly what the
+    // spend pre-flight returns.
+    vi.mocked(synthesizeSpeech).mockRejectedValue(
+      new Error("You've reached your AutoPilot usage limit"),
+    );
+    const view = render({});
+    await enable(view);
+    await speak();
+
+    await reply(view, "First sentence. Second sentence. Third sentence.");
+    await act(async () => undefined);
+
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast.mock.calls[0][0].description).toContain("usage limit");
   });
 
   it("never reads fenced code aloud", async () => {
