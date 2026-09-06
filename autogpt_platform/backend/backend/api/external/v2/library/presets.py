@@ -5,7 +5,7 @@ Provides endpoints for managing agent presets (saved run configurations).
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query, Security
 from prisma.enums import APIKeyPermission
@@ -202,7 +202,7 @@ async def delete_preset(
 async def run_preset(
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
-    idempotency: Optional[str] = Depends(idempotency_key),
+    idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
     auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """

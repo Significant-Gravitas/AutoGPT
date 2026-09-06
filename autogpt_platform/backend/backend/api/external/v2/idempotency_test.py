@@ -169,3 +169,17 @@ def _tenant() -> TenantContext:
         type="api_key",
         organization_id=ORG_ID,
     )
+
+
+def test_the_header_parameter_defaults_to_no_key_when_called_directly() -> None:
+    """`= Depends(...)` leaves that sentinel as the Python default, so a direct
+    call — which is how this suite exercises handlers — arrived at the key store
+    with a `Depends` object for a key and opened a Redis client for it."""
+    import inspect
+
+    from .library.agents import execute_agent
+    from .library.presets import run_preset
+
+    for handler in (execute_agent, run_preset):
+        default = inspect.signature(handler).parameters["idempotency"].default
+        assert default is None, f"{handler.__name__} defaults to {default!r}"

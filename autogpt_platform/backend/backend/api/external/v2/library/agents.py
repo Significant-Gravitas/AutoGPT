@@ -1,7 +1,7 @@
 """V2 External API - Library Agent Endpoints"""
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
@@ -164,7 +164,7 @@ async def fork_library_agent(
 async def execute_agent(
     request: AgentRunRequest,
     agent_id: str,
-    idempotency: Optional[str] = Depends(idempotency_key),
+    idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
     auth: TenantContext = Security(require_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
