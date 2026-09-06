@@ -1,146 +1,121 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-
+import { useId } from "react";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-
-import {
-  getSectionMotionProps,
-  rowVariants,
-  rowsContainerVariants,
-} from "../../../helpers";
+import { getSectionMotionProps } from "../../../helpers";
+import { TransactionHistoryTable } from "./components/TransactionHistoryTable";
 import { useTransactionHistoryCard } from "./useTransactionHistoryCard";
 
-interface Props {
-  index?: number;
-}
+type Props = { index?: number };
 
 export function TransactionHistoryCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { transactions, isLoading, isError, refetch } =
-    useTransactionHistoryCard();
-  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+  const history = useTransactionHistoryCard();
+  const headingID = useId();
 
-  if (isLoading) {
-    return (
-      <motion.div {...sectionMotion}>
-        <Skeleton className="h-[200px] rounded-[18px]" />
-      </motion.div>
-    );
+  async function retryHistory() {
+    await history.refetch();
+    document.getElementById(headingID)?.focus({ preventScroll: true });
   }
-
-  if (isError) {
-    return (
-      <ErrorCard
-        context="transaction history"
-        hint="We couldn't load your recent transactions."
-        onRetry={() => void refetch()}
-      />
-    );
-  }
-
   return (
-    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
-      <div className="px-4">
-        <Text variant="body-medium" as="span" className="text-textBlack">
-          Transaction history
+    <motion.section
+      {...getSectionMotionProps(index, Boolean(reduceMotion))}
+      className="flex w-full flex-col gap-3"
+      aria-label="Transaction history"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-2 px-4">
+        <div>
+          <Text
+            variant="body-medium"
+            as="h2"
+            id={headingID}
+            tabIndex={-1}
+            className="focus:outline-none"
+          >
+            Transaction history
+          </Text>
+          <Text variant="small" className="mt-1 text-zinc-600">
+            Changes to your automation credit balance.
+          </Text>
+        </div>
+        <Text variant="small" className="text-zinc-600">
+          USD · Your local time
         </Text>
       </div>
-
-      <div className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        {transactions.length === 0 ? (
-          <div className="px-4 py-6">
-            <Text variant="small" as="span" className="text-zinc-500">
-              No transactions yet.
-            </Text>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead className="bg-zinc-50">
-                <tr className="border-b border-zinc-200">
-                  <Th className="hidden sm:table-cell">Date</Th>
-                  <Th>Description</Th>
-                  <Th align="right">Amount</Th>
-                </tr>
-              </thead>
-              <motion.tbody
-                initial={reduceMotion ? false : "hidden"}
-                animate="show"
-                variants={reduceMotion ? undefined : rowsContainerVariants}
-              >
-                {transactions.map((transaction, rowIndex) => (
-                  <motion.tr
-                    key={transaction.id}
-                    variants={reduceMotion ? undefined : rowVariants}
-                    className={
-                      rowIndex !== transactions.length - 1
-                        ? "border-b border-zinc-100 transition-colors hover:bg-zinc-50/60"
-                        : "transition-colors hover:bg-zinc-50/60"
-                    }
-                  >
-                    <td className="hidden px-2 py-4 sm:table-cell sm:px-4">
-                      <Text variant="body" as="span" className="text-zinc-600">
-                        {transaction.date}
-                      </Text>
-                    </td>
-                    <td className="px-2 py-4 sm:px-4">
-                      <Text variant="body" as="span" className="text-textBlack">
-                        {transaction.description}
-                      </Text>
-                      <Text
-                        variant="small"
-                        as="span"
-                        className="block text-zinc-500 sm:hidden"
-                      >
-                        {transaction.date}
-                      </Text>
-                    </td>
-                    <td className="px-2 py-4 text-right sm:px-4">
-                      <Text
-                        variant="body-medium"
-                        as="span"
-                        className={
-                          transaction.kind === "credit"
-                            ? "tabular-nums text-emerald-700"
-                            : "tabular-nums text-red-600"
-                        }
-                      >
-                        {transaction.amount}
-                      </Text>
-                    </td>
-                  </motion.tr>
-                ))}
-              </motion.tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {history.isLoading ? (
+        <HistorySkeleton />
+      ) : history.isError ? (
+        <ErrorCard
+          context="transaction history"
+          hint="We couldn’t load your transactions. Please try again."
+          onRetry={() => void retryHistory()}
+        />
+      ) : history.transactions.length === 0 ? (
+        <EmptyHistory />
+      ) : (
+        <TransactionHistoryTable
+          transactions={history.transactions}
+          hasMore={history.hasMore}
+          isLoadingMore={history.isLoadingMore}
+          isLoadMoreError={history.isLoadMoreError}
+          onLoadMore={() => history.loadMore()}
+        />
+      )}
+      {history.isRefreshError && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-4"
+          role="alert"
+        >
+          <Text variant="small" className="text-zinc-600">
+            History couldn’t be refreshed. Showing previously loaded activity.
+          </Text>
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => void retryHistory()}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+      <Text variant="small" className="px-4 text-zinc-600">
+        Each agent run combines its recorded charges and adjustments. Only runs
+        with credit activity appear here.
+      </Text>
     </motion.section>
   );
 }
 
-interface ThProps {
-  children: React.ReactNode;
-  align?: "left" | "right";
-  className?: string;
+function HistorySkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading transaction history"
+      className="rounded-large border border-zinc-200 bg-white p-5"
+    >
+      <div className="space-y-6">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="flex items-center justify-between gap-6">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-5 w-16" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function Th({ children, align = "left", className = "" }: ThProps) {
+function EmptyHistory() {
   return (
-    <th
-      scope="col"
-      className={`px-2 py-3 sm:px-4 ${align === "right" ? "text-right" : "text-left"} ${className}`}
-    >
-      <Text
-        variant="small-medium"
-        as="span"
-        className="uppercase tracking-[0.04em] text-zinc-500"
-      >
-        {children}
+    <div className="rounded-large border border-zinc-200 bg-white px-5 py-10 text-center">
+      <Text variant="body-medium">No transactions yet.</Text>
+      <Text variant="small" className="mt-2 text-zinc-600">
+        Credit purchases and paid activity will appear here.
       </Text>
-    </th>
+    </div>
   );
 }
