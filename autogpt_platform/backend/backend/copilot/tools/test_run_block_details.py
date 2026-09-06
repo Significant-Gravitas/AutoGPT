@@ -171,6 +171,9 @@ def make_annotated_block(block_id: str = "annotated-block-id"):
                 "secret": False,
             },
             "secret": {"type": "string", "description": "A field named secret"},
+            "repo_url": {"type": "string", "title": "Repo Url"},
+            "sys_prompt": {"type": "string", "title": "System Prompt"},
+            "title": {"type": "string", "description": "A field named title"},
         },
         "required": ["model"],
     }
@@ -230,6 +233,27 @@ async def test_flag_on_keeps_a_property_that_shares_an_annotation_name():
     response = await _details_for(make_annotated_block(), flag_on=True)
     assert "secret" in response.block.inputs["properties"]
     assert response.block.inputs["required"] == ["model"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_drops_a_title_that_only_re_cases_its_property_name():
+    """The card derives the same string from the key, so the title is weight."""
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    assert response.block.inputs["properties"]["repo_url"] == {"type": "string"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_keeps_a_title_the_property_name_does_not_give():
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    prompt = response.block.inputs["properties"]["sys_prompt"]
+    assert prompt["title"] == "System Prompt"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_keeps_a_property_named_title():
+    """``title`` is both a schema annotation and a legal field name."""
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    assert "title" in response.block.inputs["properties"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

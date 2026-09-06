@@ -316,17 +316,23 @@ _SCHEMA_MAP_KEYS = frozenset(
 )
 
 
-def _strip_presentation_annotations(node: Any) -> Any:
-    """Return *node* with the builder-UI annotation keys removed, recursively."""
+def _strip_presentation_annotations(node: Any, name: str | None = None) -> Any:
+    """Return *node* without the annotations the model cannot act on.
+
+    *name* is the property the node is filed under, when there is one — a title
+    that only re-cases that name is dropped too.
+    """
     if isinstance(node, dict):
         cleaned: dict[str, Any] = {}
         for key, value in node.items():
             if key in _PRESENTATION_ONLY_KEYS:
                 continue
+            if key == "title" and name is not None and value == _derived_title(name):
+                continue
             if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
                 cleaned[key] = {
-                    name: _strip_presentation_annotations(sub)
-                    for name, sub in value.items()
+                    sub_name: _strip_presentation_annotations(sub, sub_name)
+                    for sub_name, sub in value.items()
                 }
             else:
                 cleaned[key] = _strip_presentation_annotations(value)
@@ -334,6 +340,15 @@ def _strip_presentation_annotations(node: Any) -> Any:
     if isinstance(node, list):
         return [_strip_presentation_annotations(item) for item in node]
     return node
+
+
+def _derived_title(property_name: str) -> str:
+    """The label BlockDetailsCard renders when a property carries no title.
+
+    Must stay in step with ``deriveFieldTitle`` in that component: a title this
+    reproduces is dropped, so any drift changes what the card displays.
+    """
+    return " ".join(w[:1].upper() + w[1:] for w in property_name.split("_"))
 
 
 def _strip_credentials_from_schema(
