@@ -105,12 +105,18 @@ async def describe_computer(
 
 
 async def open_desktop(
-    owner: SandboxOwner, mounts: Mapping[str, str], api_key: str
+    owner: SandboxOwner,
+    mounts: Mapping[str, str],
+    api_key: str,
+    *,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> tuple[DesktopStream, bool, bool]:
     """Return ``(stream, created, shared)`` — resuming the owner's desktop if it exists.
 
     Shared by the ``start_desktop`` tool and the HTTP endpoints, so a desktop
     opened from the expert page is the same box the expert's next turn finds.
+    *user_id* / *session_id* are provenance only, stamped on a newly created box.
     """
     redis = await get_redis_async()
     key = owner.key("desktop")
@@ -137,7 +143,13 @@ async def open_desktop(
         height=_DESKTOP_RESOLUTION[1],
         volume_mounts=dict(mounts) or None,
         template=chat_config.e2b_desktop_template,
-        metadata=owner.metadata("desktop"),
+        metadata=owner.creation_metadata(
+            "desktop",
+            user_id=user_id,
+            session_id=session_id,
+            template=chat_config.e2b_desktop_template,
+            mounts="attached" if mounts else "none",
+        ),
     )
     await redis.set(key, desktop.sandbox_id, ex=owner.ttl)
     stream = await desktop.start_stream()

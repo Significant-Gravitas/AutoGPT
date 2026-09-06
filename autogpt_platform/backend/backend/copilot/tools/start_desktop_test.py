@@ -11,6 +11,7 @@ from backend.blocks.desktop._api import (
     PersistenceInfo,
 )
 from backend.blocks.desktop._common import expert_volume_name, user_volume_name
+from backend.util.sandbox_metadata import deployment_env
 
 from ._test_data import make_session
 from .models import DesktopStreamToolResponse, ErrorResponse
@@ -87,6 +88,12 @@ class TestStartDesktop:
         assert create_kwargs["metadata"] == {
             "autogpt_owner": f"session:{session.session_id}",
             "autogpt_kind": "desktop",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_user": _USER,
+            "autogpt_session": session.session_id,
+            "autogpt_template": "desktop",
+            "autogpt_mounts": "attached",
         }
         redis.set.assert_awaited()
         assert redis.set.await_args.args[0] == (
@@ -209,6 +216,13 @@ class TestExpertDesktop:
         assert create_kwargs["metadata"] == {
             "autogpt_owner": f"expert:{self._EXPERT}",
             "autogpt_kind": "desktop",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_user": _USER,
+            "autogpt_session": session.session_id,
+            "autogpt_expert": self._EXPERT,
+            "autogpt_template": "desktop",
+            "autogpt_mounts": "attached",
         }
         # Cached under the expert, not the session: every session of this
         # expert must come back to the same desktop.

@@ -27,6 +27,7 @@ from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
+from backend.util.sandbox_metadata import SandboxMetadata
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -129,6 +130,7 @@ class BaseE2BExecutorMixin:
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
         envs: Optional[dict[str, str]] = None,
+        metadata: Optional[dict[str, str]] = None,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -151,7 +153,10 @@ class BaseE2BExecutorMixin:
             else:
                 # Create new sandbox (ExecuteCodeBlock/InstantiateCodeSandboxBlock case)
                 sandbox = await AsyncSandbox.create(
-                    api_key=api_key, template=template_id, timeout=timeout
+                    api_key=api_key,
+                    template=template_id,
+                    timeout=timeout,
+                    metadata=metadata,
                 )
                 if setup_commands:
                     for cmd in setup_commands:
@@ -376,6 +381,9 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
                 execution_context=execution_context,
                 extract_files=True,
                 envs=envs,
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
 
             # Determine result object shape & filter out empty formats
@@ -485,7 +493,12 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: "ExecutionContext",
+        **kwargs,
     ) -> BlockOutput:
         try:
             _, text_output, stdout, stderr, sandbox_id, _ = await self.execute_code(
@@ -495,6 +508,9 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 template_id=input_data.template_id,
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
+                metadata=SandboxMetadata.for_block(
+                    execution_context, "code", self.id, input_data.template_id
+                ).as_e2b(),
             )
             if sandbox_id:
                 yield "sandbox_id", sandbox_id

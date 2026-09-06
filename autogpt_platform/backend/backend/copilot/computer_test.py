@@ -17,6 +17,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.tools.e2b_sandbox import SandboxOwner
+from backend.util.sandbox_metadata import deployment_env
 
 _C = "backend.copilot.computer"
 _USER, _EXPERT, _SESSION = "user-1", "exp-1", "sess-1"
@@ -138,6 +139,11 @@ class TestOpenDesktop:
         assert kwargs["metadata"] == {
             "autogpt_owner": f"expert:{_EXPERT}",
             "autogpt_kind": "desktop",
+            "autogpt_source": "copilot",
+            "autogpt_env": deployment_env(),
+            "autogpt_expert": _EXPERT,
+            "autogpt_template": "desktop",
+            "autogpt_mounts": "attached",
         }
         assert redis.set.await_args.args[0] == f"copilot:e2b:expert:{_EXPERT}:desktop"
 
