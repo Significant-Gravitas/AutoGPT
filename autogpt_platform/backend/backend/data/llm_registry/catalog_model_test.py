@@ -62,11 +62,19 @@ def test_invalid_model_fields_rejected(field, value):
         "output_credits_per_1m",
         "cache_read_credits_per_1m",
         "cache_creation_credits_per_1m",
+        "high_context_threshold_tokens",
+        "high_context_input_credits_per_1m",
+        "high_context_output_credits_per_1m",
     ],
 )
 def test_negative_costs_rejected(field):
     with pytest.raises(pydantic.ValidationError):
         CatalogModelCost(**{field: -1})
+
+
+def test_high_context_cost_fields_are_all_or_nothing():
+    with pytest.raises(pydantic.ValidationError, match="must be set together"):
+        CatalogModelCost(high_context_threshold_tokens=200000)
 
 
 def test_routing_shape_accepts_nested_cells():

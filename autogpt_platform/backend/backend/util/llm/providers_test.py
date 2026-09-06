@@ -745,6 +745,38 @@ class TestAIMLAPI:
 
 class TestGoogle:
     @pytest.mark.asyncio
+    async def test_flex_mode_passes_service_tier_to_google(self):
+        fake_response = _fake_openai_chat_response("hi", prompt=5, completion=3)
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            await call_provider(
+                provider="google",
+                model="gemini-2.5-pro",
+                api_key="AIza-test-key",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+                execution_mode="flex",
+            )
+
+        assert async_create.call_args.kwargs["extra_body"] == {"service_tier": "flex"}
+
+    @pytest.mark.asyncio
     async def test_uses_google_openai_compatible_endpoint(self):
         """Google provider must use the Gemini OpenAI-compatible endpoint
         and strip the ``google/`` prefix from the model slug."""

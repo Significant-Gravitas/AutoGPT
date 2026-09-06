@@ -541,7 +541,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="google",
                 creator="google",
                 context_window=1048576,
-                max_output_tokens=65535,
+                max_output_tokens=65536,
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
@@ -555,7 +555,7 @@ def _build_catalog() -> CatalogPayload:
                 provider="google",
                 creator="google",
                 context_window=1048576,
-                max_output_tokens=65535,
+                max_output_tokens=65536,
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1, input_credits_per_1m=15.0, output_credits_per_1m=60.0
@@ -573,6 +573,9 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=4,
                     input_credits_per_1m=188.0,
                     output_credits_per_1m=1500.0,
+                    high_context_threshold_tokens=200000,
+                    high_context_input_credits_per_1m=375.0,
+                    high_context_output_credits_per_1m=2250.0,
                 ),
             ),
             CatalogModel(
@@ -615,6 +618,9 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                    high_context_threshold_tokens=200000,
+                    high_context_input_credits_per_1m=600.0,
+                    high_context_output_credits_per_1m=2700.0,
                 ),
             ),
             CatalogModel(

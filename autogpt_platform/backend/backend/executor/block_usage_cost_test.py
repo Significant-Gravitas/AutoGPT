@@ -16,9 +16,11 @@ from backend.blocks.jina.search import SearchTheWebBlock
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
+    HIGH_CONTEXT_TOKEN_COST,
     MODEL_COST,
     TOKEN_COST,
     TokenRate,
+    compute_token_credits,
 )
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
@@ -215,6 +217,47 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
     )
     # 0.5 * 1000 + 0.25 * 2000 = 500 + 500 = 1000 credits.
     assert cost == 1000
+
+
+@pytest.mark.parametrize(
+    ("model", "high_input_rate", "high_output_rate"),
+    [
+        (LLMModel.GEMINI_2_5_PRO_DIRECT, 375.0, 2250.0),
+        (LLMModel.GEMINI_3_1_PRO_PREVIEW_DIRECT, 600.0, 2700.0),
+    ],
+)
+def test_google_pro_high_context_rate_applies_to_entire_request(
+    model, high_input_rate, high_output_rate
+):
+    high_rate = HIGH_CONTEXT_TOKEN_COST[model]
+    assert high_rate.threshold == 200000
+    assert high_rate.input == high_input_rate
+    assert high_rate.output == high_output_rate
+
+    base_rate = TOKEN_COST[model]
+    threshold_stats = NodeExecutionStats(
+        input_token_count=200000,
+        output_token_count=100000,
+    )
+    assert compute_token_credits({"model": model}, threshold_stats) == math.ceil(
+        (
+            threshold_stats.input_token_count * base_rate.input
+            + threshold_stats.output_token_count * base_rate.output
+        )
+        / 1_000_000
+    )
+
+    high_context_stats = NodeExecutionStats(
+        input_token_count=200001,
+        output_token_count=100000,
+    )
+    assert compute_token_credits({"model": model}, high_context_stats) == math.ceil(
+        (
+            high_context_stats.input_token_count * high_input_rate
+            + high_context_stats.output_token_count * high_output_rate
+        )
+        / 1_000_000
+    )
 
 
 def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(

@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from backend.blocks.llm import is_llm_credentials
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -114,6 +115,11 @@ def test_run_block_does_not_report_llm_credential_use() -> None:
     )
 
     assert tool.activity_event(session=session, result=model_call) is None
+
+
+def test_google_api_key_is_llm_but_google_oauth_is_integration() -> None:
+    assert is_llm_credentials("google", "api_key") is True
+    assert is_llm_credentials("google", "oauth2") is False
 
 
 def test_schedule_followup_reports_schedule_event() -> None:

@@ -91,11 +91,23 @@ LLMProviderName = Literal[
     ProviderName.GOOGLE,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
-# Providers whose credential use is a model call rather than an action taken
-# on the user's behalf; activity feeds leave these out.
+# Providers accepted by the shared LLM credential field.
 LLM_PROVIDER_NAMES: frozenset[str] = frozenset(
     provider.value for provider in get_args(LLMProviderName)
 )
+
+# Provider slugs that uniquely identify an LLM credential. ``google`` is
+# shared with Google Workspace OAuth credentials, so a provider slug alone
+# cannot distinguish a Gemini call from an integration action.
+LLM_EXCLUSIVE_PROVIDER_NAMES = LLM_PROVIDER_NAMES - {ProviderName.GOOGLE.value}
+
+
+def is_llm_credentials(provider: str, credential_type: str | None) -> bool:
+    """Whether credential metadata identifies an LLM call unambiguously."""
+    return provider in LLM_EXCLUSIVE_PROVIDER_NAMES or (
+        provider == ProviderName.GOOGLE.value and credential_type == "api_key"
+    )
+
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",

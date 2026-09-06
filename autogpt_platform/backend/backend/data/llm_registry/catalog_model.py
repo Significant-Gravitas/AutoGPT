@@ -65,6 +65,12 @@ class CatalogModelCost(BaseModel):
     output_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_read_credits_per_1m: float | None = Field(default=None, ge=0)
     cache_creation_credits_per_1m: float | None = Field(default=None, ge=0)
+    # Some providers choose a different rate for the entire request when
+    # its prompt crosses a context-size threshold (for example Gemini Pro
+    # above 200k input tokens).
+    high_context_threshold_tokens: int | None = Field(default=None, gt=0)
+    high_context_input_credits_per_1m: float | None = Field(default=None, ge=0)
+    high_context_output_credits_per_1m: float | None = Field(default=None, ge=0)
     # What the PROVIDER charges us (USD list price per 1M tokens), for
     # in-turn cost estimation — authored per model when it diverges from
     # the transport module's family default (e.g. copilot/moonshot.py).
@@ -83,6 +89,22 @@ class CatalogModelCost(BaseModel):
             raise ValueError(
                 "provider_input_usd_per_1m and provider_output_usd_per_1m "
                 "must be set together"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _high_context_tier_is_complete(self) -> "CatalogModelCost":
+        high_context_fields = (
+            self.high_context_threshold_tokens,
+            self.high_context_input_credits_per_1m,
+            self.high_context_output_credits_per_1m,
+        )
+        if any(value is not None for value in high_context_fields) and not all(
+            value is not None for value in high_context_fields
+        ):
+            raise ValueError(
+                "high-context threshold, input rate, and output rate must be set "
+                "together"
             )
         return self
 

@@ -122,7 +122,7 @@ ExecutionMode = Literal["sync", "batch", "flex"]
 # they support). Anthropic + Groq + Ollama + the open-weight gateways
 # have no flex equivalent — callers asking for flex on them get a
 # sync fallback with a log line.
-_FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
+_FLEX_SUPPORTED_PROVIDERS: set[str] = {"google", "openai", "open_router"}
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -451,6 +451,7 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=False,
+            service_tier=service_tier,
         )
 
     raise ValueError(f"Unsupported LLM provider: {provider}")
