@@ -5,7 +5,9 @@ import {
   waitFor,
   cleanup,
 } from "@/tests/integrations/test-utils";
+import type { ContextType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { MCPSetupCard } from "../MCPSetupCard";
 
 // Mock the copilot chat actions used by MCPSetupCard
@@ -331,6 +333,56 @@ describe("MCPSetupCard", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/oauth sign-in timed out/i)).toBeDefined();
+    });
+  });
+
+  it("forwards the authorization response issuer to the credentials provider", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({
+        code: "auth-code",
+        state: "st",
+        iss: "https://auth.example.com",
+      }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockResolvedValue({
+      id: "cred-1",
+      provider: "mcp",
+      type: "oauth2",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as ContextType<typeof CredentialsProvidersContext>;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(mcpOAuthCallback).toHaveBeenCalledWith(
+        "auth-code",
+        "st",
+        "https://auth.example.com",
+      );
     });
   });
 

@@ -4,7 +4,7 @@ Uses httpx.AsyncClient with ASGITransport instead of fastapi.testclient.TestClie
 to avoid creating blocking portals that can corrupt pytest-asyncio's session event loop.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import httpx
@@ -75,6 +75,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",
@@ -95,11 +96,13 @@ class TestDiscoverTools:
         assert data["tools"][1]["name"] == "add_numbers"
         assert data["server_name"] == "test-server"
         assert data["protocol_version"] == "2025-03-26"
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_with_auth_token(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -142,6 +145,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -169,9 +173,11 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
+            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -192,6 +198,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
             response = await client.post(
@@ -213,6 +220,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
             )
@@ -236,6 +244,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
             )
@@ -351,6 +360,279 @@ class TestOAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "autogpt-platform" in data["login_url"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com/"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value={
+                    "issuer": "https://auth.example.com",
+                    "authorization_endpoint": "https://auth.example.com/authorize",
+                    "token_endpoint": "https://auth.example.com/token",
+                    "authorization_response_iss_parameter_supported": True,
+                }
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == "https://auth.example.com"
+        assert state_metadata["iss_required"] is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_ignores_issuer_naming_another_server(self, client):
+        """RFC 8414 §3.3: an issuer that isn't the metadata's own URL is untrusted."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value={
+                    "issuer": "https://evil.example.net",
+                    "authorization_endpoint": "https://auth.example.com/authorize",
+                    "token_endpoint": "https://auth.example.com/token",
+                    "authorization_response_iss_parameter_supported": True,
+                }
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == ""
+        assert state_metadata["iss_required"] is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_ignores_resource_on_another_origin(self, client):
+        """RFC 9728 §3.3: a hostile server must not pick the token audience."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://as.legit.example"],
+                    "resource": "https://api.legit.example/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value={
+                    "authorization_endpoint": "https://as.legit.example/authorize",
+                    "token_endpoint": "https://as.legit.example/token",
+                }
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://evil.example/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["resource_url"] == "https://evil.example/mcp"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_dynamic_client_registration_declares_web_application(self):
+        from backend.api.features.mcp.routes import _register_mcp_client
+
+        with patch("backend.api.features.mcp.routes.Requests") as MockRequests:
+            post = MockRequests.return_value.post = AsyncMock()
+            post.return_value = MagicMock()
+            post.return_value.json.return_value = {"client_id": "cid"}
+
+            result = await _register_mcp_client(
+                "https://auth.example.com/register",
+                "http://localhost:3000/auth/integrations/mcp_callback",
+                "https://mcp.example.com/mcp",
+            )
+
+        assert result == {"client_id": "cid"}
+        payload = post.call_args.kwargs["json"]
+        assert payload["application_type"] == "web"
+        assert payload["redirect_uris"] == [
+            "http://localhost:3000/auth/integrations/mcp_callback"
+        ]
+
+
+def _callback_mocks(mock_cm, mock_settings, MockHandler, state_metadata):
+    """Wire the mocks a successful ``/oauth/callback`` needs."""
+    mock_settings.config.frontend_base_url = "http://localhost:3000"
+    mock_state = AsyncMock()
+    mock_state.state_metadata = {
+        "authorize_url": "https://auth.example.com/authorize",
+        "token_url": "https://auth.example.com/token",
+        "client_id": "cid",
+        "server_url": "https://mcp.example.com/mcp",
+        **state_metadata,
+    }
+    mock_state.scopes = []
+    mock_state.code_verifier = "v"
+    mock_cm.store.verify_state_token = AsyncMock(return_value=mock_state)
+    mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+    mock_cm.create = AsyncMock()
+    creds = OAuth2Credentials(
+        provider="mcp",
+        title=None,
+        access_token=SecretStr("access-token"),
+        refresh_token=None,
+        access_token_expires_at=None,
+        refresh_token_expires_at=None,
+        scopes=[],
+        metadata={},
+    )
+    MockHandler.return_value.exchange_code_for_tokens = AsyncMock(return_value=creds)
+    return creds
+
+
+class TestOAuthCallbackIssuer:
+    """RFC 9207 ``iss`` handling on the callback."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_mismatched_iss_is_rejected(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={
+                    "code": "code",
+                    "state_token": "state",
+                    "iss": "https://evil.example.net",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "issuer does not match" in response.json()["detail"]
+        MockHandler.return_value.exchange_code_for_tokens.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_iss_is_rejected_when_server_advertises_it(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={"code": "code", "state_token": "state"},
+            )
+
+        assert response.status_code == 400
+        assert "missing the issuer" in response.json()["detail"]
+        MockHandler.return_value.exchange_code_for_tokens.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_iss_is_accepted_for_servers_that_do_not_send_it(
+        self, client
+    ):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            creds = _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": False},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={"code": "code", "state_token": "state"},
+            )
+
+        assert response.status_code == 200
+        assert creds.metadata is not None
+        assert creds.metadata["mcp_issuer"] == "https://auth.example.com"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_matching_iss_binds_issuer_to_credential(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            creds = _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={
+                    "code": "code",
+                    "state_token": "state",
+                    "iss": "https://auth.example.com",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_awaited_once()
+        assert creds.metadata is not None
+        assert creds.metadata["mcp_issuer"] == "https://auth.example.com"
+        assert creds.metadata["mcp_server_url"] == "https://mcp.example.com/mcp"
 
 
 class TestOAuthCallback:

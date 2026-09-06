@@ -7,6 +7,7 @@ frontend can list available tools on an MCP server before placing a block.
 
 import logging
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 import fastapi
 from autogpt_libs.auth import get_user_id
@@ -114,6 +115,9 @@ async def discover_tools(
             status_code=502,
             detail=f"Failed to connect to MCP server: {e}",
         )
+    finally:
+        # Release any legacy session; a no-op on stateless servers.
+        await client.close()
 
     return DiscoverToolsResponse(
         tools=[
@@ -180,10 +184,14 @@ async def mcp_oauth_login(
     protected_resource = await client.discover_auth()
 
     metadata: dict[str, Any] | None = None
+    # Where the authorization-server metadata was fetched from; its ``issuer``
+    # is only trusted when it names this server (RFC 8414 §3.3).
+    metadata_url = server_url
 
     if protected_resource and protected_resource.get("authorization_servers"):
         auth_server_url = protected_resource["authorization_servers"][0]
-        resource_url = protected_resource.get("resource", server_url)
+        metadata_url = auth_server_url
+        resource_url = _trusted_resource(protected_resource.get("resource"), server_url)
 
         # Validate the auth server URL from metadata to prevent SSRF.
         try:
@@ -252,6 +260,14 @@ async def mcp_oauth_login(
     scopes = (protected_resource or {}).get("scopes_supported") or metadata.get(
         "scopes_supported", []
     )
+    # RFC 8414 issuer identifier: validated against the ``iss``
+    # authorization-response parameter (RFC 9207) on callback, and recorded
+    # on the credential so it stays bound to the authorization server that
+    # issued it.  Servers that advertise ``iss`` support must send it.
+    issuer = _trusted_issuer(metadata, metadata_url)
+    iss_required = bool(issuer) and (
+        metadata.get("authorization_response_iss_parameter_supported") is True
+    )
     state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id,
         ProviderName.MCP.value,
@@ -264,6 +280,8 @@ async def mcp_oauth_login(
             "server_url": server_url,
             "client_id": client_id,
             "client_secret": client_secret,
+            "issuer": issuer,
+            "iss_required": iss_required,
         },
     )
 
@@ -288,6 +306,12 @@ class MCPOAuthCallbackRequest(BaseModel):
 
     code: str = Field(description="Authorization code from OAuth callback")
     state_token: str = Field(description="State token for CSRF verification")
+    iss: str | None = Field(
+        default=None,
+        description="Issuer identifier from the authorization response (RFC 9207). "
+        "Must match the authorization server discovered at login; required when "
+        "that server advertises `authorization_response_iss_parameter_supported`.",
+    )
 
 
 class MCPOAuthCallbackResponse(BaseModel):
@@ -321,6 +345,24 @@ async def mcp_oauth_callback(
         )
 
     meta = valid_state.state_metadata
+    expected_issuer = meta.get("issuer") or ""
+    # RFC 9207 / MCP 2026-07-28: ``iss`` must match the issuer discovered at
+    # login, otherwise the code may come from a mix-up attack.  A server that
+    # advertises ``iss`` support must send it; older servers may omit it.
+    if request.iss is None:
+        if meta.get("iss_required"):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail="Authorization response is missing the issuer identifier "
+                "the authorization server advertised it would send.",
+            )
+    elif expected_issuer and request.iss != expected_issuer:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Authorization response issuer does not match the "
+            "authorization server this login was started with.",
+        )
+
     frontend_base_url = settings.config.frontend_base_url
     if not frontend_base_url:
         raise fastapi.HTTPException(
@@ -357,6 +399,7 @@ async def mcp_oauth_callback(
     credentials.metadata["mcp_client_secret"] = meta.get("client_secret", "")
     credentials.metadata["mcp_token_url"] = meta["token_url"]
     credentials.metadata["mcp_resource_url"] = meta.get("resource_url", "")
+    credentials.metadata["mcp_issuer"] = expected_issuer
 
     hostname = server_host(meta["server_url"])
     credentials.title = f"MCP: {hostname}"
@@ -490,6 +533,53 @@ async def mcp_store_token(
 # ======================== Helpers ======================== #
 
 
+def _origin(url: str) -> tuple[str, str]:
+    parsed = urlparse(url)
+    return parsed.scheme.lower(), parsed.netloc.lower()
+
+
+def _trusted_resource(resource: Any, server_url: str) -> str:
+    """The protected-resource ``resource`` identifier, if it names *server_url*.
+
+    RFC 9728 §3.3 requires it to be the URL the metadata was fetched for.  A
+    server naming another origin would have us request a token minted for a
+    different API and then send it to itself (a mix-up); in that case the
+    server URL is used as the resource indicator instead.
+    """
+    if not isinstance(resource, str) or not resource:
+        return server_url
+    if _origin(resource) != _origin(server_url):
+        logger.warning(
+            "Ignoring resource %r from %s: it names another origin",
+            resource,
+            server_host(server_url),
+        )
+        return server_url
+    return resource
+
+
+def _trusted_issuer(metadata: dict[str, Any], metadata_url: str) -> str:
+    """The metadata's ``issuer``, or ``""`` if it does not name *metadata_url*.
+
+    RFC 8414 §3.3 requires the issuer in the metadata document to be the URL
+    the document was fetched for; anything else is not something we should
+    bind credentials to or validate ``iss`` against.
+    """
+    issuer = metadata.get("issuer")
+    if not isinstance(issuer, str) or not issuer:
+        return ""
+    parsed = urlparse(metadata_url)
+    accepted = {metadata_url.rstrip("/"), f"{parsed.scheme}://{parsed.netloc}"}
+    if issuer.rstrip("/") not in accepted:
+        logger.warning(
+            "Ignoring issuer %r from %s: it does not name that server",
+            issuer,
+            server_host(metadata_url),
+        )
+        return ""
+    return issuer
+
+
 async def _register_mcp_client(
     registration_endpoint: str,
     redirect_uri: str,
@@ -505,6 +595,9 @@ async def _register_mcp_client(
                 "grant_types": ["authorization_code"],
                 "response_types": ["code"],
                 "token_endpoint_auth_method": "client_secret_post",
+                # Required by MCP 2026-07-28 so OIDC-backed authorization
+                # servers apply web-app redirect URI rules.
+                "application_type": "web",
             },
         )
         data = response.json()
