@@ -146,12 +146,15 @@ describe("VoiceModeBar", () => {
     act(() => void vi.advanceTimersByTime(TICK_MS));
     expect(newestColumn(container)).toBeLessThan(loud);
 
-    // Thinking has no input to draw, so the trace must not read as silence.
+    // Thinking has no input to draw. It must grow out of the flat line the
+    // mic left — not jump — and then must not read as silence.
     rerender(
       <VoiceModeBar state="thinking" statusLabel="Thinking" onStop={vi.fn()} />,
     );
-    act(() => void vi.advanceTimersByTime(TICK_MS * 3));
-    expect(newestColumn(container)).toBeGreaterThan(0);
+    act(() => void vi.advanceTimersByTime(TICK_MS));
+    expect(newestColumn(container)).toBeLessThanOrEqual(6);
+    act(() => void vi.advanceTimersByTime(TICK_MS * 7));
+    expect(newestColumn(container)).toBeGreaterThan(20);
     vi.useRealTimers();
   });
 });

@@ -9,9 +9,9 @@ import { VoiceTrace, type TraceSource } from "./VoiceTrace";
 
 /**
  * Each stage of the turn gets its own colour as well as its own motion:
- * green while the mic is live, amber while AutoPilot works, near-black
- * while it speaks. Colour is what makes the handover legible at a glance —
- * the shape alone read as one continuous animation.
+ * green while the mic is live, the AutoGPT accent while AutoPilot works,
+ * near-black while it speaks. Colour is what makes the handover legible at
+ * a glance — the shape alone read as one continuous animation.
  */
 const APPEARANCE: Record<
   Exclude<VoiceState, "off">,
@@ -19,8 +19,8 @@ const APPEARANCE: Record<
 > = {
   listening: { source: "mic", color: "bg-emerald-500" },
   hearing: { source: "mic", color: "bg-emerald-500" },
-  transcribing: { source: "pulse", color: "bg-amber-500" },
-  thinking: { source: "pulse", color: "bg-amber-500" },
+  transcribing: { source: "pulse", color: "bg-accent" },
+  thinking: { source: "pulse", color: "bg-accent" },
   speaking: { source: "speech", color: "bg-zinc-900" },
 };
 

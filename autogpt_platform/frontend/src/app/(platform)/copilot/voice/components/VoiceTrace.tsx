@@ -12,6 +12,9 @@ import { readSpeechLevel } from "../speechLevel";
 const COLUMNS = 60;
 export const TICK_MS = 67;
 const MIN_SCALE = 0.06;
+const PULSE_PEAK = 0.7;
+/** In ticks per radian — about one breath every 1.4 s. */
+const PULSE_PERIOD = 3.3;
 
 export type TraceSource = "mic" | "speech" | "pulse";
 
@@ -58,7 +61,7 @@ export function VoiceTrace({ source, className, color }: Props) {
   return (
     <div
       className={cn(
-        "flex h-6 items-center justify-center gap-[2px] overflow-hidden",
+        "flex h-6 items-center justify-center gap-[3px] overflow-hidden",
         className,
       )}
       aria-hidden="true"
@@ -66,7 +69,7 @@ export function VoiceTrace({ source, className, color }: Props) {
       {columns.map(({ level, color: recorded }, index) => (
         <span
           key={index}
-          className={cn("w-[2px] shrink-0 rounded-full", recorded)}
+          className={cn("w-[3px] shrink-0 rounded-full", recorded)}
           style={{ height: `${Math.max(MIN_SCALE, level) * 100}%` }}
         />
       ))}
@@ -91,8 +94,9 @@ function column(
 
 /**
  * Nothing to measure — the model is thinking. A travelling bump reads as
- * activity without pretending to be a measurement.
+ * activity without pretending to be a measurement. It starts from zero so
+ * it grows out of the flat line the mic left behind rather than jumping.
  */
 function pulse(tick: number): number {
-  return 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(tick / 3.3));
+  return PULSE_PEAK * (0.5 - 0.5 * Math.cos(tick / PULSE_PERIOD));
 }
