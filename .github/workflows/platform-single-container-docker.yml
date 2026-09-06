@@ -21,15 +21,9 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish the current dev commit to Docker Hub"
-        required: true
-        type: boolean
-        default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'release') && 'publication' || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'release' && 'publication' || github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -54,7 +48,6 @@ jobs:
         id: policy
         shell: bash
         env:
-          PUBLISH_REQUESTED: ${{ inputs.publish }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: bash .github/scripts/platform-single-container-publish.sh authorize
@@ -142,7 +135,7 @@ jobs:
 
   publish-platform-digests:
     name: Publish, smoke, and scan (${{ matrix.platform }})
-    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
+    if: ${{ github.event_name == 'release' && needs.authorize-publication.outputs.allowed == 'true' && needs.build-and-scan.result == 'success' }}
     needs: [authorize-publication, build-and-scan]
     environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ${{ matrix.runner }}
@@ -272,7 +265,7 @@ jobs:
 
   publish-manifest:
     name: Publish multi-platform manifest
-    if: ${{ needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
+    if: ${{ github.event_name == 'release' && needs.authorize-publication.outputs.allowed == 'true' && needs.publish-platform-digests.result == 'success' }}
     needs: [authorize-publication, publish-platform-digests]
     environment: ${{ github.event_name == 'release' && 'dockerhub-release' || 'dockerhub-publish' }}
     runs-on: ubuntu-24.04

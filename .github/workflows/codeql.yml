@@ -17,6 +17,7 @@ on:
   pull_request:
     branches: [ "master", "release-*", "dev" ]
   merge_group:
+  workflow_dispatch:
   schedule:
     - cron: '15 4 * * 0'
 
