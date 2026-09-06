@@ -45,6 +45,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Ran command",
     subject: (input) => quoted(input, "command", 60),
   },
+  start_desktop: {
+    category: "browser",
+    running: "Starting desktop",
+    done: "Started desktop",
+  },
   list_workspace_files: {
     category: "file-list",
     running: "Listing workspace files",

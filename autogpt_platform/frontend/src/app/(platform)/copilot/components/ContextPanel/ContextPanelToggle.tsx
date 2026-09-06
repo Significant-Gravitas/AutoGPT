@@ -42,6 +42,13 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const lastArtifact = useCopilotUIStore((s) => s.artifactPanel.lastArtifact);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const hasComputer = useCopilotUIStore(
+    (s) => s.artifactPanel.computer != null,
+  );
+  const isComputerOpen = useCopilotUIStore(
+    (s) => s.artifactPanel.isComputerOpen,
+  );
+  const openComputer = useCopilotUIStore((s) => s.openComputer);
   const { generated } = useSessionFiles(sessionId);
   const lastGenerated = getLastGeneratedFile(generated);
   const isFilesCardOpen = useAreWorkspaceFileCardsOpen();
@@ -49,7 +56,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   // An open artifact preview and the artifacts tab are both faces of the
   // right sidebar, so the toggle reads active for either and is the one
   // control that closes them — the panel carries no close button.
-  const isRightSidebarOpen = hasArtifact || isArtifactsOpen;
+  const isRightSidebarOpen = hasArtifact || isArtifactsOpen || isComputerOpen;
 
   // The open activity card already lists the same file, so the labeled
   // button floating above it is pure duplication — the card's rows are the
@@ -62,7 +69,7 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
   const showFileName = lastGenerated != null && !isRightSidebarOpen;
 
   function handleSidebarToggle() {
-    if (hasArtifact) {
+    if (hasArtifact || isComputerOpen) {
       closeArtifactPanel();
       return;
     }
@@ -77,6 +84,11 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
       lastArtifact;
     if (target) {
       openArtifact(target);
+      return;
+    }
+    // No document yet but a desktop was started: the machine is the work.
+    if (hasComputer) {
+      openComputer();
       return;
     }
     toggleContextPanelTab("artifacts");
@@ -94,7 +106,9 @@ export function ContextPanelToggle({ sessionId = null }: Props) {
             ? "Hide artifacts"
             : lastGenerated
               ? `Open ${lastGenerated.item.name}`
-              : "Open artifacts"
+              : hasComputer
+                ? "Open computer"
+                : "Open artifacts"
         }
         aria-pressed={isRightSidebarOpen}
         className={cn(

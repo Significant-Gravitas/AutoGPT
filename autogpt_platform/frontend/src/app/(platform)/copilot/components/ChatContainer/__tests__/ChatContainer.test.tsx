@@ -39,6 +39,9 @@ function resetCopilotStore() {
       history: [],
       activeTab: "files",
       lastArtifact: null,
+      mode: "artifact",
+      computer: null,
+      isComputerOpen: false,
     },
   });
 }
@@ -420,6 +423,9 @@ describe("ChatContainer", () => {
           history: [],
           activeTab: "files",
           lastArtifact: null,
+          mode: "artifact",
+          computer: null,
+          isComputerOpen: false,
         },
       });
 
