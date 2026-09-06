@@ -634,7 +634,9 @@ def _make_expert_preset(
         team_id=team_id,
         graph_id="graph-1",
         graph_version=1,
-        inputs={},
+        # Trigger config nests under the per-node mask key (trigger node id
+        # "trigger-node" -> "trigger"); without it the run is skipped.
+        inputs={"_node_input_mask_trigger": {}},
         credentials={},
     )
 
