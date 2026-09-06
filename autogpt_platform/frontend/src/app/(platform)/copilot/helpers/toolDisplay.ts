@@ -1,4 +1,5 @@
 import type { ToolUIPart, UIMessage } from "ai";
+import { beautifyString } from "@/lib/utils";
 import { asObject } from "../components/ToolChain/resultHelpers";
 
 export function toolDisplayName(value: unknown): string | null {
@@ -43,4 +44,23 @@ export function getAgentDisplayName(
     return toolDisplayName(asObject(result.setup_info)?.agent_name);
   }
   return null;
+}
+
+export function getBlockDisplayName(
+  displayName: unknown,
+  output?: unknown,
+): string | null {
+  const result = asObject(output);
+  const name =
+    toolDisplayName(displayName) ??
+    toolDisplayName(result?.block_name) ??
+    toolDisplayName(asObject(result?.block)?.name) ??
+    (result?.type === "setup_requirements"
+      ? toolDisplayName(asObject(result.setup_info)?.agent_name)
+      : null);
+  return name
+    ? beautifyString(name)
+        .replace(/ Block$/, "")
+        .trim()
+    : null;
 }

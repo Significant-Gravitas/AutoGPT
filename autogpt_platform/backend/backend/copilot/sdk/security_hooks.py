@@ -280,7 +280,7 @@ def create_security_hooks(
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             if (
                 is_copilot_tool
-                and clean_name == "run_agent"
+                and clean_name in {"run_agent", "run_block", "continue_run_block"}
                 and tool_use_id is not None
                 and tool_display_bridge is not None
             ):

@@ -401,6 +401,33 @@ describe("ToolResult", () => {
   });
 
   describe("block routing", () => {
+    it.each([
+      { block_name: "FillTextTemplateBlock", outputs: { output: ["Hello"] } },
+      { block: { name: "FillTextTemplateBlock" } },
+    ])("normalizes expanded block names from %j", (output) => {
+      render(<ToolResult row={row(output, "run_block")} />);
+      expect(screen.getByText("Fill Text Template")).toBeDefined();
+      expect(screen.queryByText("FillTextTemplateBlock")).toBeNull();
+    });
+
+    it("keeps unknown block output cards generic instead of showing a UUID", () => {
+      render(
+        <ToolResult
+          row={row(
+            {
+              block_id: "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+              outputs: { output: ["Hello"] },
+            },
+            "run_block",
+          )}
+        />,
+      );
+      expect(screen.getByText("Block")).toBeDefined();
+      expect(
+        screen.queryByText("db7d8f02-2f44-4c55-ab7a-eae0941f0c30"),
+      ).toBeNull();
+    });
+
     it("renders a single block card for run_block block payloads", () => {
       render(
         <ToolResult

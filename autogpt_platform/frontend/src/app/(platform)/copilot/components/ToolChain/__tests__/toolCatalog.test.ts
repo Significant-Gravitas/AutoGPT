@@ -75,17 +75,12 @@ describe("getCatalogLabel", () => {
       "done",
       'Posted to "#general"',
     ],
-    [
-      "run_block",
-      { block_name: "Web Search" },
-      "done",
-      'Ran block "Web Search"',
-    ],
+    ["run_block", { block_name: "Web Search" }, "done", "Ran block"],
     [
       "run_block",
       { block_id: "abcdefabcdefabcdefabcdef" },
       "done",
-      'Ran block "abcdefabcdefabcdefab…"',
+      "Ran block",
     ],
     [
       "run_mcp_tool",

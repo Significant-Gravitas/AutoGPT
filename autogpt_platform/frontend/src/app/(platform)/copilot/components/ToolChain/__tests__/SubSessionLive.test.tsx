@@ -69,37 +69,58 @@ function subSession(
 describe("SubSessionLive", () => {
   afterEach(cleanup);
 
-  it("shows persisted names in a delegate's live workflow steps", async () => {
-    server.use(
-      subSession(
-        [
-          {
-            role: "assistant",
-            content: "",
-            tool_calls: [
-              {
-                id: "run-1",
-                display_name: "Daily briefing",
-                function: {
-                  name: "run_agent",
-                  arguments: '{"library_agent_id":"library-id"}',
+  it.each([
+    ["run_agent", "Daily briefing", "Running agent", "Daily briefing"],
+    [
+      "run_block",
+      "FillTextTemplateBlock",
+      "Running block",
+      "Fill Text Template",
+    ],
+    [
+      "continue_run_block",
+      "FillTextTemplateBlock",
+      "Continuing block run",
+      "Fill Text Template",
+    ],
+  ])(
+    "shows persisted names in a delegate's live %s steps",
+    async (tool, displayName, label, name) => {
+      server.use(
+        subSession(
+          [
+            {
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                {
+                  id: "run-1",
+                  display_name: displayName,
+                  function: {
+                    name: tool,
+                    arguments: JSON.stringify(
+                      tool === "run_agent"
+                        ? { library_agent_id: "library-id" }
+                        : tool === "run_block"
+                          ? { block_id: "block-id", input_data: {} }
+                          : { review_id: "review-id" },
+                    ),
+                  },
                 },
-              },
-            ],
-          },
-        ],
-        { chat_status: "running", active_stream: null },
-      ),
-    );
-    render(
-      <SubSessionCard
-        output={{ status: "running", sub_session_id: "sub-1" }}
-      />,
-    );
-    expect(
-      await screen.findByText('Running agent "Daily briefing"…'),
-    ).toBeDefined();
-  });
+              ],
+            },
+          ],
+          { chat_status: "running", active_stream: null },
+        ),
+      );
+      render(
+        <SubSessionCard
+          output={{ status: "running", sub_session_id: "sub-1" }}
+        />,
+      );
+      expect(await screen.findByText(`${label} "${name}"…`)).toBeDefined();
+    },
+  );
 
   it("matches historical delegate output names by tool call ID", async () => {
     server.use(

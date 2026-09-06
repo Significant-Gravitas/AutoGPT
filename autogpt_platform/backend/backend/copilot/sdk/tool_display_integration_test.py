@@ -44,16 +44,40 @@ def make_session():
     )
 
 
+@pytest.mark.parametrize(
+    "tool_name,args,display_name,name_key",
+    [
+        (
+            "run_agent",
+            {"library_agent_id": "agent"},
+            "Actual Library Title",
+            "graph_name",
+        ),
+        (
+            "run_block",
+            {"block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30", "input_data": {}},
+            "FillTextTemplateBlock",
+            "block_name",
+        ),
+        (
+            "continue_run_block",
+            {"review_id": "review"},
+            "FillTextTemplateBlock",
+            "block_name",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_hook_to_mcp_handler_keeps_provider_identity_and_clean_stash():
+async def test_hook_to_mcp_handler_keeps_provider_identity_and_clean_stash(
+    tool_name, args, display_name, name_key
+):
     bridge = SDKToolDisplayBridge()
     hooks = create_security_hooks("user", tool_display_bridge=bridge)
     pre_hook = hooks["PreToolUse"][0].hooks[0]
-    args = {"library_agent_id": "agent"}
     decision = await pre_hook(
         {
             "hook_event_name": "PreToolUse",
-            "tool_name": "mcp__copilot__run_agent",
+            "tool_name": f"mcp__copilot__{tool_name}",
             "tool_input": args,
             "session_id": "session",
             "transcript_path": "",
@@ -70,29 +94,29 @@ async def test_hook_to_mcp_handler_keeps_provider_identity_and_clean_stash():
     async def execute(clean_args):
         assert clean_args == args
         assert get_sdk_tool_call_id() == "toolu-provider"
-        emit_tool_display_name("Actual Library Title")
+        emit_tool_display_name(display_name)
         return {
-            "content": [
-                {"type": "text", "text": '{"graph_name":"Actual Library Title"}'}
-            ]
+            "content": [{"type": "text", "text": json.dumps({name_key: display_name})}]
         }
 
-    wrapper = _make_truncating_wrapper(execute, "run_agent", tool_display_bridge=bridge)
-    schema = _build_input_schema(TOOL_REGISTRY["run_agent"])
+    wrapper = _make_truncating_wrapper(execute, tool_name, tool_display_bridge=bridge)
+    schema = _build_input_schema(TOOL_REGISTRY[tool_name])
     server = create_sdk_mcp_server(
-        "copilot", tools=[tool("run_agent", "Run agent", schema)(wrapper)]
+        "copilot", tools=[tool(tool_name, "Run tool", schema)(wrapper)]
     )
     try:
         async with create_connected_server_and_client_session(
             server["instance"]
         ) as client:
-            result = await client.call_tool("run_agent", tagged)
+            result = await client.call_tool(tool_name, tagged)
             assert not result.isError
         assert bridge.ready.is_set()
-        assert bridge.drain()[0].id == "toolu-provider"
+        [display] = bridge.drain()
+        assert display.id == "toolu-provider"
+        assert display.data.displayName == display_name
         assert (
-            json.loads(pop_pending_tool_output("run_agent", args))["graph_name"]
-            == "Actual Library Title"
+            json.loads(pop_pending_tool_output(tool_name, args))[name_key]
+            == display_name
         )
     finally:
         set_execution_context(None, None)
@@ -133,7 +157,17 @@ def test_fallback_transcript_never_persists_sdk_correlation_token():
 
 
 @pytest.mark.parametrize("name_first", [True, False])
-def test_dispatch_persists_name_without_duplicate_call_and_flags_late_save(name_first):
+@pytest.mark.parametrize(
+    "tool_name,tool_input,display_name",
+    [
+        ("run_agent", {"preset_id": "p"}, "Daily Digest"),
+        ("run_block", {"block_id": "b", "input_data": {}}, "FillTextTemplateBlock"),
+        ("continue_run_block", {"review_id": "r"}, "FillTextTemplateBlock"),
+    ],
+)
+def test_dispatch_persists_name_without_duplicate_call_and_flags_late_save(
+    name_first, tool_name, tool_input, display_name
+):
     session = make_session()
     ctx = MagicMock(session=session)
     state = MagicMock()
@@ -141,10 +175,10 @@ def test_dispatch_persists_name_without_duplicate_call_and_flags_late_save(name_
         assistant_response=ChatMessage(role="assistant"), accumulated_tool_calls=[]
     )
     display = StreamToolDisplayAvailable(
-        id="call", data=ToolDisplayData(toolCallId="call", displayName="Daily Digest")
+        id="call", data=ToolDisplayData(toolCallId="call", displayName=display_name)
     )
     start = StreamToolInputAvailable(
-        toolCallId="call", toolName="run_agent", input={"preset_id": "p"}
+        toolCallId="call", toolName=tool_name, input=tool_input
     )
     events = [display, start] if name_first else [start, display]
     for event in events:
@@ -155,8 +189,9 @@ def test_dispatch_persists_name_without_duplicate_call_and_flags_late_save(name_
     assert len(session.messages) == 1
     assert len(session.messages[0].tool_calls) == 1
     call = session.messages[0].tool_calls[0]
-    assert call["display_name"] == "Daily Digest"
-    assert json.loads(call["function"]["arguments"]) == {"preset_id": "p"}
+    assert call["display_name"] == display_name
+    assert call["function"]["name"] == tool_name
+    assert json.loads(call["function"]["arguments"]) == tool_input
     if not name_first:
         assert session.messages[0].tool_calls_pending_save
 
