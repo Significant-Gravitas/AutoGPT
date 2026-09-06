@@ -9,7 +9,7 @@ This guide provides context for coding agents when updating the **autogpt_platfo
 - `autogpt_platform/frontend` – Next.js + Typescript frontend.
 - `autogpt_platform/docker-compose.yml` – development stack.
 
-See `docs/content/platform/getting-started.md` for setup instructions.
+See `docs/platform/getting-started.md` for setup instructions.
 
 ## Code style
 
@@ -78,5 +78,7 @@ Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
 - Keep out-of-scope changes under 20% of the PR.
 - Ensure PR descriptions are complete.
 - For changes touching `data/*.py`, validate user ID checks or explain why not needed.
-- If adding protected frontend routes, update `frontend/lib/supabase/middleware.ts`.
+- If adding protected frontend routes, update `autogpt_platform/frontend/src/middleware.ts`
+  (matcher config) and `autogpt_platform/frontend/src/lib/auth/middleware.ts`
+  (better-auth protection logic).
 - Use the linear ticket branch structure if given codex/open-1668-resume-dropped-runs
