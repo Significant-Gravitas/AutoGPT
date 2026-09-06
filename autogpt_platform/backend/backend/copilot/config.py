@@ -636,8 +636,12 @@ class ChatConfig(BaseSettings):
         description="E2B API key. Falls back to E2B_API_KEY environment variable.",
     )
     e2b_sandbox_template: str = Field(
-        default="base",
-        description="E2B sandbox template to use for copilot sessions.",
+        default="agpt-desktop-1x2",
+        description="E2B sandbox template for copilot sessions. The default is our "
+        "own image (E2B's desktop image at 1 vCPU / 2 GiB, ~$0.08/h running, "
+        "no display started), built on the team automatically the first time "
+        "it is needed; see backend.util.e2b_template. Any other value is used "
+        "as-is and must already exist on the team.",
     )
     e2b_sandbox_timeout: int = Field(
         default=420,  # 7 min safety net — allows headroom for compaction retries
