@@ -10,7 +10,7 @@ from backend.copilot.tools.base import (
     _persist_and_summarize,
     _summarize_binary_fields,
 )
-from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
 
 
 class _HugeOutputTool(BaseTool):
@@ -192,3 +192,95 @@ class TestSummarizeBinaryFields:
         data = {"message": "hello", "type": "info"}
         raw = json.dumps(data)
         assert _summarize_binary_fields(raw) == raw
+
+
+class TestEnvelopeEnforcement:
+    """`BaseTool.execute` must REFUSE a tool outside the turn's envelope.
+
+    Hiding a tool from the model's schema is presentation; this is the
+    boundary. Without this test the enforcement block can be deleted and the
+    whole suite stays green.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_tool_outside_the_envelope_is_refused_and_never_executed(
+        self, monkeypatch
+    ):
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "delete_preset"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a denied tool")
+
+        tool = _Spy()
+        session = MagicMock(session_id="s1")
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            result = await tool.execute("u1", session, "call-1")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False, "the denied tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_a_permitted_tool_still_runs(self, monkeypatch):
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        class _Ok(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "read_workspace_file"
+
+            @property
+            def description(self) -> str:
+                return "ok"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                return ErrorResponse(message="fine", session_id="s1")
+
+        tool = _Ok()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+        assert tool.ran is True
