@@ -17,7 +17,8 @@ metadata:
 3. Every non-bot, non-author top-level review has been acknowledged (replied-to) OR resolved via a thread it spawned.
 4. Every non-bot, non-author issue comment has been acknowledged (replied-to).
 5. Every CI check is `conclusion: "success"` or `"skipped"` / `"neutral"` — none `"failure"` or still pending.
-6. **Two consecutive post-CI polls** (≥60s apart) stay clean — no new threads, no new non-empty reviews, no new issue comments. Bots (coderabbitai, sentry, autogpt-reviewer) frequently post late after CI settles; a single green snapshot is not sufficient.
+6. **Two consecutive post-CI polls** (≥60s apart) stay clean — no new threads, no new non-empty reviews, no new issue comments. Bots (coderabbitai, sentry, autogpt-pr-reviewer) frequently post late after CI settles; a single green snapshot is not sufficient.
+7. **No requested-but-unanswered review.** If a `/review` comment was posted on the PR and the review bot has not replied yet, quiet polls do **not** count toward condition 6 — keep polling until the review lands or the wait budget expires. See [Waiting on a requested bot review](#waiting-on-a-requested-bot-review).
 
 **Do not stop at a fixed number of rounds.** If round N introduces new comments, round N+1 is required. Cap at `_MAX_ROUNDS = 10` as a safety valve, but expect 2–5 in practice.
 
@@ -62,6 +63,16 @@ while round < _MAX_ROUNDS:
 polish_polling(PR)
 ```
 
+### Optional: the review bot
+
+`invoke_skill("pr-review", PR)` is the agent's **own** review and always runs every round. In addition to it, the repo's review bot can be summoned on demand by commenting `/review` on the PR (see the `open-pr` skill):
+
+```bash
+gh pr comment "${PR}" --body "/review"
+```
+
+This is an **option, not a required step**, and it is **not** a substitute for the `/pr-review` round — use it when you want a second opinion the outer loop cannot produce itself, or when the PR carries no bot findings at all yet. Bot findings land as inline threads and top-level reviews, exactly like the agent's own findings, so both feed the same `invoke_skill("pr-address", PR)` step — no separate handling is needed. If you do request one, the exit conditions must wait for it; see [Waiting on a requested bot review](#waiting-on-a-requested-bot-review).
+
 ### Snapshotting state
 
 Before each `/pr-review`, capture a baseline so the diff after the review reflects **only** what the review just added (not pre-existing threads):
@@ -94,10 +105,15 @@ gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/reviews" --paginate \
 # accounts like coderabbitai, github-actions, sentry-io). The author is
 # filtered by comparing login to the PR author — export it so jq can see it.
 AUTHOR=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}" --jq '.user.login')
-gh api "repos/Significant-Gravitas/AutoGPT/issues/${PR}/comments" --paginate \
-  --jq --arg author "$AUTHOR" \
-      '[.[] | select(.user.type != "Bot" and .user.login != $author)
-            | {id, user: .user.login, created_at}]' \
+# Slash-command triggers are excluded here too: a `/review` posted by a
+# maintainer is non-bot and non-author, so without this it enters the baseline
+# and later registers as a "new finding", forcing an address round over a
+# comment with nothing to address.
+gh api "repos/Significant-Gravitas/AutoGPT/issues/${PR}/comments" --paginate --slurp \
+  | jq --arg author "$AUTHOR" \
+      '[.[][] | select(.user.type != "Bot" and .user.login != $author)
+             | select((.body // "") | test("^\\s*/[a-z-]+\\s*$") | not)
+             | {id, user: .user.login, created_at}]' \
   > /tmp/baseline_issue_comments.json
 ```
 
@@ -114,7 +130,7 @@ If any of the four buckets is non-empty → not done; invoke `/pr-address` and l
 
 ## Polish polling
 
-Once `/pr-review` produces zero new findings, do **not** exit yet. Bots (coderabbitai, sentry, autogpt-reviewer) commonly post late reviews after CI settles — 30–90 seconds after the final push. Poll at 60-second intervals:
+Once `/pr-review` produces zero new findings, do **not** exit yet. Bots (coderabbitai, sentry, autogpt-pr-reviewer) commonly post late reviews after CI settles — 30–90 seconds after the final push. Poll at 60-second intervals:
 
 ```text
 NON_SUCCESS_TERMINAL = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
@@ -154,6 +170,13 @@ while clean_polls < required_clean:
     if mergeable is null (UNKNOWN):
         sleep 60; continue
 
+    # 4. Pending-review gate — a /review with no bot answer yet.
+    # Quiet is exactly what a bot still thinking looks like, so don't bank
+    # a clean poll on it. review_requested_but_unanswered() already returns
+    # false once REVIEW_WAIT_BUDGET is spent, so the loop cannot hang here.
+    if review_requested_but_unanswered(PR):
+        sleep 60; continue
+
     clean_polls += 1
     sleep 60
 ```
@@ -178,6 +201,64 @@ failed=$(echo "$ci_json" | jq '[.[] | select(.bucket == "fail" or .bucket == "ca
 
 Map back to the pseudocode above: `bucket == "pending"` is `ci.conclusion is None (still in_progress)`; `bucket in {"fail", "cancel"}` is `ci.conclusion in NON_SUCCESS_TERMINAL`; `bucket in {"pass", "skipping"}` is clean.
 
+### Waiting on a requested bot review
+
+`autogpt-pr-reviewer[bot]` typically takes ~30 minutes to answer a `/review` — far longer than the 60-second poll interval, so without this gate two clean polls would report `ORCHESTRATOR:DONE` while the requested review is still in flight.
+
+`review_requested_but_unanswered(PR)` is:
+
+Recompute from the API on **every** poll — never track elapsed time in a loop
+variable, which is how this gate becomes an infinite wait. `--paginate`
+concatenates one array per page, so `last` picks the last item of the final
+page rather than the newest overall; use `--slurp` and `max_by`. An answer is
+*either* a top-level review or an inline review comment, whichever is later —
+an inline-only reply is still an answer, and counting only top-level reviews
+left the gate waiting after its threads had already been addressed.
+
+```bash
+# `--slurp` cannot be combined with `--jq`; pipe to standalone jq instead.
+REQUESTED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/issues/${PR}/comments" --paginate --slurp \
+  | jq -r '[.[][] | select((.body // "") | test("^\\s*/review\\s*$"))] | max_by(.created_at) | .created_at // empty')
+REVIEWED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/reviews" --paginate --slurp \
+  | jq -r '[.[][] | select(.user.login == "autogpt-pr-reviewer[bot]")] | max_by(.submitted_at) | .submitted_at // empty')
+COMMENTED_AT=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/comments" --paginate --slurp \
+  | jq -r '[.[][] | select(.user.login == "autogpt-pr-reviewer[bot]")] | max_by(.created_at) | .created_at // empty')
+ANSWERED_AT=$(printf '%s\n%s\n' "$REVIEWED_AT" "$COMMENTED_AT" | grep -v '^$' | sort | tail -1)
+
+# Pending iff a request exists and no answer is strictly newer than it.
+# Start every poll from `false`: a stale `true` from the previous poll would
+# otherwise keep the gate waiting after the answer has already landed.
+# `[ a \< b ]` is not portable (fails under zsh), so compare via sort.
+pending=false
+NEWEST=$(printf '%s\n%s\n' "$REQUESTED_AT" "$ANSWERED_AT" | grep -v '^$' | sort | tail -1)
+if [ -n "$REQUESTED_AT" ] && { [ -z "$ANSWERED_AT" ] || [ "$NEWEST" = "$REQUESTED_AT" ]; }; then
+  pending=true
+fi
+```
+
+`REVIEW_WAIT_BUDGET = 60 minutes`, measured as `now - REQUESTED_AT`:
+
+```bash
+# Only meaningful when a request exists: GNU date reads an empty string as
+# "now", BSD date errors, and either way there is nothing to time out.
+if [ -n "$REQUESTED_AT" ]; then
+  WAITED=$(( $(date +%s) - $(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$REQUESTED_AT" +%s 2>/dev/null || date -u -d "$REQUESTED_AT" +%s) ))
+  [ "$WAITED" -ge 3600 ] && pending=false   # budget spent — stop waiting
+fi
+```
+
+An observed reply on this repo took **46 minutes**, so a 45-minute budget
+would have abandoned a review that was about to arrive. 60 gives headroom.
+
+Past the budget, stop waiting, resume counting clean polls normally, and note
+in the final report that the requested bot review never arrived. The loop must
+never hang on a bot.
+
+**Never post a second `/review` while one is unanswered.** Check
+`review_requested_but_unanswered(PR)` before triggering, not just before
+exiting — otherwise each round requests another review and the bot answers a
+queue of duplicates.
+
 ### Why 2 clean polls, not 1
 
 A single green snapshot can be misleading — the final CI check often completes ~30s before a bot posts its delayed review. One quiet cycle does not prove the PR is stable; two consecutive cycles with no new threads, reviews, or issue comments arriving gives high confidence nothing else is incoming.
@@ -186,7 +267,7 @@ A single green snapshot can be misleading — the final CI check often completes
 
 `/pr-address` polling inside a single round already re-checks its own comments, but `/pr-polish` sits a level above and must also catch:
 
-- New top-level reviews (autogpt-reviewer sometimes posts structured feedback only after several CI green cycles).
+- New top-level reviews (autogpt-pr-reviewer sometimes posts structured feedback only after several CI green cycles).
 - Issue comments from human reviewers (not caught by inline thread polling).
 - Sentry bug predictions that land on new line numbers post-push.
 - Merge conflicts introduced by a race between your push and a merge to `dev`.
@@ -222,7 +303,7 @@ Run `/pr-polish` inline in the foreground conversation. If the user asks for "/p
 
 ### **You MUST invoke `Skill(pr-review)` every round — even when bot reviews already exist**
 
-A common failure mode: CodeRabbit / autogpt-reviewer / Sentry have already posted findings on the PR, and the orchestrator skips the `Skill(pr-review)` step on the assumption that "review has been done." That's wrong — the outer loop's purpose is to layer **the agent's own review** on top of the bot reviews, catching issues the bots miss (architecture, naming, cross-file invariants, hidden coupling). If the orchestrator only addresses bot findings without ever running its own review, the loop converges to "bot-clean" but not "agent-reviewed-clean," and the user reasonably asks "did /pr-polish even read the diff?"
+A common failure mode: CodeRabbit / autogpt-pr-reviewer / Sentry have already posted findings on the PR, and the orchestrator skips the `Skill(pr-review)` step on the assumption that "review has been done." That's wrong — the outer loop's purpose is to layer **the agent's own review** on top of the bot reviews, catching issues the bots miss (architecture, naming, cross-file invariants, hidden coupling). If the orchestrator only addresses bot findings without ever running its own review, the loop converges to "bot-clean" but not "agent-reviewed-clean," and the user reasonably asks "did /pr-polish even read the diff?"
 
 **Self-check before reporting `ORCHESTRATOR:DONE`:** confirm at least one `Skill(skill="pr-review")` call appears in the current orchestration. If none, the loop is incomplete — go back and run one round.
 
