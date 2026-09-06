@@ -180,6 +180,25 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [JSON Encoder](block-integrations/data.md#json-encoder) | Encodes any value or data structure into a JSON string |
 | [Keyword Suggestion Extractor](block-integrations/dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](block-integrations/data.md#persist-information) | Persists a key-value pair for use across multiple runs of an agent |
+| [RMFG Analyze Design](block-integrations/rmfg/designs.md#rmfg-analyze-design) | Uploads a STEP file to RMFG and returns its analyzed parts |
+| [RMFG Create Cart](block-integrations/rmfg/carts.md#rmfg-create-cart) | Creates an RMFG cart with a website checkout link for a configured design |
+| [RMFG Create DFM Report](block-integrations/rmfg/dfm.md#rmfg-create-dfm-report) | Runs an RMFG manufacturability (DFM) check on a configured design |
+| [RMFG Create Quote](block-integrations/rmfg/quotes.md#rmfg-create-quote) | Gets an RMFG price and manufacturability findings for a configured design |
+| [RMFG Create Review Link](block-integrations/rmfg/review_links.md#rmfg-create-review-link) | Creates an RMFG review link so a person can inspect and adjust a design |
+| [RMFG Get Cart](block-integrations/rmfg/carts.md#rmfg-get-cart) | Fetches an RMFG cart and its latest quote by ID |
+| [RMFG Get DFM Report](block-integrations/rmfg/dfm.md#rmfg-get-dfm-report) | Fetches an RMFG DFM report by ID |
+| [RMFG Get Design](block-integrations/rmfg/designs.md#rmfg-get-design) | Fetches an RMFG design and its analyzed parts by ID |
+| [RMFG Get Order](block-integrations/rmfg/orders.md#rmfg-get-order) | Fetches an RMFG order's status and shipment tracking |
+| [RMFG Get Quote](block-integrations/rmfg/quotes.md#rmfg-get-quote) | Fetches an RMFG quote by ID |
+| [RMFG Get Review Link](block-integrations/rmfg/review_links.md#rmfg-get-review-link) | Fetches an RMFG review link and the configuration a person saved on it |
+| [RMFG List Finishes](block-integrations/rmfg/catalog.md#rmfg-list-finishes) | Lists the finishes RMFG can apply to sheet or tube parts |
+| [RMFG List Hardware](block-integrations/rmfg/catalog.md#rmfg-list-hardware) | Lists the taps, studs, nuts or standoffs RMFG can install |
+| [RMFG List Materials](block-integrations/rmfg/catalog.md#rmfg-list-materials) | Lists the sheet-metal materials RMFG can cut and bend |
+| [RMFG List Orders](block-integrations/rmfg/orders.md#rmfg-list-orders) | Lists the RMFG account's manufacturing orders |
+| [RMFG List Powder Coat Colors](block-integrations/rmfg/catalog.md#rmfg-list-powder-coat-colors) | Lists the powder-coat colors RMFG offers |
+| [RMFG List Tube Profiles](block-integrations/rmfg/catalog.md#rmfg-list-tube-profiles) | Lists the tube stock profiles RMFG can laser-cut |
+| [RMFG Pay Cart](block-integrations/rmfg/pay_cart.md#rmfg-pay-cart) | Pays an RMFG cart with the saved card and places a real production order |
+| [RMFG Update Cart](block-integrations/rmfg/carts.md#rmfg-update-cart) | Updates an open RMFG cart's address, shipping option or items |
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Reads back a key-value pair previously saved by PersistInformationBlock |
@@ -687,3 +706,4 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Compass AI Trigger](block-integrations/compass/triggers.md#compass-ai-trigger) | This block will output the contents of the compass transcription |
+| [RMFG Event Trigger](block-integrations/rmfg/triggers.md#rmfg-event-trigger) | Triggers when an RMFG design, quote, cart or order changes |
