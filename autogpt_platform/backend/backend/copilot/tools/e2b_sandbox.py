@@ -16,9 +16,13 @@ A sandbox belongs to a :class:`SandboxOwner`:
   kickoffs) reconnects to the same box, so tools it installs, logins it keeps
   in its browser and files it writes are still there next time.  Deleting a
   chat never touches it; archiving the expert does
-  (``kill_expert_sandboxes``).  The box mounts the expert's own durable volume
+  (``kill_expert_sandbox``).  The box mounts the expert's own durable volume
   at ``~/workspace`` and the owning user's volume at ``~/shared`` (see
   ``workspace_volume_mounts``).
+
+There is exactly one sandbox per owner.  It runs our desktop image
+(``backend.util.e2b_template``), and ``backend.copilot.computer`` turns its
+screen on *in place* when a desktop is wanted — no second box.
 
 Lifecycle
 ---------
@@ -87,7 +91,6 @@ from backend.util.sandbox_metadata import MountState, SandboxMetadata
 logger = logging.getLogger(__name__)
 
 _SANDBOX_KEY_PREFIX = "copilot:e2b:sandbox:"
-_DESKTOP_KEY_PREFIX = "copilot:e2b:desktop:"
 _EXPERT_KEY_PREFIX = "copilot:e2b:expert:"
 _CREATING_SENTINEL = "creating"
 
@@ -97,8 +100,6 @@ METADATA_KIND = "autogpt_kind"
 # "attached" when the workspace volumes were mounted, "none" when creation had
 # to fall back to a volume-less box — visible in the E2B dashboard and API.
 METADATA_MOUNTS = "autogpt_mounts"
-
-SandboxKind = Literal["shell", "desktop"]
 
 # Per-attempt timeout for AsyncSandbox.create().  E2B normally provisions a
 # sandbox in 5-15 s; 30 s gives generous headroom while ensuring a slow/hung
@@ -171,24 +172,26 @@ class SandboxOwner(BaseModel):
     def is_expert(self) -> bool:
         return self.kind == "expert"
 
-    def key(self, sandbox_kind: SandboxKind = "shell") -> str:
+    def key(self) -> str:
         """Redis key caching this owner's sandbox id (doubles as creation lock)."""
         if self.is_expert:
-            return f"{_EXPERT_KEY_PREFIX}{self.id}:{sandbox_kind}"
-        prefix = _SANDBOX_KEY_PREFIX if sandbox_kind == "shell" else _DESKTOP_KEY_PREFIX
-        return f"{prefix}{self.id}"
+            return f"{_EXPERT_KEY_PREFIX}{self.id}:shell"
+        return f"{_SANDBOX_KEY_PREFIX}{self.id}"
+
+    def display_key(self) -> str:
+        """Redis key remembering which box ``open_desktop`` turned the screen on in."""
+        return f"{self.key()}:display"
 
     @property
     def ttl(self) -> int:
         return _EXPERT_ID_TTL if self.is_expert else _SANDBOX_ID_TTL
 
-    def metadata(self, sandbox_kind: SandboxKind = "shell") -> dict[str, str]:
+    def metadata(self) -> dict[str, str]:
         """The identity keys a lookup filters on; a subset of ``creation_metadata``."""
-        return {METADATA_OWNER: f"{self.kind}:{self.id}", METADATA_KIND: sandbox_kind}
+        return {METADATA_OWNER: f"{self.kind}:{self.id}", METADATA_KIND: "shell"}
 
     def creation_metadata(
         self,
-        sandbox_kind: SandboxKind = "shell",
         *,
         user_id: str | None = None,
         session_id: str | None = None,
@@ -198,7 +201,7 @@ class SandboxOwner(BaseModel):
         """Identity plus provenance, stamped on the box when it is created."""
         return SandboxMetadata.for_copilot(
             f"{self.kind}:{self.id}",
-            sandbox_kind,
+            "shell",
             user_id=user_id,
             session_id=session_id,
             expert_id=self.id if self.is_expert else None,
@@ -221,33 +224,25 @@ def _sandbox_key(session_id: str) -> str:
     return SandboxOwner(kind="session", id=session_id).key()
 
 
-async def _get_stored_sandbox_id(
-    owner: SandboxOwner, sandbox_kind: SandboxKind = "shell"
-) -> str | None:
+async def _get_stored_sandbox_id(owner: SandboxOwner) -> str | None:
     redis = await get_redis_async()
-    raw = await redis.get(owner.key(sandbox_kind))
+    raw = await redis.get(owner.key())
     value = raw.decode() if isinstance(raw, bytes) else raw
     return None if value == _CREATING_SENTINEL else value
 
 
-async def _set_stored_sandbox_id(
-    owner: SandboxOwner, sandbox_id: str, sandbox_kind: SandboxKind = "shell"
-) -> None:
+async def _set_stored_sandbox_id(owner: SandboxOwner, sandbox_id: str) -> None:
     redis = await get_redis_async()
-    await redis.set(owner.key(sandbox_kind), sandbox_id, ex=owner.ttl)
+    await redis.set(owner.key(), sandbox_id, ex=owner.ttl)
 
 
-async def _clear_stored_sandbox_id(
-    owner: SandboxOwner, sandbox_kind: SandboxKind = "shell"
-) -> None:
+async def _clear_stored_sandbox_id(owner: SandboxOwner) -> None:
     redis = await get_redis_async()
-    await redis.delete(owner.key(sandbox_kind))
+    await redis.delete(owner.key())
 
 
-async def list_owned_sandboxes(
-    owner: SandboxOwner, sandbox_kind: SandboxKind, api_key: str
-) -> list[SandboxInfo]:
-    """The owner's boxes of one kind as E2B lists them, newest first.
+async def list_owned_sandboxes(owner: SandboxOwner, api_key: str) -> list[SandboxInfo]:
+    """The owner's boxes as E2B lists them, newest first.
 
     A running box sorts before a paused one.  Listing never connects, so a
     paused box stays paused — connecting is what auto-resume reacts to.
@@ -256,7 +251,7 @@ async def list_owned_sandboxes(
     try:
         paginator = AsyncSandbox.list(
             query=SandboxQuery(
-                metadata=owner.metadata(sandbox_kind),
+                metadata=owner.metadata(),
                 state=[SandboxState.RUNNING, SandboxState.PAUSED],
             ),
             limit=10,
@@ -266,9 +261,7 @@ async def list_owned_sandboxes(
             paginator.next_items(), timeout=_E2B_API_TIMEOUT_SECONDS
         )
     except Exception as exc:
-        logger.warning(
-            "[E2B] Metadata lookup for %s %s failed: %s", owner, sandbox_kind, exc
-        )
+        logger.warning("[E2B] Metadata lookup for %s failed: %s", owner, exc)
         return []
     infos = sorted(infos, key=lambda info: info.started_at, reverse=True)
     running = [info for info in infos if info.state == SandboxState.RUNNING]
@@ -276,9 +269,7 @@ async def list_owned_sandboxes(
     return running + paused
 
 
-async def find_owned_sandbox_id(
-    owner: SandboxOwner, sandbox_kind: SandboxKind, api_key: str
-) -> str | None:
+async def find_owned_sandbox_id(owner: SandboxOwner, api_key: str) -> str | None:
     """Recover an expert's box through the E2B API when Redis has forgotten it.
 
     Session sandboxes are Redis-only: losing that key just means a fresh
@@ -289,16 +280,15 @@ async def find_owned_sandbox_id(
     """
     if not owner.is_expert:
         return None
-    infos = await list_owned_sandboxes(owner, sandbox_kind, api_key)
+    infos = await list_owned_sandboxes(owner, api_key)
     if not infos:
         return None
     chosen = infos[0]
     if len(infos) > 1:
         logger.warning(
-            "[E2B] %s has %d %s sandboxes; using %.12s",
+            "[E2B] %s has %d sandboxes; using %.12s",
             owner,
             len(infos),
-            sandbox_kind,
             chosen.sandbox_id,
         )
     return chosen.sandbox_id
@@ -348,7 +338,7 @@ async def _resolve_volume_mounts(
 
 
 def _active_turns_key(owner: SandboxOwner) -> str:
-    return f"{owner.key('shell')}:active"
+    return f"{owner.key()}:active"
 
 
 async def _acquire_turn(owner: SandboxOwner) -> None:
@@ -393,24 +383,23 @@ async def _release_turn(owner: SandboxOwner) -> bool:
         return False
 
 
-async def get_or_create_sandbox(
-    session_id: str,
+async def get_or_create_owner_sandbox(
+    owner: SandboxOwner,
     api_key: str,
     timeout: int,
     template: str = "base",
     on_timeout: Literal["kill", "pause"] = "pause",
     volume_mounts: Mapping[str, str] | None = None,
     *,
-    expert_id: str | None = None,
     user_id: str | None = None,
+    session_id: str | None = None,
+    count_turn: bool = True,
 ) -> AsyncSandbox:
-    """Return the existing E2B sandbox for this turn's owner or create a new one.
+    """Return the owner's E2B sandbox, creating it if needed.
 
-    The owner is the session, or — when *expert_id* is set — the expert, whose
-    box every one of its sessions shares.  The owner's key in Redis serves a
-    dual purpose: it stores the sandbox_id and acts as a creation lock via a
-    ``"creating"`` sentinel value.  This removes the need for a separate lock
-    key.
+    The owner's key in Redis serves a dual purpose: it stores the sandbox_id
+    and acts as a creation lock via a ``"creating"`` sentinel value.  This
+    removes the need for a separate lock key.
 
     *timeout* controls how long the e2b sandbox may run continuously before
     the ``on_timeout`` lifecycle rule fires (default: 5 min).
@@ -418,14 +407,16 @@ async def get_or_create_sandbox(
     or ``"kill"``.  When ``"pause"``, ``auto_resume`` is enabled so paused
     sandboxes wake transparently on SDK activity.
     *volume_mounts* maps mount paths to durable volume names (see
-    ``workspace_volume_mounts``) so the agent shell shares a persistent
-    ``~/workspace`` with the on-demand desktop and, for an expert, the owning
-    user's ``~/shared``.  A mount failure degrades to a volume-less sandbox
-    rather than failing the session.
+    ``workspace_volume_mounts``) so the box's ``~/workspace`` — and, for an
+    expert, the owning user's ``~/shared`` — persist across boxes.  A mount
+    failure degrades to a volume-less sandbox rather than failing the session.
+    *count_turn* records this caller as an active turn on the box (so another
+    turn's end cannot pause it); pass ``False`` when opening the box from
+    outside a turn, e.g. to turn its screen on from the UI.
+    *user_id* / *session_id* are provenance only, stamped on a newly created box.
     """
-    owner = SandboxOwner.for_session(session_id, expert_id)
     redis = await get_redis_async()
-    key = owner.key("shell")
+    key = owner.key()
     # Boxes E2B still lists but we could not reconnect to (mid-teardown, an
     # unresumable snapshot). Without this an expert owner would re-find the
     # same id on every iteration and never fall through to creating a fresh one.
@@ -437,7 +428,7 @@ async def get_or_create_sandbox(
 
         if not value and owner.is_expert:
             # Redis is only a cache for an expert's box; E2B is the record.
-            value = await find_owned_sandbox_id(owner, "shell", api_key)
+            value = await find_owned_sandbox_id(owner, api_key)
             if value in failed_ids:
                 value = None
             elif value:
@@ -448,7 +439,8 @@ async def get_or_create_sandbox(
             sandbox = await _try_reconnect(value, owner, api_key)
             if sandbox:
                 logger.info("[E2B] Reconnected to %.12s for %s", value, owner)
-                await _acquire_turn(owner)
+                if count_turn:
+                    await _acquire_turn(owner)
                 return sandbox
             # _try_reconnect cleared the key — loop to create a new sandbox.
             failed_ids.add(value)
@@ -500,7 +492,6 @@ async def get_or_create_sandbox(
                             lifecycle=lifecycle,
                             volume_mounts=mounts,
                             metadata=owner.creation_metadata(
-                                "shell",
                                 user_id=user_id,
                                 session_id=session_id,
                                 template=template,
@@ -576,10 +567,39 @@ async def get_or_create_sandbox(
             raise
 
         logger.info("[E2B] Created sandbox %.12s for %s", sandbox.sandbox_id, owner)
-        await _acquire_turn(owner)
+        if count_turn:
+            await _acquire_turn(owner)
         return sandbox
 
     raise RuntimeError(f"Could not acquire E2B sandbox for {owner}")
+
+
+async def get_or_create_sandbox(
+    session_id: str,
+    api_key: str,
+    timeout: int,
+    template: str = "base",
+    on_timeout: Literal["kill", "pause"] = "pause",
+    volume_mounts: Mapping[str, str] | None = None,
+    *,
+    expert_id: str | None = None,
+    user_id: str | None = None,
+) -> AsyncSandbox:
+    """Return the sandbox for this turn — the session's, or its expert's — and count the turn.
+
+    Thin wrapper over ``get_or_create_owner_sandbox`` for the chat engines,
+    which know a session and maybe an expert rather than an owner.
+    """
+    return await get_or_create_owner_sandbox(
+        SandboxOwner.for_session(session_id, expert_id),
+        api_key,
+        timeout=timeout,
+        template=template,
+        on_timeout=on_timeout,
+        volume_mounts=volume_mounts,
+        user_id=user_id,
+        session_id=session_id,
+    )
 
 
 async def _act_on_sandbox(
@@ -588,20 +608,19 @@ async def _act_on_sandbox(
     action: str,
     fn: Callable[[AsyncSandbox], Awaitable[Any]],
     *,
-    sandbox_kind: SandboxKind = "shell",
     sandbox_id: str | None = None,
     clear_stored_id: bool = False,
 ) -> bool:
     """Connect to the owner's sandbox and run *fn* on it.
 
     Shared by ``pause_sandbox``, ``kill_sandbox`` and
-    ``kill_expert_sandboxes``.  Returns ``True`` on success, ``False`` when no
+    ``kill_expert_sandbox``.  Returns ``True`` on success, ``False`` when no
     sandbox is found or the action fails.  If *clear_stored_id* is ``True``,
     the sandbox_id is removed from Redis only after the action succeeds so a
     failed kill can be retried.
     """
     if sandbox_id is None:
-        sandbox_id = await _get_stored_sandbox_id(owner, sandbox_kind)
+        sandbox_id = await _get_stored_sandbox_id(owner)
     if not sandbox_id:
         return False
 
@@ -611,20 +630,15 @@ async def _act_on_sandbox(
     try:
         await asyncio.wait_for(_run(), timeout=_E2B_API_TIMEOUT_SECONDS)
         if clear_stored_id:
-            await _clear_stored_sandbox_id(owner, sandbox_kind)
+            await _clear_stored_sandbox_id(owner)
         logger.info(
-            "[E2B] %s %s sandbox %.12s for %s",
-            action.capitalize(),
-            sandbox_kind,
-            sandbox_id,
-            owner,
+            "[E2B] %s sandbox %.12s for %s", action.capitalize(), sandbox_id, owner
         )
         return True
     except Exception as exc:
         logger.warning(
-            "[E2B] Failed to %s %s sandbox %.12s for %s: %s",
+            "[E2B] Failed to %s sandbox %.12s for %s: %s",
             action,
-            sandbox_kind,
             sandbox_id,
             owner,
             exc,
@@ -684,64 +698,52 @@ async def pause_sandbox_direct(
         return False
 
 
-async def kill_sandbox(
-    session_id: str,
-    api_key: str,
-) -> bool:
-    """Kill the session's E2B sandboxes (shell and on-demand desktop).
+async def kill_sandbox(session_id: str, api_key: str) -> bool:
+    """Kill a session's box — the chat is gone, so is its scratch computer.
 
-    Only ever touches *session* sandboxes: an expert session has none under
-    its own id, so deleting an expert chat leaves the expert's computer alone
-    (see ``kill_expert_sandboxes`` for the archive path).  The desktop is
-    included because nothing else ever stops it: it is deliberately not paused
-    at turn end, so an orphaned one would bill until its timeout and then sit
-    paused forever.
+    Only ever touches a *session* box: an expert session has none under its
+    own id, so deleting an expert chat leaves the expert's computer alone
+    (see ``kill_expert_sandbox`` for the archive path).
 
-    Returns ``True`` if at least one sandbox was found and killed, ``False``
-    otherwise.  Safe to call even when no sandbox exists for the session.
+    Returns ``True`` if a sandbox was found and killed, ``False`` otherwise.
+    Safe to call even when no sandbox exists for the session.
     """
     owner = SandboxOwner(kind="session", id=session_id)
-    killed = False
-    for sandbox_kind in ("shell", "desktop"):
-        if await _act_on_sandbox(
-            owner,
-            api_key,
-            "kill",
-            lambda sb: sb.kill(),
-            sandbox_kind=sandbox_kind,
-            clear_stored_id=True,
-        ):
-            killed = True
+    killed = await _act_on_sandbox(
+        owner, api_key, "kill", lambda sb: sb.kill(), clear_stored_id=True
+    )
+    if killed:
+        await _forget_owner_state(owner)
     return killed
 
 
-async def kill_expert_sandboxes(expert_id: str, api_key: str) -> int:
-    """Kill an expert's shell and desktop boxes — its computer goes on archive.
+async def kill_expert_sandbox(expert_id: str, api_key: str) -> bool:
+    """Kill an expert's box — its computer goes on archive.
 
     The expert's volume is deliberately kept: files outlive the machine, and
     destroying user data is not something a best-effort cleanup should do.
-    Falls back to the E2B metadata lookup for each box so a stale Redis cache
-    cannot leave a paused machine behind.  Returns the number killed.
+    Falls back to the E2B metadata lookup so a stale Redis cache cannot leave
+    a paused machine behind.  Returns ``True`` if a box was killed.
     """
     owner = SandboxOwner(kind="expert", id=expert_id)
-    killed = 0
-    for sandbox_kind in ("shell", "desktop"):
-        sandbox_id = await _get_stored_sandbox_id(owner, sandbox_kind)
-        if not sandbox_id:
-            sandbox_id = await find_owned_sandbox_id(owner, sandbox_kind, api_key)
-        if not sandbox_id:
-            continue
-        if await _act_on_sandbox(
-            owner,
-            api_key,
-            "kill",
-            lambda sb: sb.kill(),
-            sandbox_kind=sandbox_kind,
-            sandbox_id=sandbox_id,
-            clear_stored_id=True,
-        ):
-            killed += 1
+    sandbox_id = await _get_stored_sandbox_id(owner)
+    if not sandbox_id:
+        sandbox_id = await find_owned_sandbox_id(owner, api_key)
+    killed = bool(sandbox_id) and await _act_on_sandbox(
+        owner,
+        api_key,
+        "kill",
+        lambda sb: sb.kill(),
+        sandbox_id=sandbox_id,
+        clear_stored_id=True,
+    )
+    if killed:
+        await _forget_owner_state(owner)
+    return killed
+
+
+async def _forget_owner_state(owner: SandboxOwner) -> None:
+    """Drop the screen flag and turn counter once their box is really gone."""
     with contextlib.suppress(Exception):
         redis = await get_redis_async()
-        await redis.delete(_active_turns_key(owner))
-    return killed
+        await redis.delete(owner.display_key(), _active_turns_key(owner))

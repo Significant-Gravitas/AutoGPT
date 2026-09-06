@@ -254,8 +254,9 @@ def _expert_computer_block() -> str:
         "scripts and tools here and customise it freely.\n"
         f"- {SHARED_PATH}: the user's shared workspace. Put deliverables here "
         "so they show up on the user's desktop and in their other sessions.\n"
-        "- Use start_desktop when a task needs a browser or GUI app; your "
-        "browser profile and logins persist between sessions.\n"
+        "- Use start_desktop to turn your screen on when a task needs a browser "
+        "or GUI app; it is the same machine, and your browser profile and logins "
+        "persist between sessions.\n"
         "</expert_computer>\n\n"
     )
 
