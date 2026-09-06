@@ -219,3 +219,29 @@ async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
 
     assert append.await_args.args[1].content == "what did I run yesterday"
     assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
+    # The row was saved by an earlier call; prefixing now would put the two
+    # out of step again, which is the duplicate this guard exists to prevent.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kick it off",
+            message_already_persisted=True,
+            voice=True,
+        )
+
+    assert dispatch.await_args.kwargs["message"] == "kick it off"

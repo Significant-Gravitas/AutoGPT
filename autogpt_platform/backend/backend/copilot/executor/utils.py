@@ -533,7 +533,7 @@ async def schedule_chat_turn(
     # message against the row saved here, and a prefix applied later fails
     # that match and saves the turn a second time. Display strips it again.
     raw_message_length = len(message)
-    if message and voice and is_user_message:
+    if message and voice and is_user_message and not message_already_persisted:
         message = VOICE_TURN_PREFIX + message
 
     async with acquire_turn_slot(user_id, session_id) as slot:
