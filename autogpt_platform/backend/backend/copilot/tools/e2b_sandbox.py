@@ -81,6 +81,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import resolve_volume
 from backend.data.redis_client import get_redis_async
+from backend.util.e2b_template import ensure_template
 from backend.util.sandbox_metadata import MountState, SandboxMetadata
 
 logger = logging.getLogger(__name__)
@@ -472,6 +473,8 @@ async def get_or_create_sandbox(
         # for the same owner wait rather than racing to create duplicates.
         sandbox: AsyncSandbox | None = None
         try:
+            # Our own image is built on the team the first time it is needed.
+            await ensure_template(template, api_key)
             lifecycle = SandboxLifecycle(
                 on_timeout=on_timeout,
                 auto_resume=on_timeout == "pause",
