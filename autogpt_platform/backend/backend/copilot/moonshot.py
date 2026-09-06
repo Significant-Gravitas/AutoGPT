@@ -76,6 +76,11 @@ def _overrides_from_catalog() -> dict[str, tuple[float, float]]:
 # Import-time snapshot is safe: the catalog is immutable within a process
 # (the file only changes at deploy), same lifecycle as every projection.
 _RATE_OVERRIDES_USD_PER_MTOK: dict[str, tuple[float, float]] = _overrides_from_catalog()
+_CONTEXT_WINDOWS: dict[str, int] = {
+    m.slug: m.context_window
+    for m in get_catalog().models
+    if m.slug.startswith(_MOONSHOT_PREFIX)
+}
 
 
 def is_moonshot_model(model: str | None) -> bool:
@@ -164,3 +169,13 @@ def moonshot_supports_cache_control(model: str | None) -> bool:
     ballpark as Anthropic's ~60-95% on continuations.
     """
     return is_moonshot_model(model)
+
+
+def moonshot_context_window(model: str | None) -> int | None:
+    """Catalog context window for a Moonshot *model*, or None if unknown.
+
+    The CLI's model table has no Moonshot entry, so callers that must not
+    exceed the provider's real window have nowhere else to read it from.
+    Also None for non-Moonshot slugs, which the CLI knows itself.
+    """
+    return _CONTEXT_WINDOWS.get(model) if model else None

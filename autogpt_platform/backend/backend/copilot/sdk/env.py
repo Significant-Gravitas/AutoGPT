@@ -13,7 +13,7 @@ import re
 from urllib.parse import urlparse
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.moonshot import is_moonshot_model
+from backend.copilot.moonshot import is_moonshot_model, moonshot_context_window
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -178,13 +178,14 @@ def build_sdk_env(
     # the model table, the 1M capability flags and the server-side experiment
     # branches that newer CLIs consult — without it the compaction trigger is
     # an emergent property of whichever bundled CLI we happen to ship.
-    env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(config.claude_agent_context_window)
+    window = _pinned_context_window(model)
+    env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(window)
 
     # The window above is clamped by the model's own window, which this
     # kill-switch holds at 200K; keeping it set past that point would swallow
     # the raise silently.  1M is GA (no beta header) on Sonnet 4.6+/5, so the
     # experimental-betas flag above does not cover it.
-    if config.claude_agent_context_window <= _CLI_DEFAULT_CONTEXT_WINDOW:
+    if window <= _CLI_DEFAULT_CONTEXT_WINDOW:
         env["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1"
 
     # Trigger threshold, as a percentage of the window pinned above (CLI
@@ -214,6 +215,21 @@ def build_sdk_env(
 
 # What the CLI assumes any Claude model's window to be once 1M is gated off.
 _CLI_DEFAULT_CONTEXT_WINDOW = 200_000
+
+
+def _pinned_context_window(model: str | None) -> int:
+    """Configured window pin, capped at a Moonshot route's real window.
+
+    A pin above what the provider serves puts the compaction trigger past the
+    point the provider rejects the turn, so compaction never fires.  Anthropic
+    is deliberately not capped: the catalog holds every Anthropic entry at 200K
+    pending the Claude-5 tokenizer soak, which would cancel a legitimate raise.
+    An unlisted Kimi SKU falls back to the window the CLI assumes anyway.
+    """
+    window = config.claude_agent_context_window
+    if not is_moonshot_model(model):
+        return window
+    return min(window, moonshot_context_window(model) or _CLI_DEFAULT_CONTEXT_WINDOW)
 
 
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
