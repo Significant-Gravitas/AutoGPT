@@ -7,11 +7,14 @@ import { reportMicLevel } from "./micLevel";
 
 const VAD_OPTIONS = {
   positiveSpeechThreshold: 0.6,
-  negativeSpeechThreshold: 0.45,
+  // Below this a frame no longer counts as speech. The library default is
+  // 0.25; 0.45 read a quiet night-time voice as silence and cut the turn
+  // off on the word after a pause.
+  negativeSpeechThreshold: 0.4,
   // How long a pause may last before the turn is taken as finished. 700 ms
   // cut people off mid-thought; the model's own latency dwarfs the extra
   // wait, so erring long is nearly free.
-  redemptionMs: 1540,
+  redemptionMs: 1500,
   // Keeps the first phoneme, which the threshold crossing would otherwise eat.
   preSpeechPadMs: 250,
   minSpeechMs: 400,

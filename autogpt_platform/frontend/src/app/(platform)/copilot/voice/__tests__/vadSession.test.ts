@@ -32,8 +32,10 @@ describe("startVadSession", () => {
     expect(captured).toMatchObject({
       model: "v5",
       positiveSpeechThreshold: 0.6,
+      // Low enough that a quiet voice keeps the turn alive.
+      negativeSpeechThreshold: 0.4,
       // Long enough that a pause mid-thought does not end the turn.
-      redemptionMs: 1540,
+      redemptionMs: 1500,
       preSpeechPadMs: 250,
       minSpeechMs: 400,
     });
