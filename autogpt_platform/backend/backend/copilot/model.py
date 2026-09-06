@@ -122,6 +122,12 @@ class ChatSessionMetadata(BaseModel):
     # ``autopilot_session_guard`` (legacy cannot staff).
     origin: ChatSessionOrigin | None = None
 
+    # Per-session override for the auto-mode action gate. ``None`` follows
+    # the feature flag; ``False`` opts this session out. The gate also
+    # requires ``origin == "interactive"``, so legacy rows can never be
+    # switched on by enabling the flag.
+    auto_mode: bool | None = None
+
     # Session kind — distinguishes regular chats from dream-pass and
     # daydream artifacts so the frontend can render them differently
     # (and so analytics / retention rules can filter them out).

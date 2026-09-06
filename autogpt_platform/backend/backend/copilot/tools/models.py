@@ -45,6 +45,7 @@ class ResponseType(str, Enum):
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
 
     # Schedules
     SCHEDULE_LIST = "schedule_list"
@@ -817,6 +818,21 @@ class ReviewRequiredResponse(ToolResponseBase):
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+
+
+class ApprovalRequiredResponse(ToolResponseBase):
+    """An action the auto-mode gate parked for the user to approve.
+
+    Carries ``graph_exec_id`` because the chat mounts its approval card off any
+    tool output containing that key (``extractGraphExecId``), so the existing
+    review UI picks this up with no frontend wiring.
+    """
+
+    type: ResponseType = ResponseType.APPROVAL_REQUIRED
+    tool_name: str
+    reason: str
+    review_id: str | None = None
+    graph_exec_id: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):

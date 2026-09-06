@@ -80,6 +80,7 @@ export function markSupersededSubSessionRows(rows: ChainRow[]): ChainRow[] {
 const ACTION_RESPONSE_TYPES = new Set([
   "setup_requirements",
   "review_required",
+  "approval_required",
   "need_login",
   "trigger_config_required",
   "suggested_goal",
@@ -106,6 +107,12 @@ function actionLabel(output: unknown): string | null {
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
+  }
+  if (data.type === "approval_required") {
+    const name = data.tool_name;
+    return typeof name === "string" && name.trim()
+      ? `Approve ${name.trim()}`
+      : "Approve this action";
   }
   if (data.type === "suggested_goal") return "Review the suggested goal";
   return typeof data.message === "string" && data.message.trim()

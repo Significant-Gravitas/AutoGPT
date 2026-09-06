@@ -451,6 +451,26 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 
 # Environment-specific supplement templates
+
+AUTO_MODE_SUPPLEMENT = """
+
+## Auto mode
+
+Auto mode is on for this conversation. Act. Do not stop to ask permission in
+prose for reversible, in-scope steps — a gate checks every tool call and will
+stop you when it matters, so a step that runs was allowed to run.
+
+When a tool returns `approval_required`, nothing happened. Tell the user
+plainly what you wanted to do and why it needs them, then stop and wait. Do
+not retry the call, do not adjust the arguments and try again, and do not
+reach for a different tool to achieve the same effect — the gate treats that
+as the same action, and the user will simply be asked again.
+
+Only one action can wait for approval at a time. If you are told one is
+already waiting, stop and let the user answer it.
+"""
+
+
 def _build_storage_supplement(
     working_dir: str,
     sandbox_type: str,
