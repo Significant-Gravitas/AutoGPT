@@ -30,8 +30,9 @@ SOURCE_TEMPLATE = "desktop"
 def main() -> None:
     args = _parse_args()
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-    tags = ["default", f"{args.cpu}x{args.mem // 1024}", f"from:{SOURCE_TEMPLATE}"]
-    tags += [f"git:{_git_revision()}", f"by:{getpass.getuser()}"]
+    # E2B tags allow only Docker-tag characters, so no colons.
+    tags = ["default", f"{args.cpu}x{args.mem // 1024}", f"from-{SOURCE_TEMPLATE}"]
+    tags += [f"git-{_git_revision()}", f"by-{getpass.getuser()}"]
     info = Template.build(
         Template().from_template(SOURCE_TEMPLATE),
         args.alias,
