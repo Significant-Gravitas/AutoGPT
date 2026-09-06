@@ -118,6 +118,10 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   },
   useGetFlag: (flag: string) =>
     flag === "ENABLE_PLATFORM_PAYMENT" ? mockFlagValue : false,
+  useFlagStatus: (flag: string) => ({
+    enabled: flag === "ENABLE_PLATFORM_PAYMENT" ? mockFlagValue : false,
+    ready: true,
+  }),
 }));
 
 vi.mock("@/services/environment", async (importOriginal) => {

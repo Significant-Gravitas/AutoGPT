@@ -68,7 +68,7 @@ from backend.util.exceptions import (
     NotFoundError,
     UserPaywalledError,
 )
-from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -116,25 +116,25 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 
 
-def _init_launchdarkly_for_scheduler() -> None:
-    """Eagerly initialize LaunchDarkly unless running LOCAL.
+def _init_feature_flags_for_scheduler() -> None:
+    """Eagerly initialize the feature flag backend unless running LOCAL.
 
-    Mirrors ``rest_api.py``'s ``launch_darkly_context``: the @expose flag
+    Mirrors ``rest_api.py``'s ``feature_flag_context``: the @expose flag
     gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
-    check) fail closed, so evaluating them against a lazily-initialized LD
+    check) fail closed, so evaluating them against a lazily-initialized
     client right after a pod restart would silently skip registrations
-    until the first lazy init completed. Skipped LOCAL, where LD is
-    unconfigured and flags resolve to their mock defaults.
+    until the first lazy init completed. Skipped LOCAL, where no vendor is
+    configured and flags resolve to their mock defaults.
     """
     if config.app_env != AppEnvironment.LOCAL:
-        initialize_launchdarkly()
+        initialize_feature_flags()
 
 
-def _shutdown_launchdarkly_for_scheduler() -> None:
-    """Reverse of ``_init_launchdarkly_for_scheduler`` — only tears down the
-    LD client when it was actually initialized (non-LOCAL)."""
+def _shutdown_feature_flags_for_scheduler() -> None:
+    """Reverse of ``_init_feature_flags_for_scheduler`` — only tears down the
+    client when it was actually initialized (non-LOCAL)."""
     if config.app_env != AppEnvironment.LOCAL:
-        shutdown_launchdarkly()
+        shutdown_feature_flags()
 
 
 # The Stripe tier sweep pages through every active subscription, so it needs a
@@ -1708,7 +1708,7 @@ class Scheduler(AppService):
         # Eagerly initialize LaunchDarkly before any @expose flag gate can
         # run (see the helper for why lazy init would skip registrations
         # after a pod restart).
-        _init_launchdarkly_for_scheduler()
+        _init_feature_flags_for_scheduler()
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -1943,7 +1943,7 @@ class Scheduler(AppService):
 
         # Reverse order of run_service: LD was initialized before the
         # scheduler started, so close it after all jobs have drained.
-        _shutdown_launchdarkly_for_scheduler()
+        _shutdown_feature_flags_for_scheduler()
 
         super().cleanup()
 
