@@ -1177,12 +1177,13 @@ def _build_catalog() -> CatalogPayload:
                 creator="openai",
                 context_window=1050000,
                 max_output_tokens=128000,
-                # $10/1M in, $50/1M out — OpenAI list price at launch (no
-                # additional margin layered on top, unlike the marked-up
-                # gpt-5.6 sibling entries). At $10/1M input this is the
-                # most expensive tier-2-range model, so it's filed as
-                # tier 3 rather than tier 2 to keep the picker's price
-                # badge accurate.
+                # $10/1M in, $50/1M out — OpenAI list price at launch,
+                # credited at the catalog's standard usd_per_1m x 150
+                # factor (same factor every other entry in this file
+                # uses, e.g. claude-sonnet-5: $3 -> 450). At 1500 input
+                # credits this is 2x the highest tier-2 model in the
+                # catalog, so it's filed as tier 3 to keep the picker's
+                # price badge accurate.
                 price_tier=3,
                 cost=CatalogModelCost(
                     run_credits=20,

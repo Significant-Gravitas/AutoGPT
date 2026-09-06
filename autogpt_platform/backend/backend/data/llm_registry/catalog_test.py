@@ -163,6 +163,9 @@ def test_gpt6_astra_bills_at_authored_rates():
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[astra].max_output_tokens == 128000
+    astra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-astra")
+    assert astra_entry.price_tier == 3
+    assert astra_entry.context_window == 1050000
 
 
 def test_provider_usd_prices_are_all_or_nothing():
