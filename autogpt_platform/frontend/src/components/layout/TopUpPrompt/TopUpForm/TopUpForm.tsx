@@ -1,6 +1,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Form, FormField } from "@/components/molecules/Form/Form";
+import useCredits from "@/hooks/useCredits";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useTopUpForm } from "./useTopUpForm";
 
 interface Props {
@@ -9,7 +11,27 @@ interface Props {
 }
 
 export function TopUpForm({ submitLabel = "Top up", size = "normal" }: Props) {
-  const { form, isLoading, submitTopUp } = useTopUpForm();
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
+  const { requestTopUp } = useCredits({ identityKey });
+
+  return (
+    <TopUpFormState
+      key={identityKey ?? "logged-out"}
+      requestTopUp={requestTopUp}
+      size={size}
+      submitLabel={submitLabel}
+    />
+  );
+}
+
+interface StateProps {
+  requestTopUp: (creditAmount: number) => Promise<void>;
+  submitLabel: string;
+  size: "small" | "normal";
+}
+
+function TopUpFormState({ requestTopUp, submitLabel, size }: StateProps) {
+  const { form, isLoading, submitTopUp } = useTopUpForm(requestTopUp);
   const inputSize = size === "small" ? "small" : "medium";
   const buttonSize = size === "small" ? "small" : "large";
 

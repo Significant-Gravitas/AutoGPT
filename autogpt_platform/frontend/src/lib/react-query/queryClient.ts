@@ -35,3 +35,18 @@ export function getQueryClient() {
     return browserQueryClient;
   }
 }
+
+export function resetQueryClientForIdentityChange(
+  identityKey: string | null,
+  queryClient = getQueryClient(),
+): Promise<void> {
+  queryClient.getMutationCache().clear();
+  if (identityKey === null) {
+    queryClient
+      .getQueryCache()
+      .getAll()
+      .forEach((query) => query.reset());
+    return Promise.resolve();
+  }
+  return queryClient.resetQueries();
+}
