@@ -13,8 +13,7 @@ const computer: ComputerInfo = {
   owner_kind: "expert",
   owner_id: "expert-1",
   e2b_active: true,
-  shell: {
-    kind: "shell",
+  box: {
     sandbox_id: "sb-shell",
     state: "paused",
     started_at: new Date("2026-09-05T12:00:00Z"),
@@ -23,7 +22,7 @@ const computer: ComputerInfo = {
     template_id: "base",
     mounts_attached: true,
   },
-  desktop: null,
+  screen_on: false,
   mounts: {
     "/home/user/workspace": "autogpt-expert-expert-1",
     "/home/user/shared": "autogpt-user-u1",
@@ -45,7 +44,9 @@ describe("ExpertComputerSection", () => {
     expect(screen.getByText("2 vCPU · 512 MiB")).toBeDefined();
     expect(screen.getByText("/home/user/shared")).toBeDefined();
     expect(screen.getByText("autogpt-expert-expert-1")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Start desktop" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Turn on screen" }),
+    ).toBeDefined();
   });
 
   it("starts the desktop and embeds its stream", async () => {
@@ -65,7 +66,7 @@ describe("ExpertComputerSection", () => {
     );
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "Start desktop" }),
+      await screen.findByRole("button", { name: "Turn on screen" }),
     );
 
     await waitFor(() =>
@@ -80,7 +81,7 @@ describe("ExpertComputerSection", () => {
       getGetExpertComputerMockHandler({
         ...computer,
         e2b_active: false,
-        shell: null,
+        box: null,
         mounts: {},
       }),
     );
@@ -95,7 +96,7 @@ describe("ExpertComputerSection", () => {
       ),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Start desktop" }),
+      screen.getByRole("button", { name: "Turn on screen" }),
     ).toHaveProperty("disabled", true);
   });
 });

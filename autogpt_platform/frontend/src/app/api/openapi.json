@@ -6576,7 +6576,7 @@
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
         "summary": "Get Expert Computer",
-        "description": "The expert's own computer: its shell and desktop boxes as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
+        "description": "The expert's own computer: its box and screen state as E2B lists them.\n\nListing never wakes a paused box, so the Computer tab can refresh freely.",
         "operationId": "get_expert_computer",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -17935,17 +17935,16 @@
           },
           "owner_id": { "type": "string", "title": "Owner Id" },
           "e2b_active": { "type": "boolean", "title": "E2B Active" },
-          "shell": {
+          "box": {
             "anyOf": [
               { "$ref": "#/components/schemas/SandboxSummary" },
               { "type": "null" }
             ]
           },
-          "desktop": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/SandboxSummary" },
-              { "type": "null" }
-            ]
+          "screen_on": {
+            "type": "boolean",
+            "title": "Screen On",
+            "default": false
           },
           "mounts": {
             "additionalProperties": { "type": "string" },
@@ -17967,7 +17966,7 @@
         "type": "object",
         "required": ["owner_kind", "owner_id", "e2b_active"],
         "title": "ComputerInfo",
-        "description": "The owner's computer: its boxes and the volumes they mount."
+        "description": "The owner's computer: its one box, whether its screen is on, its volumes."
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -25861,11 +25860,6 @@
       },
       "SandboxSummary": {
         "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["shell", "desktop"],
-            "title": "Kind"
-          },
           "sandbox_id": { "type": "string", "title": "Sandbox Id" },
           "state": {
             "type": "string",
@@ -25884,7 +25878,6 @@
         },
         "type": "object",
         "required": [
-          "kind",
           "sandbox_id",
           "state",
           "started_at",
@@ -25894,7 +25887,7 @@
           "mounts_attached"
         ],
         "title": "SandboxSummary",
-        "description": "One of the owner's sandboxes as E2B reports it, without waking it."
+        "description": "The owner's box as E2B reports it, without waking it."
       },
       "ScheduleCleanupRequest": {
         "properties": {
