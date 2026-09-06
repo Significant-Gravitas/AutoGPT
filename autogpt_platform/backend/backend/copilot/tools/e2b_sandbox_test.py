@@ -822,6 +822,7 @@ class TestExpertShellBox:
             SHARED_PATH: user_volume_name(_USER_ID),
         }
         assert kwargs["metadata"] == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"expert:{_EXPERT_ID}",
             "autogpt_kind": "shell",
             "autogpt_source": "copilot",
@@ -851,6 +852,7 @@ class TestExpertShellBox:
 
         kwargs = mock_cls.create.call_args.kwargs
         assert kwargs["metadata"] == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"session:{_SESSION_ID}",
             "autogpt_kind": "shell",
             "autogpt_source": "copilot",
