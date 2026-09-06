@@ -668,6 +668,52 @@ class TestOpenRouter:
         assert "HTTP-Referer" in kwargs["extra_headers"]
 
 
+class TestOrcaRouter:
+    @pytest.mark.asyncio
+    async def test_dispatches_with_attribution_headers(self):
+        fake_response = _fake_openai_chat_response(
+            "hello", prompt=10, completion=5, cost=None
+        )
+        async_create = AsyncMock(return_value=fake_response)
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=async_create))
+        )
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                constructor,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_reasoning",
+                return_value=None,
+            ),
+            patch(
+                "backend.util.llm.providers.extract_openai_tool_calls",
+                return_value=None,
+            ),
+        ):
+            result = await call_provider(
+                provider="orcarouter",
+                model="openai/gpt-4o-mini",
+                api_key="sk-orca-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=100,
+            )
+
+        assert result.content == "hello"
+        kwargs = async_create.call_args.kwargs
+        # OrcaRouter does NOT accept OpenRouter's ``usage: {"include": True}``
+        # extra_body (it 400s on ``usage``) — only the attribution headers
+        # are sent.
+        assert "extra_body" not in kwargs
+        assert kwargs["extra_headers"]["HTTP-Referer"] == "https://agpt.co"
+        assert kwargs["extra_headers"]["X-Title"] == "AutoGPT"
+        # The client must be pointed at the OrcaRouter base URL.
+        ctor_kwargs = constructor.call_args.kwargs
+        assert ctor_kwargs["base_url"] == "https://api.orcarouter.ai/v1"
+
+
 class TestLlamaAPI:
     @pytest.mark.asyncio
     async def test_omits_openrouter_extras(self):

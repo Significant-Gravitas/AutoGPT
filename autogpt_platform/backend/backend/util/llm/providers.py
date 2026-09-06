@@ -50,7 +50,7 @@ from backend.data.llm_registry.llm_models import (
     CLAUDE_5_FAMILY_PREFIXES,
     strip_anthropic_vendor_prefix,
 )
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import OPENROUTER_BASE_URL, ORCAROUTER_BASE_URL
 from backend.util.llm.conversions import (
     ToolCall,
     ToolContentBlock,
@@ -111,6 +111,7 @@ ProviderLiteral = Literal[
     "llama_api",
     "aiml_api",
     "v0",
+    "orcarouter",
 ]
 
 ExecutionMode = Literal["sync", "batch", "flex"]
@@ -384,6 +385,22 @@ async def _dispatch_sync(
             parallel_tool_calls=parallel_tool_calls,
             timeout_seconds=timeout_seconds,
             include_openrouter_extras=True,
+            service_tier=service_tier,
+        )
+    if provider == "orcarouter":
+        return await _call_openai_compat(
+            base_url=ORCAROUTER_BASE_URL,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            force_json_output=force_json_output,
+            parallel_tool_calls=parallel_tool_calls,
+            timeout_seconds=timeout_seconds,
+            include_openrouter_extras=False,
+            extra_headers={"HTTP-Referer": "https://agpt.co", "X-Title": "AutoGPT"},
             service_tier=service_tier,
         )
     if provider == "llama_api":
