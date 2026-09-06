@@ -165,7 +165,7 @@ class DesktopSession:
             )
             await self.run_command(
                 f"x11vnc -bg -display {DISPLAY} -forever -wait 50 -shared "
-                f"-rfbport {VNC_PORT} -usepw 2>/tmp/x11vnc_stderr.log"
+                f"-rfbport {VNC_PORT} -usepw >/tmp/x11vnc.log 2>/tmp/x11vnc_stderr.log"
             )
             await self.sandbox.commands.run(
                 f"cd /opt/noVNC/utils && ./novnc_proxy --vnc localhost:{VNC_PORT} "
@@ -294,15 +294,22 @@ class DesktopSession:
     async def ensure_display(self, width: int, height: int) -> None:
         if await self._check("pgrep -x xfwm4"):
             return
+        # Both daemons must write to files, never to the command's pipes: a
+        # background command's stdout/stderr stream to the SDK handle, and
+        # once that handle is dropped the pipe closes, so the first warning
+        # Xvfb logs afterwards (Chrome opening a second window is enough)
+        # kills it with SIGPIPE and every X client with it.
         if not await self._check(f"xdpyinfo -display {DISPLAY}"):
             await self.sandbox.commands.run(
                 f"Xvfb {DISPLAY} -ac -screen 0 {width}x{height}x24 -retro -dpi 96 "
-                "-nolisten tcp -nolisten unix",
+                "-nolisten tcp -nolisten unix > /tmp/xvfb.log 2>&1",
                 background=True,
             )
             await self._wait_for(f"xdpyinfo -display {DISPLAY}")
         await self.sandbox.commands.run(
-            "startxfce4", background=True, envs={"DISPLAY": DISPLAY}
+            "startxfce4 > /tmp/xfce.log 2>&1",
+            background=True,
+            envs={"DISPLAY": DISPLAY},
         )
         # Without gating on the window manager, the first xdotool call blocks
         # 10-15 s inside a half-started XFCE instead of failing fast here.
