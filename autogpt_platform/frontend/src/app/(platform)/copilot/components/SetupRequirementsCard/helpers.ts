@@ -1,12 +1,28 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import type { CredentialsType } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
 
-const VALID_CREDENTIAL_TYPES = new Set([
-  "api_key",
-  "oauth2",
-  "user_password",
-  "host_scoped",
-]);
+/**
+ * Every credential type the platform can store.
+ *
+ * This list is a *filter*, so omitting a type removes that connection method
+ * entirely rather than mis-ordering it. `device_code` was missing, which meant
+ * a provider advertising both `device_code` and `oauth2` arrived here as
+ * oauth2-only — and a device-code provider is a public client with no secret,
+ * so the authorization-code redirect it then offered could only 404.
+ *
+ * Built from a total `Record<CredentialsType, true>` so that adding a
+ * credential type fails the build here instead of silently disappearing.
+ */
+const VALID_CREDENTIAL_TYPES: ReadonlySet<string> = new Set(
+  Object.keys({
+    api_key: true,
+    device_code: true,
+    host_scoped: true,
+    oauth2: true,
+    user_password: true,
+  } satisfies Record<CredentialsType, true>),
+);
 
 export function coerceCredentialFields(rawMissingCredentials: unknown): {
   credentialFields: CredentialField[];
