@@ -140,7 +140,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O3_PRO = "o3-pro"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5.6 models (current flagship, July 2026)
+    # GPT-6 models (September 2026)
+    GPT6_ASTRA = "gpt-6-astra"
+    # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
     GPT5_6_LUNA = "gpt-5.6-luna"

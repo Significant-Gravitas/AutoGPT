@@ -151,6 +151,23 @@ def test_claude_sonnet_5_bills_at_authored_rates():
     assert MODEL_METADATA[s5].max_output_tokens == 128000
 
 
+def test_gpt6_astra_bills_at_authored_rates():
+    """GPT-6 Astra (OpenAI list price $10/$50 per 1M) — flat tier and
+    per-1M projections must match the authored catalog entry."""
+    astra = LLMModel("gpt-6-astra")
+    assert MODEL_COST[astra] == 20
+    assert TOKEN_COST[astra].model_dump() == {
+        "input": 1500.0,
+        "output": 7500.0,
+        "cache_read": 0.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[astra].max_output_tokens == 128000
+    astra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6-astra")
+    assert astra_entry.price_tier == 3
+    assert astra_entry.context_window == 1050000
+
+
 def test_provider_usd_prices_are_all_or_nothing():
     """A half-authored provider USD price must refuse to construct — it
     would silently underprice against the transport family default."""
