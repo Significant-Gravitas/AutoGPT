@@ -31,6 +31,7 @@ CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
 )
 
 # The tokenizer generation introduced with Opus 4.7 (shared by the whole
