@@ -9,11 +9,16 @@ the block and the deployment that made it.
 Keys are prefixed ``autogpt_`` and values are always strings (E2B's
 ``dict[str, str]`` contract).  ``owner`` + ``kind`` are the identity CoPilot
 looks boxes up by; everything else is provenance.
+
+Several products share one E2B team, each with its own metadata schema.  The
+one key they have in common is ``service``: a box is only parsed as ours when
+``service == "autogpt-platform"`` (see ``SandboxMetadata.parse``), so another
+product's keys are never misread and it can ignore ours the same way.
 """
 
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Mapping, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from backend.util.settings import Config
 
@@ -21,6 +26,8 @@ if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
 
 METADATA_PREFIX = "autogpt_"
+SERVICE_KEY = "service"  # pragma: allowlist secret
+SERVICE = "autogpt-platform"
 
 SandboxSource = Literal["copilot", "block"]
 SandboxUse = Literal["shell", "desktop", "code", "claude_code"]
@@ -104,9 +111,29 @@ class SandboxMetadata(BaseModel):
             template=template or None,
         )
 
+    @classmethod
+    def parse(cls, metadata: Mapping[str, str]) -> Optional["SandboxMetadata"]:
+        """Read a box's metadata back; ``None`` unless the box is this service's.
+
+        Unknown ``autogpt_*`` keys (from a newer or older build) are ignored;
+        a box missing the identity keys is treated as not ours.
+        """
+        if metadata.get(SERVICE_KEY) != SERVICE:
+            return None
+        fields = {
+            key.removeprefix(METADATA_PREFIX): value
+            for key, value in metadata.items()
+            if key.startswith(METADATA_PREFIX)
+            and key.removeprefix(METADATA_PREFIX) in cls.model_fields
+        }
+        try:
+            return cls.model_validate(fields)
+        except ValidationError:
+            return None
+
     def as_e2b(self) -> dict[str, str]:
         """Flatten to E2B's ``dict[str, str]``: unset fields dropped, keys prefixed."""
-        return {
+        return {SERVICE_KEY: SERVICE} | {
             f"{METADATA_PREFIX}{key}": value
             for key, value in self.model_dump(exclude_none=True).items()
         }

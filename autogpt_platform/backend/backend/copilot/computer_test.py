@@ -137,6 +137,7 @@ class TestOpenDesktop:
         kwargs = desktop_cls.create.await_args.kwargs
         assert kwargs["volume_mounts"] == mounts
         assert kwargs["metadata"] == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"expert:{_EXPERT}",
             "autogpt_kind": "desktop",
             "autogpt_source": "copilot",

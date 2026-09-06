@@ -86,6 +86,7 @@ class TestStartDesktop:
             WORKSPACE_PATH: user_volume_name(_USER)
         }
         assert create_kwargs["metadata"] == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"session:{session.session_id}",
             "autogpt_kind": "desktop",
             "autogpt_source": "copilot",
@@ -214,6 +215,7 @@ class TestExpertDesktop:
             SHARED_PATH: user_volume_name(_USER),
         }
         assert create_kwargs["metadata"] == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"expert:{self._EXPERT}",
             "autogpt_kind": "desktop",
             "autogpt_source": "copilot",

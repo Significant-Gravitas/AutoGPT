@@ -31,6 +31,7 @@ class TestAsE2B:
             owner="session:s", kind="shell", source="copilot", env="x"
         )
         assert meta.as_e2b() == {
+            "service": "autogpt-platform",
             "autogpt_owner": "session:s",
             "autogpt_kind": "shell",
             "autogpt_source": "copilot",
@@ -40,6 +41,34 @@ class TestAsE2B:
     def test_values_are_all_strings(self):
         meta = SandboxMetadata.for_block(_context(), "code", _BLOCK, "tpl")
         assert all(isinstance(v, str) for v in meta.as_e2b().values())
+
+
+class TestParse:
+    def test_round_trips_our_own_metadata(self):
+        meta = SandboxMetadata.for_block(_context(), "code", _BLOCK, "tpl-1")
+        assert SandboxMetadata.parse(meta.as_e2b()) == meta
+
+    def test_another_services_metadata_is_not_ours(self):
+        reviewer = {"purpose": "review", "repo": "org/repo", "job_id": "j1"}
+        assert SandboxMetadata.parse(reviewer) is None
+        assert SandboxMetadata.parse({**reviewer, "service": "pr-reviewer"}) is None
+
+    def test_untagged_legacy_box_is_not_ours(self):
+        assert SandboxMetadata.parse({"autogpt_owner": "session:s"}) is None
+
+    def test_unknown_and_missing_keys(self):
+        stamped = {
+            "service": "autogpt-platform",
+            "autogpt_owner": "session:s",
+            "autogpt_kind": "shell",
+            "autogpt_source": "copilot",
+            "autogpt_env": "dev",
+            "autogpt_future_key": "ignored",
+        }
+        parsed = SandboxMetadata.parse(stamped)
+        assert parsed is not None and parsed.owner == "session:s"
+        del stamped["autogpt_kind"]
+        assert SandboxMetadata.parse(stamped) is None
 
 
 class TestForCopilot:
@@ -59,6 +88,7 @@ class TestForCopilot:
             mounts="attached",
         )
         assert meta.as_e2b() == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"expert:{_EXPERT}",
             "autogpt_kind": "desktop",
             "autogpt_source": "copilot",
@@ -75,6 +105,7 @@ class TestForBlock:
     def test_traces_to_the_node_execution(self):
         meta = SandboxMetadata.for_block(_context(), "code", _BLOCK, "tpl-1")
         assert meta.as_e2b() == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"graph_exec:{_GRAPH_EXEC}",
             "autogpt_kind": "code",
             "autogpt_source": "block",
@@ -106,6 +137,7 @@ class TestForBlock:
     def test_without_context_still_identifies_the_block(self):
         meta = SandboxMetadata.for_block(None, "claude_code", _BLOCK, "base")
         assert meta.as_e2b() == {
+            "service": "autogpt-platform",
             "autogpt_owner": f"block:{_BLOCK}",
             "autogpt_kind": "claude_code",
             "autogpt_source": "block",
