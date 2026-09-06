@@ -641,8 +641,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_startup_embedding_backfill: bool = Field(
         default=True,
         description=(
-            "Run the search embedding coverage backfill synchronously when the "
-            "scheduler starts"
+            "Run the first search embedding coverage backfill in the background "
+            "when the scheduler starts instead of waiting six hours"
         ),
     )
 
