@@ -16,16 +16,17 @@ import sentry_sdk
 
 
 class CredentialFailure(str, Enum):
-    """Failure classes an alert rule groups on. Renaming one breaks that rule."""
+    """Failure classes an alert rule groups on. Renaming one breaks that rule.
+
+    Only the classes this service can observe. Classes 5, 11 and 13 are
+    client-side terminal states and are named in the frontend's own map.
+    """
 
     PROVIDER_UNKNOWN_TO_FRONTEND = "class_03_provider_unknown_to_frontend"
-    BROWSER_CHANNEL_BROKEN = "class_05_browser_channel_broken"
     PROVIDER_REGISTRATION_WRONG = "class_06_provider_registration_wrong"
     DEVICE_CODE_RACE = "class_07_device_code_race"
     SCOPES_TOO_NARROW = "class_08_scopes_too_narrow"
-    CREDENTIAL_NOT_WIRED_TO_CARD = "class_11_credential_not_wired_to_card"
     MANAGED_PROVISIONING_LATE = "class_12_managed_provisioning_late"
-    CHAIN_TURN_MISMATCH = "class_13_chain_turn_mismatch"
 
 
 def report_credential_failure(
