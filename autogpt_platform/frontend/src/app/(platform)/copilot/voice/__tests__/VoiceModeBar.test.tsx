@@ -52,6 +52,7 @@ describe("VoiceModeBar", () => {
   it("gives listening, thinking and speaking each their own colour", () => {
     // The three read as one continuous animation without it: the handover
     // from the user's turn to AutoPilot's was the part that did not land.
+    vi.useFakeTimers();
     const seen = new Set<string>();
     const { container, rerender } = render(
       <VoiceModeBar
@@ -60,16 +61,19 @@ describe("VoiceModeBar", () => {
         onStop={vi.fn()}
       />,
     );
-    seen.add(columnColor(container));
+    act(() => void vi.advanceTimersByTime(TICK_MS));
+    seen.add(newestColor(container));
 
     for (const state of ["thinking", "speaking"] as const) {
       rerender(
         <VoiceModeBar state={state} statusLabel={state} onStop={vi.fn()} />,
       );
-      seen.add(columnColor(container));
+      act(() => void vi.advanceTimersByTime(TICK_MS));
+      seen.add(newestColor(container));
     }
 
     expect(seen.size).toBe(3);
+    vi.useRealTimers();
   });
 
   it("follows the synthesised audio while AutoPilot speaks", () => {
@@ -160,9 +164,10 @@ function settleRoom(level: number) {
   }
 }
 
-function columnColor(container: HTMLElement): string {
-  const column = container.querySelector<HTMLElement>("span[style]");
-  return column?.className ?? "";
+/** The newest column carries the current stage; older ones keep their own. */
+function newestColor(container: HTMLElement): string {
+  const columns = container.querySelectorAll<HTMLElement>("span[style]");
+  return columns[columns.length - 1]?.className ?? "";
 }
 
 function newestColumn(container: HTMLElement): number {

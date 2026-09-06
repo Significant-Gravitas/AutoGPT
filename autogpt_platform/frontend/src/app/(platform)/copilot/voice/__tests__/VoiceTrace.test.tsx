@@ -55,6 +55,29 @@ describe("VoiceTrace", () => {
   });
 });
 
+describe("VoiceTrace colour", () => {
+  it("keeps each column in the colour of the stage that recorded it", () => {
+    // Switching from speaking to listening used to repaint the whole strip
+    // green, so AutoPilot's words looked like the user's.
+    vi.useFakeTimers();
+    takeMicLevel.mockImplementation(() => 0.02);
+    const { container, rerender } = render(
+      <VoiceTrace source="pulse" color="bg-zinc-900" />,
+    );
+    act(() => void vi.advanceTimersByTime(TICK_MS * 5));
+
+    rerender(<VoiceTrace source="mic" color="bg-emerald-500" />);
+    act(() => void vi.advanceTimersByTime(TICK_MS * 2));
+
+    const colors = [
+      ...container.querySelectorAll<HTMLElement>("span[style]"),
+    ].map((c) => (c.className.includes("bg-emerald-500") ? "mic" : "tts"));
+    expect(colors.slice(-2)).toEqual(["mic", "mic"]);
+    expect(colors.slice(-7, -2)).toEqual(["tts", "tts", "tts", "tts", "tts"]);
+    vi.useRealTimers();
+  });
+});
+
 function tallest(container: HTMLElement): number {
   const columns = container.querySelectorAll<HTMLElement>("span[style]");
   return Math.max(...[...columns].map((c) => parseFloat(c.style.height)));

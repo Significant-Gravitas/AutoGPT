@@ -15,6 +15,12 @@ const MIN_SCALE = 0.06;
 
 export type TraceSource = "mic" | "speech" | "pulse";
 
+interface Column {
+  level: number;
+  /** The colour of the stage this column was recorded in. */
+  color: string;
+}
+
 interface Props {
   source: TraceSource;
   className?: string;
@@ -28,8 +34,11 @@ interface Props {
  * mic is open, whether it is hearing anything, and how loud.
  */
 export function VoiceTrace({ source, className, color }: Props) {
-  const [columns, setColumns] = useState<number[]>(() =>
-    new Array(COLUMNS).fill(0),
+  // Each column keeps the colour of the stage it was recorded in, so the
+  // handover shows as black scrolling off while green fills in — not the
+  // whole history repainting the instant the mic reopens.
+  const [columns, setColumns] = useState<Column[]>(() =>
+    new Array(COLUMNS).fill({ level: 0, color }),
   );
 
   useEffect(() => {
@@ -40,11 +49,11 @@ export function VoiceTrace({ source, className, color }: Props) {
       // re-invokes updaters (StrictMode does it every time in dev), so the
       // second call saw an already-emptied peak — a flat line with the odd
       // spike when a frame landed between the two.
-      const next = column(source, tick++, scale);
+      const next = { level: column(source, tick++, scale), color };
       setColumns((previous) => [...previous.slice(1), next]);
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [source]);
+  }, [source, color]);
 
   return (
     <div
@@ -54,10 +63,10 @@ export function VoiceTrace({ source, className, color }: Props) {
       )}
       aria-hidden="true"
     >
-      {columns.map((level, index) => (
+      {columns.map(({ level, color: recorded }, index) => (
         <span
           key={index}
-          className={cn("w-[2px] shrink-0 rounded-full", color)}
+          className={cn("w-[2px] shrink-0 rounded-full", recorded)}
           style={{ height: `${Math.max(MIN_SCALE, level) * 100}%` }}
         />
       ))}
