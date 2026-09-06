@@ -1411,6 +1411,7 @@ async def test_rejected_card_differs_from_never_connected_by_the_rejection():
     rejected = await _run_with_auth_failure(_rejected_creds(), session)
     never_connected = await _run_with_auth_failure(None, session)
 
+    assert rejected.rejection is not None
     assert never_connected.rejection is None
     assert "sign in" in never_connected.message.lower()
 
