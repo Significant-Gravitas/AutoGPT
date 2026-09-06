@@ -16,12 +16,14 @@ interface Props {
   skillCount: number;
   scheduleCount: number;
   workflowCount: number;
+  onChat: () => void;
 }
 
 export function AutopilotCard({
   skillCount,
   scheduleCount,
   workflowCount,
+  onChat,
 }: Props) {
   return (
     <section
@@ -68,12 +70,11 @@ export function AutopilotCard({
 
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
-          as="NextLink"
-          href="/copilot"
           variant="secondary"
           size="small"
           className={`${ACTION_BUTTON_CLASS} flex-1`}
           leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
+          onClick={onChat}
         >
           Chat
         </Button>

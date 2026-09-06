@@ -20,6 +20,7 @@ interface Props {
   experts: Expert[];
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
   renderCard: (expert: Expert) => ReactNode;
+  onAutopilotChat: () => void;
 }
 
 export function TeamRoster({
@@ -27,6 +28,7 @@ export function TeamRoster({
   experts,
   schedulesForExpert,
   renderCard,
+  onAutopilotChat,
 }: Props) {
   const { query, setQuery, filter, setFilter, isNarrowed, visibleExperts } =
     useTeamRosterView({ experts, schedulesForExpert });
@@ -38,6 +40,7 @@ export function TeamRoster({
       skillCount={summary.skillCount}
       scheduleCount={summary.scheduleCount}
       workflowCount={summary.workflowCount}
+      onChat={onAutopilotChat}
     />
   );
 
