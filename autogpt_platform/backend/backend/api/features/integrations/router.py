@@ -222,8 +222,6 @@ async def _start_codex_login(
     )
 
 
-# One source of truth for the scheme vocabulary: the response field's type and
-# the runtime check in `to_meta_response` used to list the pair separately.
 MCPAuthScheme = Literal["basic", "bearer"]
 
 

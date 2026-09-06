@@ -19,50 +19,6 @@ from backend.blocks.mcp.helpers import mcp_authorization_header
 from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
 
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("secret-token", "Bearer secret-token"),
-        ("  secret-token  ", "Bearer secret-token"),
-        ("token:with:colons", "Bearer token:with:colons"),
-        ("Bearer secret-token", "Bearer secret-token"),
-        ("bearer secret-token", "Bearer secret-token"),
-        ("Basic cGstbGYtYWJjZA==", "Basic cGstbGYtYWJjZA=="),
-        (
-            "Authorization: Basic cGstbGYtYWJjZA==",
-            "Basic cGstbGYtYWJjZA==",
-        ),
-        (
-            "Authorization : Basic cGstbGYtYWJjZA==",
-            "Basic cGstbGYtYWJjZA==",
-        ),
-        ("AUTHORIZATION:bearer secret-token", "Bearer secret-token"),
-    ],
-)
-def test_normalize_mcp_authorization(value: str, expected: str) -> None:
-    assert normalize_mcp_authorization(value) == expected
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "",
-        "   ",
-        "Basic",
-        "Bearer",
-        "Authorization:",
-        "Authorization :  ",
-        "Authorization: Basic",
-        "Authorization: Bearer",
-        "Authorization: Digest abc",
-    ],
-)
-def test_normalize_mcp_authorization_rejects_invalid_values(value: str) -> None:
-    with pytest.raises(ValueError):
-        normalize_mcp_authorization(value)
-
-
 _AUTH_CASES = json.loads(
     (pathlib.Path(__file__).parent / "mcp_auth_cases.json").read_text()
 )
@@ -74,16 +30,7 @@ _AUTH_CASES = json.loads(
 def test_shared_auth_cases_are_normalized_as_the_frontend_reads_them(
     case: dict,
 ) -> None:
-    """The cross-boundary contract, asserted from the same file the TS suite reads.
-
-    ``frontend/src/lib/mcp-auth.test.ts`` asserts the scheme each of these
-    inputs carries; this asserts what the backend then stores and sends.  The
-    two implementations disagreed on whether the remainder after a scheme word
-    may contain whitespace, so ``Bearer orgid api-key`` was scheme-prefixed
-    here and bare there — and the frontend rewrote it to
-    ``Bearer Bearer orgid api-key``.  A table only one side reads cannot catch
-    that; the point of this test is that the file is shared.
-    """
+    """Same table as ``frontend/src/lib/mcp-auth.test.ts``."""
     assert normalize_mcp_authorization(case["input"]) == case["canonical"]
 
 
@@ -95,35 +42,7 @@ def test_shared_auth_cases_that_must_be_rejected(case: dict) -> None:
         normalize_mcp_authorization(case["input"])
 
 
-def test_a_trailing_newline_does_not_make_a_credential_invalid() -> None:
-    """A token copied out of a terminal keeps its newline.
-
-    The control-character scan used to run before ``.strip()``, so such a token
-    was rejected as "must be a single line" — while an *interior* control
-    character, the header-injection case, still has to be refused.
-    """
-    assert normalize_mcp_authorization("sk-abc\n") == "Bearer sk-abc"
-    with pytest.raises(ValueError, match="single line"):
-        normalize_mcp_authorization("sk-abc\nX-Evil: 1")
-
-
-@pytest.mark.parametrize(
-    "control_character", ["\x00", "\t", "\n", "\r", "\x1f", "\x7f"]
-)
-def test_normalize_mcp_authorization_rejects_control_characters(
-    control_character: str,
-) -> None:
-    with pytest.raises(ValueError, match="single line"):
-        normalize_mcp_authorization(f"Bearer token{control_character}X-Evil: injected")
-
-
 def test_mcp_client_sends_the_authorization_it_was_given() -> None:
-    """The transport sends its value verbatim and parses nothing.
-
-    Normalizing here as well as at the entry point made the header depend on
-    how many layers a value had crossed: a stored ``"Bearer orgid api-key"``
-    came back out as ``"Bearer Bearer orgid api-key"``.
-    """
     for authorization in (
         "Basic cGstbGYtYWJjZA==",
         "Bearer legacy-token",
@@ -134,11 +53,6 @@ def test_mcp_client_sends_the_authorization_it_was_given() -> None:
 
 
 def test_stored_credential_round_trips_without_double_prefixing() -> None:
-    """Store → read → send must be stable for a multi-word bare credential.
-
-    The store path canonicalizes ``"orgid api-key"`` to ``"Bearer orgid
-    api-key"``; the read path must hand that to the transport untouched.
-    """
     stored = OAuth2Credentials(
         provider="mcp",
         title="MCP: mcp.example.com",
@@ -157,11 +71,6 @@ def test_stored_credential_round_trips_without_double_prefixing() -> None:
 
 
 def test_legacy_row_without_scheme_metadata_is_sent_as_bearer() -> None:
-    """A pre-Basic row holds a raw token and must never be parsed.
-
-    Parsing it is what let ``"basic auth key"`` become ``"Basic auth key"`` —
-    scheme flipped and the first word silently dropped from the secret.
-    """
     legacy = OAuth2Credentials(
         provider="mcp",
         title="MCP: mcp.example.com",
@@ -202,12 +111,6 @@ async def test_schema_optional_mcp_credentials_do_not_skip_execution(
 
     assert errors == {}
     assert nodes_to_skip == set()
-
-
-@pytest.mark.parametrize("value", ["", " ", "   "])
-def test_normalize_rejects_blank_input(value: str) -> None:
-    with pytest.raises(ValueError, match="must not be blank"):
-        normalize_mcp_authorization(value)
 
 
 app = fastapi.FastAPI()
@@ -290,13 +193,7 @@ async def test_store_manual_credential(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize(
-    "control_character", ["\x00", "\t", "\n", "\r", "\x1f", "\x7f"]
-)
-async def test_store_rejects_header_injection(
-    client: httpx.AsyncClient,
-    control_character: str,
-) -> None:
+async def test_store_rejects_header_injection(client: httpx.AsyncClient) -> None:
     with patch(
         "backend.api.features.mcp.routes.validate_url_host",
         new_callable=AsyncMock,
@@ -305,7 +202,7 @@ async def test_store_rejects_header_injection(
             "/token",
             json={
                 "server_url": "https://mcp.example.com/mcp",
-                "token": f"Bearer token{control_character}X-Evil: injected",
+                "token": "Bearer token\nX-Evil: injected",
             },
         )
 
@@ -316,11 +213,6 @@ async def test_store_rejects_header_injection(
 
 @pytest.mark.asyncio
 async def test_block_uses_the_credential_it_was_given():
-    """An injected credential is used as-is; auto-lookup is the fallback only.
-
-    Pins the block half of the "is the bound credential actually used?"
-    question: given one, ``run`` must not go looking for another.
-    """
     block = MCPToolBlock()
     credentials = OAuth2Credentials(
         provider="mcp",

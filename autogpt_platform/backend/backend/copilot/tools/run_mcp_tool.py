@@ -216,9 +216,6 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
-        # Building the header from metadata cannot fail, so there is no
-        # "unusable stored row" branch here any more: a credential the server
-        # rejects comes back as a 401 below and is invalidated there.
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
             if creds is not None
@@ -243,11 +240,7 @@ class RunMCPToolTool(BaseTool):
         # treated as "unknown, optimistically connected" — the next
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
-            # `client` is non-None exactly when `creds` is (it is built from
-            # `creds` a few lines up and header construction cannot fail), so
-            # one condition covers both: every stored credential is probed
-            # before we claim "Connected", and an unstored one never is.
-            connected = client is not None
+            connected = creds is not None
             if client is not None and creds is not None:
                 probe_client = client
                 try:
@@ -349,14 +342,6 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
-
-        finally:
-            # Same invariant as the probe above and as the block/discovery
-            # paths: an initialized session is a row the server holds until
-            # its timeout sweep, and this is the highest-traffic MCP path in
-            # the product.  `close` is best-effort, bounded, and a no-op when
-            # `initialize` never got far enough to receive a session id.
-            await client.close()
 
     async def _discover_tools(
         self,

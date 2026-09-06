@@ -9,7 +9,6 @@ Handles both JSON and SSE (text/event-stream) response formats per the MCP spec.
 Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
 """
 
-import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -18,10 +17,6 @@ from typing import Any
 from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
-
-# The session DELETE is cleanup, not work the caller is waiting on a result
-# from; it must never dominate the request it follows.
-_CLOSE_TIMEOUT_SECONDS = 5
 
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
@@ -32,23 +27,11 @@ _SUPPORTED_AUTH_SCHEMES = {
 def normalize_mcp_authorization(value: str) -> str:
     """Turn a user-supplied credential into a canonical Authorization value.
 
-    Accepts a bare token (kept Bearer for backward compatibility), an explicit
-    ``Basic``/``Bearer`` prefix, or a complete ``Authorization: ...`` header
-    copied from provider documentation.
-
-    This runs **once, at the boundary where a human-supplied value enters the
-    system** — never against a value read back from storage.  Re-parsing a
-    stored secret is what makes normalization order-dependent: the scheme word
-    of the canonical form becomes the first word of a "bare" credential on the
-    second pass.  Stored credentials go through
-    ``helpers.mcp_authorization_header`` instead, which reads the scheme from
-    metadata and never inspects the secret.
+    Accepts a bare token (sent as Bearer for backward compatibility), an
+    explicit ``Basic``/``Bearer`` prefix, or a complete ``Authorization:``
+    header.  Runs once, where user input enters the system; stored values go
+    through ``helpers.mcp_authorization_header`` and are never re-parsed.
     """
-    # Strip first: a token copied out of a terminal or a docs page routinely
-    # carries a trailing newline, and rejecting that as "not a single line"
-    # fails a credential that is perfectly good.  An *interior* control
-    # character is the header-injection case and still has to be refused, so
-    # the scan runs on the stripped value rather than being dropped.
     candidate = value.strip()
     if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
         raise ValueError("Authentication credential must be a single line.")
@@ -83,9 +66,8 @@ def normalize_mcp_authorization(value: str) -> str:
         credential = candidate
 
     if scheme == "Basic":
-        # RFC 7617 puts Base64 of `user:password` on the wire, and that alphabet
-        # contains neither.  Rejecting here as well as in the UI stops a direct
-        # API caller persisting a plaintext password as a "working" credential.
+        # RFC 7617: the wire value is Base64 of user:password, so neither
+        # character can appear in a valid credential.
         if ":" in credential:
             raise ValueError(
                 "Basic authentication expects the Base64 of user:password, "
@@ -99,7 +81,7 @@ def normalize_mcp_authorization(value: str) -> str:
 
 @dataclass
 class MCPTool:
-    """Represents a single MCP tool returned by discovery."""
+    """Represents an MCP tool discovered from a server."""
 
     name: str
     description: str
@@ -125,13 +107,8 @@ class MCPClient:
     Async HTTP client for the MCP Streamable HTTP transport.
 
     Communicates with MCP servers using JSON-RPC 2.0 over HTTP POST.
-
-    ``authorization`` is sent verbatim as the ``Authorization`` header. The
-    transport does no parsing or normalization of its own: callers hand it a
-    value that is already canonical, from ``normalize_mcp_authorization`` for
-    fresh user input or ``helpers.mcp_authorization_header`` for a stored
-    credential. Normalizing here as well made the result depend on how many
-    layers a value had passed through.
+    ``authorization`` is sent verbatim as the ``Authorization`` header; callers
+    pass an already-canonical value.
     """
 
     def __init__(
@@ -376,18 +353,8 @@ class MCPClient:
             return
         try:
             headers = self._build_headers()
-            # Bounded on both axes.  `Requests` only installs a tenacity `stop`
-            # condition when `retry_max_attempts` is set, so the default would
-            # retry a 429/5xx forever with exponential backoff — a best-effort
-            # cleanup outliving the operation it cleans up after.
-            requests = Requests(
-                raise_for_status=False,
-                extra_headers=headers,
-                retry_max_attempts=1,
-            )
-            await asyncio.wait_for(
-                requests.delete(self.server_url), timeout=_CLOSE_TIMEOUT_SECONDS
-            )
+            requests = Requests(raise_for_status=False, extra_headers=headers)
+            await requests.delete(self.server_url)
         except Exception:
             pass
         finally:

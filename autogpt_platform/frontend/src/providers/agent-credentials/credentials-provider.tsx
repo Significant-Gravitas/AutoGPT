@@ -194,15 +194,7 @@ export default function CredentialsProvider({
     [upsertCredentials, onFailToast],
   );
 
-  /**
-   * Stores a manually entered MCP credential and adds the result to the
-   * internal credentials store.
-   *
-   * Going through the provider rather than calling the endpoint directly is
-   * what makes the returned ID resolvable straight away: a caller that binds a
-   * node to a credential the provider map has never seen renders it as removed
-   * until the next full reload.
-   */
+  /** Stores a manual MCP credential, and adds the result to the internal credentials store. */
   const mcpStoreToken = useCallback(
     async (
       server_url: string,

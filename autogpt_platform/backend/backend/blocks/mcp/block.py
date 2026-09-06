@@ -177,13 +177,8 @@ class MCPToolBlock(Block):
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
         client = MCPClient(server_url, authorization=authorization)
-        try:
-            await client.initialize()
-            result = await client.call_tool(tool_name, arguments)
-        finally:
-            # Without this every execution leaves a session row on the remote
-            # until its own timeout sweep.
-            await client.close()
+        await client.initialize()
+        result = await client.call_tool(tool_name, arguments)
 
         if result.is_error:
             error_text = ""
@@ -249,8 +244,6 @@ class MCPToolBlock(Block):
                 user_id, normalize_mcp_url(input_data.server_url)
             )
 
-        # Built from metadata rather than by re-parsing the secret, so a stored
-        # credential can no longer be misread as carrying a different scheme.
         authorization = mcp_authorization_header(credentials) if credentials else None
 
         try:

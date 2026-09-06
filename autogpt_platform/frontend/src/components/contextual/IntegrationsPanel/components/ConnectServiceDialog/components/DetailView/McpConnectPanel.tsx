@@ -27,7 +27,12 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
-import { normalizeMcpUrl } from "@/lib/mcp-url";
+import {
+  getAPIResponseError,
+  getErrorMessage,
+  getErrorStatus,
+} from "@/lib/mcp-errors";
+import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 
@@ -159,9 +164,7 @@ export function McpConnectPanel({ onSuccess }: Props) {
     try {
       const authValue = prepareMCPAuthCredential(trimmedToken, authScheme);
 
-      // Check the server accepts the credential before storing it, so a
-      // rejected value never replaces a working one and the panel never
-      // reports a connection the next call will fail on.
+      // Probe before storing so a rejected credential never replaces a working one.
       const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: trimmedUrl,
         auth_token: authValue,
@@ -195,7 +198,8 @@ export function McpConnectPanel({ onSuccess }: Props) {
   }
 
   function handleServerUrlChange(nextUrl: string) {
-    const serverIdentityChanged = serverUrl.trim() !== nextUrl.trim();
+    const serverIdentityChanged =
+      mcpServerIdentity(serverUrl) !== mcpServerIdentity(nextUrl);
 
     setServerUrl(nextUrl);
     if (!serverIdentityChanged) return;
@@ -297,34 +301,6 @@ export function McpConnectPanel({ onSuccess }: Props) {
       </div>
     </div>
   );
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "object" && error !== null) {
-    const detail = (error as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return "Something went wrong. Please try again.";
-}
-
-function getErrorStatus(error: unknown): number | null {
-  if (typeof error === "object" && error !== null) {
-    const status = (error as { status?: unknown }).status;
-    if (typeof status === "number") return status;
-  }
-  return null;
-}
-
-function getAPIResponseError(status: number, data: unknown) {
-  if (typeof data !== "object" || data === null) {
-    return { status, detail: data };
-  }
-  const detail = "detail" in data ? data.detail : data;
-  const message = "message" in data ? data.message : undefined;
-  return { status, detail, message };
 }
 
 function isValidHttpUrl(value: string): boolean {

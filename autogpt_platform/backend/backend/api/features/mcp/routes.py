@@ -46,9 +46,7 @@ creds_manager = IntegrationCredentialsManager()
 # ====================== Tool Discovery ====================== #
 
 
-# Bounded so the per-character control-character scan in
-# `normalize_mcp_authorization` never runs over an unbounded body.  Generous
-# enough for a Base64 `user:password` or a long JWT.
+# Bounds the per-character scan in `normalize_mcp_authorization`.
 _MAX_CREDENTIAL_LENGTH = 8192
 
 
@@ -110,7 +108,6 @@ async def discover_tools(
         request.auth_token.get_secret_value() if request.auth_token else None
     )
     if explicit_token:
-        # Fresh user input: normalize exactly here, once.
         try:
             authorization = normalize_mcp_authorization(explicit_token)
         except ValueError as e:
@@ -143,10 +140,6 @@ async def discover_tools(
             status_code=502,
             detail=f"Failed to connect to MCP server: {e}",
         )
-    finally:
-        # Discovery now runs on every connect surface, so without this each
-        # attempt leaves a session row on the remote until its timeout sweep.
-        await client.close()
 
     return DiscoverToolsResponse(
         tools=[
@@ -438,8 +431,7 @@ class MCPStoreTokenRequest(BaseModel):
 
 @router.post(
     "/token",
-    # The summary is pinned so the generated client keeps its current method
-    # name; the description is where Basic support is documented.
+    # The summary names the generated client method, so it stays as is.
     summary="Store a bearer token for an MCP server",
     description=(
         "Store a manually entered MCP credential. Accepts a bare token "
@@ -474,12 +466,9 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
-    # Reuse an existing *manual* credential ID so saved graphs keep resolving
-    # their credential references after a token rotation.  An OAuth row for the
-    # same server is never rewritten in place: that would keep its ID and
-    # ``type="oauth2"`` while destroying the refresh token and the
-    # ``mcp_client_id``/``mcp_token_url`` metadata behind it, so a saved graph
-    # would silently start running on a pasted static secret.
+    # Rotate the existing manual credential in place so saved graphs keep their
+    # credential ID.  OAuth rows are left alone: rewriting one would drop its
+    # refresh token, and deleting one here would not revoke it.
     manual_credentials: list[OAuth2Credentials] = []
     try:
         old_creds = await creds_manager.store.get_creds_by_provider(
@@ -504,12 +493,6 @@ async def mcp_store_token(
 
     auth_scheme = authorization.split(" ", 1)[0].lower()
     metadata = {"mcp_server_url": server_url, "mcp_auth_scheme": auth_scheme}
-    # Every write below is a read-modify-write of the user's whole credential
-    # set, so touch exactly one row: rotate one manual credential and drop the
-    # redundant duplicates, rather than updating each in turn.
-    #
-    # `get_creds_by_provider` promises no ordering, so pick the survivor by an
-    # explicit key instead of by position.
     manual_credentials.sort(key=lambda cred: cred.id)
     survivor = manual_credentials[-1] if manual_credentials else None
     superseded_ids = [old.id for old in manual_credentials[:-1]]
@@ -535,22 +518,8 @@ async def mcp_store_token(
         )
         await creds_manager.create(user_id, credentials)
 
-    # Redundant *manual* duplicates only.  An OAuth row for the same server is
-    # deliberately left alone: neither `creds_manager.delete` nor
-    # `delete_acquired` calls `handler.revoke_tokens` — that lives in
-    # `DELETE /credentials` in the integrations router — so deleting one here
-    # would drop the row while leaving a live refresh token at the provider
-    # with nothing left to revoke it with, and would break every saved graph
-    # node bound to its ID.  `auto_lookup_mcp_credential` prefers the manual
-    # credential over a surviving OAuth row, so the pasted one is the one that
-    # gets sent; disconnecting the OAuth grant stays an explicit user action
-    # through the route that actually revokes it.
-    #
-    # Deleted only after the new credential is safely stored, so a failed write
-    # leaves the user with their previous credential rather than none at all,
-    # and through `creds_manager.delete` rather than `store.delete_creds_by_id`
-    # because the former takes the per-credential lock and fires the
-    # credentials-changed hook that evicts cached provider tokens.
+    # Deleted only after the new credential is stored, and through
+    # `creds_manager.delete` so the lock and credentials-changed hook run.
     for old_id in superseded_ids:
         try:
             await creds_manager.delete(user_id, old_id)

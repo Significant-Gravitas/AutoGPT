@@ -1,21 +1,42 @@
 {
   "$comment": [
-    "Shared contract for reading a pasted MCP credential. Asserted by",
-    "backend/backend/blocks/mcp/test_auth_schemes.py and by",
-    "frontend/src/lib/mcp-auth.test.ts, because the two implementations",
-    "(normalize_mcp_authorization and matchSchemePrefix) once disagreed on",
-    "whether the remainder after a scheme word may contain whitespace, and a",
-    "value one side rewrote was read back by the other with the other meaning.",
-    "",
-    "scheme: the explicit scheme a value carries, or null when it is a bare",
-    "credential that gets Bearer for backward compatibility.",
-    "canonical: what the backend stores and sends.",
-    "The frontend skips the canonical assertion for complete-header inputs: it",
-    "deliberately preserves the 'Authorization: ' prefix so the backend can",
-    "reject an unsupported scheme explicitly rather than disguise it."
+    "Shared contract for reading a pasted MCP credential, asserted by both",
+    "backend/blocks/mcp/test_auth_schemes.py and frontend/src/lib/mcp-auth.test.ts.",
+    "scheme: the explicit scheme a value carries, or null for a bare credential.",
+    "canonical: what the backend stores and sends. The frontend skips the",
+    "canonical check for headerForm inputs, which it passes through verbatim."
   ],
   "accepted": [
-    { "input": "sk-abc123", "scheme": null, "canonical": "Bearer sk-abc123" },
+    {
+      "input": "sk-abc123",
+      "scheme": null,
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "  sk-abc123  ",
+      "scheme": null,
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "sk-abc123\n",
+      "scheme": null,
+      "canonical": "Bearer sk-abc123"
+    },
+    {
+      "input": "token:with:colons",
+      "scheme": null,
+      "canonical": "Bearer token:with:colons"
+    },
+    {
+      "input": "orgid api-key",
+      "scheme": null,
+      "canonical": "Bearer orgid api-key"
+    },
+    {
+      "input": "bearerish-token",
+      "scheme": null,
+      "canonical": "Bearer bearerish-token"
+    },
     {
       "input": "Bearer sk-abc123",
       "scheme": "bearer",
@@ -32,24 +53,14 @@
       "canonical": "Bearer sk-abc123"
     },
     {
-      "input": "basic dXNlcjpwYXNzd29yZA==",
-      "scheme": "basic",
-      "canonical": "Basic dXNlcjpwYXNzd29yZA=="
-    },
-    {
       "input": "Bearer orgid api-key",
       "scheme": "bearer",
       "canonical": "Bearer orgid api-key"
     },
     {
-      "input": "orgid api-key",
-      "scheme": null,
-      "canonical": "Bearer orgid api-key"
-    },
-    {
-      "input": "bearerish-token",
-      "scheme": null,
-      "canonical": "Bearer bearerish-token"
+      "input": "basic dXNlcjpwYXNzd29yZA==",
+      "scheme": "basic",
+      "canonical": "Basic dXNlcjpwYXNzd29yZA=="
     },
     {
       "input": "Authorization: Basic dXNlcjpwYXNzd29yZA==",
@@ -58,23 +69,78 @@
       "headerForm": true
     },
     {
-      "input": "sk-abc123\n",
-      "scheme": null,
-      "canonical": "Bearer sk-abc123"
+      "input": "Authorization : Basic dXNlcjpwYXNzd29yZA==",
+      "scheme": "basic",
+      "canonical": "Basic dXNlcjpwYXNzd29yZA==",
+      "headerForm": true
+    },
+    {
+      "input": "AUTHORIZATION:bearer sk-abc123",
+      "scheme": "bearer",
+      "canonical": "Bearer sk-abc123",
+      "headerForm": true
     }
   ],
   "rejectedByBackend": [
-    { "input": "", "reason": "blank" },
-    { "input": "   ", "reason": "blank" },
-    { "input": "Bearer", "reason": "scheme word with no credential" },
-    { "input": "Basic", "reason": "scheme word with no credential" },
+    {
+      "input": "",
+      "reason": "blank"
+    },
+    {
+      "input": "   ",
+      "reason": "blank"
+    },
+    {
+      "input": "Bearer",
+      "reason": "scheme word with no credential"
+    },
+    {
+      "input": "Basic",
+      "reason": "scheme word with no credential"
+    },
+    {
+      "input": "Authorization:",
+      "reason": "header with no credential"
+    },
+    {
+      "input": "Authorization :  ",
+      "reason": "header with no credential"
+    },
+    {
+      "input": "Authorization: Basic",
+      "reason": "header with no credential"
+    },
+    {
+      "input": "Authorization: Bearer",
+      "reason": "header with no credential"
+    },
     {
       "input": "Authorization: Digest abc",
       "reason": "complete header naming an unsupported scheme"
     },
     {
       "input": "sk-abc\nX-Injected: 1",
-      "reason": "interior control character (header injection)"
+      "reason": "interior newline"
+    },
+    {
+      "input": "Bearer token\rX-Evil: 1",
+      "reason": "interior carriage return"
+    },
+    {
+      "input": "Bearer token\tX-Evil: 1",
+      "reason": "interior tab"
+    },
+    {
+      "input": "Bearer token\u0000X-Evil: 1",
+      "reason": "interior NUL"
+    },
+    {
+      "input": "Bearer token\u001fX-Evil: 1",
+      "reason": "interior C0 control"
+    },
+    {
+      "input": "Bearer token\u007fX-Evil: 1",
+      "reason": "interior DEL"
     },
     {
       "input": "Basic user:password",

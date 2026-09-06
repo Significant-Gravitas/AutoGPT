@@ -75,8 +75,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",
@@ -97,16 +95,11 @@ class TestDiscoverTools:
         assert data["tools"][1]["name"] == "add_numbers"
         assert data["server_name"] == "test-server"
         assert data["protocol_version"] == "2025-03-26"
-        # The session DELETE is the point of the `finally`; without this the
-        # block could be deleted with the whole suite still green.
-        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_with_auth_token(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -149,8 +142,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -178,8 +169,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
@@ -203,8 +192,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
 
             response = await client.post(
@@ -214,9 +201,6 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Failed to connect" in response.json()["detail"]
-        # The raising path matters more than the success one: a server that
-        # times out mid-handshake is exactly when a leaked session lingers.
-        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_auth_required(self, client):
@@ -229,8 +213,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
             )
@@ -254,8 +236,6 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
             )
@@ -286,8 +266,6 @@ class TestOAuthLogin:
             ) as mock_register,
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(
                 return_value={
                     "authorization_servers": ["https://auth.sentry.io"],
@@ -327,8 +305,6 @@ class TestOAuthLogin:
     async def test_oauth_login_no_oauth_support(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(return_value=None)
             instance.discover_auth_server_metadata = AsyncMock(return_value=None)
 
@@ -349,8 +325,6 @@ class TestOAuthLogin:
             patch("backend.api.features.mcp.routes.settings") as mock_settings,
         ):
             instance = MockClient.return_value
-            # The route closes its session in a finally block.
-            instance.close = AsyncMock()
             instance.discover_auth = AsyncMock(
                 return_value={
                     "authorization_servers": ["https://auth.example.com"],
@@ -545,7 +519,6 @@ class TestStoreToken:
                 side_effect=AssertionError("manual credentials must not refresh")
             )
             mcp_client = client_cls.return_value
-            mcp_client.close = AsyncMock()
             mcp_client.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",

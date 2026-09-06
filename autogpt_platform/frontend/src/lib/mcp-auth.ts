@@ -4,19 +4,8 @@ const AUTHORIZATION_HEADER_PREFIX = /^authorization\s*:\s*/i;
 const SUPPORTED_SCHEME_PREFIX = /^(bearer|basic)\s+(\S[\s\S]*)$/i;
 
 /**
- * Match an explicit `Basic`/`Bearer` prefix, mirroring
- * `normalize_mcp_authorization` in `backend/blocks/mcp/client.py`.
- *
- * The remainder is everything after the first run of whitespace — the same
- * split the backend does with `value.split(None, 1)`. This previously required
- * a single `\S+` run on the theory that RFC 7235 credentials are one token68,
- * and the two ends disagreed as a result: `Bearer orgid api-key` was a
- * scheme-prefixed value to the backend and a bare credential here, so this
- * function rewrote it to `Bearer Bearer orgid api-key`. A multi-word remainder
- * is not a valid Basic credential, but `validateMCPAuthCredential` is what
- * rejects that — the split itself has to agree across the boundary.
- *
- * `mcp_auth_cases.json` is the shared table both test suites assert against.
+ * Mirrors `normalize_mcp_authorization` in `backend/blocks/mcp/client.py`: the
+ * scheme word takes the whole remainder. `mcp_auth_cases.json` pins both sides.
  */
 function matchSchemePrefix(
   candidate: string,
@@ -39,18 +28,8 @@ export function detectMCPAuthScheme(value: string): MCPAuthScheme | null {
 }
 
 /**
- * Reject a Basic value the server could not possibly accept.
- *
- * RFC 7617 puts Base64 of `user:password` on the wire, not the pair itself, and
- * the Base64 alphabet contains neither `:` nor whitespace. Both mistakes are
- * worth catching here rather than at the server:
- *
- * - a raw `pk-lf-abc:sk-lf-xyz` (what a provider's docs show) would be stored
- *   and sent verbatim, and every call would 401 with nothing pointing at the
- *   missing encoding step;
- * - a value with a space would be re-read by the backend as a bare Bearer
- *   credential, so `Basic a b` goes on the wire as `Bearer Basic a b`.
- *
+ * Reject a Basic value the server cannot accept: RFC 7617 puts Base64 of
+ * `user:password` on the wire, and that alphabet has neither `:` nor spaces.
  * Returns an error message, or null when the value is sendable.
  */
 export function validateMCPAuthCredential(
@@ -74,9 +53,8 @@ export function validateMCPAuthCredential(
 }
 
 /**
- * Prepare the existing token API payload without changing Bearer compatibility.
- * Bare credentials get the selected scheme as an explicit prefix.
- * The selector is authoritative over any recognized pasted scheme.
+ * Bare credentials get the selected scheme as an explicit prefix; the selector
+ * is authoritative over any recognized pasted scheme.
  */
 export function prepareMCPAuthCredential(
   value: string,
@@ -89,8 +67,7 @@ export function prepareMCPAuthCredential(
   const candidate = credential.replace(AUTHORIZATION_HEADER_PREFIX, "").trim();
   const recognizedPrefix = matchSchemePrefix(candidate);
 
-  // Preserve complete unsupported Authorization headers so the backend can
-  // reject them explicitly instead of disguising them as a Bearer token.
+  // An unsupported complete header is passed through for the backend to reject.
   if (hasAuthorizationHeader && !recognizedPrefix) return credential;
 
   const credentialValue = recognizedPrefix

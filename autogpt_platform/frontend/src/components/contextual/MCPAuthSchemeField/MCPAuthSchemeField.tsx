@@ -8,24 +8,14 @@ interface Props {
   value: MCPAuthScheme;
   onChange: (scheme: MCPAuthScheme) => void;
   disabled?: boolean;
-  /**
-   * Appended to the accessible name. Several MCP connectors can render at once
-   * inside a copilot tool chain, where "Authentication type" alone is ambiguous.
-   */
+  /** Disambiguates the accessible name when several connectors render at once. */
   nameSuffix?: string;
   className?: string;
   labelClassName?: string;
   selectClassName?: string;
 }
 
-/**
- * Bearer/Basic selector shared by every surface that takes a manual MCP
- * credential.
- *
- * One implementation rather than four: the copies had already drifted into
- * three wordings of the same hint and two hardcoded element ids that collide
- * when two connectors render on one page.
- */
+/** Bearer/Basic selector shared by every surface that takes a manual MCP credential. */
 export function MCPAuthSchemeField({
   value,
   onChange,

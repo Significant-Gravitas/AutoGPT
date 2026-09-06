@@ -35,6 +35,7 @@ import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/M
 import {
   mcpAuthTokenHint,
   mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
 import {
@@ -42,7 +43,12 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
-import { mcpServerIdentity } from "@/lib/mcp-url";
+import {
+  getAPIResponseError,
+  getErrorMessage,
+  getErrorStatus,
+} from "@/lib/mcp-errors";
+import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -63,45 +69,6 @@ interface MCPToolDialogProps {
 }
 
 type DialogStep = "url" | "tool";
-
-type MCPApiError = {
-  status?: unknown;
-  message?: unknown;
-  detail?: unknown;
-};
-
-/** Extract an HTTP status from an unknown generated-client error payload. */
-function getErrorStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null) return null;
-  const status = (error as MCPApiError).status;
-  return typeof status === "number" ? status : null;
-}
-
-/** Extract a readable message from an unknown generated-client error payload. */
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error !== "object" || error === null) return fallback;
-
-  const { message, detail } = error as MCPApiError;
-  const value =
-    message !== undefined && message !== null && message !== ""
-      ? message
-      : detail;
-  if (typeof value === "string") return value;
-  if (value !== undefined && value !== null) {
-    return JSON.stringify(value) || fallback;
-  }
-  return fallback;
-}
-
-function getAPIResponseError(status: number, data: unknown) {
-  if (typeof data !== "object" || data === null) {
-    return { status, detail: data };
-  }
-  const detail = "detail" in data ? data.detail : data;
-  const message = "message" in data ? data.message : undefined;
-  return { status, detail, message };
-}
 
 export function MCPToolDialog({
   open,
@@ -130,15 +97,11 @@ export function MCPToolDialog({
     null,
   );
 
-  // Seed the selector from the scheme already stored for this server, so
-  // reconnecting a Basic credential does not silently downgrade it to Bearer.
-  // This was the only surface that never read `mcp_auth_scheme`.
   const storedAuthScheme: MCPAuthScheme =
     allProviders?.["mcp"]?.savedCredentials.find(
       (credential) =>
         typeof credential.host === "string" &&
-        credential.host.trim().replace(/\/+$/, "") ===
-          serverUrl.trim().replace(/\/+$/, ""),
+        normalizeMcpUrl(credential.host) === normalizeMcpUrl(serverUrl),
     )?.mcp_auth_scheme === "basic"
       ? "basic"
       : "bearer";
@@ -248,8 +211,7 @@ export function MCPToolDialog({
     try {
       const authValue = prepareMCPAuthCredential(credential, manualAuthScheme);
 
-      // Validate the credential before persisting it so a rejected token never
-      // replaces a working credential for this server.
+      // Probe before storing so a rejected credential never replaces a working one.
       const toolsResponse = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: url,
         auth_token: authValue,
@@ -258,10 +220,7 @@ export function MCPToolDialog({
         throw getAPIResponseError(toolsResponse.status, toolsResponse.data);
       }
 
-      // Store through the credentials provider so the new credential lands in
-      // the map the builder resolves node bindings against. Calling the
-      // endpoint directly leaves the node pointing at an ID the builder cannot
-      // see, which it renders as "was removed" until the next page load.
+      // Store through the provider so the builder can resolve the new ID.
       const mcpProvider = allProviders?.["mcp"];
       let storedCredential;
       if (mcpProvider) {
@@ -471,13 +430,7 @@ export function MCPToolDialog({
                 value={serverUrl}
                 onChange={(e) => {
                   const nextUrl = e.target.value;
-                  // Only a real change of server identity discards work in
-                  // progress. Comparing the trimmed URLs made this true on
-                  // every keystroke, so fixing one character of the path threw
-                  // away the typed credential and forced a full discover → 401
-                  // → OAuth-probe round trip — the exact flow this dialog is
-                  // here to support. A credential is issued by a host, so the
-                  // host is what has to change before it stops applying.
+                  // Only a change of server identity discards the credential.
                   const serverChanged =
                     mcpServerIdentity(serverUrl) !== mcpServerIdentity(nextUrl);
                   setServerUrl(nextUrl);
@@ -529,7 +482,7 @@ export function MCPToolDialog({
                   id="mcp-auth-token"
                   aria-describedby="mcp-auth-token-hint"
                   type="password"
-                  placeholder="Paste your auth credential here"
+                  placeholder={mcpAuthTokenPlaceholder(manualAuthScheme)}
                   value={manualToken}
                   onChange={(e) => {
                     const value = e.target.value;

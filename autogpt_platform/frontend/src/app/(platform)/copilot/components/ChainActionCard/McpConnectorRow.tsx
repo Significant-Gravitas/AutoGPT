@@ -48,9 +48,6 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
     .toLowerCase();
 
   function submitCredential() {
-    // The other manual-credential surfaces validate before storing; without it
-    // an unencoded `user:password` reached the server and came back as a raw
-    // 422, instead of the message that names the Base64 step.
     const message = validateMCPAuthCredential(token, authScheme);
     setValidationError(message);
     if (message) return;

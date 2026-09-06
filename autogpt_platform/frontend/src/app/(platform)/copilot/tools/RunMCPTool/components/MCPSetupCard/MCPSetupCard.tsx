@@ -255,18 +255,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     // present the same shape to readers.  See the comment on
     // ``handleConnect``'s guard for the double-click race this prevents.
     if (loading) return;
-    // Chain rows already canonicalize their value with the selected scheme.
-    // Preparing tokenArg again here could silently flip Basic back to this
-    // hidden card's scheme.
+    // Chain rows pass an already-prepared value; do not prepare it again.
     const token =
       tokenArg === undefined
         ? prepareMCPAuthCredential(manualToken, manualAuthScheme)
         : tokenArg.trim();
     if (!token) return;
 
-    // Guards both this card and the chain row, which submits through the same
-    // callback with an already-prepared value: the scheme is read back off the
-    // value so a row-prepared credential is checked too.
     const invalid = validateMCPAuthCredential(
       token,
       detectMCPAuthScheme(token) ?? manualAuthScheme,
@@ -280,11 +275,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setLoading(true);
     setError(null);
     try {
-      // Ask the server to accept the credential before storing it and calling
-      // the card Connected. A 2xx from /mcp/token only says the row was
-      // written; the copilot then fails on the very next call and the card,
-      // the database and the assistant all disagree about the state. The
-      // builder dialog already discovers first — match it.
+      // Probe before storing so a rejected credential never shows as Connected.
       const probe = await postV2DiscoverAvailableToolsOnAnMcpServer({
         server_url: serverUrl,
         auth_token: token,

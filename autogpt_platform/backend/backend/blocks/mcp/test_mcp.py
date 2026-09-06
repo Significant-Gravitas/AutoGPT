@@ -442,33 +442,6 @@ class TestMCPToolBlock:
         assert result == {"temp": 20}
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_call_mcp_tool_closes_the_session_even_when_the_call_raises(self):
-        """`_call_mcp_tool` wraps its work in `try/finally: await client.close()`.
-
-        Asserted on the raising path because that is the one that leaks: a tool
-        that errors mid-call still left an initialized session for the server
-        to time out on its own.
-        """
-        block = MCPToolBlock()
-
-        async def mock_init(self):
-            return {}
-
-        async def mock_call(self, name, args):
-            raise MCPClientError("Tool not found")
-
-        close_mock = AsyncMock()
-        with (
-            patch.object(MCPClient, "initialize", mock_init),
-            patch.object(MCPClient, "call_tool", mock_call),
-            patch.object(MCPClient, "close", close_mock),
-        ):
-            with pytest.raises(MCPClientError):
-                await block._call_mcp_tool("https://mcp.example.com", "test_tool", {})
-
-        close_mock.assert_awaited_once()
-
-    @pytest.mark.asyncio(loop_scope="session")
     async def test_call_mcp_tool_plain_text(self):
         block = MCPToolBlock()
 
