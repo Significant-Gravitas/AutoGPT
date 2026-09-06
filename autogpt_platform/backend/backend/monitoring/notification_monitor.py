@@ -12,6 +12,13 @@ from backend.util.clients import get_notification_manager_client
 logger = logging.getLogger(__name__)
 
 
+def recover_trial_notifications() -> None:
+    try:
+        get_notification_manager_client().recover_trial_notifications()
+    except Exception:
+        logger.exception("Error recovering trial notifications")
+
+
 def flush_matured_alerts() -> None:
     """Send everything that has sat out the ten-minute debounce window."""
     try:

@@ -53,6 +53,7 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -266,7 +267,7 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
     static_cap = config.claude_agent_max_budget_usd
     if not user_id:
         return static_cap
-    daily_limit, weekly_limit, _ = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
@@ -284,6 +285,8 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
         weekly_cost_limit=weekly_limit,
         floor_usd=-1.0,
     )
+    if tier == "TRIAL":
+        return resolve_trial_sdk_budget(static_cap, remaining)
     if remaining < 0 or remaining == float("inf"):
         return static_cap
     return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))

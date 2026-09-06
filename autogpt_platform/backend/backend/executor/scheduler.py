@@ -51,6 +51,7 @@ from backend.monitoring import (
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
+from backend.monitoring.notification_monitor import recover_trial_notifications
 from backend.util.clients import (
     get_database_manager_async_client,
     get_database_manager_client,
@@ -1765,6 +1766,15 @@ class Scheduler(AppService):
         )
 
         if self.register_system_tasks:
+            self.scheduler.add_job(
+                recover_trial_notifications,
+                id="recover_trial_notifications",
+                trigger="interval",
+                seconds=60,
+                replace_existing=True,
+                max_instances=1,
+                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
+            )
             # ALERTS — empty the ten-minute debounce window. Runs every
             # minute so a condition raised at :01 goes out at :11, not at the
             # next quarter hour.

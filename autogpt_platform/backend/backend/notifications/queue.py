@@ -19,6 +19,7 @@ from backend.data.notifications import (
     get_delivery_stream,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.data.trial_notifications import TrialDeliveryMessage
 from backend.util.logging import TruncatedLogger
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationQueue]")
@@ -36,6 +37,7 @@ FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v3"
 # Per-user work fanned out by the scheduled passes: they publish one message
 # per due user and return, so a tick can never run past its own interval.
 PASS_WORK_QUEUE = "notification_work_v3"
+TRIAL_NOTIFICATIONS_QUEUE = "trial_notifications_v1"
 
 _QUORUM = "quorum"
 
@@ -46,6 +48,7 @@ def create_notification_config() -> RabbitMQConfig:
         _queue(OPS_NOTIFICATIONS_QUEUE, "notification.ops.#", "failed.ops"),
         _queue(AUDIENCE_QUEUE, "notification.audience.#", "failed.audience"),
         _queue(PASS_WORK_QUEUE, "notification.work.#", "failed.work"),
+        _queue(TRIAL_NOTIFICATIONS_QUEUE, "notification.trial", "failed.trial"),
         # DLQ destination — quorum so dead letters survive a broker restart.
         Queue(
             name=FAILED_NOTIFICATIONS_QUEUE,
@@ -79,6 +82,13 @@ async def queue_audience_change(event: AudienceEventModel) -> NotificationResult
     """
     return await _publish(
         f"notification.audience.{event.action.value}", event.model_dump_json()
+    )
+
+
+async def queue_trial_delivery(delivery_id: str) -> NotificationResult:
+    return await _publish(
+        "notification.trial",
+        TrialDeliveryMessage(delivery_id=delivery_id).model_dump_json(),
     )
 
 

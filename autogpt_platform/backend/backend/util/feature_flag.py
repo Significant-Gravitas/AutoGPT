@@ -63,6 +63,7 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
+    CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     GRAPHITI_MEMORY = "graphiti-memory"
 
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /

@@ -177,6 +177,13 @@ class TestGetUsageStatus:
 
 
 class TestCheckRateLimit:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @pytest.mark.asyncio
     async def test_allows_when_under_limit(self):
         mock_redis = AsyncMock()
@@ -741,6 +748,13 @@ class TestEnforcePaymentPaywallContinued:
 
 
 class TestRecordCostUsage:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @staticmethod
     def _make_pipeline_mock() -> MagicMock:
         """Create a pipeline mock with sync methods and async execute."""
@@ -1278,6 +1292,13 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
 
 
 class TestGetUserTier:
+    @pytest.fixture(autouse=True)
+    def no_stripe_reconciliation(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._maybe_reconcile_stripe_tier",
+            new=AsyncMock(return_value=False),
+        )
+
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
         """Clear the get_user_tier cache before each test."""
@@ -1853,6 +1874,13 @@ class TestGetGlobalRateLimitsWithTiers:
 
 
 class TestTierLimitsRespected:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """Verify that tier-adjusted limits from get_global_rate_limits flow
     correctly into check_rate_limit, so higher tiers allow more usage and
     lower tiers are blocked when they would exceed their allocation."""
@@ -2065,6 +2093,13 @@ class TestResetDailyUsage:
 
 
 class TestTierLimitsEnforced:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """Verify that tier-multiplied limits are actually respected by
     ``check_rate_limit`` — i.e. that usage within the tier allowance passes
     and usage at/above the tier allowance is rejected."""
@@ -2552,7 +2587,7 @@ class TestWorkspaceStorageLimits:
                 f"SubscriptionTier.{tier.name} has no entry in "
                 f"_DEFAULT_TIER_MULTIPLIERS — add one"
             )
-            if tier == SubscriptionTier.NO_TIER:
+            if tier in (SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL):
                 assert _DEFAULT_TIER_MULTIPLIERS[tier] == 0.0
             else:
                 assert _DEFAULT_TIER_MULTIPLIERS[tier] > 0
@@ -2709,6 +2744,13 @@ class TestWarnIfStripeSubscriptionDriftsYearly:
 
 
 class TestGetRemainingUsdBudget:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     @pytest.mark.asyncio
     async def test_zero_limits_return_floor_not_unlimited(self):
         """With no real-world unlimited tier, both limits at 0 means
@@ -2797,6 +2839,13 @@ class TestGetRemainingUsdBudget:
 
 
 class TestBuildBudgetCtx:
+    @pytest.fixture(autouse=True)
+    def paid_user_tier(self, mocker):
+        mocker.patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.PRO),
+        )
+
     """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``
     into a single call so callers don't have to compose them by hand on
     every turn, and returns the *inner* text only — ``inject_user_context``

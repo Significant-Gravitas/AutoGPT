@@ -17,6 +17,8 @@ import {
 import { useOnboardingPage } from "./useOnboardingPage";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 export default function OnboardingPage() {
   const {
@@ -29,11 +31,17 @@ export default function OnboardingPage() {
     steps,
     preparingStep,
     totalSteps,
+    trialConfirmation,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
-  if (isLoading) return null;
+  if (isLoading)
+    return !trialConfirmation.ready ? (
+      <Text variant="body" role="status">
+        Confirming your trial and card setup…
+      </Text>
+    ) : null;
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
@@ -50,6 +58,13 @@ export default function OnboardingPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {trialConfirmation.error ? (
+        <ErrorCard
+          context="your trial"
+          responseError={{ message: trialConfirmation.error }}
+          onRetry={trialConfirmation.retry}
+        />
+      ) : null}
       {showProgressBar && (
         <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
       )}

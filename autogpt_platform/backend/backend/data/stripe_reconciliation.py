@@ -24,6 +24,7 @@ from backend.data.credit import (
     build_price_to_tier_map,
     log_tier_reconciliation_discrepancy,
     set_subscription_tier,
+    sync_subscription_from_stripe,
 )
 from backend.data.stripe_client import stripe_call
 
@@ -232,6 +233,17 @@ async def _collect_status_page(
             )
             return True
         for sub in subs.data:
+            if (sub.get("metadata") or {}).get("trial_enrollment_id"):
+                await sync_subscription_from_stripe(dict(sub))
+                user = await User.prisma().find_first(
+                    where={"stripeCustomerId": str(sub.customer)}
+                )
+                if user:
+                    tier = SubscriptionTier(user.subscriptionTier)
+                    existing = tiers.get(str(sub.customer))
+                    if existing is None or _TIER_RANK[tier] > _TIER_RANK[existing]:
+                        tiers[str(sub.customer)] = tier
+                continue
             _record_subscription(sub, price_to_tier, tiers)
         if not subs.has_more or not subs.data:
             return False
@@ -268,6 +280,7 @@ def _record_subscription(
 
 _TIER_RANK: dict[SubscriptionTier, int] = {
     SubscriptionTier.NO_TIER: 0,
+    SubscriptionTier.TRIAL: 0,
     SubscriptionTier.BASIC: 1,
     SubscriptionTier.PRO: 2,
     SubscriptionTier.MAX: 3,

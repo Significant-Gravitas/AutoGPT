@@ -22,7 +22,7 @@ recorded as ``timeout`` and logged at error level so it is never silent.
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import ParamSpec, TypeVar
 
 import stripe
@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 T = TypeVar("T")
+StripeResource = TypeVar("StripeResource", bound=stripe.StripeObject)
 
 # Stripe's own p99 is low single-digit seconds; 80s (the SDK default) only
 # ever means a stalled socket, and holding a request that long serves nobody.
@@ -59,6 +60,20 @@ async def stripe_call_timeout(
 ) -> T:
     """As :func:`stripe_call`, with an explicit timeout. Rarely needed."""
     return await _call(timeout_seconds, fn, *args, **kwargs)
+
+
+async def stripe_list_items(
+    page: stripe.ListObject[StripeResource],
+) -> AsyncIterator[StripeResource]:
+    """Keep subsequent SDK list requests inside the same timeout/metrics boundary."""
+    while True:
+        for item in page.data:
+            yield item
+        if not page.has_more:
+            return
+        if not page.data:
+            raise ValueError("Stripe returned an empty page with more results")
+        page = await stripe_call(page.next_page_async)
 
 
 async def _call(
