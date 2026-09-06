@@ -7,12 +7,13 @@ Cross-domain hybrid search across agents, blocks, and documentation.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Security
-from prisma.enums import ContentType as SearchContentType
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from prisma.enums import APIKeyPermission, ContentType
+from starlette import status
 
 from backend.api.features.search.hybrid_search import unified_hybrid_search
 
-from .models import MarketplaceSearchResult
+from .models import MarketplaceSearchResult, SearchContentType
 from .pagination import Page, PageRequest, page_request
 from .rate_limit import search_limiter
 from .tenancy import TenantContext, require_auth
@@ -39,16 +40,28 @@ async def search(
     """
     Search the platform's content and capabilities (hybrid search: literal + semantic).
 
-    Searches across agents, blocks, and documentation. Results are ranked
-    by a combination of keyword matching and semantic similarity.
+    Searches public agents, blocks and documentation by default. The caller's own
+    library agents and workspace files are searchable too, each requiring the same
+    permission that its own endpoints require.
 
     **Rate limit:** 30 requests per minute per user.
     """
     await search_limiter.check(auth.user_id)
 
+    requested = content_types or PUBLIC_CONTENT_TYPES
+    for content_type in requested:
+        if (scope := PRIVATE_CONTENT_TYPE_SCOPES.get(content_type)) and (
+            scope not in auth.scopes
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Searching {content_type.value} requires the "
+                f"{scope.value} permission",
+            )
+
     results, total_count = await unified_hybrid_search(
         query=query,
-        content_types=content_types,
+        content_types=[ContentType(t.value) for t in requested],
         category=category,
         page=page.page,
         page_size=page.limit,
@@ -58,7 +71,7 @@ async def search(
     return page.paged(
         [
             MarketplaceSearchResult(
-                content_type=r["content_type"],
+                content_type=SearchContentType(r["content_type"]),
                 content_id=r["content_id"],
                 searchable_text=r["searchable_text"],
                 metadata=r.get("metadata"),
@@ -69,3 +82,17 @@ async def search(
         ],
         total_count=total_count,
     )
+
+
+# Searching these reaches the caller's own rows, so each costs the permission
+# that guards the same data elsewhere in v2. Everything else is public content.
+PRIVATE_CONTENT_TYPE_SCOPES: dict[SearchContentType, APIKeyPermission] = {
+    SearchContentType.LIBRARY_AGENT: APIKeyPermission.READ_LIBRARY,
+    SearchContentType.WORKSPACE_FILE: APIKeyPermission.READ_FILES,
+}
+
+# Named here rather than left to the internal default, so v2's contract does not
+# change when that default does.
+PUBLIC_CONTENT_TYPES = [
+    t for t in SearchContentType if t not in PRIVATE_CONTENT_TYPE_SCOPES
+]

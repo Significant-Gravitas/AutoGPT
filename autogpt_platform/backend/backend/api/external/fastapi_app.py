@@ -9,9 +9,12 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from backend.monitoring.instrumentation import instrument_fastapi
+from backend.util.settings import AppEnvironment, Settings
 
 from .v1.app import v1_app
 from .v2.app import v2_app
+
+settings = Settings()
 
 DESCRIPTION = """
 The external API provides programmatic access to the AutoGPT Platform for building
@@ -51,11 +54,12 @@ async def root_redirect() -> RedirectResponse:
 external_api.mount("/v1", v1_app)
 external_api.mount("/v2", v2_app)
 
-# Add Prometheus instrumentation to the main app
+# The scrape endpoint stays mounted for Prometheus everywhere; only the local
+# docs advertise it, which is how the internal app has treated it since it landed.
 instrument_fastapi(
     external_api,
     service_name="external-api",
     expose_endpoint=True,
     endpoint="/metrics",
-    include_in_schema=True,
+    include_in_schema=settings.config.app_env == AppEnvironment.LOCAL,
 )
