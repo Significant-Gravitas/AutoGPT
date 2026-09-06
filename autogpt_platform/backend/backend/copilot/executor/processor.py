@@ -624,7 +624,6 @@ class CoPilotProcessor:
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
-                voice=entry.voice,
                 file_ids=entry.file_ids,
                 model=entry.model,
                 permissions=entry.permissions,
