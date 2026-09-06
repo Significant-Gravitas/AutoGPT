@@ -74,3 +74,66 @@ async def test_match_user_credentials_excludes_auto_creds():
     assert len(matched) == 0
     assert len(missing) == 1
     assert "github_api_key" in missing[0]
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (
+            "GET https://api.example.com/me?api_key=sk-live-abc failed",
+            "GET https://api.example.com/me failed",
+        ),
+        ("Authorization: Bearer sk-live-abc rejected", "[redacted] rejected"),
+        ("bad token=sk-live-abc", "bad [redacted]"),
+        ("password: hunter2", "[redacted]"),
+        ("HTTP 401 Error:\n  Unauthorized", "HTTP 401 Error: Unauthorized"),
+    ],
+)
+def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    assert sanitize_provider_message(raw) == expected
+
+
+def test_sanitize_provider_message_is_bounded():
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    out = sanitize_provider_message("x" * 500, max_chars=50)
+    assert out == "x" * 50 + "…"
+
+
+def test_credential_rejection_status_reads_through_the_cause_chain():
+    """Blocks wrap the provider's error, so only ``__cause__`` still has it."""
+    from backend.copilot.tools.utils import credential_rejection_status
+    from backend.util.exceptions import BlockUnknownError
+    from backend.util.request import HTTPClientError
+
+    try:
+        try:
+            raise HTTPClientError("Unauthorized", 401)
+        except HTTPClientError as inner:
+            raise BlockUnknownError("failed", "Block", "block-id") from inner
+    except BlockUnknownError as wrapped:
+        assert credential_rejection_status(wrapped) == 401
+
+
+@pytest.mark.parametrize(
+    "exc, expected",
+    [
+        (type("Aiohttp", (Exception,), {"status": 403})(), 403),
+        (
+            type(
+                "Requests",
+                (Exception,),
+                {"response": type("R", (), {"status_code": 401})()},
+            )(),
+            401,
+        ),
+        (type("ServerErr", (Exception,), {"status_code": 500})(), None),
+        (ValueError("no status anywhere"), None),
+    ],
+)
+def test_credential_rejection_status_only_matches_auth_statuses(exc, expected):
+    from backend.copilot.tools.utils import credential_rejection_status
+
+    assert credential_rejection_status(exc) == expected

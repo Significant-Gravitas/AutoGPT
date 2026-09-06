@@ -741,6 +741,7 @@ async def test_surface_connect_card_stale_creds_invalidated_returns_not_connecte
     mock_creds = MagicMock()
     mock_creds.access_token = SecretStr("stale-token")
     mock_creds.id = "stale-cred-id"
+    mock_creds.title = "Stale token"
 
     with patch(
         "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
@@ -931,6 +932,7 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
     mock_creds = MagicMock()
     mock_creds.access_token = SecretStr("stale-token")
     mock_creds.id = "stale-cred-id"
+    mock_creds.title = "Stale token"
 
     with patch(
         "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
@@ -1335,3 +1337,84 @@ async def test_lookup_tool_schema_returns_none_on_any_failure():
     schema = await tool._lookup_tool_schema(mock_client, "notion-update-page")
 
     assert schema is None
+
+
+# ---------------------------------------------------------------------------
+# Rejected credentials (T123.2)
+# ---------------------------------------------------------------------------
+
+
+async def _run_with_auth_failure(creds: Any, session: Any) -> SetupRequirementsResponse:
+    """Drive ``_execute`` into the 401 path with *creds* on file (or ``None``)."""
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ), patch(
+        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+        new_callable=AsyncMock,
+        return_value=creds,
+    ), patch(
+        "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
+        new_callable=AsyncMock,
+    ):
+        mock_client = AsyncMock()
+        mock_client.initialize = AsyncMock(
+            side_effect=HTTPClientError(
+                "HTTP 401 Error: Unauthorized, Body: token=sk-live-abc", 401
+            )
+        )
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.MCPClient", return_value=mock_client
+        ):
+            response = await tool._execute(
+                user_id=_USER_ID,
+                session=session,
+                server_url=_SERVER_URL,
+            )
+    assert isinstance(response, SetupRequirementsResponse)
+    return response
+
+
+def _rejected_creds() -> MagicMock:
+    creds = MagicMock()
+    creds.access_token = SecretStr("stale-token")
+    creds.id = "stale-cred-id"
+    creds.title = "My Sentry token"
+    return creds
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejected_token_card_names_the_credential_and_the_status():
+    rejected = await _run_with_auth_failure(_rejected_creds(), make_session(_USER_ID))
+
+    assert rejected.rejection is not None
+    assert rejected.rejection.provider == "mcp"
+    assert rejected.rejection.status_code == 401
+    assert rejected.rejection.credential_id == "stale-cred-id"
+    assert rejected.rejection.credential_title == "My Sentry token"
+    assert "sk-live-abc" not in rejected.rejection.detail
+    assert "rejected the saved credential (HTTP 401)" in rejected.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejected_card_differs_from_never_connected_by_the_rejection():
+    """The whole point: the two states must not be byte-identical any more.
+
+    Everything else about the payload is deliberately unchanged, so the model
+    and the card can tell "wrong credential" from "no credential" and nothing
+    downstream has to learn a new shape.
+    """
+    session = make_session(_USER_ID)
+    rejected = await _run_with_auth_failure(_rejected_creds(), session)
+    never_connected = await _run_with_auth_failure(None, session)
+
+    assert never_connected.rejection is None
+    assert "sign in" in never_connected.message.lower()
+
+    ignored = {"rejection", "message"}
+    assert {k: v for k, v in rejected.model_dump().items() if k not in ignored} == {
+        k: v for k, v in never_connected.model_dump().items() if k not in ignored
+    }

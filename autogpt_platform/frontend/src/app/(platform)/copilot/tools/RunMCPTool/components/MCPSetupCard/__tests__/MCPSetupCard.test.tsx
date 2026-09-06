@@ -403,6 +403,56 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("shows why a stored token was refused instead of the never-connected card", () => {
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          message: "example.com rejected the saved credential (HTTP 401).",
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: "Sentry token",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "HTTP 401 Error: Unauthorized",
+    );
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("keeps the Connect affordance when a stale cred list still lists the refused token", () => {
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
     // ``handleManualToken`` catch must flip ``forceDisconnected=true`` —
     // otherwise an existing live cred would re-show the Connected pill

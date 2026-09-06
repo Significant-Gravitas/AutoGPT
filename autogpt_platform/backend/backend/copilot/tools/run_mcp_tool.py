@@ -20,11 +20,18 @@ from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
 )
-from backend.copilot.tools.utils import build_missing_credentials_from_field_info
+from backend.copilot.tools.utils import (
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    build_missing_credentials_from_field_info,
+    sanitize_provider_message,
+)
+from backend.data.model import OAuth2Credentials
+from backend.integrations.providers import ProviderName
 from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
 from .models import (
+    CredentialRejection,
     ErrorResponse,
     MCPToolInfo,
     MCPToolOutputResponse,
@@ -45,9 +52,6 @@ _TOOL_DESCRIPTION_MAX_CHARS = 300
 _ERROR_SCHEMA_MAX_CHARS = 4000
 _DISCOVERY_MAX_TOOLS = 100
 _PARAMS_SUMMARY_MAX_CHARS = 400
-
-# HTTP status codes that indicate authentication is required
-_AUTH_STATUS_CODES = {401, 403}
 
 
 def _service_name(host: str) -> str:
@@ -236,13 +240,15 @@ class RunMCPToolTool(BaseTool):
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
+            rejection: CredentialRejection | None = None
             if creds is not None:
                 probe_client = MCPClient(server_url, auth_token=auth_token)
                 try:
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in _AUTH_STATUS_CODES:
+                        if probe_err.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
+                            rejection = _rejection(creds, probe_err)
                             await invalidate_mcp_credential(user_id, creds.id)
                             connected = False
                         # Other HTTP statuses (5xx, redirects, etc.) →
@@ -275,7 +281,7 @@ class RunMCPToolTool(BaseTool):
                     # errors.
                     await probe_client.close()
             return self._build_setup_requirements(
-                server_url, session_id, connected=connected
+                server_url, session_id, connected=connected, rejection=rejection
             )
 
         client = MCPClient(server_url, auth_token=auth_token)
@@ -299,7 +305,7 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in _AUTH_STATUS_CODES:
+            if e.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
                 # 401/403 → user needs to (re)authenticate.  Fire the setup
                 # card whether or not we have a stored credential row: when
                 # `creds` is None the user has never connected, and when it
@@ -308,9 +314,12 @@ class RunMCPToolTool(BaseTool):
                 # refreshes when local `access_token_expires_at` says so).
                 # If we have a stale row, delete it so the next attempt
                 # doesn't loop on the same dead token.
+                rejected = _rejection(creds, e) if creds is not None else None
                 if creds is not None:
                     await invalidate_mcp_credential(user_id, creds.id)
-                return self._build_setup_requirements(server_url, session_id)
+                return self._build_setup_requirements(
+                    server_url, session_id, rejection=rejected
+                )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
@@ -516,6 +525,7 @@ class RunMCPToolTool(BaseTool):
         server_url: str,
         session_id: str,
         connected: bool = False,
+        rejection: CredentialRejection | None = None,
     ) -> SetupRequirementsResponse | ErrorResponse:
         """Build a SetupRequirementsResponse for an MCP server credential.
 
@@ -556,11 +566,16 @@ class RunMCPToolTool(BaseTool):
 
         host = server_host(server_url)
         service = _service_name(host)
-        message = (
-            f"You're connected to {service}. Use Reconnect to swap accounts."
-            if connected
-            else f"To continue, sign in to {service} and approve access."
-        )
+        if rejection:
+            status = f" (HTTP {rejection.status_code})" if rejection.status_code else ""
+            message = (
+                f"{service} rejected the saved credential{status}. "
+                "Sign in again to continue."
+            )
+        elif connected:
+            message = f"You're connected to {service}. Use Reconnect to swap accounts."
+        else:
+            message = f"To continue, sign in to {service} and approve access."
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -583,7 +598,18 @@ class RunMCPToolTool(BaseTool):
             ),
             graph_id=None,
             graph_version=None,
+            rejection=rejection,
         )
+
+
+def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRejection:
+    return CredentialRejection(
+        provider=ProviderName.MCP.value,
+        detail=sanitize_provider_message(str(error)),
+        status_code=error.status_code,
+        credential_id=creds.id,
+        credential_title=creds.title,
+    )
 
 
 def _summarize_params(schema: dict | None) -> str | None:

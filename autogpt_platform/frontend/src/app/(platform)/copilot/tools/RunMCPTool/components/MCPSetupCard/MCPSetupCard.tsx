@@ -14,6 +14,7 @@ import { useContext, useEffect, useId, useRef, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
+import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
 
 function normalizeMcpUrl(url: string): string {
   // Mirrors backend ``normalize_mcp_url`` (helpers.py) so a stored cred
@@ -49,6 +50,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const serverUrl = output.setup_info.agent_id;
   // agent_name is computed by the backend as the display name for the service
   const service = output.setup_info.agent_name;
+  const rejection = output.rejection ?? null;
 
   // Initial connection state comes from the backend.  When the model
   // calls `run_mcp_tool` with `surface_connect_card=true`, the response's
@@ -124,7 +126,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   //      back to the persisted ``initiallyConnected`` snapshot rather
   //      than defaulting to disconnected.
   const liveSays = liveHasCred === "unknown" ? initiallyConnected : liveHasCred;
-  const connected = !forceDisconnected && (localConnected || liveSays);
+  // A rejected credential never counts as connected, whatever a stale cred
+  // list says — only a sign-in completed in this card does.
+  const connected =
+    !forceDisconnected && (localConnected || (!rejection && liveSays));
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
@@ -338,6 +343,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   return (
     <div className="mt-2 grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
+
+      {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
       <div className="rounded-2xl border bg-background p-4">
         <Button
