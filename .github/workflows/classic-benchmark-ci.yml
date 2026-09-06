@@ -41,7 +41,7 @@ jobs:
         working-directory: classic
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: true
@@ -130,7 +130,7 @@ jobs:
         working-directory: classic
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: true
