@@ -117,6 +117,12 @@ async def auto_lookup_mcp_credential(
 
     Returns the credential with the latest ``access_token_expires_at``, refreshed
     if needed, or ``None`` when no match is found.
+
+    A failed refresh also yields ``None``, deliberately. Returning the stale
+    access token instead would earn a 401 from the server, and the caller
+    treats a 401 on a credential it *has* as proof the token is dead — so a
+    transient outage at the provider's token endpoint would delete a row whose
+    refresh token is still perfectly good.
     """
     try:
         mgr = IntegrationCredentialsManager()

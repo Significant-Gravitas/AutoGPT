@@ -9,6 +9,7 @@ from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     _invoke_creds_changed_hook,
+    _may_need_refresh,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
@@ -406,4 +407,64 @@ def _provider_runtime_credentials() -> OAuth2Credentials:
         refresh_strategy="provider_runtime",
         provider_state=SecretStr("state"),
         provider_state_version=1,
+    )
+
+
+class TestMayNeedRefresh:
+    """A credential that can never be refreshed must not drag a handler in.
+
+    Regression for SECRT-2592: static MCP bearer tokens (stored by
+    ``POST /mcp/token`` for servers without OAuth) carry no ``mcp_token_url``,
+    so resolving an OAuth handler for them raises — which used to turn a
+    perfectly usable token into a failed credential lookup.
+    """
+
+    def test_static_token_needs_no_refresh(self):
+        assert not _may_need_refresh(_static_mcp_credentials())
+
+    def test_expiring_token_may_need_refresh(self):
+        cred = _static_mcp_credentials()
+        cred.access_token_expires_at = 1
+        assert _may_need_refresh(cred)
+
+    def test_token_with_refresh_token_may_need_refresh(self):
+        cred = _static_mcp_credentials()
+        cred.refresh_token = SecretStr("refresh")
+        assert _may_need_refresh(cred)
+
+    @pytest.mark.asyncio
+    async def test_refresh_if_needed_returns_static_token_unchanged(self):
+        manager = IntegrationCredentialsManager()
+        cred = _static_mcp_credentials()
+
+        # Would raise ValueError("missing 'mcp_token_url'") if the handler
+        # were resolved, and would hit Redis/DB if a refresh path were taken.
+        assert await manager.refresh_if_needed("user-a", cred) is cred
+
+    @pytest.mark.asyncio
+    async def test_refresh_if_needed_still_resolves_handler_when_refreshable(self):
+        manager = IntegrationCredentialsManager()
+        cred = _static_mcp_credentials()
+        cred.access_token_expires_at = 1
+        refreshed = _static_mcp_credentials()
+
+        handler = MagicMock()
+        handler.ROTATES_REFRESH_TOKEN = False
+        manager._get_oauth_handler = AsyncMock(return_value=handler)
+        manager._refresh_locked = AsyncMock(return_value=refreshed)
+
+        assert await manager.refresh_if_needed("user-a", cred) is refreshed
+        manager._get_oauth_handler.assert_awaited_once_with(cred)
+
+
+def _static_mcp_credentials() -> OAuth2Credentials:
+    """An MCP credential as ``POST /mcp/token`` stores it: a bearer token with
+    no expiry, no refresh token, and no OAuth endpoint metadata."""
+    return OAuth2Credentials(
+        id="mcp-cred-id",
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr("dft_static_token"),
+        scopes=[],
+        metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
     )

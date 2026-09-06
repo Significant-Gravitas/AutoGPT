@@ -68,7 +68,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
+  const {
+    data: liveCredsRes,
+    isFetchedAfterMount: liveCredsFetched,
+    isError: liveCredsError,
+  } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       // No staleTime — when this card mounts (e.g. immediately after the
@@ -81,20 +85,25 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       refetchOnMount: "always",
     },
   });
-  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
-  // while loading or after a network/auth failure (``select`` returned
-  // ``null``).  Treating an unknown live state as ``false`` would override
-  // a still-valid persisted snapshot — see review for the
-  // initiallyConnected=false + 5xx race that surfaces a bare Connect
-  // button despite an existing cred.
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : liveCredsRes.some(
-        (c) =>
-          c.provider === "mcp" &&
-          typeof c.host === "string" &&
-          normalizeMcpUrl(c.host) === normalizedServer,
-      );
+  // Tri-state, because "we don't know yet" must fall back to the persisted
+  // snapshot rather than to disconnected. Unknown covers: this mount's fetch
+  // hasn't landed (React Query keeps serving the previous cache until it
+  // does, and that cache still lists rows the backend just invalidated), the
+  // refetch settled but errored (stale data is still served), and a non-200
+  // that ``select`` mapped to null.
+  //
+  // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
+  // app-wide, so ``isFetching`` also goes true on window focus and on every
+  // credential mutation elsewhere, blanking a genuinely connected card.
+  const liveHasCred: boolean | "unknown" =
+    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : liveCredsRes.some(
+          (c) =>
+            c.provider === "mcp" &&
+            typeof c.host === "string" &&
+            normalizeMcpUrl(c.host) === normalizedServer,
+        );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,8 +252,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         server_url: serverUrl,
         token,
       });
-      if (!(res.status >= 200 && res.status < 300))
-        throw new Error("Failed to store token");
+      if (!(res.status >= 200 && res.status < 300)) {
+        // Mirrors handleConnect: the generated client returns a
+        // {status, data} envelope rather than throwing, so the backend's
+        // "<host> rejected this token" detail is only reachable from here.
+        const d = res.data && typeof res.data === "object" ? res.data : {};
+        throw { status: res.status, ...d };
+      }
       // Only clear the force-disconnect override AFTER the API confirms
       // the token was stored.  Clearing it before the await would let
       // ``liveHasCred=true`` (from an existing stale cred) re-render the
@@ -261,7 +275,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       setForceDisconnected(true);
       const err = e as Record<string, unknown>;
       setError(
-        (typeof err?.message === "string" ? err.message : null) ||
+        (typeof err?.detail === "string" ? err.detail : null) ||
+          (typeof err?.message === "string" ? err.message : null) ||
           "Failed to save token. Please try again.",
       );
     } finally {
@@ -350,7 +365,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
         </Button>
 
         {error && (
-          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div
+            role="alert"
+            className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
@@ -374,7 +392,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
               onClick={() => handleManualToken()}
               disabled={loading || !manualToken.trim()}
             >
-              Use Token
+              {loading ? "Verifying…" : "Use Token"}
             </Button>
           </div>
         )}

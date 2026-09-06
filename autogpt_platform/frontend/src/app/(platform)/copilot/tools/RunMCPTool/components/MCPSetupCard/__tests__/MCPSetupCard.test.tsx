@@ -35,15 +35,24 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
 // to thread a connected state through MSW.  ``setMockLiveCreds`` lets
 // individual tests override the live state to verify the refresh path.
 let mockLiveCreds: Array<{ provider: string; host?: string | null }> = [];
+// Defaults to "this mount's fetch has landed cleanly" so existing cases read
+// as before; the guard cases below flip them explicitly.
+let mockLiveCredsFetched = true;
+let mockLiveCredsError = false;
 function setMockLiveCreds(
   next: Array<{ provider: string; host?: string | null }>,
+  opts: { fetchedAfterMount?: boolean; isError?: boolean } = {},
 ) {
   mockLiveCreds = next;
+  mockLiveCredsFetched = opts.fetchedAfterMount ?? true;
+  mockLiveCredsError = opts.isError ?? false;
 }
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   useGetV1ListCredentials: () => ({
     data: mockLiveCreds,
     isLoading: false,
+    isFetchedAfterMount: mockLiveCredsFetched,
+    isError: mockLiveCredsError,
   }),
 }));
 
@@ -98,6 +107,50 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput()} />);
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
+  });
+
+  it("does not show Connected from a cache whose post-mount fetch has not landed", () => {
+    // SECRT-2592: ``refetchOnMount`` does not stop React Query serving the
+    // previous cache until the refetch lands.  Right after the backend
+    // invalidated a dead row that cache still lists it, and OR-ing it in
+    // painted a green pill over the backend's authoritative
+    // ``has_all_credentials=false`` — the exact contradiction users reported
+    // (UI says Connected, agent says not connected).
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      {
+        fetchedAfterMount: false,
+      },
+    );
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("does not drop Connected when a background refetch fails but serves stale data", () => {
+    // A settled-but-errored refetch keeps the previous data, so ``data``
+    // alone still looks authoritative.  Treating it as unknown falls back to
+    // the persisted snapshot instead of trusting a row we can't confirm.
+    setMockLiveCreds([], { isError: true });
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
+  });
+
+  it("keeps Connected across a background refetch of the shared credentials key", () => {
+    // ``useGetV1ListCredentials`` has an app-wide key: window focus and any
+    // credential mutation refetch it.  Guarding on ``isFetching`` would flip
+    // a live card to a bare Connect button on every tab-back; the discriminating
+    // case is an empty persisted snapshot with a genuinely live credential.
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      {
+        fetchedAfterMount: true,
+      },
+    );
+    render(<MCPSetupCard output={makeSetupOutput(undefined, false)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
   it("matches live creds across a trailing slash on the server URL", () => {
@@ -403,6 +456,51 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("surfaces the backend's rejection detail verbatim", async () => {
+    // The point of verifying the token server-side is that the user learns a
+    // wrong token is wrong. The generated client returns {status, data}
+    // instead of throwing, so the detail is only reachable if the handler
+    // reads it off the envelope.
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Paste API token")).toBeDefined();
+    });
+
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: {
+        detail:
+          "example.com rejected this token. Please check that you copied it correctly and try again.",
+      },
+      headers: new Headers(),
+    } as never);
+
+    fireEvent.change(screen.getByPlaceholderText("Paste API token"), {
+      target: { value: "wrong-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/rejected this token/i)).toBeDefined();
+    });
+    // Announced to screen readers — this is the only signal for the new
+    // failure mode.
+    expect(screen.getByRole("alert")).toBeDefined();
+  });
+
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
     // ``handleManualToken`` catch must flip ``forceDisconnected=true`` —
     // otherwise an existing live cred would re-show the Connected pill
@@ -439,9 +537,9 @@ describe("MCPSetupCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /use token/i }));
 
     await waitFor(() => {
-      // ``handleManualToken`` throws ``new Error("Failed to store token")``
-      // on non-2xx, which becomes the displayed error message.
-      expect(screen.getByText(/failed to store token/i)).toBeDefined();
+      // The backend's own ``detail`` is what reaches the user, not a
+      // generic client-side string.
+      expect(screen.getByText(/invalid token format/i)).toBeDefined();
     });
     // Crucial: live creds say "connected" but the failed token attempt
     // must keep the not-connected branch rendered so the user can retry.
