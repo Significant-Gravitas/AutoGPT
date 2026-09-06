@@ -197,7 +197,7 @@ describe("useVoiceMode", () => {
       });
     });
 
-    await act(async () => view.result.current.stop());
+    await act(async () => view.result.current.toggle());
 
     // Stop means "I am done", not "skip this bit" — the mic closes with it.
     expect(view.result.current.state).toBe("off");
@@ -288,7 +288,7 @@ describe("useVoiceMode", () => {
     });
     expect(spoken).toContain("First sentence.");
 
-    await act(async () => view.result.current.stop());
+    await act(async () => view.result.current.toggle());
     const spokenAfterStop = spoken.length;
     await act(async () => {
       view.rerender({
@@ -379,7 +379,7 @@ describe("useVoiceMode", () => {
     await enable(view);
     expect(isVoiceTurn()).toBe(true);
 
-    await act(async () => view.result.current.stop());
+    await act(async () => view.result.current.toggle());
     expect(isVoiceTurn()).toBe(false);
   });
 

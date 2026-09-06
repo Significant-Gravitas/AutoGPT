@@ -18,38 +18,16 @@ const REST = MIN_SCALE * 100;
 describe("VoiceModeBar", () => {
   it("stays out of the way when voice mode is off", () => {
     const { container } = render(
-      <VoiceModeBar
-        state="off"
-        statusLabel="Voice mode off"
-        onStop={vi.fn()}
-      />,
+      <VoiceModeBar state="off" statusLabel="Voice mode off" />,
     );
     expect(container.innerHTML).toBe("");
   });
 
   it("announces the current state to screen readers", () => {
-    render(
-      <VoiceModeBar
-        state="listening"
-        statusLabel="Listening"
-        onStop={vi.fn()}
-      />,
-    );
+    render(<VoiceModeBar state="listening" statusLabel="Listening" />);
     const status = screen.getByRole("status");
     expect(status.textContent).toContain("Listening");
     expect(status.getAttribute("aria-live")).toBe("polite");
-  });
-
-  it("offers Stop only while AutoPilot is speaking", () => {
-    const { rerender } = render(
-      <VoiceModeBar state="thinking" statusLabel="Thinking" onStop={vi.fn()} />,
-    );
-    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
-
-    rerender(
-      <VoiceModeBar state="speaking" statusLabel="Speaking" onStop={vi.fn()} />,
-    );
-    expect(screen.getByRole("button", { name: "Stop speaking" })).toBeDefined();
   });
 
   it("gives listening, thinking and speaking each their own colour", () => {
@@ -58,19 +36,13 @@ describe("VoiceModeBar", () => {
     vi.useFakeTimers();
     const seen = new Set<string>();
     const { container, rerender } = render(
-      <VoiceModeBar
-        state="listening"
-        statusLabel="Listening"
-        onStop={vi.fn()}
-      />,
+      <VoiceModeBar state="listening" statusLabel="Listening" />,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS));
     seen.add(newestColor(container));
 
     for (const state of ["thinking", "speaking"] as const) {
-      rerender(
-        <VoiceModeBar state={state} statusLabel={state} onStop={vi.fn()} />,
-      );
+      rerender(<VoiceModeBar state={state} statusLabel={state} />);
       act(() => void vi.advanceTimersByTime(TICK_MS));
       seen.add(newestColor(container));
     }
@@ -84,7 +56,7 @@ describe("VoiceModeBar", () => {
     const levels = vi.mocked(readSpeechLevel);
     levels.mockReturnValue(0.001);
     const { container } = render(
-      <VoiceModeBar state="speaking" statusLabel="Speaking" onStop={vi.fn()} />,
+      <VoiceModeBar state="speaking" statusLabel="Speaking" />,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 20));
 
@@ -106,7 +78,7 @@ describe("VoiceModeBar", () => {
     vi.useFakeTimers();
     vi.mocked(readSpeechLevel).mockReturnValue(null);
     const { container } = render(
-      <VoiceModeBar state="speaking" statusLabel="Speaking" onStop={vi.fn()} />,
+      <VoiceModeBar state="speaking" statusLabel="Speaking" />,
     );
     act(() => void vi.advanceTimersByTime(TICK_MS * 8));
 
@@ -120,7 +92,7 @@ describe("VoiceModeBar", () => {
     // meter read as "zero most of the time with an occasional spike".
     vi.useFakeTimers();
     const { container } = render(
-      <VoiceModeBar state="hearing" statusLabel="Hearing" onStop={vi.fn()} />,
+      <VoiceModeBar state="hearing" statusLabel="Hearing" />,
     );
     settleRoom(0.001);
 
@@ -137,7 +109,7 @@ describe("VoiceModeBar", () => {
   it("draws the mic level while the mic is open, and stops when it shuts", () => {
     vi.useFakeTimers();
     const { container, rerender } = render(
-      <VoiceModeBar state="hearing" statusLabel="Hearing" onStop={vi.fn()} />,
+      <VoiceModeBar state="hearing" statusLabel="Hearing" />,
     );
     settleRoom(0.001);
 
@@ -151,9 +123,7 @@ describe("VoiceModeBar", () => {
 
     // Thinking has no input to draw. It must grow out of the flat line the
     // mic left — not jump — and then must not read as silence.
-    rerender(
-      <VoiceModeBar state="thinking" statusLabel="Thinking" onStop={vi.fn()} />,
-    );
+    rerender(<VoiceModeBar state="thinking" statusLabel="Thinking" />);
     act(() => void vi.advanceTimersByTime(TICK_MS));
     expect(newestColumn(container)).toBeLessThanOrEqual(REST);
     act(() => void vi.advanceTimersByTime(TICK_MS * 7));
@@ -193,5 +163,16 @@ describe("VoiceModeButton", () => {
     rerender(<VoiceModeButton isActive onClick={vi.fn()} />);
     const active = screen.getByRole("button", { name: "Leave voice mode" });
     expect(active.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("becomes the stop control while AutoPilot speaks", () => {
+    // The same click leaves voice mode either way; while a reply is playing
+    // the user reads it as "make it stop", so the icon and label say that.
+    render(<VoiceModeButton isActive speaking onClick={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Leave voice mode" }),
+    ).toBeNull();
   });
 });

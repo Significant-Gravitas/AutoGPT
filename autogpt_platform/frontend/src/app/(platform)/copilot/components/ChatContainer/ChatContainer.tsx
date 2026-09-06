@@ -392,10 +392,10 @@ export const ChatContainer = ({
                                 <VoiceModeBar
                                   state={voice.state}
                                   statusLabel={voice.statusLabel}
-                                  onStop={voice.stop}
                                   leaveButton={
                                     <VoiceModeButton
                                       isActive
+                                      speaking={voice.state === "speaking"}
                                       onClick={voice.toggle}
                                     />
                                   }

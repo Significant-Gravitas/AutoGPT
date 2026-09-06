@@ -120,8 +120,6 @@ export function useVoiceMode({
     isStarting,
     statusLabel: describeVoiceState(state),
     toggle,
-    /** The visible stop button: cut the reply short and leave voice mode. */
-    stop: () => deactivate("user"),
   };
 
   function toggle() {
