@@ -288,6 +288,37 @@ class GraphSetActiveVersionRequest(BaseModel):
 # ============================================================================
 
 
+class BlockType(str, Enum):
+    """What kind of block this is.
+
+    The internal enum's values are UI labels ("Human In The Loop"); v2 publishes
+    identifiers, so its own values are the member names.
+    """
+
+    STANDARD = "STANDARD"
+    INPUT = "INPUT"
+    OUTPUT = "OUTPUT"
+    NOTE = "NOTE"
+    WEBHOOK = "WEBHOOK"
+    WEBHOOK_MANUAL = "WEBHOOK_MANUAL"
+    AGENT = "AGENT"
+    AI = "AI"
+    AYRSHARE = "AYRSHARE"
+    HUMAN_IN_THE_LOOP = "HUMAN_IN_THE_LOOP"
+    MCP_TOOL = "MCP_TOOL"
+
+
+class BlockCostType(str, Enum):
+    """What a block's cost is charged per."""
+
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
+
+
 class BlockInfo(BaseModel):
     """A building block that can be used in graphs."""
 
@@ -299,7 +330,7 @@ class BlockInfo(BaseModel):
     input_schema: dict[str, Any]
     output_schema: dict[str, Any]
     static_output: bool
-    block_type: block_types.BlockType
+    block_type: BlockType
     costs: list["BlockCostInfo"]
 
     @classmethod
@@ -318,10 +349,10 @@ class BlockInfo(BaseModel):
             input_schema=b.input_schema.jsonschema(),
             output_schema=b.output_schema.jsonschema(),
             static_output=b.static_output,
-            block_type=b.block_type,
+            block_type=BlockType[b.block_type.name],
             costs=[
                 BlockCostInfo(
-                    cost_type=c.cost_type,
+                    cost_type=BlockCostType(c.cost_type.value),
                     cost_filter=c.cost_filter,
                     cost_cents=c.cost_amount,
                 )
@@ -340,9 +371,7 @@ class BlockCategoryInfo(BaseModel):
 class BlockCostInfo(BaseModel):
     """Cost information for a block."""
 
-    cost_type: block_types.BlockCostType = Field(
-        description="Type of cost (e.g., 'run', 'byte', 'second')"
-    )
+    cost_type: BlockCostType = Field(description="What the cost is charged per")
     cost_filter: dict[str, Any] = Field(
         description="Partial node input that, if it matches the input "
         "for an execution of this block, applies this cost to it"
@@ -367,24 +396,23 @@ class AgentRunSchedule(BaseModel):
     graph_id: str
     graph_version: int
     cron: str = Field(description="Cron expression for the schedule")
+    timezone: str = Field(description="Timezone the cron expression is read in")
     inputs: dict[str, Any] = Field(description="Input values for each scheduled run")
     next_run_time: Optional[datetime]
-    is_enabled: bool
 
     @classmethod
     def from_internal(cls, job: GraphExecutionJobInfo) -> Self:
-        next_run = (
-            datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
-        )
         return cls(
             id=job.id,
             name=job.name or "",
             graph_id=job.graph_id,
             graph_version=job.graph_version,
             cron=job.cron,
+            timezone=job.timezone,
             inputs=job.input_data,
-            next_run_time=next_run,
-            is_enabled=True,
+            next_run_time=(
+                datetime.fromisoformat(job.next_run_time) if job.next_run_time else None
+            ),
         )
 
 
@@ -1304,8 +1332,16 @@ CredentialCreateRequest = (
 class CredentialRequirement(BaseModel):
     """A credential requirement for an agent (graph)."""
 
+    field_name: str = Field(
+        description="Key to supply this credential under in `credentials_inputs`"
+    )
     provider: str = Field(description="Required provider name")
-    required_scopes: list[str] = Field(description="Required scopes")
+    supported_types: list[CredentialType] = Field(
+        description="Credential types this requirement accepts"
+    )
+    required_scopes: list[str] = Field(
+        description="Scopes an OAuth credential must carry to satisfy this"
+    )
     matching_credentials: list[CredentialInfo] = Field(
         description="User's credentials that match this requirement",
     )

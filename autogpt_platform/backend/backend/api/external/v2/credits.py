@@ -35,6 +35,7 @@ from .models import (
     CreditTransaction,
     InvoiceItem,
     SubscriptionStatus,
+    TransactionType,
 )
 from .pagination import Page, PageRequest, page_request, single_page_request
 from .tenancy import TenantContext, require_permission
@@ -70,9 +71,8 @@ async def get_balance(
     operation_id="listCreditTransactions",
 )
 async def get_transactions(
-    transaction_type: Optional[str] = Query(
-        default=None,
-        description="Filter by transaction type (TOP_UP, USAGE, GRANT, REFUND)",
+    transaction_type: Optional[TransactionType] = Query(
+        default=None, description="Filter by transaction type"
     ),
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_CREDITS)),
