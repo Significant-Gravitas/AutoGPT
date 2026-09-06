@@ -40,17 +40,17 @@ export default function SignupPage() {
     form,
     feedback,
     isLoggedIn,
+    hasInitializedAuth,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
-    isUserLoading,
     showNotAllowedModal,
     handleSubmit,
     handleProviderSignup,
     handleCloseNotAllowedModal,
   } = useSignupPage();
 
-  if (isUserLoading || isLoggedIn) {
+  if (!hasInitializedAuth || isLoggedIn) {
     return <LoadingSignup />;
   }
 
