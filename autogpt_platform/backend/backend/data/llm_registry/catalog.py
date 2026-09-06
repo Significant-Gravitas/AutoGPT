@@ -1171,6 +1171,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6-astra",
+                display_name="GPT-6 Astra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $10/1M in, $50/1M out — OpenAI list price at launch,
+                # credited at the catalog's standard usd_per_1m x 150
+                # factor (same factor every other entry in this file
+                # uses, e.g. claude-sonnet-5: $3 -> 450). At 1500 input
+                # credits this is 2x the highest tier-2 model in the
+                # catalog, so it's filed as tier 3 to keep the picker's
+                # price badge accurate.
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=20,
+                    input_credits_per_1m=1500.0,
+                    output_credits_per_1m=7500.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-5.6-sol",
                 display_name="GPT-5.6 Sol",
                 provider="openai",
