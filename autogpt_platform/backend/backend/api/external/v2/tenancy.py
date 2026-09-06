@@ -21,7 +21,8 @@ import logging
 from typing import Literal, Optional, Protocol, TypeVar
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
-from fastapi import Header, HTTPException, Security
+from fastapi import Header, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel
 from starlette import status
@@ -52,7 +53,9 @@ class TenantContext(BaseModel):
 
 
 async def require_auth(
-    auth: APIAuthorizationInfo = Security(middleware.require_auth),
+    request: Request,
+    api_key: Optional[str] = Security(middleware.api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(middleware.bearer_auth),
     requested_team: Optional[str] = Header(
         default=None,
         alias=TEAM_HEADER_NAME,
@@ -66,7 +69,18 @@ async def require_auth(
 
     Every v2 route reaches this one dependency, so tests override it once and
     `tenancy_test` can assert no handler bypasses it.
+
+    Takes the credential the rate-limit middleware already verified for this
+    request; verifying it again costs a second Scrypt hash on every API-key call.
     """
+    auth = getattr(
+        request.state, "v2_auth", None
+    ) or await middleware.resolve_auth_info(api_key=api_key, bearer=bearer)
+    if auth is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication. Provide API key or access token.",
+        )
     return await resolve_tenant(auth, requested_team)
 
 

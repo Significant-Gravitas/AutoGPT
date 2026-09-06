@@ -17,7 +17,9 @@ from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
     UserPasswordCredentials,
+    is_sdk_default,
 )
+from backend.integrations.credentials_store import is_system_credential
 
 from ..models import CredentialCreateRequest, CredentialInfo
 from ..pagination import Page, PageRequest, page_request
@@ -116,8 +118,17 @@ async def delete_credential(
     """
     Delete an integration credential.
 
-    Any agents using this credential will fail on their next run.
+    Platform-provided credentials cannot be deleted. Any agents using this
+    credential will fail on their next run.
     """
+    # An SDK default is not the caller's credential at all, so it is not there
+    # to find; a system or AutoGPT-managed one is, and refusing says so.
+    if is_sdk_default(credential_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Credential #{credential_id} not found",
+        )
+
     existing = await creds_manager.store.get_creds_by_id(
         user_id=auth.user_id, credentials_id=credential_id
     )
@@ -125,6 +136,11 @@ async def delete_credential(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Credential #{credential_id} not found",
+        )
+    if is_system_credential(credential_id) or existing.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform-managed credentials cannot be deleted",
         )
 
     await creds_manager.delete(auth.user_id, credential_id)

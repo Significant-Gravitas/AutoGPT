@@ -1,6 +1,9 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
-from backend.api.external.v2.mcp_server import EXTERNAL_USE_EXCLUSIONS
+from backend.api.external.v2.mcp_server import (
+    EXTERNAL_USE_EXCLUSIONS,
+    UNSCOPED_EXTERNAL_TOOLS,
+)
 from backend.copilot.tools import TOOL_REGISTRY
 
 
@@ -32,3 +35,23 @@ def test_exposed_tools_declare_permissions_as_a_sequence():
         allowed, perms = tool.allow_external_use
         if allowed:
             assert perms is not None, f"{name} opted in without a permission list"
+
+
+def test_no_tool_is_exposed_unscoped_without_a_stated_reason():
+    """An empty permission list means any key can drive the tool.
+
+    That is right for published docs and public listings and wrong for anything
+    that spends platform money or acts through a platform-owned account, so the
+    open set is enumerated rather than inferred.
+    """
+    unscoped = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.allow_external_use[0] and not tool.allow_external_use[1]
+    }
+    assert unscoped == set(UNSCOPED_EXTERNAL_TOOLS), (
+        "unlisted tools exposed with no permission: "
+        f"{sorted(unscoped - set(UNSCOPED_EXTERNAL_TOOLS))}; "
+        "listed but no longer unscoped: "
+        f"{sorted(set(UNSCOPED_EXTERNAL_TOOLS) - unscoped)}"
+    )
