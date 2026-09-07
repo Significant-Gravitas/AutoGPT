@@ -586,6 +586,31 @@ describe("ExpertDetailPage", () => {
     expect(within(stack).getByText("+3")).toBeDefined();
   });
 
+  test("shows expert-owned skill metadata without claiming it belongs to the personal library", async () => {
+    server.use(
+      getGetExpertMockHandler(() => ({ ...maria, skills: ["expert-only"] })),
+      getListCopilotSkillsMockHandler200(({ request }) =>
+        new URL(request.url).searchParams.get("expert_id") === maria.id
+          ? [
+              {
+                name: "expert-only",
+                description: "Instructions owned by Maria",
+                triggers: ["expert task"],
+              },
+            ]
+          : [],
+      ),
+    );
+    render(<ExpertDetailPage />);
+    await openTab("Skills");
+    expect(
+      await screen.findByText("Instructions owned by Maria"),
+    ).toBeDefined();
+    expect(screen.getByText("expert task")).toBeDefined();
+    expect(screen.queryByText(/Marketplace skill/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open in library" })).toBeNull();
+  });
+
   test("lists the expert's skills with library details and adds one", async () => {
     const user = userEvent.setup();
     const puts: string[][] = [];
