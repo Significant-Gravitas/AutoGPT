@@ -10,11 +10,7 @@ import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
 export function SubscriptionTab() {
   const { data: trial } = useTrialStatus();
-  const showPlan =
-    !trial?.status ||
-    trial.converted ||
-    trial.status === "canceled" ||
-    trial.status === "checkout_pending";
+  const showPlan = !trial?.active || trial.converted;
   return (
     <div className="flex flex-col gap-6">
       <TrialCheckoutConfirmation />

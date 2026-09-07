@@ -37,7 +37,7 @@ from backend.data.model import (
 from backend.data.model import User as AppUser
 from backend.data.model import UserTransaction
 from backend.data.notifications import NotificationEventModel, OpsData
-from backend.data.stripe_client import stripe_call
+from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_other_subscription_checkouts,
@@ -1620,17 +1620,7 @@ async def _cancel_customer_subscriptions(
             status=status,
             limit=10,
         )
-        # Iterate only the first page (up to 10); avoid auto_paging_iter which would
-        # trigger additional sync HTTP calls inside the event loop.
-        if subscriptions.has_more:
-            logger.error(
-                "_cancel_customer_subscriptions: customer %s has more than 10 %s"
-                " subscriptions — only the first page was processed; remaining"
-                " subscriptions were NOT cancelled",
-                customer_id,
-                status,
-            )
-        for sub in subscriptions.data:
+        async for sub in stripe_list_items(subscriptions):
             sub_id = sub["id"]
             if exclude_sub_id and sub_id == exclude_sub_id:
                 continue

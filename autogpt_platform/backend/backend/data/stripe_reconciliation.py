@@ -214,8 +214,9 @@ async def _collect_status_page(
     tiers: dict[str, SubscriptionTier],
 ) -> bool:
     """Accumulate one Stripe status's subscriptions into ``tiers``. Returns
-    True if pagination was capped before exhausting the dataset."""
+    True if a list or trial sync failed, or pagination was capped."""
     starting_after: str | None = None
+    incomplete = False
     for _ in range(_MAX_SUBSCRIPTION_PAGES):
         list_kwargs: dict = {"status": status, "limit": _PAGE_SIZE}
         if starting_after:
@@ -234,7 +235,15 @@ async def _collect_status_page(
             return True
         for sub in subs.data:
             if (sub.get("metadata") or {}).get("trial_enrollment_id"):
-                await sync_subscription_from_stripe(dict(sub))
+                try:
+                    await sync_subscription_from_stripe(dict(sub))
+                except (ValueError, stripe.StripeError):
+                    logger.exception(
+                        "Trial reconciliation failed for subscription %s; snapshot is incomplete",
+                        sub.id,
+                    )
+                    incomplete = True
+                    continue
                 user = await User.prisma().find_first(
                     where={"stripeCustomerId": str(sub.customer)}
                 )
@@ -246,7 +255,7 @@ async def _collect_status_page(
                 continue
             _record_subscription(sub, price_to_tier, tiers)
         if not subs.has_more or not subs.data:
-            return False
+            return incomplete
         starting_after = subs.data[-1].id
     logger.warning(
         "reconcile_all_stripe_tiers: hit %d-page cap for status=%s; remaining"
