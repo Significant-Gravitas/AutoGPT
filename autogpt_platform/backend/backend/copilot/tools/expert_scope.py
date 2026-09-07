@@ -213,7 +213,9 @@ async def annotate_expert_grants(
     """
     if expert_id is None or not missing:
         return missing
-    providers = {str(entry.get("provider", "")) for entry in missing.values()} - {""}
+    providers = {
+        provider_slug(entry.get("provider", "")) for entry in missing.values()
+    } - {""}
     candidates = await _ungranted_credentials(user_id, expert_id, providers)
     return {
         key: {
@@ -238,7 +240,7 @@ async def annotate_expert_grants(
 def _satisfies_requirement(credential: Credentials, entry: dict[str, Any]) -> bool:
     """The same provider/type/scope/host predicate a run applies when matching,
     so an offered grant is one the next run will accept."""
-    provider = str(entry.get("provider", ""))
+    provider = provider_slug(entry.get("provider", ""))
     types = entry.get("types") or ([entry["type"]] if entry.get("type") else [])
     if not provider or not types:
         return False
