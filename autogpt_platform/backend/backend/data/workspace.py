@@ -15,7 +15,8 @@ from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.data.workspace_scope import (
-    resolve_expert_workspace_scope as resolve_expert_workspace_scope,
+    WorkspaceAccessDeniedError,
+    resolve_expert_workspace_scope,
 )
 from backend.util.json import SafeJson
 
@@ -451,6 +452,35 @@ async def resolve_workspace_files(
             "isDeleted": False,
         }
     )
+
+
+async def resolve_attachable_workspace_files(
+    user_id: str,
+    file_ids: list[str],
+    *,
+    session_id: str,
+    expert_id: str | None,
+) -> list[UserWorkspaceFile]:
+    """Resolve attachment IDs for a message sent in ``session_id``.
+
+    Personal AutoPilot sessions may attach any file in the owner's workspace.
+    Expert sessions are confined to the expert's resolved scope: attaching a
+    file from another expert's conversations raises
+    ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface
+    a clear error instead of leaking the file's metadata into the turn.
+    """
+    files = await resolve_workspace_files(user_id, file_ids)
+    if expert_id is None or not files:
+        return files
+    scope = await resolve_expert_workspace_scope(user_id, expert_id)
+    scope = scope.with_session(session_id)
+    denied = [f.name for f in files if not scope.allows_path(f.path)]
+    if denied:
+        raise WorkspaceAccessDeniedError(
+            "These files are outside this expert's conversations and cannot be "
+            f"attached here: {', '.join(denied)}. Upload them in this chat instead."
+        )
+    return files
 
 
 def build_files_block(files: list[UserWorkspaceFile]) -> str:

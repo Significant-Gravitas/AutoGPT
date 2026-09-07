@@ -82,18 +82,12 @@ async def test_explicit_paths_cannot_escape_scope(db, path: str):
 
 @pytest.mark.parametrize(
     "path",
-    [
-        "/skills/autopilot/SKILL.md",
-        "/skills/autopilot/references/private.txt",
-        "/experts/expert-b/skills/theirs/SKILL.md",
-    ],
+    ["/skills/autopilot/SKILL.md", "/skills/autopilot/references/file.txt"],
 )
-async def test_other_owners_skill_files_are_denied(db, path: str):
-    with pytest.raises(WorkspaceAccessDeniedError):
-        await _skills_manager().read_file(path)
+async def test_skills_registry_is_readable_but_not_writable(db, storage, path: str):
+    assert await _skills_manager().read_file(path) == b"allowed"
     with pytest.raises(WorkspaceAccessDeniedError):
         await _skills_manager().write_file(b"x", "f", path=path, overwrite=True)
-    db.get_workspace_file_by_path.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -110,13 +104,12 @@ async def test_own_and_delegated_paths_are_readable(db, storage, path: str):
 
 @pytest.mark.parametrize(
     "path",
-    [
-        "/experts/expert-a/skills/mine/SKILL.md",
-        "/experts/expert-a/skills/mine/references/file.txt",
-    ],
+    ["/experts/expert-a/skills/mine/SKILL.md", "/root-file.txt"],
 )
-async def test_own_skill_files_are_readable(db, storage, path: str):
-    assert await _skills_manager().read_file(path) == b"allowed"
+async def test_paths_outside_any_grant_are_denied(db, path: str):
+    with pytest.raises(WorkspaceAccessDeniedError):
+        await _skills_manager().read_file(path)
+    db.get_workspace_file_by_path.assert_not_awaited()
 
 
 async def test_delegated_session_is_not_writable(db):

@@ -1,10 +1,10 @@
-"""Trusted resource scope for expert chat sessions.
+"""Trusted file scope for expert chat sessions.
 
-Resolved from persisted session attribution — never from tool arguments. An
-expert session may read and write under its own sessions and its own skills
-folder, and read under sessions it delegated. ``None`` scope means
-unrestricted: the account owner acting through personal AutoPilot, REST
-endpoints, or system paths.
+Resolved from persisted session attribution, never from tool arguments. An
+expert session may read and write under its own conversations, read under
+conversations it delegated, and read the account's skills registry. ``None``
+scope means unrestricted: the account owner acting through personal
+AutoPilot, REST endpoints, or system paths.
 """
 
 import posixpath
@@ -17,16 +17,12 @@ from prisma.models import Expert as PrismaExpert
 from pydantic import BaseModel, Field
 
 SESSIONS_ROOT = "/sessions/"
-EXPERTS_ROOT = "/experts/"
+SKILLS_ROOT = "/skills/"
 
 EXPERT_FILE_ACCESS_DENIED = (
     "This file is outside this expert's scope. Experts can only access files "
-    "from their own sessions and their own skills. Open personal AutoPilot to "
-    "work with other files."
-)
-EXPERT_SKILL_SCOPE_DENIED = (
-    "Experts can only use and manage their own skills. Open personal AutoPilot "
-    "to manage another expert's skills or the account's skills."
+    "from their own conversations. Open personal AutoPilot to work with other "
+    "files."
 )
 
 
@@ -38,14 +34,14 @@ def session_path_prefix(session_id: str) -> str:
     return f"{SESSIONS_ROOT}{session_id}/"
 
 
-def expert_skills_folder(expert_id: str) -> str:
-    return f"{EXPERTS_ROOT}{expert_id}/skills"
-
-
 class WorkspaceScope(BaseModel):
-    """Grants for one expert. Safe for RPC transport."""
+    """Grants for one acting session. Safe for RPC transport.
 
-    expert_id: str
+    ``expert_id`` is ``None`` when nobody could be attributed; such a scope
+    only carries the sessions a caller added explicitly.
+    """
+
+    expert_id: str | None = None
     session_ids: list[str] = Field(default_factory=list)
     delegated_session_ids: list[str] = Field(default_factory=list)
 
@@ -55,18 +51,16 @@ class WorkspaceScope(BaseModel):
         return self.model_copy(update={"session_ids": [*self.session_ids, session_id]})
 
     @property
-    def skills_prefix(self) -> str:
-        return f"{expert_skills_folder(self.expert_id)}/"
-
-    @property
     def write_prefixes(self) -> list[str]:
-        return [session_path_prefix(s) for s in self.session_ids] + [self.skills_prefix]
+        return [session_path_prefix(s) for s in self.session_ids]
 
     @property
     def read_prefixes(self) -> list[str]:
-        return self.write_prefixes + [
-            session_path_prefix(s) for s in self.delegated_session_ids
-        ]
+        return (
+            self.write_prefixes
+            + [session_path_prefix(s) for s in self.delegated_session_ids]
+            + [SKILLS_ROOT]
+        )
 
     def allows_path(self, path: str, *, write: bool = False) -> bool:
         if not path.startswith("/") or "\\" in path or posixpath.normpath(path) != path:
@@ -80,8 +74,10 @@ async def resolve_expert_workspace_scope(
 ) -> WorkspaceScope:
     """Resolve the grants for *expert_id* owned by *user_id*.
 
-    Fails closed: a missing, archived, or foreign expert yields a scope with
-    no session grants at all (callers add the current session explicitly).
+    Own conversations are every session attributed to the expert, so a new
+    conversation keeps reaching files from earlier ones. Fails closed: a
+    missing, archived, or foreign expert yields no session grants at all
+    (callers add the current session explicitly).
     """
     expert = await PrismaExpert.prisma().find_first(
         where={
@@ -93,7 +89,7 @@ async def resolve_expert_workspace_scope(
         }
     )
     if expert is None:
-        return _NoGrants(expert_id=expert_id)
+        return WorkspaceScope(expert_id=expert_id)
 
     own_sessions = await PrismaChatSession.prisma().find_many(
         where={"userId": user_id, "expertId": expert_id}
@@ -114,11 +110,3 @@ async def resolve_expert_workspace_scope(
             row.id for row in delegated_sessions if row.expertId != expert_id
         ],
     )
-
-
-class _NoGrants(WorkspaceScope):
-    """Scope for an expert that no longer exists for this owner."""
-
-    @property
-    def write_prefixes(self) -> list[str]:
-        return [session_path_prefix(s) for s in self.session_ids]

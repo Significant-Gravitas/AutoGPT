@@ -12,20 +12,22 @@ SCOPE = WorkspaceScope(
 
 @pytest.mark.parametrize(
     "path",
-    [
-        "/sessions/expert-a/file.txt",
-        "/sessions/expert-a-old/nested/file.txt",
-        "/experts/expert-a/skills/mine/SKILL.md",
-        "/experts/expert-a/skills/mine/references/a.md",
-    ],
+    ["/sessions/expert-a/file.txt", "/sessions/expert-a-old/nested/file.txt"],
 )
-def test_own_sessions_and_own_skills_are_readable_and_writable(path: str):
+def test_own_conversations_are_readable_and_writable(path: str):
     assert SCOPE.allows_path(path)
     assert SCOPE.allows_path(path, write=True)
 
 
-@pytest.mark.parametrize("path", ["/sessions/sub-1/result.json"])
-def test_delegated_sessions_are_read_only(path: str):
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/sessions/sub-1/result.json",
+        "/skills/autopilot-skill/SKILL.md",
+        "/skills/autopilot-skill/references/notes.md",
+    ],
+)
+def test_delegated_conversations_and_skills_registry_are_read_only(path: str):
     assert SCOPE.allows_path(path)
     assert not SCOPE.allows_path(path, write=True)
 
@@ -40,17 +42,22 @@ def test_delegated_sessions_are_read_only(path: str):
         "/sessions/expert-a//file.txt",
         "sessions/expert-a/file.txt",
         "/sessions/expert-a/..\\expert-b/x",
-        "/skills/autopilot-skill/SKILL.md",
-        "/skills/autopilot-skill/references/private.txt",
-        "/experts/expert-b/skills/theirs/SKILL.md",
-        "/experts/expert-a/skills",
-        "/experts/expert-a-x/skills/mine/SKILL.md",
+        "/skills",
+        "/skillsets/private.txt",
+        "/experts/expert-a/skills/mine/SKILL.md",
         "/root-file.txt",
     ],
 )
 def test_everything_else_is_denied(path: str):
     assert not SCOPE.allows_path(path)
     assert not SCOPE.allows_path(path, write=True)
+
+
+def test_session_only_scope_carries_no_expert_grants():
+    scope = WorkspaceScope(session_ids=["only"])
+    assert scope.expert_id is None
+    assert scope.allows_path("/sessions/only/file.txt", write=True)
+    assert not scope.allows_path("/sessions/other/file.txt")
 
 
 def test_resolver_is_reachable_through_the_direct_db_accessor():

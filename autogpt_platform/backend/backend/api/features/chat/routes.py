@@ -143,7 +143,8 @@ from backend.copilot.transports import (
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
@@ -1663,6 +1664,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
@@ -1721,9 +1723,19 @@ async def stream_chat_post(
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
+    # Expert sessions may only attach files from the expert's own
+    # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
     if request.file_ids:
-        files = await resolve_workspace_files(user_id, request.file_ids)
+        try:
+            files = await resolve_attachable_workspace_files(
+                user_id,
+                request.file_ids,
+                session_id=session_id,
+                expert_id=session.expert_id,
+            )
+        except WorkspaceAccessDeniedError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files)
 
@@ -2002,6 +2014,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        expert_id=session.expert_id,
     )
 
 

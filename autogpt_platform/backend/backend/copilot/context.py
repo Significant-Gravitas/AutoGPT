@@ -270,17 +270,20 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
-async def current_workspace_scope(user_id: str) -> WorkspaceScope | None:
-    """Resolve the file/skill grants for the turn currently executing.
+async def current_workspace_scope(
+    user_id: str, session_id: str
+) -> WorkspaceScope | None:
+    """Resolve the file grants for the turn currently executing.
 
     The scope derives from the server-resolved session the executor placed
     in the execution context — never from a session or expert ID a tool
-    argument names. Outside a copilot turn (REST endpoints, cleanup jobs,
-    tests) there is no expert acting, so the owner's full workspace applies.
+    argument names. Personal AutoPilot turns are unrestricted: the account
+    owner is acting. Without an executing session nobody can be attributed,
+    so access fails closed to ``session_id`` alone.
     """
     _, session = get_execution_context()
     if session is None:
-        return None
+        return WorkspaceScope(session_ids=[session_id])
     if session.user_id != user_id:
         raise WorkspaceAccessDeniedError(
             "Workspace access denied: the executing session belongs to another user."
@@ -302,7 +305,7 @@ async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManag
     the expert's resolved scope (see :func:`current_workspace_scope`).
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    scope = await current_workspace_scope(user_id)
+    scope = await current_workspace_scope(user_id, session_id)
     return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 

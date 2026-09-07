@@ -49,10 +49,14 @@ async def test_personal_autopilot_turn_is_unrestricted(db):
     db.resolve_expert_workspace_scope.assert_not_awaited()
 
 
-async def test_outside_a_turn_is_unrestricted(db):
+async def test_outside_a_turn_fails_closed_to_the_requested_session(db):
     set_execution_context(None, None)
     manager = await get_workspace_manager("user-1", "session-1")
-    assert manager.scope is None
+    assert manager.scope is not None
+    assert manager.scope.expert_id is None
+    assert manager.scope.session_ids == ["session-1"]
+    assert not manager.scope.allows_path("/sessions/other/file.txt")
+    db.resolve_expert_workspace_scope.assert_not_awaited()
 
 
 async def test_session_of_another_user_is_refused(db):

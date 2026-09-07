@@ -4,7 +4,6 @@ import base64
 import logging
 import mimetypes
 import os
-import re
 from typing import Any, Optional
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
@@ -431,8 +430,8 @@ class ListWorkspaceFilesTool(BaseTool):
                     "type": "boolean",
                     "description": (
                         "Include files from all sessions (default: false). "
-                        "Expert chats only ever see their own sessions and "
-                        "assigned skills."
+                        "Expert chats only ever see files from their own "
+                        "conversations."
                     ),
                 },
             },
@@ -527,7 +526,7 @@ class ReadWorkspaceFileTool(BaseTool):
             "Use offset/length for paginated reads. "
             "Paths scoped to current session; use /sessions/<id>/... for "
             "cross-session access (expert chats are limited to their own "
-            "sessions and assigned skills)."
+            "conversations)."
         )
 
     @property
@@ -758,7 +757,6 @@ class ReadWorkspaceFileTool(BaseTool):
 # registry. Reads stay open so the model can still inspect sibling
 # references inside a skill bundle.
 _SKILLS_REGISTRY_PREFIX = "skills/"
-_EXPERT_SKILLS_REGISTRY_RE = re.compile(r"^experts/[^/]+/skills(/|$)")
 _SKILLS_REGISTRY_ERROR = (
     "Path is managed by the skills registry; use store_skill / "
     "delete_skill instead. (read_workspace_file can still read "
@@ -775,11 +773,7 @@ def _path_under_skills_registry(path: str | None) -> bool:
     # Strip leading slashes + whitespace, lower-case so case variants
     # (``Skills/foo``) cannot bypass the check.
     normalised = path.strip().lstrip("/").lower()
-    return (
-        normalised.startswith(_SKILLS_REGISTRY_PREFIX)
-        or normalised == "skills"
-        or _EXPERT_SKILLS_REGISTRY_RE.match(normalised) is not None
-    )
+    return normalised.startswith(_SKILLS_REGISTRY_PREFIX) or normalised == "skills"
 
 
 class WriteWorkspaceFileTool(BaseTool):
@@ -797,7 +791,7 @@ class WriteWorkspaceFileTool(BaseTool):
             f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
             "Paths scoped to current session; use /sessions/<id>/... for "
             "cross-session access (expert chats are limited to their own "
-            "sessions and assigned skills)."
+            "conversations)."
         )
 
     @property
