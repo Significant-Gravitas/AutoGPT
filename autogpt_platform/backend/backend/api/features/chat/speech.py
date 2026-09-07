@@ -50,7 +50,14 @@ class SpeechRequest(BaseModel):
 
 @router.post(
     "/speech",
-    responses={200: {"content": {AUDIO_MEDIA_TYPE: {}}}},
+    responses={
+        200: {"content": {AUDIO_MEDIA_TYPE: {}}},
+        400: {"description": "Blank or over-long text, or an unknown voice"},
+        402: {"description": "No active subscription"},
+        404: {"description": "Voice mode is not enabled for this user"},
+        429: {"description": "Over the caller's usage cap"},
+        503: {"description": "Speech is unavailable, or the cap cannot be read"},
+    },
     response_class=Response,
 )
 async def synthesize(

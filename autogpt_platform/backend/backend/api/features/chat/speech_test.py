@@ -159,6 +159,25 @@ def test_speech_rejects_an_unknown_voice(record_usage: AsyncMock) -> None:
     record_usage.assert_not_awaited()
 
 
+def test_speech_documents_every_status_it_can_return(record_usage: AsyncMock) -> None:
+    # A generated client that sees only 200/401/422 cannot tell "over your
+    # usage cap" from "bad request".
+    declared = set(speech_routes.router.routes[0].responses)
+    assert {400, 402, 404, 429, 503} <= declared
+
+
+def test_the_metering_rate_cannot_be_negative_or_non_finite() -> None:
+    # An unrecordable cost is not a refusal: TTS has no token counts to fall
+    # back on, so synthesis would keep running unmetered.
+    import pydantic
+
+    from backend.copilot.config import ChatConfig
+
+    for bad in (-1.0, float("inf"), float("nan")):
+        with pytest.raises(pydantic.ValidationError):
+            ChatConfig(voice_tts_usd_per_1k_chars=bad)
+
+
 def test_speech_rejects_blank_text(record_usage: AsyncMock) -> None:
     response = client.post("/speech", json={"text": "   "})
 

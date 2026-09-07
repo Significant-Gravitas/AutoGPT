@@ -1385,6 +1385,11 @@ class ChatConfig(BaseSettings):
     )
     voice_tts_usd_per_1k_chars: float = Field(
         default=0.02,
+        ge=0,
+        # A negative or non-finite rate yields a cost the usage recorder
+        # cannot write — and TTS has no token counts to fall back on, so
+        # synthesis would keep running unmetered.
+        allow_inf_nan=False,
         description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "
         "per audio token, which the request does not report; ~$0.015/min of "
         "speech at ~750 chars/min is the estimate behind this default.",

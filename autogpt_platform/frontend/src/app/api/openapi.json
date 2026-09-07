@@ -4730,9 +4730,14 @@
             "description": "Successful Response",
             "content": { "audio/mpeg": {} }
           },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4740,6 +4745,10 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
