@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -42,7 +43,8 @@ async function readBody(request) {
 
 export function createFixtureServer({
   now = Date.now,
-  codeLifetimeMs = 60_000,
+  codeLifetimeMs = 90_000,
+  streamDelay = (signal) => delay(600, undefined, { signal }),
   tls,
 } = {}) {
   const cookieName = tls
@@ -60,6 +62,48 @@ export function createFixtureServer({
       if (entry.expiresAt <= now()) codes.delete(code);
     for (const [token, expiresAt] of sessions)
       if (expiresAt <= now()) sessions.delete(token);
+
+    if (url.pathname === "/api/fixture/stream" && method === "GET") {
+      const controller = new AbortController();
+      const close = () => controller.abort();
+      response.once("close", close);
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store, no-transform",
+        "X-Content-Type-Options": "nosniff",
+        "X-Accel-Buffering": "no",
+      });
+      response.flushHeaders();
+      const chunks = [
+        "Fixture stream opened.",
+        "Incremental text reached the native webview.",
+        "The response is still in progress.",
+        "No live chat or account is connected.",
+        "All five test chunks arrived.",
+      ];
+      try {
+        for (const [index, text] of chunks.entries()) {
+          if (controller.signal.aborted) return;
+          response.write(
+            `event: chunk\ndata: ${JSON.stringify({ fixture: true, index: index + 1, text })}\n\n`,
+          );
+          await streamDelay(controller.signal);
+          if (url.searchParams.get("drop") === "1" && index === 1) {
+            response.destroy();
+            return;
+          }
+        }
+        if (!controller.signal.aborted)
+          response.end(
+            `event: done\ndata: ${JSON.stringify({ fixture: true, chunks: chunks.length })}\n\n`,
+          );
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        response.removeListener("close", close);
+      }
+      return;
+    }
 
     if (url.pathname === "/api/auth/mobile/start" && method === "GET") {
       const challenge = url.searchParams.get("code_challenge") ?? "";
@@ -102,6 +146,10 @@ export function createFixtureServer({
           error: "Invalid fixture authorization request",
         });
       }
+      if (body.expected_user_id !== "fixture-user")
+        return send(response, 403, {
+          error: "Fixture consent account changed",
+        });
       const code = randomBytes(32).toString("base64url");
       codes.set(code, { challenge, expiresAt: now() + codeLifetimeMs });
       const callback = new URL(callbackUrl);

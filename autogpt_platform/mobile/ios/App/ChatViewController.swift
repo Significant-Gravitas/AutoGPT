@@ -47,6 +47,22 @@ final class ChatViewController: UIViewController {
   }
 
   private func configureStatus() {
+    let mark = UIImageView(image: UIImage(named: "AutoGPTMark"))
+    mark.translatesAutoresizingMaskIntoConstraints = false
+    mark.contentMode = .scaleAspectFit
+    mark.layer.cornerRadius = 16
+    mark.clipsToBounds = true
+    mark.isAccessibilityElement = false
+    let brand = UIView()
+    brand.addSubview(mark)
+    NSLayoutConstraint.activate([
+      brand.heightAnchor.constraint(equalToConstant: 72),
+      mark.widthAnchor.constraint(equalToConstant: 64),
+      mark.heightAnchor.constraint(equalToConstant: 64),
+      mark.topAnchor.constraint(equalTo: brand.topAnchor),
+      mark.centerXAnchor.constraint(equalTo: brand.centerXAnchor),
+    ])
+    status.addArrangedSubview(brand)
     status.axis = .vertical
     status.alignment = .fill
     status.spacing = 16
@@ -83,6 +99,7 @@ final class ChatViewController: UIViewController {
   }
 
   private func installWebView() {
+    cancelExports()
     webView?.stopLoading()
     webView?.removeFromSuperview()
     let configuration = WKWebViewConfiguration()
@@ -140,7 +157,7 @@ final class ChatViewController: UIViewController {
           self?.webView.goBack()
         }) : nil
     navigationItem.leftBarButtonItem?.accessibilityLabel = "Back"
-    let actions = [
+    var actions = [
       UIAction(title: "Chat home", image: UIImage(systemName: "bubble.left.and.bubble.right")) {
         [weak self] _ in
         self?.loadChat()
@@ -158,20 +175,41 @@ final class ChatViewController: UIViewController {
         self?.settings()
       },
     ]
+    if !downloads.isEmpty {
+      actions = [
+        UIAction(title: "Cancel download", image: UIImage(systemName: "xmark.circle")) {
+          [weak self] _ in
+          self?.cancelExports()
+        }
+      ]
+      let spinner = UIActivityIndicatorView(style: .medium)
+      spinner.startAnimating()
+      let label = UILabel()
+      label.text = "Preparing file…"
+      label.font = .preferredFont(forTextStyle: .subheadline)
+      let heading = UIStackView(arrangedSubviews: [spinner, label])
+      heading.axis = .horizontal
+      heading.spacing = 8
+      navigationItem.titleView = heading
+    } else {
+      navigationItem.titleView = nil
+    }
     navigationItem.rightBarButtonItem = UIBarButtonItem(
       image: UIImage(systemName: "ellipsis.circle"), menu: UIMenu(children: actions))
     navigationItem.rightBarButtonItem?.accessibilityLabel = "App menu"
     navigationItem.rightBarButtonItem?.isEnabled = !isSigningIn
-    navigationItem.leftBarButtonItem?.isEnabled = !isSigningIn
+    navigationItem.leftBarButtonItem?.isEnabled = !isSigningIn && downloads.isEmpty
   }
 
   private func loadChat() {
+    cancelExports()
     status.isHidden = true
     webView.isHidden = false
     webView.load(URLRequest(url: origin.chatURL))
   }
 
   private func retry() {
+    cancelExports()
     status.isHidden = true
     webView.isHidden = false
     let target = lastCommittedURL.flatMap { origin.contains($0) ? $0 : nil } ?? origin.chatURL
@@ -181,6 +219,7 @@ final class ChatViewController: UIViewController {
   private func showStatus(
     title: String, message: String, button: String, action: @escaping () -> Void
   ) {
+    view.endEditing(true)
     webView.isHidden = true
     progress.isHidden = true
     statusTitle.text = title
@@ -305,13 +344,24 @@ extension ChatViewController: WKNavigationDelegate {
     _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
     decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
   ) {
+    guard webView === self.webView else {
+      decisionHandler(.cancel)
+      return
+    }
     guard let url = navigationAction.request.url else {
       decisionHandler(.cancel)
       return
     }
+    if navigationAction.shouldPerformDownload
+      && (origin.contains(url) || origin.allowsBlobDownload(url))
+    {
+      decisionHandler(.download)
+      return
+    }
     if navigationAction.targetFrame?.isMainFrame == false {
       decisionHandler(
-        ["https", "about"].contains(url.scheme) || origin.contains(url) ? .allow : .cancel)
+        ["https", "about"].contains(url.scheme) || origin.contains(url)
+          || origin.allowsBlobDownload(url) ? .allow : .cancel)
       return
     }
     if origin.contains(url) {
@@ -337,6 +387,10 @@ extension ChatViewController: WKNavigationDelegate {
     _ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
     decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void
   ) {
+    guard webView === self.webView else {
+      decisionHandler(.cancel)
+      return
+    }
     if navigationResponse.isForMainFrame,
       let response = navigationResponse.response as? HTTPURLResponse, response.statusCode >= 400
     {
@@ -348,6 +402,7 @@ extension ChatViewController: WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    guard webView === self.webView else { return }
     if let url = webView.url, origin.contains(url) { lastCommittedURL = url }
     status.isHidden = true
     webView.isHidden = false
@@ -358,6 +413,7 @@ extension ChatViewController: WKNavigationDelegate {
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
     withError error: Error
   ) {
+    guard webView === self.webView else { return }
     if !status.isHidden && webView.isHidden { return }
     let nativeError = error as NSError
     if nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102 { return }
@@ -367,6 +423,7 @@ extension ChatViewController: WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    guard webView === self.webView else { return }
     if !status.isHidden && webView.isHidden { return }
     let nativeError = error as NSError
     if nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102 { return }
@@ -376,6 +433,7 @@ extension ChatViewController: WKNavigationDelegate {
   }
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    guard webView === self.webView else { return }
     installWebView()
     showError("The page was paused to free memory. Reconnect to continue your conversation.")
   }
@@ -383,30 +441,85 @@ extension ChatViewController: WKNavigationDelegate {
   func webView(
     _ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload
   ) {
+    guard webView === self.webView else {
+      Task { _ = await download.cancel() }
+      return
+    }
     export(download)
   }
 
   func webView(
     _ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload
   ) {
+    guard webView === self.webView else {
+      Task { _ = await download.cancel() }
+      return
+    }
     export(download)
   }
 
   private func export(_ download: WKDownload) {
-    let key = ObjectIdentifier(download)
-    let exporter = DownloadExport(presenter: self, origin: origin) { [weak self] in
-      self?.downloads.removeValue(forKey: key)
+    guard downloads.isEmpty else {
+      Task { _ = await download.cancel() }
+      return
     }
+    let key = ObjectIdentifier(download)
+    let exporter = DownloadExport(
+      presenter: self, origin: origin, download: download,
+      completion: { [weak self] in
+        self?.downloads.removeValue(forKey: key)
+        self?.updateMenu()
+      },
+      onError: { [weak self] message in
+        guard let self, self.presentedViewController == nil else { return }
+        let alert = UIAlertController(
+          title: "Couldn't save file", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        self.present(alert, animated: true)
+      })
     downloads[key] = exporter
     download.delegate = exporter
+    updateMenu()
   }
+
+  private func cancelExports() {
+    let pending = Array(downloads.values)
+    downloads.removeAll()
+    for export in pending { export.cancel() }
+    if webView != nil { updateMenu() }
+  }
+
 }
 
 extension ChatViewController: WKUIDelegate {
   func webView(
+    _ webView: WKWebView,
+    requestMediaCapturePermissionFor securityOrigin: WKSecurityOrigin,
+    initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+    decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void
+  ) {
+    guard webView === self.webView else {
+      decisionHandler(.deny)
+      return
+    }
+    var source = URLComponents()
+    source.scheme = securityOrigin.protocol
+    source.host = securityOrigin.host
+    source.port = securityOrigin.port == 0 ? nil : securityOrigin.port
+    guard frame.isMainFrame, type == .microphone,
+      let url = source.url, origin.contains(url)
+    else {
+      decisionHandler(.deny)
+      return
+    }
+    decisionHandler(.prompt)
+  }
+
+  func webView(
     _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
     for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
+    guard webView === self.webView else { return nil }
     guard navigationAction.targetFrame == nil, let url = navigationAction.request.url else {
       return nil
     }
@@ -423,6 +536,10 @@ extension ChatViewController: WKUIDelegate {
     initiatedByFrame frame: WKFrameInfo,
     completionHandler: @escaping @MainActor @Sendable () -> Void
   ) {
+    guard webView === self.webView else {
+      completionHandler()
+      return
+    }
     let alert = UIAlertController(title: "AutoGPT", message: message, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
     present(alert, animated: true)
@@ -433,6 +550,10 @@ extension ChatViewController: WKUIDelegate {
     initiatedByFrame frame: WKFrameInfo,
     completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
   ) {
+    guard webView === self.webView else {
+      completionHandler(false)
+      return
+    }
     let alert = UIAlertController(title: "AutoGPT", message: message, preferredStyle: .alert)
     alert.addAction(
       UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })

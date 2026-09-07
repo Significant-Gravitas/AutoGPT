@@ -2,6 +2,7 @@ import type {
   OutputRenderer,
   OutputMetadata,
 } from "@/components/contextual/OutputRenderers/types";
+import { saveBlob } from "./save-blob";
 
 export interface DownloadItem {
   value: unknown;
@@ -262,21 +263,10 @@ export async function downloadOutputs(items: DownloadItem[]) {
     const onlyFilename = Object.keys(zip.files)[0];
     const entry = zip.files[onlyFilename];
     const content = await entry.async("blob");
-    downloadBlob(content, onlyFilename);
+    await saveBlob(content, onlyFilename);
     return;
   }
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  downloadBlob(zipBlob, "outputs.zip");
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  await saveBlob(zipBlob, "outputs.zip");
 }

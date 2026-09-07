@@ -28,18 +28,28 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose photos to attach to an AutoGPT conversation.
         INFOPLIST_KEY_NSCameraUsageDescription: Take a photo to attach to an AutoGPT conversation.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: Record audio when attaching media to an AutoGPT conversation.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Use voice input and attach audio in AutoGPT conversations.
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         GENERATE_INFOPLIST_FILE: YES
     info:
       path: App/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles: [AppIcon60x60]
         CFBundleURLTypes:
           - CFBundleURLName: com.agpt.mobile.authentication
             CFBundleURLSchemes: [autogpt]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:

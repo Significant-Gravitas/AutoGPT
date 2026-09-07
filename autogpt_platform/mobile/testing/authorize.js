@@ -11,6 +11,7 @@ document.querySelector("#connect").addEventListener("click", async () => {
       body: JSON.stringify({
         code_challenge: query.get("code_challenge"),
         state: query.get("state"),
+        expected_user_id: "fixture-user",
       }),
     });
     if (!response.ok) throw new Error("Fixture authorization failed");

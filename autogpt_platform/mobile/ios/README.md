@@ -72,7 +72,8 @@ swift-format lint --strict --recursive \
 ## Current verification
 
 - Swift origin and PKCE contract tests pass on the host.
-- The app builds with the iOS 26.5 simulator SDK.
+- Simulator Debug and unsigned iPhone Release builds pass with the iOS 26.5 SDK.
 - It launches on the installed iPhone 16 Pro / iOS 18.3 simulator and intercepts the real hosted site's login redirect.
 - The local fixture's system-browser sign-in returns to the app with both token and cache cookies installed.
+- A generated Markdown file exports through the native share sheet into Files and can be selected again as an attachment; external navigation and HTTP-error recovery were also checked in the simulator.
 - Exact iPhone 17 Pro / iOS 26 runtime testing, real-provider sign-in, and release signing remain separate checks.

@@ -1,0 +1,81 @@
+name: AutoGPT Platform - Mobile CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/platform-mobile-ci.yml"
+      - "autogpt_platform/mobile/**"
+  push:
+    branches: [dev, master]
+    paths:
+      - ".github/workflows/platform-mobile-ci.yml"
+      - "autogpt_platform/mobile/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/ios
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Lint all Swift sources
+        run: swift-format lint --strict --recursive App Sources Tests UITests Package.swift
+      - name: Test origin and authentication policies
+        run: swift test
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build iOS simulator app without signing
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPT
+          -sdk iphonesimulator -arch arm64 -configuration Debug
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: Build unsigned iPhone app
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPT
+          -sdk iphoneos -arch arm64 -configuration Release
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/android
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test, lint, and build both Android variants
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease
+
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+      - name: Test native integration fixture
+        run: node --test autogpt_platform/mobile/testing/server.test.mjs

@@ -90,6 +90,7 @@ final class NativeAuthentication: NSObject, ASWebAuthenticationPresentationConte
     configuration.httpCookieStorage = nil
     configuration.httpShouldSetCookies = false
     configuration.timeoutIntervalForRequest = 30
+    configuration.timeoutIntervalForResource = 30
     configuration.urlCache = nil
     let transport = URLSession(
       configuration: configuration, delegate: RejectRedirects(), delegateQueue: nil)
@@ -101,7 +102,7 @@ final class NativeAuthentication: NSObject, ASWebAuthenticationPresentationConte
     request.httpBody = try JSONSerialization.data(withJSONObject: [
       "code": code, "code_verifier": pending.verifier,
     ])
-    let (_, response) = try await transport.data(for: request)
+    let (_, response) = try await transport.bytes(for: request)
     guard let response = response as? HTTPURLResponse,
       response.statusCode == 200, let responseURL = response.url, origin.contains(responseURL)
     else { throw MobileError.authenticationFailed }

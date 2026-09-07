@@ -118,11 +118,17 @@ describe("auth config", () => {
 
     expect(hashed).toMatch(/^\$2[aby]\$10\$/);
     expect(
-      await verify({ hash: hashed, password: "correct horse battery staple" }),
+      await verify({
+        hash: hashed,
+        password: "correct horse battery staple", // pragma: allowlist secret
+      }),
     ).toBe(true);
-    expect(await verify({ hash: hashed, password: "wrong password" })).toBe(
-      false,
-    );
+    expect(
+      await verify({
+        hash: hashed,
+        password: "wrong password", // pragma: allowlist secret
+      }),
+    ).toBe(false);
   });
 
   it("configures the JWT plugin with the Supabase-compatible audience and expiry", async () => {
@@ -194,7 +200,7 @@ describe("auth config", () => {
     expect(options.socialProviders).toEqual({
       google: {
         clientId: "google-client-id",
-        clientSecret: "google-client-secret",
+        clientSecret: "google-client-secret", // pragma: allowlist secret
       },
     });
   });
@@ -237,6 +243,7 @@ describe("auth config", () => {
       "admin",
       "jwt",
       "supabase-bridge",
+      "mobile-auth",
       "next-cookies",
     ]);
   });

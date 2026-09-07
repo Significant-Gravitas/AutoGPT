@@ -17,8 +17,9 @@ import Testing
 }
 
 @Test func validatesConfiguredAddress() throws {
+  let credentials = "https://user:password@platform.agpt.co"  // pragma: allowlist secret
   for value in [
-    "http://platform.agpt.co", "https://user:password@platform.agpt.co",  // pragma: allowlist secret
+    "http://platform.agpt.co", credentials,
     "https://platform.agpt.co/copilot", "https://platform.agpt.co?evil=1",
     "https://platform.agpt.co#fragment", "file:///tmp/app", "not a URL",
   ] {
@@ -66,7 +67,46 @@ import Testing
 }
 
 @Test func usesRFC7636Challenge() {
-  #expect(
-    PendingAuthentication.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")  // pragma: allowlist secret
-      == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")  // pragma: allowlist secret
+  let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"  // pragma: allowlist secret
+  let expected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"  // pragma: allowlist secret
+  #expect(PendingAuthentication.challenge(for: verifier) == expected)
+}
+
+@Test func checksStateBeforeAcceptingBrowserCancellation() throws {
+  let pending = try PendingAuthentication()
+  let cancelled = URL(string: "autogpt://auth/callback?error=access_denied&state=\(pending.state)")!
+  #expect(throws: MobileError.authenticationCancelled) { try pending.validateCallback(cancelled) }
+  let forged = URL(string: "autogpt://auth/callback?error=access_denied&state=wrong")!
+  #expect(throws: MobileError.invalidCallback) { try pending.validateCallback(forged) }
+}
+
+@Test func acceptsOnlyUsableSameOriginHttpOnlyCookies() throws {
+  let origin = try AppOrigin("https://platform.agpt.co")
+  let header = "__Secure-better-auth.session_token=fixture; Path=/; Secure; HttpOnly; SameSite=Lax"
+  let valid = HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": header], for: origin.url)
+  #expect(valid.count == 1)
+  #expect(origin.acceptsSessionCookie(valid[0]))
+  for invalid in [
+    header.replacingOccurrences(of: "; Secure", with: ""),
+    header.replacingOccurrences(of: "; HttpOnly", with: ""),
+    header.replacingOccurrences(of: "Path=/;", with: "Path=/api;"),
+    header + "; Domain=agpt.co",
+    header + "; Max-Age=0",
+  ] {
+    let cookies = HTTPCookie.cookies(
+      withResponseHeaderFields: ["Set-Cookie": invalid], for: origin.url)
+    #expect(cookies.allSatisfy { !origin.acceptsSessionCookie($0) })
+  }
+}
+
+@Test func browserStartNeverContainsTheProofSecret() throws {
+  let pending = try PendingAuthentication()
+  let origin = try AppOrigin("https://platform.agpt.co")
+  let url = pending.startURL(origin: origin)
+  #expect(origin.contains(url))
+  #expect(url.path == "/api/auth/mobile/start")
+  #expect(!url.absoluteString.contains(pending.verifier))
+  let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+  #expect(items?.count == 2)
+  #expect(items?.first(where: { $0.name == "code_challenge" })?.value == pending.challenge)
 }

@@ -45,7 +45,11 @@ async function authorize(origin) {
   const response = await fetch(`${origin}/api/auth/mobile/authorize`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: origin },
-    body: JSON.stringify({ code_challenge: challenge, state }),
+    body: JSON.stringify({
+      code_challenge: challenge,
+      state,
+      expected_user_id: "fixture-user",
+    }),
   });
   assert.equal(response.status, 200);
   return new URL((await response.json()).url);
@@ -146,4 +150,99 @@ test("fixtures expose deterministic download, HTTP error, and transport failure 
   assert.match(await download.text(), /Native integration fixture/);
   assert.equal((await fetch(`${origin}/error`)).status, 503);
   await assert.rejects(fetch(`${origin}/offline`), /fetch failed/);
+});
+
+function controlledStream() {
+  let release;
+  return {
+    delay(signal) {
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        release = () => {
+          signal.removeEventListener("abort", abort);
+          resolve();
+        };
+      });
+    },
+    next() {
+      assert.equal(typeof release, "function");
+      const advance = release;
+      release = undefined;
+      advance();
+    },
+  };
+}
+
+test("SSE chunks arrive incrementally before the response completes", async (t) => {
+  const steps = controlledStream();
+  const origin = await startFixture(t, { streamDelay: steps.delay });
+  const response = await fetch(`${origin}/api/fixture/stream`);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  assert.match(response.headers.get("cache-control"), /no-transform/);
+  const reader = response.body.getReader();
+  try {
+    for (let index = 1; index <= 5; index++) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      const frame = new TextDecoder().decode(chunk.value);
+      assert.match(frame, /event: chunk/);
+      assert.match(frame, new RegExp(`"index":${index},`));
+      assert.doesNotMatch(frame, /event: done/);
+      steps.next();
+    }
+    const final = await reader.read();
+    assert.equal(final.done, false);
+    assert.match(new TextDecoder().decode(final.value), /event: done/);
+    assert.equal((await reader.read()).done, true);
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+});
+
+test("a dropped SSE response exposes partial chunks then fails without completion", async (t) => {
+  const steps = controlledStream();
+  const origin = await startFixture(t, { streamDelay: steps.delay });
+  const response = await fetch(`${origin}/api/fixture/stream?drop=1`);
+  const reader = response.body.getReader();
+  try {
+    for (let index = 1; index <= 2; index++) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      assert.match(
+        new TextDecoder().decode(chunk.value),
+        new RegExp(`"index":${index},`),
+      );
+      steps.next();
+    }
+    await assert.rejects(reader.read(), /terminated/);
+  } finally {
+    reader.releaseLock();
+  }
+});
+
+test("canceling a streaming fetch allows a fresh retry", async (t) => {
+  const steps = controlledStream();
+  const origin = await startFixture(t, { streamDelay: steps.delay });
+  const controller = new AbortController();
+  const response = await fetch(`${origin}/api/fixture/stream`, {
+    signal: controller.signal,
+  });
+  const reader = response.body.getReader();
+  assert.match(
+    new TextDecoder().decode((await reader.read()).value),
+    /"index":1,/,
+  );
+  controller.abort();
+  await assert.rejects(reader.read(), { name: "AbortError" });
+  reader.releaseLock();
+  const retry = await fetch(`${origin}/api/fixture/stream`);
+  const retryReader = retry.body.getReader();
+  assert.match(
+    new TextDecoder().decode((await retryReader.read()).value),
+    /"index":1,/,
+  );
+  await retryReader.cancel();
+  retryReader.releaseLock();
 });

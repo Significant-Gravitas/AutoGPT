@@ -18,6 +18,13 @@
         Deterministic native shell probes. This is a local test page, with no
         live chat or account.
       </p>
+      <nav aria-label="Fixture probes" class="actions">
+        <a href="#session-heading">Session</a>
+        <a href="#input-heading">Keyboard & files</a>
+        <a href="#streaming-heading">Streaming</a>
+        <a href="#navigation-heading">Navigation</a>
+        <a href="#download-heading">Downloads</a>
+      </nav>
       <section aria-labelledby="session-heading">
         <h2 id="session-heading">Browser sign-in & session</h2>
         <p>
@@ -54,6 +61,44 @@
         <output id="file-result" aria-live="polite"
           >No attachments selected. Files stay on this device.</output
         >
+        <h3>Microphone capability</h3>
+        <p>
+          This button requests microphone access, then immediately stops all
+          tracks. It does not record or upload audio.
+        </p>
+        <button id="microphone" type="button" class="secondary">
+          Check microphone access
+        </button>
+        <output id="microphone-result" aria-live="polite">
+          Not checked. A system permission prompt may appear.
+        </output>
+      </section>
+      <section aria-labelledby="streaming-heading">
+        <h2 id="streaming-heading">Streaming transport</h2>
+        <p>
+          Fetch reads five SSE test-text chunks as they arrive, about 600 ms
+          apart. This validates transport behavior without a live chat.
+        </p>
+        <div class="actions">
+          <button id="stream-start" type="button">Start stream</button>
+          <button id="stream-drop" type="button" class="secondary">
+            Test dropped stream
+          </button>
+          <button id="stream-cancel" type="button" class="secondary" disabled>
+            Cancel
+          </button>
+          <button id="stream-retry" type="button" class="secondary" disabled>
+            Retry last probe
+          </button>
+        </div>
+        <output id="stream-result" aria-live="polite">
+          Ready. Test text only; nothing is sent to an AI model.
+        </output>
+        <pre id="stream-text" aria-label="Received fixture stream chunks"></pre>
+        <p class="muted">
+          The dropped-stream probe intentionally disconnects after chunk 2.
+          Partial text must remain visible with an error, not a completed state.
+        </p>
       </section>
       <section aria-labelledby="navigation-heading">
         <h2 id="navigation-heading">Navigation boundaries</h2>

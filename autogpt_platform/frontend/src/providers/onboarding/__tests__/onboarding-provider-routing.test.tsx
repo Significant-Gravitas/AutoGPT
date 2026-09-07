@@ -172,4 +172,16 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(routerReplace).not.toHaveBeenCalled();
   });
+
+  test("mobile auth consent completes before onboarding redirects", async () => {
+    mockPathname = "/auth/mobile";
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+    expect(completedCallCount.value).toBe(0);
+  });
 });

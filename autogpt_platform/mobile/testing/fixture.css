@@ -17,6 +17,13 @@ main {
     max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 }
 .eyebrow {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  margin: 0;
+  padding: 12px 8px;
+  border-bottom: 1px solid #dce1e8;
+  background: #f4f6f8;
   text-transform: uppercase;
   font-size: 11px;
   font-weight: 700;
@@ -32,6 +39,14 @@ h1 {
 h2 {
   font-size: 17px;
   margin: 0 0 12px;
+}
+h2,
+h3 {
+  scroll-margin-top: calc(64px + env(safe-area-inset-top, 0px));
+}
+h3 {
+  margin: 24px 0 12px;
+  font-size: 15px;
 }
 p {
   line-height: 1.5;
@@ -59,6 +74,22 @@ output {
   font-size: 14px;
   overflow-wrap: anywhere;
 }
+button + output,
+.actions + output {
+  margin-top: 14px;
+}
+#stream-text {
+  min-height: 88px;
+  margin-bottom: 0;
+  padding: 14px;
+  border: 1px solid #dce1e8;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    13px/1.6 ui-monospace,
+    monospace;
+}
 output[data-connected="true"] {
   color: #12643f;
   background: #e8f6ec;
@@ -84,6 +115,10 @@ button {
 button.secondary {
   color: #253954;
   background: #edf0f6;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 button:focus-visible,
 a:focus-visible,
