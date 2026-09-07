@@ -35,7 +35,7 @@ function SharedChatChrome({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-background">
+    <div className="flex h-dvh min-h-0 w-full flex-col bg-background">
       <ShareHeader
         title={title}
         subtitle={subtitle}
@@ -151,8 +151,10 @@ export default function SharedChatPage() {
           // revoked link.  Keep the chrome (so the viewer knows the
           // share is real) and show an inline retry instead of the
           // permanent not-found card.
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-            <span>Couldn&apos;t load messages. The share link is valid.</span>
+          <div className="flex shrink-0 flex-col items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <span className="min-w-0">
+              Couldn&apos;t load messages. The share link is valid.
+            </span>
             <button
               onClick={retry}
               className="rounded border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"

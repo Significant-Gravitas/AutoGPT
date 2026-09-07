@@ -43,9 +43,13 @@ describe("ShareActions", () => {
     });
     render(<ShareActions />);
 
-    expect(screen.getByRole("button", { name: /copy link/i })).toBeDefined();
+    const copy = screen.getByRole("button", { name: /copy link/i });
+    expect(copy.className).toContain("min-w-0");
+    expect(copy.className).toContain("sm:min-w-[5.5rem]");
     const signUp = screen.getByRole("link", { name: /sign up/i });
     expect(signUp.getAttribute("href")).toBe("/signup");
+    expect(signUp.className).toContain("min-w-0");
+    expect(signUp.className).toContain("sm:min-w-[5.5rem]");
   });
 
   test("hides Sign up CTA when the viewer is signed in", () => {

@@ -76,6 +76,19 @@ describe("BuilderChatPanel", () => {
     expect(screen.getByRole("complementary")).toBeDefined();
   });
 
+  it("uses a full viewport panel on phones and preserves the floating desktop panel", () => {
+    mockUseBuilderChatPanel.mockReturnValue(makeMockHook({ isOpen: true }));
+    render(<BuilderChatPanel />);
+
+    const panel = screen.getByRole("complementary");
+    expect(panel.className).toContain("h-dvh");
+    expect(panel.className).toContain("max-w-none");
+    expect(panel.className).toContain("sm:w-[26rem]");
+    expect(screen.getByLabelText("Close chat").className).toContain(
+      "hidden sm:flex",
+    );
+  });
+
   it("shows bootstrapping state when isBootstrapping is true", () => {
     mockUseBuilderChatPanel.mockReturnValue(
       makeMockHook({ isOpen: true, isBootstrapping: true }),

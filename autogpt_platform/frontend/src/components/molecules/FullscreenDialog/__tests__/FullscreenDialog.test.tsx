@@ -29,6 +29,8 @@ test("focuses and traps the mobile panel, hides the background, and restores foc
   await waitFor(() =>
     expect(dialog.contains(document.activeElement)).toBe(true),
   );
+  expect(dialog.className).toContain("safe-area-inset-top");
+  expect(dialog.className).toContain("safe-area-inset-bottom");
   expect(
     screen.queryByRole("button", { name: "Background action" }),
   ).toBeNull();

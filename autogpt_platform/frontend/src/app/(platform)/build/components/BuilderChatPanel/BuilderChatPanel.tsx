@@ -49,7 +49,10 @@ export function BuilderChatPanel({ className }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2",
+        "pointer-events-none fixed z-50 flex flex-col",
+        isOpen
+          ? "inset-0 items-stretch gap-0 sm:bottom-4 sm:left-auto sm:right-4 sm:top-auto sm:items-end sm:gap-2"
+          : "bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 items-end gap-2",
         className,
       )}
     >
@@ -59,7 +62,7 @@ export function BuilderChatPanel({ className }: Props) {
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
+            className="pointer-events-auto flex h-dvh max-h-none w-full max-w-none flex-col overflow-hidden bg-white sm:h-[75vh] sm:max-h-[calc(100dvh-6rem)] sm:w-[26rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-xl sm:border sm:border-slate-200 sm:shadow-2xl"
           >
             <PanelHeader
               onClose={handleToggle}
@@ -101,7 +104,7 @@ export function BuilderChatPanel({ className }: Props) {
                       queuedMessages={queuedMessages}
                     />
                   </div>
-                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}
@@ -130,7 +133,8 @@ export function BuilderChatPanel({ className }: Props) {
         aria-expanded={isOpen}
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
-          "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          "pointer-events-auto h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          isOpen ? "hidden sm:flex" : "flex",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2",
           isOpen
             ? "bg-slate-800 text-white hover:bg-slate-700"

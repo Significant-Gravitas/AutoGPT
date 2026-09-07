@@ -17,7 +17,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
   const { isCopied, handleShare } = useTourChatHeader();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 py-2 backdrop-blur-sm md:px-4">
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/70 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-sm md:px-4">
       <div className="flex min-w-0 items-center gap-1.5">
         {/* On mobile this is the only way to reach the sidebar. */}
         <div className="md:hidden">
@@ -42,9 +42,12 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
             <Icon icon={Link02Icon} className="size-4" />
           )
         }
-        className="shrink-0"
+        className="min-w-0 shrink-0 sm:min-w-[5.5rem]"
       >
-        <span>{isCopied ? "Link copied" : "Share this demo"}</span>
+        <span className="sm:hidden">{isCopied ? "Copied" : "Share"}</span>
+        <span className="hidden sm:inline">
+          {isCopied ? "Link copied" : "Share this demo"}
+        </span>
       </Button>
     </header>
   );

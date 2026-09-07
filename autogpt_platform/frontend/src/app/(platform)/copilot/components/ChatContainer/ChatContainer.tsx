@@ -294,7 +294,7 @@ export const ChatContainer = ({
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
                     className={cn(
-                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+                      "ease-[cubic-bezier(0.32,0.72,0,1)] relative mx-auto w-full max-w-3xl px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
                       areFilesOpen && "xl:-translate-x-40",
                     )}
                   >

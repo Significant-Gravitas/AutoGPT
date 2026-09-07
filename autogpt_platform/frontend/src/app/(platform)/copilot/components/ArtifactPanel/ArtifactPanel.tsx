@@ -102,7 +102,7 @@ export function ArtifactPanel({ mobile, hasExternalClose }: Props) {
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col bg-white shadow-xl outline-none"
+            className="fixed right-0 top-0 z-[70] flex h-dvh w-full flex-col bg-white pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-xl outline-none sm:w-[min(36rem,100vw)]"
             style={{ userSelect: "text" }}
             aria-describedby={undefined}
           >
