@@ -502,8 +502,8 @@ async def mcp_store_token(
     # the user.
     #
     # Redirects are not followed: a cross-host hop either carries the
-    # credential somewhere the user never named, or (once #14419 lands) drops
-    # it and earns a 401 we would wrongly report as "you mistyped this".
+    # credential somewhere the user never named, or drops it and earns a 401
+    # we would wrongly report as "you mistyped this".
     probe_client = MCPClient(
         server_url, authorization=authorization, follow_redirects=False
     )
