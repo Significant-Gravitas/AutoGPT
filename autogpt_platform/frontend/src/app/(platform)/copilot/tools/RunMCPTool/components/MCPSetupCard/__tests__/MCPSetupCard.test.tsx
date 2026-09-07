@@ -721,6 +721,40 @@ describe("MCPSetupCard", () => {
     expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
   });
 
+  it("labels the Use Token button while verification is in flight", async () => {
+    // Verification is a round-trip to the MCP server, so the button can no
+    // longer stay static and merely disabled the way it did when storing was
+    // a local write.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+    // Never settles: pins the in-flight state.
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockReturnValueOnce(
+      new Promise(() => {}) as never,
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "some-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /verifying/i })).toBeDefined();
+    });
+  });
+
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
     // ``handleManualToken`` catch must flip ``forceDisconnected=true`` —
     // otherwise an existing live cred would re-show the Connected pill

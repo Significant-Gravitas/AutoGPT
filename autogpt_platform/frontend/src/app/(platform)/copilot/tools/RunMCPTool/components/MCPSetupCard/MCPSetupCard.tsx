@@ -330,8 +330,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       setForceDisconnected(true);
       const err = e as Record<string, unknown>;
       setError(
-        (typeof err?.detail === "string" ? err.detail : null) ||
-          (typeof err?.message === "string" ? err.message : null) ||
+        (typeof err?.message === "string" ? err.message : null) ||
           "Failed to save token. Please try again.",
       );
     } finally {
