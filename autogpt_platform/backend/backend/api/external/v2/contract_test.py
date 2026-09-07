@@ -190,6 +190,27 @@ async def test_a_review_id_from_another_run_is_rejected(
     assert "node-from-another-run" in str(exc_info.value.detail)
 
 
+async def test_the_marketplace_listing_lookup_goes_through_the_store_db(
+    mocker: pytest_mock.MockFixture,
+):
+    """The route held a raw Prisma query, so the store's own view was bypassed."""
+    from backend.util.exceptions import NotFoundError
+
+    from . import graphs
+
+    mocker.patch.object(
+        graphs.store_db,
+        "get_store_agent_by_graph_id",
+        new=mock.AsyncMock(side_effect=NotFoundError("nope")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await graphs.get_marketplace_listing_for_graph(graph_id="graph-1", auth=_tenant)
+
+    assert exc_info.value.status_code == 404
+    assert "#graph-1" in str(exc_info.value.detail)
+
+
 async def test_a_review_belonging_to_another_run_is_not_reachable_through_this_one(
     mocker: pytest_mock.MockFixture,
 ):

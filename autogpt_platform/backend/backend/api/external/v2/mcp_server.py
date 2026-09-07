@@ -119,7 +119,19 @@ def create_mcp_server() -> FastMCP:
     settings = Settings()
     base_url = settings.config.platform_base_url or "https://platform.agpt.co"
 
-    server = _ScopeAwareMCP(
+    tools = []
+    for tool in TOOL_REGISTRY.values():
+        allowed, required_perms = tool.allow_external_use
+        if not allowed or required_perms is None:
+            reason = EXTERNAL_USE_EXCLUSIONS.get(tool.name, "unclassified")
+            logger.debug(f"Skipping MCP tool {tool.name}: {reason}")
+            continue
+        tools.append(_mcp_tool(tool, required_perms))
+
+    logger.info(
+        f"MCP server created with {len(tools)} tools: {[t.name for t in tools]}"
+    )
+    return _ScopeAwareMCP(
         name="autogpt-platform",
         instructions=(
             "AutoGPT Platform MCP Server. "
@@ -130,22 +142,10 @@ def create_mcp_server() -> FastMCP:
             issuer_url=AnyHttpUrl(base_url),
             resource_server_url=AnyHttpUrl(f"{base_url}/external-api/v2/mcp"),
         ),
+        tools=tools,
         stateless_http=True,
         streamable_http_path="/",
     )
-
-    registered: list[str] = []
-    for tool in TOOL_REGISTRY.values():
-        allowed, required_perms = tool.allow_external_use
-        if not allowed or required_perms is None:
-            reason = EXTERNAL_USE_EXCLUSIONS.get(tool.name, "unclassified")
-            logger.debug(f"Skipping MCP tool {tool.name}: {reason}")
-            continue
-        _register_tool(server, tool, required_perms)
-        registered.append(tool.name)
-
-    logger.info(f"MCP server created with {len(registered)} tools: {registered}")
-    return server
 
 
 def create_mcp_app() -> Starlette:
@@ -275,15 +275,16 @@ def _create_tool_handler(
     return handler
 
 
-def _register_tool(
-    server: FastMCP, tool: BaseTool, required_perms: Sequence[APIKeyPermission]
-) -> None:
-    """Register a Copilot tool on the MCP server."""
-    required_scopes = [p.value for p in required_perms]
-    handler = _create_tool_handler(tool, required_scopes)
+def _mcp_tool(tool: BaseTool, required_perms: Sequence[APIKeyPermission]) -> MCPTool:
+    """Build an MCP tool from a Copilot tool.
 
-    mcp_tool = MCPTool(
-        fn=handler,
+    Constructed directly rather than through `FastMCP.add_tool`, which derives
+    the schema from the handler's signature; ours is `**kwargs` and the real
+    schema comes from the Copilot tool.
+    """
+    required_scopes = [p.value for p in required_perms]
+    return MCPTool(
+        fn=_create_tool_handler(tool, required_scopes),
         name=tool.name,
         title=None,
         description=tool.description,
@@ -294,7 +295,6 @@ def _register_tool(
         annotations=None,
         meta={META_KEY_REQUIRED_SCOPES: required_scopes},
     )
-    server._tool_manager._tools[tool.name] = mcp_tool
 
 
 # ---------------------------------------------------------------------------

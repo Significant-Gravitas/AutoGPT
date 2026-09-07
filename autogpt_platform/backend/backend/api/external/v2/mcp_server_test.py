@@ -1,10 +1,32 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
+from mcp.server.fastmcp import FastMCP
+
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
+    META_KEY_REQUIRED_SCOPES,
     UNSCOPED_EXTERNAL_TOOLS,
+    create_mcp_server,
 )
 from backend.copilot.tools import TOOL_REGISTRY
+
+
+async def test_the_server_carries_every_opted_in_tool_with_its_scopes():
+    """Registration goes through FastMCP's own constructor, not its internals.
+
+    Writing into `_tool_manager._tools` worked by accident of mcp 1.26.0's
+    layout; this fails the moment the supported path stops carrying the tools.
+    """
+    server = create_mcp_server()
+
+    exposed = {name for name, t in TOOL_REGISTRY.items() if t.allow_external_use[0]}
+    # The base listing: the subclass's own filters by the caller's scopes.
+    registered = {t.name: t for t in await FastMCP.list_tools(server)}
+    assert set(registered) == exposed
+
+    for name, tool in registered.items():
+        expected = [p.value for p in (TOOL_REGISTRY[name].allow_external_use[1] or [])]
+        assert (tool.meta or {}).get(META_KEY_REQUIRED_SCOPES) == expected
 
 
 def test_every_tool_is_either_exposed_or_explicitly_excluded():
