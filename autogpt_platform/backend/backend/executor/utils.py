@@ -1352,6 +1352,12 @@ async def _add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
