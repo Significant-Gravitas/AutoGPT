@@ -510,7 +510,10 @@ class TestStoreToken:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_stored_manual_token_is_reused_by_discovery(self, client):
         """A manual token must survive the real auto-lookup path on retry."""
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
             mock_cm.create = AsyncMock()
 
@@ -632,7 +635,10 @@ class TestStoreToken:
             )
             for index in range(2)
         ]
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=old_creds)
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
@@ -692,7 +698,10 @@ class TestStoreToken:
                 "mcp_client_id": "client-abc",
             },
         )
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[oauth_cred])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
@@ -732,7 +741,10 @@ class TestStoreToken:
             scopes=[],
             metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
         )
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
@@ -764,7 +776,10 @@ class TestStoreToken:
             metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
             is_managed=True,
         )
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[managed])
             mock_cm.create = AsyncMock()
             mock_cm.update = AsyncMock()
@@ -787,7 +802,10 @@ class TestStoreToken:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_fails_closed_when_existing_lookup_fails(self, client):
-        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+        with (
+            _accepting_server(),
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
             mock_cm.store.get_creds_by_provider = AsyncMock(
                 side_effect=RuntimeError("database unavailable")
             )
