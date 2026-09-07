@@ -34,11 +34,12 @@ export function UpcomingRow({ item }: Props) {
       <div className="min-w-0 flex-1">
         <Text
           variant="body-medium"
-          className="truncate text-[13px] leading-5 text-zinc-900"
+          tone="primary"
+          className="truncate leading-5"
         >
           {item.title}
         </Text>
-        <Text variant="body" className="truncate text-zinc-500">
+        <Text variant="body" tone="muted" className="truncate">
           {item.expert?.name ??
             (item.kind === "followup" ? "Follow-up" : "Scheduled task")}
           <span aria-hidden="true"> · </span>

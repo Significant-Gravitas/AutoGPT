@@ -10,8 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { DialogCtx } from "../useDialogCtx";
-import { modalStyles } from "./styles";
+import { DialogCtx, DialogVariant } from "../useDialogCtx";
+import { compactStyles, modalStyles } from "./styles";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -19,6 +19,7 @@ type BaseProps = DialogCtx & PropsWithChildren;
 
 interface Props extends BaseProps {
   title: React.ReactNode;
+  variant: DialogVariant;
   styling: CSSProperties | undefined;
   withGradient?: boolean;
 }
@@ -34,6 +35,7 @@ function isExternalPickerOpen(): boolean {
 export function DialogWrap({
   children,
   title,
+  variant,
   styling = {},
   className,
   isForceOpen,
@@ -41,6 +43,7 @@ export function DialogWrap({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+  const isCompact = variant === "compact";
 
   // Prevent dialog from closing when external picker is open or when forceOpen is true
   const handleInteractOutside = useCallback(
@@ -98,18 +101,25 @@ export function DialogWrap({
         onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={isForceOpen ? undefined : handleClose}
         aria-describedby={undefined}
-        className={cn(modalStyles.content, className)}
+        className={cn(
+          modalStyles.content,
+          isCompact && compactStyles.content,
+          className,
+        )}
         style={{
           ...styling,
         }}
       >
         <div
-          className={`flex items-center justify-between px-2 ${
-            title ? "pb-6" : "pb-0"
-          }`}
+          className={cn(
+            "flex items-center justify-between px-2",
+            title ? (isCompact ? compactStyles.header : "pb-6") : "pb-0",
+          )}
         >
           {title ? (
-            <RXDialog.Title className={modalStyles.title}>
+            <RXDialog.Title
+              className={isCompact ? compactStyles.title : modalStyles.title}
+            >
               {title}
             </RXDialog.Title>
           ) : (
@@ -119,10 +129,13 @@ export function DialogWrap({
           {isForceOpen ? null : (
             <Button
               variant="icon"
-              size="icon"
+              size={isCompact ? "icon-sm" : "icon"}
               onClick={handleClose}
               aria-label="Close"
-              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+              className={cn(
+                "absolute right-4 top-4 z-50 bg-white",
+                isCompact ? compactStyles.close : "size-[2.5rem]",
+              )}
               withTooltip={false}
             >
               <Icon icon={Cancel01Icon} width="1rem" />

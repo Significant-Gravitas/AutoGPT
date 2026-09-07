@@ -15,6 +15,17 @@ export const modalStyles = {
   icon: "w-4 h-4 text-stone-800",
 };
 
+// Compact variant: dense neutral dialog for in-app forms — smaller radius,
+// tighter padding, sans title.
+export const compactStyles = {
+  content: "rounded-xl p-5",
+  title: "font-sans text-base font-medium leading-6 text-zinc-900",
+  header: "pb-4",
+  close: "right-3 top-3",
+  // Bottom sheet keeps its top-only radius; only the padding tightens.
+  drawerContent: "p-5",
+};
+
 // Drawer specific styles
 export const drawerStyles = {
   ...commonStyles,

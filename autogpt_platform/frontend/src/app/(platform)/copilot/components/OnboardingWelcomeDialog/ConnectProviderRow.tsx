@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { Add01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useState } from "react";
@@ -13,6 +14,7 @@ interface Props {
   isConnected?: boolean;
   /** Second line, used by the recommended list to show the model's reason. */
   description?: string | null;
+  className?: string;
 }
 
 // The welcome dialog's provider card: compact (two per row), name plus an
@@ -23,6 +25,7 @@ export function ConnectProviderRow({
   onSelect,
   isConnected,
   description,
+  className,
 }: Props) {
   const src = `/integrations/${provider.id}.png`;
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
@@ -32,7 +35,10 @@ export function ConnectProviderRow({
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3 text-left transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-neutral-200"
+      className={cn(
+        "group flex h-14 w-full items-center gap-2.5 rounded-xl bg-neutral-100 px-3 text-left transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-neutral-200",
+        className,
+      )}
     >
       {broken ? (
         <div

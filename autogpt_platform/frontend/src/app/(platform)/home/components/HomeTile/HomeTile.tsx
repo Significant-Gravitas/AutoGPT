@@ -32,6 +32,7 @@ export function HomeTile({
   const Component = as;
   return (
     <Component
+      aria-label={as === "section" ? title : undefined}
       className={cn(
         "flex min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white",
         className,
@@ -48,7 +49,8 @@ export function HomeTile({
           <Text
             variant="body-medium"
             as="h2"
-            className="truncate text-sm text-zinc-900"
+            tone="primary"
+            className="truncate"
           >
             {title}
           </Text>
