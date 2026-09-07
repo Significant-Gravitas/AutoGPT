@@ -112,6 +112,11 @@ def parse_time_expression(
         return None, None
 
 
+def _run_visible(execution: GraphExecutionMeta, expert_id: str | None) -> bool:
+    """Personal AutoPilot sees every run; an expert only runs it started."""
+    return expert_id is None or execution.expert_id == expert_id
+
+
 class AgentOutputTool(BaseTool):
     """Tool for retrieving execution outputs from user's library agents."""
 
@@ -248,6 +253,7 @@ class AgentOutputTool(BaseTool):
         time_end: datetime | None,
         include_running: bool = False,
         include_node_executions: bool = False,
+        expert_id: str | None = None,
     ) -> tuple[
         GraphExecution | GraphExecutionWithNodes | None,
         list[GraphExecutionMeta],
@@ -260,6 +266,7 @@ class AgentOutputTool(BaseTool):
         Args:
             include_running: If True, also look for running/queued executions (for waiting)
             include_node_executions: If True, include node-by-node execution details
+            expert_id: Only runs this expert started; None sees every run.
         """
         exec_db = execution_db()
 
@@ -270,7 +277,7 @@ class AgentOutputTool(BaseTool):
                 execution_id=execution_id,
                 include_node_executions=include_node_executions,
             )
-            if not execution:
+            if not execution or not _run_visible(execution, expert_id):
                 return None, [], f"Execution '{execution_id}' not found"
             return execution, [], None
 
@@ -296,6 +303,7 @@ class AgentOutputTool(BaseTool):
             created_time_gte=time_start,
             created_time_lte=time_end,
             limit=10,
+            expert_id=expert_id,
         )
 
         if not executions:
@@ -489,7 +497,7 @@ class AgentOutputTool(BaseTool):
                 execution_id=input_data.execution_id,
                 include_node_executions=input_data.show_execution_details,
             )
-            if not execution:
+            if not execution or not _run_visible(execution, session.expert_id):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
                     session_id=session_id,
@@ -537,6 +545,7 @@ class AgentOutputTool(BaseTool):
 
         # Fetch execution(s) - include running if we're going to wait
         execution, available_executions, exec_error = await self._get_execution(
+            expert_id=session.expert_id,
             user_id=user_id,
             graph_id=agent.graph_id,
             execution_id=input_data.execution_id or None,

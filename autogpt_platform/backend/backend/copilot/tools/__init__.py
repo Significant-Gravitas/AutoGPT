@@ -59,7 +59,12 @@ from .manage_folders import (
     UpdateFolderTool,
 )
 from .manage_presets import DeletePresetTool, ListPresetsTool, UpdatePresetTool
-from .manage_schedules import DeleteScheduleTool, ListSchedulesTool
+from .manage_schedules import (
+    DeleteScheduleTool,
+    ListSchedulesTool,
+    PauseScheduleTool,
+    ResumeScheduleTool,
+)
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
@@ -116,6 +121,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Schedule management
     "list_schedules": ListSchedulesTool(),
     "delete_schedule": DeleteScheduleTool(),
+    "pause_schedule": PauseScheduleTool(),
+    "resume_schedule": ResumeScheduleTool(),
     "schedule_followup": ScheduleFollowupTool(),
     # Proactive chat-platform output (post message / open thread on user's behalf)
     "post_to_chat_platform": PostToChatPlatformTool(),

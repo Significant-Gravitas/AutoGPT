@@ -21,7 +21,25 @@ logger = logging.getLogger(__name__)
 def _is_in_session_scope(
     job: GraphExecutionJobInfo | CopilotTurnJobInfo, session: ChatSession
 ) -> bool:
-    return job.expert_id == session.expert_id
+    """Personal AutoPilot manages every schedule on the account; an expert
+    only its own."""
+    return session.expert_id is None or job.expert_id == session.expert_id
+
+
+async def _find_scoped_schedule(
+    scheduler: Any, user_id: str, session: ChatSession, schedule_id: str
+) -> GraphExecutionJobInfo | CopilotTurnJobInfo | None:
+    # include_paused: a paused expert schedule or fired one-shot must still be
+    # reachable — the default listing hides them.
+    jobs = await scheduler.get_execution_schedules(user_id=user_id, include_paused=True)
+    return next(
+        (
+            job
+            for job in jobs
+            if job.id == schedule_id and _is_in_session_scope(job, session)
+        ),
+        None,
+    )
 
 
 class ScheduleSummary(BaseModel):
@@ -32,6 +50,8 @@ class ScheduleSummary(BaseModel):
     name: str
     timezone: str
     next_run_time: str
+    # Owning expert; None for personal AutoPilot schedules.
+    expert_id: str | None = None
     # Either cron (recurring) or run_at (one-shot) is populated, never both.
     cron: str | None = None
     run_at: str | None = None
@@ -57,6 +77,7 @@ def _to_summary(
         return ScheduleSummary(
             schedule_id=job.id,
             kind="graph",
+            expert_id=job.expert_id,
             name=job.name,
             timezone=job.timezone,
             next_run_time=job.next_run_time,
@@ -68,6 +89,7 @@ def _to_summary(
     return ScheduleSummary(
         schedule_id=job.id,
         kind="copilot_turn",
+        expert_id=job.expert_id,
         name=job.name,
         timezone=job.timezone,
         next_run_time=job.next_run_time,
@@ -252,19 +274,7 @@ class DeleteScheduleTool(BaseTool):
             )
 
         scheduler = get_scheduler_client()
-        # include_paused: a paused expert schedule or fired one-shot must
-        # still be deletable — the default listing hides them.
-        jobs = await scheduler.get_execution_schedules(
-            user_id=user_id, include_paused=True
-        )
-        current = next(
-            (
-                job
-                for job in jobs
-                if job.id == schedule_id and _is_in_session_scope(job, session)
-            ),
-            None,
-        )
+        current = await _find_scoped_schedule(scheduler, user_id, session, schedule_id)
         if current is None:
             return ErrorResponse(
                 message=f"Schedule '{schedule_id}' not found.",
@@ -295,3 +305,107 @@ class DeleteScheduleTool(BaseTool):
             schedule_id=schedule_id,
             session_id=session_id,
         )
+
+
+class ScheduleToggledResponse(ToolResponseBase):
+    type: ResponseType = ResponseType.SCHEDULE_TOGGLED
+    schedule_id: str
+    paused: bool
+
+
+class _ToggleScheduleTool(BaseTool):
+    _pause: bool = True
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "schedule_id": {
+                    "type": "string",
+                    "description": "Schedule ID from list_schedules.",
+                },
+            },
+            "required": ["schedule_id"],
+        }
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        schedule_id: str = "",
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required.",
+                error="auth_required",
+                session_id=session_id,
+            )
+        if not schedule_id:
+            return ErrorResponse(
+                message="schedule_id is required.",
+                error="missing_schedule_id",
+                session_id=session_id,
+            )
+        scheduler = get_scheduler_client()
+        if (
+            await _find_scoped_schedule(scheduler, user_id, session, schedule_id)
+            is None
+        ):
+            return ErrorResponse(
+                message=f"Schedule '{schedule_id}' not found.",
+                error="schedule_not_found",
+                session_id=session_id,
+            )
+        try:
+            if self._pause:
+                changed = await scheduler.pause_schedule(schedule_id, user_id)
+            else:
+                changed = await scheduler.resume_schedule(schedule_id, user_id)
+        except NotAuthorizedError as e:
+            return ErrorResponse(
+                message=f"Not authorized: {e}",
+                error="not_authorized",
+                session_id=session_id,
+            )
+        state = "paused" if self._pause else "resumed"
+        return ScheduleToggledResponse(
+            schedule_id=schedule_id,
+            paused=self._pause,
+            message=(
+                f"Schedule {schedule_id} {state}."
+                if changed
+                else f"Schedule {schedule_id} was already {state}."
+            ),
+            session_id=session_id,
+        )
+
+
+class PauseScheduleTool(_ToggleScheduleTool):
+    _pause = True
+
+    @property
+    def name(self) -> str:
+        return "pause_schedule"
+
+    @property
+    def description(self) -> str:
+        return "Pause a schedule without deleting it. Resume with resume_schedule."
+
+
+class ResumeScheduleTool(_ToggleScheduleTool):
+    _pause = False
+
+    @property
+    def name(self) -> str:
+        return "resume_schedule"
+
+    @property
+    def description(self) -> str:
+        return "Resume a paused schedule. Missed fires are not replayed."
