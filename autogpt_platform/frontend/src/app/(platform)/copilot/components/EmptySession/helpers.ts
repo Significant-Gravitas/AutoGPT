@@ -1,5 +1,22 @@
 import type { User } from "@/lib/auth/types";
 
+export const AUTOPILOT_INTRO =
+  "Tell me about your work — I'll find what to automate.";
+
+export function getIntroLine(
+  expert: { name: string; role: string | null } | null,
+) {
+  if (!expert) return AUTOPILOT_INTRO;
+  const role = expert.role?.trim();
+  return role
+    ? `I'm ${expert.name}, your ${role}. What should I take on?`
+    : `I'm ${expert.name}. What should I take on?`;
+}
+
+export function getExpertInputPlaceholder(expertName: string) {
+  return `What should ${expertName} work on?`;
+}
+
 export function getInputPlaceholder(width?: number) {
   if (!width) return "What's your role and what eats up most of your day?";
 

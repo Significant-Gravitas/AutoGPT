@@ -34,6 +34,9 @@ export function useRecipientPicker() {
     [activeExpertIds, hasExpertsSettled, expertIdParam, setExpertIdParam],
   );
 
+  const selectedExpert =
+    activeExperts.find((expert) => expert.id === expertIdParam) ?? null;
+
   const options: RecipientOption[] = [
     AUTOPILOT_RECIPIENT,
     ...activeExperts.map((expert) => ({
@@ -48,6 +51,7 @@ export function useRecipientPicker() {
     recipient:
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,
+    selectedExpert,
     // Only a pending param can be mis-rendered as "Autopilot"; without one the
     // fallback is already the right answer.
     isLoadingRecipient: isLoadingExperts && !!expertIdParam,

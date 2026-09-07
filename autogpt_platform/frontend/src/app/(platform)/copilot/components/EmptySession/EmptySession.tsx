@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useLayoutEffect, useState } from "react";
 import {
+  getExpertInputPlaceholder,
   getGreetingName,
   getInputPlaceholder,
+  getIntroLine,
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
@@ -58,9 +60,15 @@ export function EmptySession({
   const intro = useOnboardingIntroCard();
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { options, recipient, isLoadingRecipient, selectRecipient } =
-    useRecipientPicker();
+  const {
+    options,
+    recipient,
+    selectedExpert,
+    isLoadingRecipient,
+    selectRecipient,
+  } = useRecipientPicker();
   const isComposerDisabled = isCreatingSession || !!isInteractionLocked;
+  const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -153,7 +161,7 @@ export function EmptySession({
             // moves it there rather than replacing it.
             <GreetingLoader />
           ) : (
-            <EmptyHero name={greetingName} />
+            <EmptyHero name={greetingName} intro={introLine} />
           )}
 
           {/* Held back while the greeting is on its way — it enters with
@@ -190,7 +198,11 @@ export function EmptySession({
                   onSend={onSend}
                   disabled={isComposerDisabled}
                   isUploadingFiles={isUploadingFiles}
-                  placeholder={inputPlaceholder}
+                  placeholder={
+                    selectedExpert
+                      ? getExpertInputPlaceholder(selectedExpert.name)
+                      : inputPlaceholder
+                  }
                   className={
                     isBrainDumpEnabled
                       ? "w-full [&_textarea]:min-h-[4.5rem]"
