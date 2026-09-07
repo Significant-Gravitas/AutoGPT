@@ -3,8 +3,19 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
+import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
+import {
+  mcpAuthTokenHint,
+  mcpAuthTokenLabel,
+  mcpAuthTokenPlaceholder,
+} from "@/components/contextual/MCPAuthSchemeField/helpers";
+import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import {
+  prepareMCPAuthCredential,
+  validateMCPAuthCredential,
+} from "@/lib/mcp-auth";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
 
 function hostOf(serverUrl: string): string | null {
@@ -19,7 +30,15 @@ function hostOf(serverUrl: string): string | null {
  *  ConnectorRow but connects through the MCP OAuth/token flow the hidden
  *  MCPSetupCard drives via the request callbacks. */
 export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
+  const hintId = useId();
+  const errorId = useId();
   const [token, setToken] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const {
+    scheme: authScheme,
+    selectScheme,
+    detectSchemeFrom,
+  } = useMCPAuthScheme(request.authScheme, token);
   const host = hostOf(request.serverUrl);
   // "mcp.notion.com" → "notion" so existing /integrations/*.png icons
   // resolve; unknown services fall back to the avatar's initial.
@@ -27,6 +46,15 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
     .replace(/^mcp\./, "")
     .split(".")[0]
     .toLowerCase();
+
+  function submitCredential() {
+    const message = validateMCPAuthCredential(token, authScheme);
+    setValidationError(message);
+    if (message) return;
+
+    const credential = prepareMCPAuthCredential(token, authScheme);
+    if (credential) request.onUseToken(credential);
+  }
 
   return (
     <div className="flex flex-col">
@@ -69,29 +97,61 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
       )}
 
       {request.showManualToken && !request.connected && (
-        <div className="mx-4 mb-3 flex gap-2">
-          <input
-            type="password"
-            aria-label={`API token for ${request.service}`}
-            placeholder="Paste API token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) =>
-              e.key === "Enter" &&
-              !request.loading &&
-              token.trim() &&
-              request.onUseToken(token.trim())
-            }
-            className="flex-1 rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+        <div className="mx-4 mb-3 grid gap-2">
+          <MCPAuthSchemeField
+            value={authScheme}
+            onChange={selectScheme}
+            disabled={request.loading}
+            nameSuffix={request.service}
+            className="grid gap-1"
+            labelClassName="text-xs font-medium text-zinc-700"
+            selectClassName="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100"
           />
-          <Button
-            variant="secondary"
-            size="small"
-            disabled={request.loading || !token.trim()}
-            onClick={() => request.onUseToken(token.trim())}
-          >
-            Use Token
-          </Button>
+          <p id={hintId} className="text-xs text-zinc-500">
+            {mcpAuthTokenHint(authScheme)}
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              aria-describedby={
+                validationError ? `${hintId} ${errorId}` : hintId
+              }
+              aria-label={`${mcpAuthTokenLabel(authScheme)} for ${request.service}`}
+              placeholder={mcpAuthTokenPlaceholder(authScheme)}
+              value={token}
+              onChange={(e) => {
+                const nextToken = e.target.value;
+                setToken(nextToken);
+                detectSchemeFrom(nextToken);
+                setValidationError(null);
+              }}
+              onKeyDown={(e) =>
+                e.key === "Enter" &&
+                !request.loading &&
+                token.trim() &&
+                submitCredential()
+              }
+              className="flex-1 rounded-2xl bg-zinc-50 px-3 py-2 text-sm text-zinc-800 ring-1 ring-zinc-100 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-zinc-300"
+            />
+            <Button
+              variant="secondary"
+              size="small"
+              disabled={request.loading || !token.trim()}
+              onClick={submitCredential}
+            >
+              Use Token
+            </Button>
+          </div>
+          {validationError && (
+            <p
+              id={errorId}
+              role="alert"
+              aria-live="polite"
+              className="text-xs text-red-700"
+            >
+              {validationError}
+            </p>
+          )}
         </div>
       )}
     </div>
