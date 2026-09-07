@@ -4,14 +4,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { Folder02Icon } from "@hugeicons/core-free-icons";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
+import { ArrowLeft01Icon, Folder02Icon } from "@hugeicons/core-free-icons";
+import { ReactNode, useState } from "react";
+import { TEAM_GRID_CLASS } from "../../helpers";
 
 interface Props {
   isLoading: boolean;
   podGroups: { pod: ExpertPod; experts: Expert[] }[];
-  ungroupedExperts: Expert[];
   onNewPod: () => void;
+  renderCard: (expert: Expert) => ReactNode;
 }
 
 const FOLDER_GRID_CLASS =
@@ -20,71 +21,115 @@ const FOLDER_GRID_CLASS =
 export function PodBoard({
   isLoading,
   podGroups,
-  ungroupedExperts,
   onNewPod,
+  renderCard,
 }: Props) {
-  if (isLoading) {
-    return (
-      <div className={FOLDER_GRID_CLASS}>
-        {[0, 1, 2].map((index) => (
-          <Skeleton key={index} className="h-28 w-full rounded-xl" />
-        ))}
-      </div>
-    );
-  }
+  const [openPodId, setOpenPodId] = useState<string | null>(null);
+  const openGroup = podGroups.find((group) => group.pod.id === openPodId);
 
-  if (podGroups.length === 0 && ungroupedExperts.length === 0) {
+  if (openGroup) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
-        <Text variant="large-medium">No pods yet</Text>
-        <Text variant="body" className="max-w-prose text-zinc-600">
-          Group experts into pods to keep related work together.
-        </Text>
-        <Button
-          variant="primary"
-          size="small"
-          className={ACTION_BUTTON_CLASS}
-          onClick={onNewPod}
-        >
-          New Pod
-        </Button>
-      </div>
+      <section
+        aria-label={`${openGroup.pod.name} pod`}
+        className="flex flex-col gap-4"
+      >
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            leadingIcon={ArrowLeft01Icon}
+            aria-label="Back to pods"
+            onClick={() => setOpenPodId(null)}
+          />
+          <Text variant="large-medium" as="h5" tone="primary">
+            {openGroup.pod.name}
+          </Text>
+          <Text variant="small" tone="muted">
+            {openGroup.experts.length}{" "}
+            {openGroup.experts.length === 1 ? "expert" : "experts"}
+          </Text>
+        </div>
+        {openGroup.experts.length > 0 ? (
+          <div className={TEAM_GRID_CLASS}>
+            {openGroup.experts.map(renderCard)}
+          </div>
+        ) : (
+          <Text variant="body" tone="muted">
+            No experts in this pod yet. Move one in from its card menu.
+          </Text>
+        )}
+      </section>
     );
   }
 
   return (
-    <div className={FOLDER_GRID_CLASS}>
-      {podGroups.map((group) => (
-        <PodFolder
-          key={group.pod.id}
-          name={group.pod.name}
-          experts={group.experts}
-        />
-      ))}
-      {ungroupedExperts.length > 0 ? (
-        <PodFolder name="Ungrouped" experts={ungroupedExperts} />
-      ) : null}
-    </div>
+    <section aria-label="Pods" className="flex flex-col gap-4">
+      <Text variant="large-medium" as="h5" tone="primary">
+        Pods
+      </Text>
+      {isLoading ? (
+        <div className={FOLDER_GRID_CLASS}>
+          {[0, 1, 2].map((index) => (
+            <Skeleton key={index} className="h-28 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : podGroups.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white p-8 text-center">
+          <Text variant="large-medium" tone="primary">
+            No pods yet
+          </Text>
+          <Text variant="body" tone="secondary" className="max-w-prose">
+            Group experts into pods to keep related work together.
+          </Text>
+          <Button variant="primary" size="xs" onClick={onNewPod}>
+            New Pod
+          </Button>
+        </div>
+      ) : (
+        <div className={FOLDER_GRID_CLASS}>
+          {podGroups.map((group) => (
+            <PodFolder
+              key={group.pod.id}
+              name={group.pod.name}
+              experts={group.experts}
+              onOpen={() => setOpenPodId(group.pod.id)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
 interface PodFolderProps {
   name: string;
   experts: Expert[];
+  onOpen: () => void;
 }
 
-function PodFolder({ name, experts }: PodFolderProps) {
+function PodFolder({ name, experts, onOpen }: PodFolderProps) {
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open ${name} pod`}
+      className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+    >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600">
           <Icon icon={Folder02Icon} size={20} />
         </span>
         <div className="min-w-0">
-          <Text variant="h5" className="truncate">
+          <Text
+            variant="large-medium"
+            as="h5"
+            tone="primary"
+            className="truncate"
+          >
             {name}
           </Text>
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             {experts.length} {experts.length === 1 ? "expert" : "experts"}
           </Text>
         </div>
@@ -92,19 +137,22 @@ function PodFolder({ name, experts }: PodFolderProps) {
       {experts.length > 0 ? (
         <ul className="flex flex-wrap gap-1.5">
           {experts.map((expert) => (
-            <li
+            <Text
               key={expert.id}
-              className="max-w-full truncate rounded-md bg-zinc-50 px-2 py-0.5 text-xs text-zinc-600 ring-1 ring-inset ring-zinc-200"
+              variant="small"
+              as="li"
+              tone="secondary"
+              className="max-w-full truncate rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-inset ring-zinc-200"
             >
               {expert.name}
-            </li>
+            </Text>
           ))}
         </ul>
       ) : (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           No experts in this pod yet.
         </Text>
       )}
-    </section>
+    </button>
   );
 }

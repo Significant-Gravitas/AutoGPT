@@ -1,4 +1,5 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
   Activity01Icon,
@@ -41,11 +42,10 @@ const STATUS_STYLES: Record<
 interface Props {
   className?: string;
   color: string | undefined;
-  src?: string;
   status?: CoverStatus;
 }
 
-export function ExpertCover({ className, color, src, status }: Props) {
+export function ExpertCover({ className, color, status }: Props) {
   const statusStyle = status ? STATUS_STYLES[status] : null;
 
   return (
@@ -56,19 +56,24 @@ export function ExpertCover({ className, color, src, status }: Props) {
       )}
     >
       <Image
-        src={src ?? getExpertCoverSrc(color)}
+        src={getExpertCoverSrc(color)}
         alt=""
         fill
         sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
         className="object-cover"
       />
       {statusStyle ? (
-        <span
-          className={`absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${statusStyle.className}`}
+        <Text
+          variant="small-medium"
+          as="span"
+          className={cn(
+            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5",
+            statusStyle.className,
+          )}
         >
           <Icon icon={statusStyle.icon} size={13} />
           {statusStyle.label}
-        </span>
+        </Text>
       ) : null}
     </div>
   );
