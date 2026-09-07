@@ -50,6 +50,7 @@ export interface McpConnectorRequest {
   loading: boolean;
   error: string | null;
   showManualToken: boolean;
+  authScheme: "basic" | "bearer";
   onConnect: () => void;
   onUseToken: (token: string) => void;
 }

@@ -39,6 +39,7 @@ import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { ChainMessageParts } from "./components/ChainMessageParts";
+import { withToolDisplayNames } from "../../helpers/toolDisplay";
 import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
@@ -551,7 +552,7 @@ export function ChatMessagesContainer({
             // they never reach the user UI, and so one landing between two
             // tool calls can't split a chain. data-status surfaces via
             // ThinkingIndicator; data-compaction via CompactionCard.
-            const renderableParts = message.parts.filter(
+            const renderableParts = withToolDisplayNames(message.parts).filter(
               (p) => !isBookkeepingPart(p),
             );
             // Only a message that is actively streaming can have a live
