@@ -101,7 +101,7 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (threadKeyRef.current === threadKey) return;
     threadKeyRef.current = threadKey;
-    setSkipLatest(false);
+    setSkipLatest(true);
     setSessionId(null);
     setMessages([]);
     pendingPromptRef.current = null;
