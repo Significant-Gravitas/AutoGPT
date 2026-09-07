@@ -21,6 +21,7 @@ from .models import (
 from .runner import (
     Job,
     RunOptions,
+    cache_prefix,
     evaluate_gate,
     generate,
     plan_jobs,
@@ -64,6 +65,16 @@ def test_plan_assembles_each_experts_own_prompt_set():
         ]
         assert len(controls) == 3
         assert all(j.prompt.kind != "briefing_lede" for j in controls)
+
+
+def test_the_control_arm_warms_one_prompt_prefix_for_the_whole_roster():
+    """Its system prompt and tools are plain AutoPilot's whatever expert's
+    prompts it runs; a per-expert key would pay the cache write three times."""
+    jobs = plan_jobs(roster_experts(), load_fixtures(), RunOptions(control=3))
+    controls = {cache_prefix(j) for j in jobs if j.arm == "no_suffix"}
+    experts = {cache_prefix(j) for j in jobs if j.arm == "expert"}
+    assert len(controls) == 1
+    assert len(experts) == 6, "one per expert, chat and lede apart"
 
 
 def test_plan_filters_kinds():

@@ -227,13 +227,23 @@ async def generate_all(
     # rest read the prompt cache instead of each paying the write.
     groups: dict[tuple[str, str, bool], list[Job]] = {}
     for job in jobs:
-        key = (job.expert.name, job.arm, job.prompt.kind == "briefing_lede")
-        groups.setdefault(key, []).append(job)
+        groups.setdefault(cache_prefix(job), []).append(job)
     firsts = [group[0] for group in groups.values()]
     rest = [job for group in groups.values() for job in group[1:]]
     rows = list(await asyncio.gather(*(one(job) for job in firsts)))
     rows += list(await asyncio.gather(*(one(job) for job in rest)))
     return rows
+
+
+def cache_prefix(job: Job) -> tuple[str, str, bool]:
+    """What the job's cached prompt prefix depends on. Every no-suffix job
+    shares one prompt and one tool list, whichever expert's prompts it runs,
+    so keying those by expert would pay the cache write three times."""
+    return (
+        job.expert.name if job.arm == "expert" else "",
+        job.arm,
+        job.prompt.kind == "briefing_lede",
+    )
 
 
 async def generate(
