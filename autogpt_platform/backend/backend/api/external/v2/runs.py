@@ -7,7 +7,7 @@ Provides access to agent runs and human-in-the-loop reviews.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
@@ -17,6 +17,7 @@ from backend.api.features.executions.review.model import ReviewItem
 from backend.api.features.executions.review.service import process_reviews
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
+from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.util.settings import Settings
 
@@ -28,6 +29,7 @@ from .models import (
     AgentRunReviewsSubmitResponse,
     AgentRunReviewStatus,
     AgentRunShareResponse,
+    RunStatus,
 )
 from .pagination import Page, PageRequest, page_request
 from .tenancy import TenantContext, in_tenant, require_permission
@@ -55,8 +57,9 @@ async def list_reviews(
     run_id: Optional[str] = Query(
         default=None, description="Filter by graph execution ID"
     ),
-    status: Optional[AgentRunReviewStatus] = Query(
+    review_status: Optional[AgentRunReviewStatus] = Query(
         default=None,
+        alias="status",
         description="Filter by review status",
     ),
     page: PageRequest = Depends(page_request),
@@ -72,7 +75,7 @@ async def list_reviews(
     reviews, pagination = await review_db.get_reviews(
         user_id=auth.user_id,
         graph_exec_id=run_id,
-        status=ReviewStatus(status) if status else None,
+        status=ReviewStatus(review_status) if review_status else None,
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,
@@ -142,13 +145,29 @@ async def submit_reviews(
 )
 async def list_runs(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
+    # `Annotated`, not `= Query(...)`: the latter leaves the sentinel as the
+    # Python default, and this handler is also called directly in tests.
+    statuses: Annotated[
+        Optional[list[RunStatus]],
+        Query(description="Filter by run status; repeat to match several"),
+    ] = None,
+    started_after: Annotated[
+        Optional[datetime], Query(description="Only runs created at or after this time")
+    ] = None,
+    started_before: Annotated[
+        Optional[datetime],
+        Query(description="Only runs created at or before this time"),
+    ] = None,
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_RUN)),
 ) -> Page[AgentGraphRun]:
-    """List agent runs, optionally filtered by graph ID."""
+    """List agent runs, optionally filtered by graph, status and creation time."""
     result = await execution_db.get_graph_executions_paginated(
         user_id=auth.user_id,
         graph_id=graph_id,
+        statuses=[ExecutionStatus(s) for s in statuses] if statuses else None,
+        created_time_gte=started_after,
+        created_time_lte=started_before,
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,

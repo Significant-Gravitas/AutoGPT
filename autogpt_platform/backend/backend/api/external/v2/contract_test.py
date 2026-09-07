@@ -8,6 +8,7 @@ transport exercises.
 """
 
 import base64
+import inspect
 import json
 import logging
 from datetime import datetime, timezone
@@ -188,6 +189,78 @@ async def test_a_review_id_from_another_run_is_rejected(
 
     assert exc_info.value.status_code == 404
     assert "node-from-another-run" in str(exc_info.value.detail)
+
+
+async def test_deleting_an_unknown_schedule_is_a_404_by_type_not_by_message(
+    mocker: pytest_mock.MockFixture,
+):
+    """The route matched "not found" in the message; a reworded error broke it."""
+    from backend.util.exceptions import NotFoundError
+
+    from . import schedules
+
+    mocker.patch.object(
+        schedules,
+        "_assert_schedule_in_tenant",
+        new=mock.AsyncMock(),
+    )
+    mocker.patch.object(
+        schedules,
+        "get_scheduler_client",
+        return_value=mock.Mock(
+            delete_schedule=mock.AsyncMock(side_effect=NotFoundError("Job #s-1 gone."))
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await schedules.delete_schedule(schedule_id="s-1", auth=_tenant)
+
+    assert exc_info.value.status_code == 404
+
+
+async def test_listing_runs_passes_the_status_and_time_filters_through(
+    mocker: pytest_mock.MockFixture,
+):
+    from backend.data.execution import ExecutionStatus
+
+    from . import runs
+
+    paginated = mocker.patch.object(
+        runs.execution_db,
+        "get_graph_executions_paginated",
+        new=mock.AsyncMock(
+            return_value=mock.Mock(executions=[], pagination=mock.Mock(total_items=0))
+        ),
+    )
+    since = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+    await runs.list_runs(
+        graph_id=None,
+        statuses=["RUNNING", "FAILED"],
+        started_after=since,
+        started_before=None,
+        page=PageRequest(limit=25),
+        auth=_tenant,
+    )
+
+    kwargs = paginated.await_args.kwargs
+    assert kwargs["statuses"] == [ExecutionStatus.RUNNING, ExecutionStatus.FAILED]
+    assert kwargs["created_time_gte"] == since
+
+
+async def test_the_review_status_filter_keeps_its_wire_name(
+    mocker: pytest_mock.MockFixture,
+):
+    """The parameter is `status` on the wire; naming it that in Python shadowed
+    the `starlette.status` the rest of the module raises through."""
+    from . import runs
+
+    parameter = next(
+        p
+        for p in inspect.signature(runs.list_reviews).parameters.values()
+        if p.name == "review_status"
+    )
+    assert parameter.default.alias == "status"
 
 
 async def test_the_marketplace_listing_lookup_goes_through_the_store_db(
