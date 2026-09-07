@@ -212,7 +212,16 @@ def to_outcome(
         duration_seconds=item.duration_seconds,
         cost_cents=item.cost_cents,
         link=item.link,
+        trigger=_trigger(item),
     )
+
+
+def _trigger(item: BriefingRunItem) -> Literal["schedule", "webhook", "manual"]:
+    if item.schedule_id:
+        return "schedule"
+    if item.webhook_id:
+        return "webhook"
+    return "manual"
 
 
 def _expert(

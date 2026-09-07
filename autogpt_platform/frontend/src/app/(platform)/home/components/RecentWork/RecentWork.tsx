@@ -2,22 +2,26 @@
 
 import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Text } from "@/components/atoms/Text/Text";
+import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { WorkGroup } from "./components/WorkGroup";
+import { splitGroupsBySection } from "./helpers";
 
 interface Props {
   dashboard: HomeDashboardResponse;
   className?: string;
 }
 
-/** One card for what the agents did this week, grouped by who did it: each
- *  expert, workflow, or Autopilot with the runs it finished and the files,
- *  integration actions and schedules it produced. */
+/** One card for what the agents did this week: the team (each expert and
+ *  Autopilot) first, then the workflows that ran on their own in a section
+ *  of their own below. */
 export function RecentWork({ dashboard, className }: Props) {
   const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
+  const { team, workflows } = splitGroupsBySection(groups);
   const completed = dashboard.recent_work?.completed_count ?? 0;
   const failed = dashboard.recent_work?.failed_count ?? 0;
   const isEmpty = groups.length === 0 && !briefing.narrative;
@@ -71,17 +75,33 @@ export function RecentWork({ dashboard, className }: Props) {
               {briefing.narrative}
             </Text>
           ) : null}
-          {groups.map((group) => (
+          {team.map((group) => (
             <WorkGroup
-              key={
-                group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name
-              }
+              key={groupKey(group)}
               group={group}
               timezone={dashboard.timezone}
             />
           ))}
+          {workflows.length > 0 ? (
+            <div className="pt-2">
+              <HomeSectionLabel>Workflows</HomeSectionLabel>
+              <div className="divide-y divide-zinc-200 border-t border-zinc-200">
+                {workflows.map((group) => (
+                  <WorkGroup
+                    key={groupKey(group)}
+                    group={group}
+                    timezone={dashboard.timezone}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </HomeTile>
   );
+}
+
+function groupKey(group: HomeRecentWorkGroup) {
+  return group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name;
 }

@@ -1261,6 +1261,12 @@ model AgentGraphExecution {
   expertId String?
   Expert   Expert? @relation(fields: [expertId], references: [id], onDelete: SetNull)
 
+  // What started this run, when it was not a person: the scheduler job or
+  // the webhook that fired. Soft references, since jobs live in
+  // APScheduler's own store and webhooks are cleaned up independently.
+  scheduleId String?
+  webhookId  String?
+
   inputs           Json?
   credentialInputs Json?
   nodesInputMasks  Json?
