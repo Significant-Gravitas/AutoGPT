@@ -19,11 +19,17 @@ export function useNewMenu(selectedFolderId: string | null) {
 
   const upload = useMutation({
     mutationFn: (files: File[]) => uploadFiles(files, selectedFolderId),
-    onSuccess: ({ uploaded, failed }) => {
+    onSuccess: ({ uploaded, leftAtRoot, failed }) => {
       if (uploaded > 0) {
         toast({
           title:
             uploaded === 1 ? "File uploaded" : `${uploaded} files uploaded`,
+        });
+      }
+      if (leftAtRoot.length > 0) {
+        toast({
+          title: "Uploaded to the root instead",
+          description: `${leftAtRoot.join(", ")} couldn't be moved into this folder.`,
         });
       }
       for (const failure of failed) {
@@ -57,6 +63,12 @@ export function useNewMenu(selectedFolderId: string | null) {
     upload.mutate(files);
   }
 
+  function handleCreateFolder(values: { name: string }) {
+    createFolder(values)
+      .then(() => setIsCreateOpen(false))
+      .catch(() => {});
+  }
+
   return {
     fileInputRef,
     isUploading: upload.isPending,
@@ -65,10 +77,6 @@ export function useNewMenu(selectedFolderId: string | null) {
     isCreateOpen,
     setIsCreateOpen,
     isCreating,
-    handleCreateFolder: (values: { name: string }) => {
-      createFolder(values)
-        .then(() => setIsCreateOpen(false))
-        .catch(() => {});
-    },
+    handleCreateFolder,
   };
 }

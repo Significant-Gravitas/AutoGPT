@@ -11,7 +11,7 @@ interface PreviewProps {
   onError: () => void;
 }
 
-interface ImagePreviewProps extends PreviewProps {
+interface Props extends PreviewProps {
   width?: number;
 }
 
@@ -23,7 +23,7 @@ export function ImagePreview({
   file,
   onError,
   width = DEFAULT_PREVIEW_WIDTH,
-}: ImagePreviewProps) {
+}: Props) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   return (
