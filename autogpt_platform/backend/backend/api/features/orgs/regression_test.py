@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 # ---------------------------------------------------------------------------
@@ -3231,11 +3232,19 @@ class TestReviewFindings:
         return m
 
     def _owner_ctx(self, org_id="org-review-1", team_id="team-review-1"):
-        ctx = MagicMock()
-        ctx.user_id = USER_ID
-        ctx.org_id = org_id
-        ctx.team_id = team_id
-        return ctx
+        # A MagicMock grants every permission: check_org_permission reads
+        # ctx.is_org_owner etc., and an auto-created attribute is truthy.
+        return RequestContext(
+            user_id=USER_ID,
+            org_id=org_id,
+            team_id=team_id,
+            is_org_owner=True,
+            is_org_admin=False,
+            is_org_billing_manager=False,
+            is_team_admin=False,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
 
     def _make_invitation(self, **overrides):
         m = MagicMock()
