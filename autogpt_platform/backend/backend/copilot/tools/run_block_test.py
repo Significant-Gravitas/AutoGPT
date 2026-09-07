@@ -1242,6 +1242,123 @@ class TestExecuteBlockUserTimezoneAccessor:
         assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
 
 
+class TestExecuteBlockCredentialRejection:
+    """A provider that refuses a stored credential mid-run must produce the
+    reconnect card, not a bare "Block execution failed"."""
+
+    @staticmethod
+    def _block(exc: Exception):
+        from backend.data.model import CredentialsFieldInfo
+
+        block = MagicMock()
+        block.name = "AyrsharePostBlock"
+        block.id = "ayrshare-block-id"
+        block.input_schema = MagicMock()
+        block.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
+        block.input_schema.get_credentials_fields.return_value = {"credentials": object}
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": ["ayrshare"],
+                    "credentials_types": ["api_key"],
+                    "is_auto_credential": False,
+                },
+                by_alias=True,
+            )
+        }
+        block.input_schema.get_required_fields.return_value = {"credentials"}
+
+        async def _fail(_input, **_kwargs):
+            raise exc
+            yield  # pragma: no cover -- keeps this an async generator
+
+        block.execute = _fail
+        return block
+
+    @staticmethod
+    async def _run(exc: Exception):
+        from backend.copilot.tools.helpers import execute_block
+        from backend.data.model import CredentialsMetaInput
+
+        cred_meta = CredentialsMetaInput(
+            id="cred-1",
+            title="Work Ayrshare key",
+            provider="ayrshare",  # type: ignore[arg-type]
+            type="api_key",
+        )
+        stored = MagicMock()
+        stored.provider = "ayrshare"
+        stored.type = "api_key"
+
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(return_value=stored)
+
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+
+        with (
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.acquire_auto_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+        ):
+            return await execute_block(
+                block=TestExecuteBlockCredentialRejection._block(exc),
+                block_id="ayrshare-block-id",
+                input_data={},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials={"credentials": cred_meta},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provider_401_returns_a_card_naming_the_credential(self):
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        from .models import SetupRequirementsResponse
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        response = await self._run(wrapped)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.provider == "ayrshare"
+        assert response.rejection.status_code == 401
+        assert response.rejection.credential_id == "cred-1"
+        assert "sk-live-abc" not in response.rejection.detail
+        assert "Work Ayrshare key" in response.message
+        # The picker must be offered again, or there is no way back.
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_non_auth_block_failure_still_returns_an_error(self):
+        from backend.util.exceptions import BlockExecutionError
+
+        response = await self._run(
+            BlockExecutionError("bad input", "AyrsharePostBlock", "block-id")
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "Block execution failed" in response.message
+
+
 class _StubCreditDB:
     async def get_credits(self, _user_id: str) -> int:
         return 10_000

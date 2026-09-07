@@ -44,6 +44,7 @@ from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
     BlockOutputResponse,
+    CredentialRejection,
     ErrorResponse,
     InputValidationErrorResponse,
     ReviewRequiredResponse,
@@ -54,7 +55,9 @@ from .models import (
 )
 from .utils import (
     build_missing_credentials_from_field_info,
+    credential_rejection_status,
     match_credentials_to_requirements,
+    sanitize_provider_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -539,6 +542,21 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        status_code = credential_rejection_status(e)
+        if status_code is not None and matched_credentials:
+            logger.warning(
+                f"Provider rejected a stored credential for block {block.name} "
+                f"with HTTP {status_code}"
+            )
+            return _build_credential_rejected_card(
+                block=block,
+                block_id=block_id,
+                input_data=input_data,
+                matched_credentials=matched_credentials,
+                session_id=session_id,
+                status_code=status_code,
+                exc=e,
+            )
         logger.warning("Block execution failed: %s", e)
         return ErrorResponse(
             message=f"Block execution failed: {e}",
@@ -552,6 +570,67 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         )
+
+
+def _build_credential_rejected_card(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int,
+    exc: BlockError,
+) -> SetupRequirementsResponse:
+    """Setup card for a credential the provider refused mid-execution.
+
+    The rejected row is kept — a 401/403 is not proof the secret is wrong — so
+    the ``rejection`` field is what stops the card re-offering it as ready.
+    """
+    missing_creds_dict = build_missing_credentials_from_field_info(
+        _resolve_discriminated_credentials(block, input_data), matched_keys=set()
+    )
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    return SetupRequirementsResponse(
+        message=(
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+        ),
+        session_id=session_id,
+        setup_info=SetupInfo(
+            agent_id=block_id,
+            agent_name=block.name,
+            user_readiness=UserReadiness(
+                has_all_credentials=False,
+                missing_credentials=missing_creds_dict,
+                ready_to_run=False,
+            ),
+            requirements={
+                "credentials": list(missing_creds_dict.values()),
+                "inputs": [],
+                "execution_modes": ["immediate"],
+            },
+        ),
+        rejection=CredentialRejection(
+            provider=provider or "unknown",
+            detail=sanitize_provider_message(str(exc)),
+            status_code=status_code,
+            credential_id=rejected.id if rejected else None,
+            credential_title=rejected.title if rejected else None,
+        ),
+    )
 
 
 async def _collect_block_outputs(

@@ -18483,6 +18483,32 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialRejection": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Sanitised reason; never carries a secret."
+          },
+          "status_code": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Status Code"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Title"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "detail"],
+        "title": "CredentialRejection",
+        "description": "A stored credential that the provider refused at use time."
+      },
       "CredentialsDeletionNeedsConfirmationResponse": {
         "properties": {
           "deleted": {
@@ -26209,6 +26235,12 @@
           "graph_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
+          },
+          "rejection": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CredentialRejection" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
