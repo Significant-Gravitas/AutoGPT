@@ -116,65 +116,65 @@ export const COLORS: ColorOption[] = [
     id: "lavender",
     label: "Lavender",
     role: "AutoPilot",
-    body: "#E4DAF7",
-    mid: "#C1B0EF",
-    deep: "#6F55D6",
+    body: "#8b5cf6",
+    mid: "#7c3aed",
+    deep: "#5b21b6",
   },
   {
     id: "plum",
     label: "Plum",
     role: "Marketing",
-    body: "#F6CFE6",
-    mid: "#E1A0C8",
-    deep: "#A83C82",
+    body: "#ec4899",
+    mid: "#db2777",
+    deep: "#9d174d",
   },
   {
     id: "amber",
     label: "Amber",
     role: "Sales",
-    body: "#FBDDB0",
-    mid: "#F0BE7A",
-    deep: "#C67B22",
+    body: "#f59e0b",
+    mid: "#d97706",
+    deep: "#92400e",
   },
   {
     id: "sky",
     label: "Sky",
     role: "Ops",
-    body: "#CFE0FA",
-    mid: "#9DBDF2",
-    deep: "#3B6FD1",
+    body: "#0ea5e9",
+    mid: "#0284c7",
+    deep: "#075985",
   },
   {
     id: "mint",
     label: "Mint",
     role: "Finance",
-    body: "#C9EDD9",
-    mid: "#93D6B0",
-    deep: "#2E9160",
+    body: "#10b981",
+    mid: "#059669",
+    deep: "#065f46",
   },
   {
     id: "coral",
     label: "Coral",
     role: "Support",
-    body: "#FCD3C8",
-    mid: "#F4A691",
-    deep: "#D2573A",
+    body: "#f97316",
+    mid: "#ea580c",
+    deep: "#9a3412",
   },
   {
     id: "indigo",
     label: "Indigo",
     role: "Research",
-    body: "#D0D2F6",
-    mid: "#A2A7EC",
-    deep: "#4A4FC9",
+    body: "#6366f1",
+    mid: "#4f46e5",
+    deep: "#3730a3",
   },
   {
     id: "butter",
     label: "Butter",
     role: "Content",
-    body: "#F9EBB3",
-    mid: "#EBD277",
-    deep: "#B0932B",
+    body: "#eab308",
+    mid: "#ca8a04",
+    deep: "#854d0e",
   },
 ];
 
@@ -271,16 +271,4 @@ export function seededRandom(seed: number) {
 
 export function configForName(name: string): AvatarConfig {
   return randomConfig(seededRandom(hashSeed(name.toLowerCase())));
-}
-
-export function mixHex(from: string, to: string, amount: number) {
-  const parse = (hex: string) =>
-    [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
-  const [r1, g1, b1] = parse(from);
-  const [r2, g2, b2] = parse(to);
-  const channel = (a: number, b: number) =>
-    Math.round(a + (b - a) * amount)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(r1, r2)}${channel(g1, g2)}${channel(b1, b2)}`;
 }

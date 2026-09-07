@@ -10,7 +10,6 @@ import {
   findColor,
   findShape,
   INK,
-  mixHex,
   VIEWBOX,
   type AvatarConfig,
   type AvatarStatus,
@@ -70,8 +69,8 @@ export function BotAvatar({
   const { cx, top, bottom, width } = shape.anchors;
   const body = ellipsoidFor(shape.anchors);
   const rollDeg = (pose.roll * 180) / Math.PI;
-  const bodyFill = outline ? color.body : mixHex(color.mid, color.deep, 0.12);
-  const shadeFill = outline ? color.mid : mixHex(color.mid, color.deep, 0.55);
+  const bodyFill = color.body;
+  const shadeFill = color.mid;
 
   return (
     <svg
