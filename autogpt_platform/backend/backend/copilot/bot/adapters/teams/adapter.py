@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -427,6 +428,25 @@ class TeamsAdapter(WebhookAdapter):
         # same degradation Telegram uses for its unnamed topics.
         body = f"**{name}**\n\n{text}" if name else text
         return await self.post_channel_message(channel_id, body)
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        activity = {
+            "type": "message",
+            "text": self.localize_markup(text),
+            "textFormat": "markdown",
+        }
+        try:
+            await self._client.update_activity(
+                self._service_url_for(channel_id), channel_id, ref_id, activity
+            )
+        except TeamsApiError:
+            # The Connector doesn't distinguish "not found" from other 4xx
+            # rejections in a way worth parsing — either way the edit failed.
+            logger.exception("Failed to edit Teams activity %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         """Create (or fetch) the bot's 1:1 conversation with a user.

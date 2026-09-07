@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.bot import outbound
-from backend.copilot.bot.adapters.base import ChannelInfo, PostedRef
+from backend.copilot.bot.adapters.base import ChannelInfo, EditOutcome, PostedRef
 
 
 def _api(server_ids: list[str]) -> AsyncMock:
@@ -22,6 +22,7 @@ def _adapter(
     posted: PostedRef | None = None,
     thread: PostedRef | None = None,
     dm_channel: str | None = None,
+    edit_outcome: EditOutcome = EditOutcome.OK,
 ) -> AsyncMock:
     adapter = AsyncMock()
     # Sync classifier — mirrors Discord's numeric-snowflake grammar so
@@ -34,6 +35,7 @@ def _adapter(
     adapter.post_channel_message.return_value = posted
     adapter.create_channel_thread.return_value = thread
     adapter.open_dm_channel.return_value = dm_channel
+    adapter.edit_channel_message.return_value = edit_outcome
     return adapter
 
 
@@ -266,3 +268,124 @@ async def test_list_channels_drops_unlinked_server_channels():
     )
     result = await outbound.list_channels(adapter, _api(["g1"]), "discord", "user-1")
     assert [c.id for c in result] == ["10"]
+
+
+@pytest.mark.asyncio
+async def test_edit_message_channel_happy_path():
+    adapter = _adapter(channel_server="g1")
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is True
+    assert result.error is None
+    adapter.edit_channel_message.assert_awaited_once_with("42", "100", "updated")
+
+
+@pytest.mark.asyncio
+async def test_edit_message_channel_in_unlinked_server_is_rejected():
+    adapter = _adapter(channel_server="other-guild")
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "not_authorized"
+    adapter.edit_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_message_channel_unknown_id_is_not_found():
+    adapter = _adapter(channel_server=None)
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "channel_not_found"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_channel_no_linked_servers():
+    adapter = _adapter()
+    result = await outbound.edit_message(
+        adapter, _api([]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "no_linked_servers"
+    adapter.get_channel_server_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_message_dm_happy_path():
+    adapter = _adapter(dm_channel="dm-42")
+    result = await outbound.edit_message(
+        adapter, _dm_api("pu1"), "discord", "u1", "dm", "dm-42", "100", "updated"
+    )
+    assert result.ok is True
+    adapter.open_dm_channel.assert_awaited_once_with("pu1")
+    adapter.edit_channel_message.assert_awaited_once_with("dm-42", "100", "updated")
+
+
+@pytest.mark.asyncio
+async def test_edit_message_dm_without_link_is_rejected():
+    adapter = _adapter(dm_channel="dm-42")
+    result = await outbound.edit_message(
+        adapter, _dm_api(None), "discord", "u1", "dm", "dm-42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "no_dm_link"
+    adapter.edit_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_message_dm_channel_id_mismatch_is_rejected():
+    # A caller-supplied channel_id that doesn't match this user's own DM
+    # channel must never be trusted, even though it "looks like" a DM id —
+    # this is the authorization check the caller-supplied id can't skip.
+    adapter = _adapter(dm_channel="dm-42")
+    result = await outbound.edit_message(
+        adapter, _dm_api("pu1"), "discord", "u1", "dm", "someone-elses-dm", "100", "x"
+    )
+    assert result.ok is False
+    assert result.error == "not_authorized"
+    adapter.edit_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_message_empty_content_is_distinct_error():
+    adapter = _adapter(channel_server="g1")
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "   "
+    )
+    assert result.ok is False
+    assert result.error == "empty_content"
+    adapter.get_channel_server_id.assert_not_awaited()
+    adapter.edit_channel_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_message_unsupported_platform_is_surfaced():
+    adapter = _adapter(channel_server="g1", edit_outcome=EditOutcome.UNSUPPORTED)
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "teams", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "edit_unsupported"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_not_found_is_surfaced():
+    adapter = _adapter(channel_server="g1", edit_outcome=EditOutcome.NOT_FOUND)
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "message_not_found"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_failed_is_surfaced():
+    adapter = _adapter(channel_server="g1", edit_outcome=EditOutcome.FAILED)
+    result = await outbound.edit_message(
+        adapter, _api(["g1"]), "discord", "user-1", "channel", "42", "100", "updated"
+    )
+    assert result.ok is False
+    assert result.error == "edit_failed"

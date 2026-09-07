@@ -15,7 +15,11 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .chat_platform import ListChatPlatformChannelsTool, PostToChatPlatformTool
+from .chat_platform import (
+    EditChatPlatformMessageTool,
+    ListChatPlatformChannelsTool,
+    PostToChatPlatformTool,
+)
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
@@ -110,6 +114,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "schedule_followup": ScheduleFollowupTool(),
     # Proactive chat-platform output (post message / open thread on user's behalf)
     "post_to_chat_platform": PostToChatPlatformTool(),
+    "edit_chat_platform_message": EditChatPlatformMessageTool(),
     "list_chat_platform_channels": ListChatPlatformChannelsTool(),
     # Trigger management (parent agent → its triggers)
     "list_agent_triggers": ListAgentTriggersTool(),

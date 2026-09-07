@@ -92,6 +92,7 @@ ToolName = Literal[
     "delete_skill",
     "delete_workspace_file",
     "edit_agent",
+    "edit_chat_platform_message",
     "enter_agent_building_mode",
     "find_agent",
     "find_block",

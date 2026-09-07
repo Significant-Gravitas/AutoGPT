@@ -112,7 +112,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 63_000 for SECRT-2605: the new edit_chat_platform_message
+# tool (mirrors post_to_chat_platform's platform/target enums plus
+# channel_id/ref_id/content params) and a short addition to
+# post_to_chat_platform's description pointing at it. Registry measures
+# 62218 chars; ~800 headroom for wording tweaks.
+_CHAR_BUDGET = 63_000
 
 
 @pytest.fixture(scope="module")

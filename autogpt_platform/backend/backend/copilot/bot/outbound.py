@@ -19,10 +19,17 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
-from backend.copilot.bot.adapters.base import ChannelInfo, PlatformAdapter
+from backend.copilot.bot.adapters.base import ChannelInfo, EditOutcome, PlatformAdapter
 from backend.copilot.bot.bot_backend import BotBackend
 
 logger = logging.getLogger(__name__)
+
+# Maps an adapter's EditOutcome to the stable error code a tool/LLM can relay.
+_EDIT_OUTCOME_ERRORS: dict[EditOutcome, str] = {
+    EditOutcome.UNSUPPORTED: "edit_unsupported",
+    EditOutcome.NOT_FOUND: "message_not_found",
+    EditOutcome.FAILED: "edit_failed",
+}
 
 
 class DeliveryResult(BaseModel):
@@ -38,6 +45,13 @@ class DeliveryResult(BaseModel):
     channel_id: Optional[str] = None
     ref_id: Optional[str] = None
     url: Optional[str] = None
+    error: Optional[str] = None
+
+
+class EditResult(BaseModel):
+    """Outcome of a proactive edit, shaped for a tool/LLM to relay."""
+
+    ok: bool
     error: Optional[str] = None
 
 
@@ -140,6 +154,52 @@ async def create_thread(
     return DeliveryResult(
         ok=True, kind="thread", channel_id=channel_id, ref_id=ref.id, url=ref.url
     )
+
+
+async def edit_message(
+    adapter: PlatformAdapter,
+    api: BotBackend,
+    platform: str,
+    user_id: str,
+    target: Literal["channel", "dm"],
+    channel_id: str,
+    ref_id: str,
+    content: str,
+) -> EditResult:
+    """Edit a message previously posted via ``deliver_message``/``deliver_dm``.
+
+    ``channel_id``/``ref_id`` are the values that call returned — never a
+    caller-chosen channel name — so authorization here re-derives the
+    expected channel from the user's links and requires it to match, exactly
+    like ``_resolve_target`` does for a raw id. This closes the same hole a
+    naive "trust the channel_id the model sent back" implementation would
+    open: a channel_id alone doesn't prove the calling user's account is the
+    one linked to it.
+    """
+    if not content or not content.strip():
+        return EditResult(ok=False, error="empty_content")
+
+    if target == "dm":
+        platform_user_id = await api.get_dm_user_id(platform, user_id)
+        if platform_user_id is None:
+            return EditResult(ok=False, error="no_dm_link")
+        expected_channel_id = await adapter.open_dm_channel(platform_user_id)
+        if expected_channel_id is None or expected_channel_id != channel_id:
+            return EditResult(ok=False, error="not_authorized")
+    else:
+        server_ids = tuple(await api.list_linked_server_ids(platform, user_id))
+        if not server_ids:
+            return EditResult(ok=False, error="no_linked_servers")
+        guild_id = await adapter.get_channel_server_id(channel_id)
+        if guild_id is None:
+            return EditResult(ok=False, error="channel_not_found")
+        if guild_id not in server_ids:
+            return EditResult(ok=False, error="not_authorized")
+
+    outcome = await adapter.edit_channel_message(channel_id, ref_id, content)
+    if outcome is EditOutcome.OK:
+        return EditResult(ok=True)
+    return EditResult(ok=False, error=_EDIT_OUTCOME_ERRORS[outcome])
 
 
 async def _resolve_target(

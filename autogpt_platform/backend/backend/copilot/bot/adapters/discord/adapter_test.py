@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.adapters.base import EditOutcome, FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
     MAX_INBOUND_ATTACHMENTS,
     THREAD_HISTORY_CHAR_BUDGET,
@@ -1365,6 +1365,71 @@ class TestProactiveOutput:
 
         assert ref is not None
         assert ref.id == "777"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_edits_in_place(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        message = MagicMock()
+        message.edit = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=message)
+        client.get_channel.return_value = channel
+
+        outcome = await adapter.edit_channel_message("10", "999", "updated text")
+
+        assert outcome == EditOutcome.OK
+        message.edit.assert_awaited_once()
+        assert message.edit.call_args.kwargs["content"] == "updated text"
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_when_message_missing(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.fetch_message = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "gone")
+        )
+        client.get_channel.return_value = channel
+
+        outcome = await adapter.edit_channel_message("10", "999", "updated text")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_bad_ref_id(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        client.get_channel.return_value = channel
+
+        outcome = await adapter.edit_channel_message("10", "not-a-number", "x")
+
+        assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_failed_when_platform_rejects(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        message = MagicMock()
+        message.edit = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=403), "forbidden")
+        )
+        channel.fetch_message = AsyncMock(return_value=message)
+        client.get_channel.return_value = channel
+
+        outcome = await adapter.edit_channel_message("10", "999", "updated text")
+
+        assert outcome == EditOutcome.FAILED
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_non_messageable_channel(self):
+        adapter, client = _bare_adapter()
+        client.get_channel.return_value = None
+        client.fetch_channel = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "gone")
+        )
+
+        outcome = await adapter.edit_channel_message("10", "999", "x")
+
+        assert outcome == EditOutcome.NOT_FOUND
 
 
 # ── Referenced-conversation fetch ──────────────────────────────────────

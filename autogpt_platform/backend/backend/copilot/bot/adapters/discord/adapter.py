@@ -28,6 +28,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from ..base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     InboundAttachment,
     MessageCallback,
@@ -354,6 +355,33 @@ class DiscordAdapter(SocketAdapter):
                 "Thread %s created but posting its content failed", thread.id
             )
         return PostedRef(id=str(thread.id), url=thread.jump_url)
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        channel = await self._resolve_channel(channel_id)
+        if channel is None or not isinstance(channel, discord.abc.Messageable):
+            return EditOutcome.NOT_FOUND
+        try:
+            message = await channel.fetch_message(int(ref_id))
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        except discord.NotFound:
+            return EditOutcome.NOT_FOUND
+        except discord.HTTPException:
+            logger.exception("Failed to fetch message %s for edit", ref_id)
+            return EditOutcome.FAILED
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
+        try:
+            await message.edit(content=rendered, allowed_mentions=allowed)
+        except discord.HTTPException:
+            # Covers both a rejected edit (message too old/foreign author) and
+            # a body over Discord's cap — either way the edit did not land.
+            logger.exception("Failed to edit message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str

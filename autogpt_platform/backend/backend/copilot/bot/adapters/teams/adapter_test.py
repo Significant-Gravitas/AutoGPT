@@ -432,6 +432,37 @@ async def test_send_link_uses_an_adaptive_card_button(app_id):
 
 
 @pytest.mark.asyncio
+async def test_edit_channel_message_updates_activity(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(return_value=None)
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.OK
+    args = adapter._client.update_activity.await_args.args
+    assert args[1] == "a:chat"
+    assert args[2] == "activity-9"
+    activity = args[3]
+    assert activity["type"] == "message"
+    assert activity["text"] == "updated text"
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_message_failed_on_connector_error(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+    from backend.copilot.bot.adapters.teams.api_client import TeamsApiError
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(side_effect=TeamsApiError("404"))
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.FAILED
+
+
+@pytest.mark.asyncio
 async def test_non_image_file_degrades_to_a_note(app_id):
     from backend.copilot.bot.adapters.base import FileAttachment
 

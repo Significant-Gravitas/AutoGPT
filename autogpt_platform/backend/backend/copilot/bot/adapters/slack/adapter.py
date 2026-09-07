@@ -24,12 +24,14 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from backend.copilot.bot import threads
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -631,6 +633,29 @@ class SlackAdapter(WebhookAdapter):
             id=_encode_target(team, channel, root_ts),
             url=await self._permalink(team, channel, root_ts),
         )
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        team, channel, _ = _decode_target(channel_id)
+        client = await self._client_for(team)
+        if client is None:
+            return EditOutcome.FAILED
+        try:
+            await client.chat_update(
+                channel=channel, ts=ref_id, text=self.localize_markup(text)
+            )
+        except SlackApiError as e:
+            if e.response.get("error") == "message_not_found":
+                return EditOutcome.NOT_FOUND
+            logger.warning(
+                "Slack chat.update rejected edit: %s", e.response.get("error")
+            )
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Slack message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     async def _post_chunked(
         self, team_id: str, channel: str, text: str, thread_ts: Optional[str] = None

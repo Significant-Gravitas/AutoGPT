@@ -26,6 +26,7 @@ from fastapi.responses import PlainTextResponse
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
+    EditOutcome,
     FileAttachment,
     MessageCallback,
     MessageContext,
@@ -41,7 +42,7 @@ from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from . import commands, config
-from .api_client import TelegramClient
+from .api_client import TelegramAPIError, TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
@@ -530,6 +531,32 @@ class TelegramAdapter(WebhookAdapter):
         if posted is None:
             return None
         return PostedRef(id=channel_id, url=posted.url)
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        chat_id, _ = _decode_target(channel_id)
+        try:
+            message_id = int(ref_id)
+        except ValueError:
+            return EditOutcome.NOT_FOUND
+        try:
+            await self._client.call(
+                "editMessageText",
+                chat_id=chat_id,
+                message_id=message_id,
+                text=self.localize_markup(text),
+                parse_mode="HTML",
+            )
+        except TelegramAPIError as e:
+            if "not found" in str(e).lower():
+                return EditOutcome.NOT_FOUND
+            logger.warning("Telegram editMessageText rejected edit: %s", e)
+            return EditOutcome.FAILED
+        except Exception:
+            logger.exception("Failed to edit Telegram message %s", ref_id)
+            return EditOutcome.FAILED
+        return EditOutcome.OK
 
     # -- Helpers --
 

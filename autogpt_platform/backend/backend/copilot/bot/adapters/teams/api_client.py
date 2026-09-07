@@ -50,6 +50,21 @@ class TeamsClient:
             activity,
         )
 
+    async def update_activity(
+        self,
+        service_url: str,
+        conversation_id: str,
+        activity_id: str,
+        activity: dict[str, Any],
+    ) -> None:
+        """Replace a previously sent activity's content in place."""
+        await self._request(
+            "PUT",
+            service_url,
+            f"v3/conversations/{conversation_id}/activities/{activity_id}",
+            activity,
+        )
+
     async def create_conversation(
         self, service_url: str, payload: dict[str, Any]
     ) -> str | None:

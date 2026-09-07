@@ -107,6 +107,22 @@ class ChannelInfo(BaseModel):
     server_name: Optional[str] = None
 
 
+class EditOutcome(Enum):
+    """Result of a proactive edit — see ``PlatformAdapter.edit_channel_message``.
+
+    Distinct from a bool so the caller can surface *why* an edit didn't land:
+    the platform never supports edits at all (``UNSUPPORTED``), the target
+    message is gone or too old to touch (``NOT_FOUND``), or the platform
+    rejected the call for another reason — wrong author, no permission, body
+    too long (``FAILED``).
+    """
+
+    OK = "ok"
+    UNSUPPORTED = "unsupported"
+    NOT_FOUND = "not_found"
+    FAILED = "failed"
+
+
 class PostedRef(BaseModel):
     """Pointer to something the bot just created on the platform.
 
@@ -398,6 +414,20 @@ class PlatformAdapter(ABC):
         the platform/channel doesn't support it.
         """
         ...
+
+    async def edit_channel_message(
+        self, channel_id: str, ref_id: str, text: str
+    ) -> EditOutcome:
+        """Edit a message this bot previously posted via ``post_channel_message``.
+
+        ``channel_id``/``ref_id`` are exactly what that call (or
+        ``create_channel_thread``) returned — adapters that encode extra state
+        into those ids (Slack) must decode the same way as their send path.
+        Default: unsupported — platforms without a wired edit call (or not yet
+        implemented) simply inherit this rather than every caller special-casing
+        ``NotImplementedError``.
+        """
+        return EditOutcome.UNSUPPORTED
 
 
 class SocketAdapter(PlatformAdapter):
