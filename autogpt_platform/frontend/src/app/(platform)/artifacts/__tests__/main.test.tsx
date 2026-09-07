@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
@@ -165,6 +165,42 @@ describe("ArtifactsPage - basic rendering", () => {
     expect(await screen.findByTestId("workspace-folder")).toBeDefined();
     expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
     expect(screen.queryByText(/^no files yet$/i)).toBeNull();
+  });
+
+  test("waits for folders before choosing an empty state", async () => {
+    useStorageHandler();
+    let filesServed = false;
+    server.use(
+      http.get("/api/proxy/api/workspace/files", () => {
+        filesServed = true;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+      http.get("/api/proxy/api/workspace/folders", async () => {
+        await delay(300);
+        return HttpResponse.json({
+          folders: [
+            {
+              id: "fld-1",
+              workspace_id: "ws-1",
+              name: "Reports",
+              file_count: 2,
+              created_at: "2026-05-01T00:00:00Z",
+              updated_at: "2026-05-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    await waitFor(() => expect(filesServed).toBe(true));
+    // Files are known to be empty, but folders are still loading: no empty
+    // state yet, only skeleton rows.
+    expect(screen.getByTestId("artifacts-loading")).toBeDefined();
+    expect(screen.queryByTestId("artifacts-empty")).toBeNull();
+
+    expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
   });
 
   test("renders one row per file with name, date and size columns", async () => {
