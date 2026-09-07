@@ -17,6 +17,7 @@ import threading
 
 from openai.types.completion_usage import PromptTokensDetails
 
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.db_accessors import platform_cost_db
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 
@@ -267,6 +268,10 @@ async def persist_and_record_usage(
             # Caller-supplied keys override base keys (dream pass uses this
             # to mark source="dream_pass"); base keys it doesn't touch stay.
             metadata.update(extra_metadata)
+
+        trial_context = get_trial_cost_context(user_id)
+        if trial_context is not None:
+            metadata["subscription_trial_id"] = trial_context.trial_id
 
         _schedule_cost_log(
             PlatformCostEntry(

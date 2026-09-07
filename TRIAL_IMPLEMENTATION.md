@@ -148,9 +148,11 @@ dispatch, onboarding/billing UI, and trial-specific analytics.
   response and transactions expiring while a remote creation remains in flight.
   A database lock alone is not a remote-operation fencing guarantee.
 - Total spend currently uses atomic recorded costs plus pre-turn checks, not
-  strict reservations. Audit concurrent/in-flight turns, provider caps, late
-  settlement, background work, BYOK, and failure behavior before promising any
-  hard spend ceiling.
+  strict reservations. The user accepted this soft-cap behavior for phase one
+  on 2026-09-06, including overshoot from concurrent/in-flight work. A strict
+  dollar ceiling is not a launch requirement. Continue validating attribution,
+  background work, BYOK, and failure behavior; do not advertise a hard ceiling
+  or a verified maximum overshoot.
 - Notification reliability: validate the durable recovery path through the real
   broker/RPC/provider, removed/restored-card notices, and visual email QA.
 - Expand API/frontend cancellation, confirmation, auth-switch and trial-budget
@@ -619,3 +621,70 @@ Stripe reference: [billing-card and SetupIntent event types](https://docs.stripe
   explicitly approved live rollout. Enrollment remains off; nothing is live.
 
 Postmark reference: [documented email testing modes](https://postmarkapp.com/support/article/1213-best-practices-for-testing-your-emails-through-postmark).
+
+## Phase-one spend policy decision — 2026-09-06
+
+- The user explicitly accepted soft caps for phase one after discussing parallel
+  admission, delayed cost reporting, and a final provider request crossing the
+  allowance. Daily, weekly, and lifetime allowances remain configurable. Recorded
+  exhaustion blocks subsequent work; in-flight work can overshoot. There is no
+  verified dollar or percentage upper bound on that overshoot.
+- Strict reservations and provider-admission enforcement are not launch gates
+  for this phase. Earlier checklist references to concurrent/in-flight spend
+  guarantees are superseded by this decision, not evidence that such guarantees
+  have been implemented. Accurate accounting and existing access checks remain
+  in scope.
+- These limits concern AutoGPT's underlying Copilot costs, not customer overage
+  charges. This decision adds no card charges, no extra onboarding grant, and
+  does not approve final offer values, subscription-conversion policy, production
+  configuration, external email testing, or a live rollout.
+- Anthropic documents that its SDK budget stops a run after spend exceeds the
+  limit; it is not an exact pre-request spending reservation. SDK cost fields
+  are estimates rather than authoritative invoices. We will not present either
+  the SDK guardrail or our pre-turn checks as a hard financial ceiling.
+
+References: [SDK budget behavior](https://platform.claude.com/cookbook/claude-agent-sdk-scheduled-repository-reviewer-scheduled-repository-reviewer),
+[SDK cost-accounting scope](https://code.claude.com/docs/en/agent-sdk/cost-tracking).
+
+## Delayed foreground cost attribution checkpoint
+
+- Reproduced a lost-cost bug: a foreground trial turn could finish, then report
+  its cost after the user became paid or lost trial access. Accounting consulted
+  the current tier and current trial status, dropping that cost from the trial's
+  lifetime total. Two executor regressions and seven database cases were written
+  before the fix; the executor reproduction showed zero trial writes instead of
+  the required one. All expected-failure markers have been removed.
+- The common foreground executor now captures the active, consumed trial once
+  before starting the engine. Its immutable, user-scoped context propagates into
+  the heartbeat driver and asynchronous descendants, including delayed cost
+  reconciliation. Cleanup restores the previous context even on cancellation
+  or errors. A subsequent paid turn in the same chat gets a separate non-trial
+  snapshot and cannot add its spend to the earlier trial.
+- Explicit trial-cost writes atomically match both user ID and consumed trial
+  ID, independently of the trial's later status/card state. Wrong-user,
+  nonexistent, and unconsumed attribution is rejected. Existing unscoped callers
+  retain their previous behavior. Cost-log metadata now includes the captured
+  `subscription_trial_id` (null for an explicitly non-trial foreground turn).
+- Validation passed: **238 Copilot/context/executor/rate-limit/token-tracking
+  tests**, plus **18 disposable PostgreSQL enrollment/cost/RPC tests**. The final
+  focused 12-test rerun uses the real heartbeat/background-task boundary and
+  verifies matching cost-log attribution. FastAPI guidance informed tests of the
+  actual generated database endpoint models, including 400 ownership rejection
+  and 422 malformed-ID validation. Whole-backend formatting, generated Prisma
+  stubs, pyright, and diff checks passed. Existing dependency/test warnings remain.
+- The first broad test attempt hit sandbox-denied localhost access and was
+  interrupted; it is not counted as a pass. The complete rerun with approved
+  access to the existing local Redis and disposable PostgreSQL services passed.
+- No schema migration is needed for this checkpoint. Deploy the compatible
+  database service before updated executors: older generated endpoint models
+  do not consume the new optional attribution field. CI at preceding head
+  `827011634d1845b0a911da5a3f76423cff9ce5be` completed with no outstanding/failed
+  checks; the new commit still requires its own CI and independent review.
+- Scope limits: this is not a reservation, retry-deduplicated settlement ledger,
+  or crash-safe cost queue. Standalone background jobs outside the foreground
+  executor still use their legacy attribution path. Missing provider costs,
+  process loss before persistence, best-effort cost logging, and daily/weekly
+  settlement-time windows remain accounting/measurement limitations to assess;
+  phase-one soft-cap acceptance does not make these hard guarantees.
+- No real provider request, email, Stripe mutation, production configuration, or
+  deployment occurred in this checkpoint. Trial enrollment remains off.

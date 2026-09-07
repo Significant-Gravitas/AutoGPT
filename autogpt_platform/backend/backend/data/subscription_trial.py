@@ -4,6 +4,7 @@ from datetime import datetime
 
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, SubscriptionTrial
+from prisma.types import SubscriptionTrialWhereInput
 from pydantic import BaseModel, TypeAdapter
 
 from backend.data.subscription_trial_config import AcceptedTrialOffer, trial_is_active
@@ -113,10 +114,17 @@ async def reserve_subscription_trial(
     return TrialState.from_db(row)
 
 
-async def record_subscription_trial_cost(user_id: str, cost_microdollars: int) -> None:
+async def record_subscription_trial_cost(
+    user_id: str, cost_microdollars: int, trial_id: str | None = None
+) -> None:
     if cost_microdollars <= 0:
         return
-    await SubscriptionTrial.prisma().update_many(
-        where={"userId": user_id, "status": "trialing"},
+    where: SubscriptionTrialWhereInput = {"userId": user_id, "status": "trialing"}
+    if trial_id is not None:
+        where = {"userId": user_id, "id": trial_id, "consumedAt": {"not": None}}
+    updated = await SubscriptionTrial.prisma().update_many(
+        where=where,
         data={"costMicrodollars": {"increment": cost_microdollars}},
     )
+    if trial_id is not None and updated != 1:
+        raise ValueError("Trial cost attribution was not found for this user")

@@ -62,6 +62,7 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.trial_cost_context import record_attributed_trial_cost
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
@@ -849,7 +850,10 @@ async def record_cost_usage(
     cost_microdollars = max(0, cost_microdollars)
     if cost_microdollars <= 0:
         return
-    if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
+    if (
+        not await record_attributed_trial_cost(user_id, cost_microdollars)
+        and await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL
+    ):
         await credit_db().record_subscription_trial_cost(user_id, cost_microdollars)
 
     logger.info(

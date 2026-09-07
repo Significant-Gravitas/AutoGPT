@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
@@ -26,6 +27,7 @@ from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.trial_cost_context import trial_cost_context
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.util.decorator import error_logged
@@ -496,6 +498,7 @@ class CoPilotProcessor:
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
         credential_lease = None
+        cost_context_stack = AsyncExitStack()
 
         try:
             from backend.copilot.model import get_chat_session
@@ -613,6 +616,10 @@ class CoPilotProcessor:
                     )
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
+            await cost_context_stack.enter_async_context(
+                trial_cost_context(entry.user_id)
+            )
+
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
             # publishing so subscribers on the session Redis stream
@@ -708,3 +715,5 @@ class CoPilotProcessor:
                     )
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
+                finally:
+                    await cost_context_stack.aclose()
