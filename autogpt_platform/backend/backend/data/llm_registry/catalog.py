@@ -154,6 +154,28 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="claude-opus-5",
+                display_name="Claude Opus 5",
+                provider="anthropic",
+                creator="anthropic",
+                # Keep the existing Anthropic compaction cap; native window is 1M.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=14,
+                    input_credits_per_1m=750.0,
+                    output_credits_per_1m=3750.0,
+                    cache_read_credits_per_1m=75.0,
+                    cache_creation_credits_per_1m=938.0,
+                    provider_input_usd_per_1m=5.00,
+                    provider_output_usd_per_1m=25.00,
+                ),
+            ),
+            CatalogModel(
                 slug="claude-sonnet-4-5-20250929",
                 display_name="Claude Sonnet 4.5",
                 provider="anthropic",
@@ -1168,6 +1190,27 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=2,
                     input_credits_per_1m=165.0,
                     output_credits_per_1m=660.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6-astra",
+                display_name="GPT-6 Astra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $10/1M in, $50/1M out — OpenAI list price at launch,
+                # credited at the catalog's standard usd_per_1m x 150
+                # factor (same factor every other entry in this file
+                # uses, e.g. claude-sonnet-5: $3 -> 450). At 1500 input
+                # credits this is 2x the highest tier-2 model in the
+                # catalog, so it's filed as tier 3 to keep the picker's
+                # price badge accurate.
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=20,
+                    input_credits_per_1m=1500.0,
+                    output_credits_per_1m=7500.0,
                 ),
             ),
             CatalogModel(

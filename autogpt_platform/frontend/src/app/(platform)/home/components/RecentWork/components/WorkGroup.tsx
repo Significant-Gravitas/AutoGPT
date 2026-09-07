@@ -20,18 +20,25 @@ export function WorkGroup({ group, timezone }: Props) {
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
-      <Text
-        variant="body-medium"
-        className="truncate text-sm font-semibold leading-5 text-zinc-900"
-      >
+      <Text variant="body-medium" tone="primary" className="truncate leading-5">
         {actor.name}
       </Text>
-      <span className="shrink-0 rounded-full border border-zinc-200 bg-white px-1.5 text-[10px] font-medium uppercase leading-4 tracking-[0.04em] text-zinc-500">
+      <Text
+        variant="small-medium"
+        as="span"
+        tone="muted"
+        className="shrink-0 rounded-full border border-zinc-200 bg-white px-1.5 uppercase leading-4 tracking-[0.04em]"
+      >
         {getActorKindLabel(actor.kind)}
-      </span>
-      <span className="ml-auto shrink-0 text-[11px] tabular-nums text-zinc-400">
+      </Text>
+      <Text
+        variant="small"
+        tone="muted"
+        className="ml-auto shrink-0 tabular-nums"
+        as="span"
+      >
         {formatGroupCounts(group)}
-      </span>
+      </Text>
       {actor.link ? (
         <Icon
           icon={ArrowUpRight01Icon}

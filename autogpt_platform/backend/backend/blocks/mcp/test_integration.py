@@ -112,7 +112,8 @@ def _allow_localhost():
 
 def _make_client(url: str, auth_token: str | None = None) -> MCPClient:
     """Create an MCPClient for integration tests."""
-    return MCPClient(url, auth_token=auth_token)
+    authorization = f"Bearer {auth_token}" if auth_token else None
+    return MCPClient(url, authorization=authorization)
 
 
 # ── MCPClient integration tests ──────────────────────────────────────

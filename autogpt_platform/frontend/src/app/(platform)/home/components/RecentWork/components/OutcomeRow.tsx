@@ -38,7 +38,8 @@ export function OutcomeRow({ outcome, timezone, showAgentName }: Props) {
       </span>
       <Text
         variant="body"
-        className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-700"
+        tone="secondary"
+        className="min-w-0 flex-1 truncate leading-5"
       >
         {outcome.title}
       </Text>
@@ -87,13 +88,18 @@ function RunMeta({ outcome, timezone, showAgentName }: Props) {
   ].filter(Boolean);
 
   return (
-    <span className="flex shrink-0 items-center gap-x-1.5 text-[11px] text-zinc-400">
+    <Text
+      variant="small"
+      as="span"
+      tone="muted"
+      className="flex shrink-0 items-center gap-x-1.5"
+    >
       {parts.map((part, index) => (
         <span key={index} className="flex items-center gap-x-1.5">
           {index > 0 ? <span aria-hidden="true">·</span> : null}
           {part}
         </span>
       ))}
-    </span>
+    </Text>
   );
 }
