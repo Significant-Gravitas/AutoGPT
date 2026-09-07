@@ -46,6 +46,13 @@ interface Args {
   enabled: boolean;
   messages: UIMessage[];
   isStreaming: boolean;
+  /**
+   * The socket is closed but the turn is not over: the post-close probe and
+   * a scheduled reconnect both read as "not streaming" to the SDK, and
+   * handing the mic back there leaves the rest of the turn unspoken.
+   */
+  isReconnecting?: boolean;
+  isFinishProbing?: boolean;
   sessionId: string | null;
   silenceTimeoutMs?: number;
   onSend: (message: string) => void | Promise<void>;
@@ -55,10 +62,13 @@ export function useVoiceMode({
   enabled,
   messages,
   isStreaming,
+  isReconnecting = false,
+  isFinishProbing = false,
   sessionId,
   silenceTimeoutMs = SILENCE_TIMEOUT_MS,
   onSend,
 }: Args) {
+  const isReplyInFlight = isStreaming || isReconnecting || isFinishProbing;
   const [state, setState] = useState<VoiceState>("off");
   const { toast } = useToast();
 
@@ -79,7 +89,7 @@ export function useVoiceMode({
   const turnIndex = useRef(0);
   /** Speech end, for the two latencies the funnel measures. */
   const utteranceEndedAt = useRef(0);
-  const wasStreaming = useRef(false);
+  const wasInFlight = useRef(false);
   // Bumped by every activate and deactivate. Work started under an older
   // token belongs to a session the user has already left.
   const activation = useRef(0);
@@ -94,15 +104,16 @@ export function useVoiceMode({
     }
   }, [messages]);
 
-  // The stream ending is the cue to flush, never the cue to reopen the mic —
-  // the reply finishes seconds before the speech does.
+  // The turn ending is the cue to flush, never the cue to reopen the mic —
+  // the reply finishes seconds before the speech does. And it is the turn,
+  // not the stream: a reconnect closes the socket mid-turn.
   useEffect(() => {
-    const finished = wasStreaming.current && !isStreaming;
-    wasStreaming.current = isStreaming;
+    const finished = wasInFlight.current && !isReplyInFlight;
+    wasInFlight.current = isReplyInFlight;
     const speaking =
       stateRef.current === "thinking" || stateRef.current === "speaking";
     if (finished && speaking) finishReply();
-  }, [isStreaming]);
+  }, [isReplyInFlight]);
 
   useEffect(() => {
     if (!enabled && stateRef.current !== "off") deactivate();

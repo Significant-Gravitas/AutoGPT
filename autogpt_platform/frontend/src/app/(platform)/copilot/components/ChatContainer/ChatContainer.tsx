@@ -58,6 +58,8 @@ export interface ChatContainerProps {
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
+  /** True while a closed stream is being checked for a turn still running. */
+  isFinishProbing?: boolean;
   /** True while reopening an already-running session before stream replay is live. */
   isRestoringActiveSession?: boolean;
   /** Latest backend-emitted status for a replaying assistant while restore is active. */
@@ -119,6 +121,7 @@ export const ChatContainer = ({
   isSessionError,
   isCreatingSession,
   isReconnecting,
+  isFinishProbing,
   isRestoringActiveSession,
   restoreStatusMessage,
   activeStreamStartedAt,
@@ -191,6 +194,8 @@ export const ChatContainer = ({
     enabled: isVoiceModeEnabled,
     messages,
     isStreaming,
+    isReconnecting,
+    isFinishProbing,
     sessionId,
     silenceTimeoutMs,
     onSend: guardedOnSend,

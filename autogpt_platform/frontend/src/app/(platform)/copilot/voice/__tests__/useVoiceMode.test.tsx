@@ -152,6 +152,129 @@ describe("useVoiceMode", () => {
     vi.useRealTimers();
   });
 
+  it("speaks a turn replayed under a fresh id once", async () => {
+    // A stream reconnect replays the running turn from its start as a new
+    // assistant message. Keyed on the id, that read the whole turn again on
+    // every reconnect — three times during one long agent build.
+    const view = render({});
+    await enable(view);
+    await speak();
+    await act(async () => {
+      view.rerender({
+        messages: assistant("First sentence. Second sentence. ", "a1"),
+        isStreaming: true,
+      });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant("First sentence. Second sentence. ", "a2"),
+        isStreaming: true,
+      });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant(
+          "First sentence. Second sentence. Third sentence. ",
+          "a2",
+        ),
+        isStreaming: true,
+      });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant(
+          "First sentence. Second sentence. Third sentence. ",
+          "a2",
+        ),
+        isStreaming: false,
+      });
+    });
+    await act(async () => undefined);
+
+    expect(spoken).toEqual([
+      "First sentence.",
+      "Second sentence.",
+      "Third sentence.",
+    ]);
+  });
+
+  it("speaks a message restarted from empty under the same id once", async () => {
+    const view = render({});
+    await enable(view);
+    await speak();
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Hello there. "),
+        isStreaming: true,
+      });
+    });
+    await act(async () => {
+      view.rerender({ messages: assistant(""), isStreaming: true });
+    });
+    await act(async () => {
+      view.rerender({ messages: assistant("Hello "), isStreaming: true });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Hello there. And again. "),
+        isStreaming: true,
+      });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant("Hello there. And again. "),
+        isStreaming: false,
+      });
+    });
+    await act(async () => undefined);
+
+    expect(spoken).toEqual(["Hello there.", "And again."]);
+  });
+
+  it("keeps the mic shut while a closed stream is probed and reconnected", async () => {
+    // Between the close and the resume the SDK reports "not streaming" —
+    // through the finish probe and then the scheduled reconnect. Treating
+    // that as the reply's end reopened the mic mid-turn and left the rest
+    // of the turn unspoken.
+    const view = render({});
+    await enable(view);
+    await speak();
+    await act(async () => {
+      view.rerender({
+        messages: assistant("A long answer. "),
+        isStreaming: true,
+      });
+    });
+
+    await act(async () => {
+      view.rerender({ isStreaming: false, isFinishProbing: true });
+    });
+    await act(async () => undefined);
+    expect(view.result.current.state).not.toBe("listening");
+
+    await act(async () => {
+      view.rerender({ isFinishProbing: false, isReconnecting: true });
+    });
+    await act(async () => undefined);
+    expect(view.result.current.state).not.toBe("listening");
+
+    await act(async () => {
+      view.rerender({
+        messages: assistant("A long answer. Continued. ", "a2"),
+        isStreaming: true,
+        isReconnecting: false,
+      });
+    });
+    await act(async () => {
+      view.rerender({
+        messages: assistant("A long answer. Continued. ", "a2"),
+        isStreaming: false,
+      });
+    });
+    await waitFor(() => expect(view.result.current.state).toBe("listening"));
+    expect(spoken).toEqual(["A long answer.", "Continued."]);
+  });
+
   it("speaks the reply one sentence at a time as it streams", async () => {
     const view = render({});
     await enable(view);
