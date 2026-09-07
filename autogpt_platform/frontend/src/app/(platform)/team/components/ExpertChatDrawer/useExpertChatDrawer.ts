@@ -40,6 +40,11 @@ export function useExpertChatDrawer({
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
   const pendingPromptRef = useRef<string | null>(null);
+  // Every thread reset bumps the generation; a session create that resolves
+  // for an older generation is ignored so its prompt never lands in the new
+  // thread, and the new thread is free to create its own session.
+  const generationRef = useRef(0);
+  const creatingGenerationRef = useRef<number | null>(null);
 
   const { mutateAsync: createSession } = usePostV2CreateSession();
 
@@ -101,6 +106,9 @@ export function useExpertChatDrawer({
   useEffect(() => {
     if (threadKeyRef.current === threadKey) return;
     threadKeyRef.current = threadKey;
+    generationRef.current += 1;
+    creatingGenerationRef.current = null;
+    setIsCreating(false);
     setSkipLatest(true);
     setSessionId(null);
     setMessages([]);
@@ -124,6 +132,9 @@ export function useExpertChatDrawer({
   }, [sessionId, sendMessage]);
 
   function startNewThread() {
+    generationRef.current += 1;
+    creatingGenerationRef.current = null;
+    setIsCreating(false);
     setSkipLatest(true);
     setSessionId(null);
     setMessages([]);
@@ -131,18 +142,22 @@ export function useExpertChatDrawer({
   }
 
   async function startSession(firstMessage: string) {
-    if (isCreating || !target) return;
+    const generation = generationRef.current;
+    if (creatingGenerationRef.current === generation || !target) return;
+    creatingGenerationRef.current = generation;
     setIsCreating(true);
     try {
       const response = await createSession(
         expertId ? { data: { expert_id: expertId } } : { data: null },
       );
+      if (generation !== generationRef.current) return;
       if (response.status !== 200) {
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;
       setSessionId(response.data.id);
     } catch (err) {
+      if (generation !== generationRef.current) return;
       Sentry.captureException(err);
       toast({
         variant: "destructive",
@@ -150,7 +165,10 @@ export function useExpertChatDrawer({
         description: "Please try sending your message again.",
       });
     } finally {
-      setIsCreating(false);
+      if (creatingGenerationRef.current === generation) {
+        creatingGenerationRef.current = null;
+        setIsCreating(false);
+      }
     }
   }
 
