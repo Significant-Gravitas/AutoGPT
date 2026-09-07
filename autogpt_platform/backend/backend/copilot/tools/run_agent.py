@@ -38,7 +38,11 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
-from .expert_scope import require_installed_workflow, ungranted_credential_hint
+from .expert_scope import (
+    provider_slug,
+    require_installed_workflow,
+    ungranted_credential_hint,
+)
 from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
@@ -671,7 +675,7 @@ class RunAgentTool(BaseTool):
                     user_id,
                     expert_id,
                     {
-                        str(m.get("provider", ""))
+                        provider_slug(m.get("provider", ""))
                         for m in missing_credentials_dict.values()
                     }
                     - {""},

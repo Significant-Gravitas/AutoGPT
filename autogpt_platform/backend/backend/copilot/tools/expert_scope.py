@@ -8,6 +8,7 @@ expert's resources.
 """
 
 import logging
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -168,6 +169,12 @@ async def install_saved_agent(
     )
 
 
+def provider_slug(value: object) -> str:
+    """The wire value of a provider, whether it arrives as the ``ProviderName``
+    enum (whose ``str()`` is ``ProviderName.X``) or as a plain string."""
+    return str(value.value) if isinstance(value, Enum) else str(value)
+
+
 async def _ungranted_credentials(
     user_id: str, expert_id: str, providers: set[str]
 ) -> list[Credentials]:
@@ -185,7 +192,7 @@ async def _ungranted_credentials(
     return [
         c
         for c in owned
-        if str(c.provider) in providers
+        if provider_slug(c.provider) in providers
         and c.id not in allowed
         and not is_system_credential(c.id)
     ]

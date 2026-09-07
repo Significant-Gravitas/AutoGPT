@@ -151,6 +151,14 @@ async def test_personal_autopilot_build_is_not_installed_anywhere(experts):
     assert result.message == "Saved."
 
 
+def test_provider_slug_uses_the_wire_value_of_enums():
+    from backend.copilot.tools.expert_scope import provider_slug
+    from backend.integrations.providers import ProviderName
+
+    assert provider_slug(ProviderName.GITHUB) == "github"
+    assert provider_slug("github") == "github"
+
+
 async def test_hint_lists_owned_but_ungranted_credentials(experts):
     store = MagicMock()
     store.get_all_creds = AsyncMock(

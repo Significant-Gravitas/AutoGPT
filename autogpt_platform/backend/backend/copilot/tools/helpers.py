@@ -42,7 +42,7 @@ from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
-from .expert_scope import ungranted_credential_hint
+from .expert_scope import provider_slug, ungranted_credential_hint
 from .models import (
     BlockOutputResponse,
     ErrorResponse,
@@ -785,7 +785,7 @@ async def prepare_block_for_execution(
             ) + await ungranted_credential_hint(
                 user_id,
                 session.expert_id,
-                {str(m.provider) for m in missing_credentials},
+                {provider_slug(m.provider) for m in missing_credentials},
             )
         else:
             message = (
