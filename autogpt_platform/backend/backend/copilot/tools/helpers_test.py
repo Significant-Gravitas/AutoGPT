@@ -1617,7 +1617,7 @@ class TestExecuteBlockCredentialLeases:
 
         assert isinstance(result, BlockOutputResponse)
         assert result.provider == "google"
-        assert result.credential_type == "api_key"
+        assert result._credential_type == "api_key"
 
     async def test_regular_credentials_are_leased_and_released(self):
         block = _make_block()

@@ -87,9 +87,9 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
         block_name="Send Email",
         outputs={},
         provider="google",
-        credential_type="oauth2",
         session_id="test-session",
     )
+    with_provider._credential_type = "oauth2"
     without_provider = with_provider.model_copy(update={"provider": None})
     dry_run = with_provider.model_copy(update={"is_dry_run": True})
 
@@ -127,18 +127,31 @@ def test_run_block_distinguishes_google_api_key_from_oauth() -> None:
         block_name="Google Drive",
         outputs={},
         provider="google",
-        credential_type="oauth2",
         session_id="test-session",
     )
+    google_oauth_call._credential_type = "oauth2"
     google_llm_call = google_oauth_call.model_copy(
-        update={
-            "block_name": "AITextGeneratorBlock",
-            "credential_type": "api_key",
-        }
+        update={"block_name": "AITextGeneratorBlock"}
     )
+    google_llm_call._credential_type = "api_key"
 
     assert tool.activity_event(session=session, result=google_oauth_call) is not None
     assert tool.activity_event(session=session, result=google_llm_call) is None
+
+
+def test_block_output_credential_type_is_internal() -> None:
+    result = BlockOutputResponse(
+        message="Block executed",
+        block_id="block-1",
+        block_name="AITextGeneratorBlock",
+        outputs={},
+        provider="google",
+        session_id="test-session",
+    )
+    result._credential_type = "api_key"
+
+    assert "credential_type" not in result.model_dump()
+    assert "credential_type" not in result.model_json_schema()["properties"]
 
 
 def test_google_api_key_is_llm_but_google_oauth_is_integration() -> None:

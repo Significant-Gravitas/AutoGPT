@@ -263,19 +263,20 @@ async def execute_block(
                 )
 
             provider = get_block_provider(block)
-            return BlockOutputResponse(
+            result = BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
                 provider=provider,
-                credential_type=get_block_credential_type(
-                    provider, matched_credentials
-                ),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
             )
+            result._credential_type = get_block_credential_type(
+                provider, matched_credentials
+            )
+            return result
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
@@ -490,18 +491,19 @@ async def execute_block(
                     )
 
                 provider = get_block_provider(block)
-                return BlockOutputResponse(
+                result = BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
                     outputs=dict(outputs),
                     provider=provider,
-                    credential_type=get_block_credential_type(
-                        provider, matched_credentials
-                    ),
                     success=True,
                     session_id=session_id,
                 )
+                result._credential_type = get_block_credential_type(
+                    provider, matched_credentials
+                )
+                return result
             except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that

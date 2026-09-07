@@ -92,7 +92,7 @@ class RunBlockTool(BaseTool):
             or not result.success
             or result.is_dry_run
             or not result.provider
-            or is_llm_credentials(result.provider, result.credential_type)
+            or is_llm_credentials(result.provider, result._credential_type)
         ):
             return None
         return ActivityEventDraft(
