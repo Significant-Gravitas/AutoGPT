@@ -22,6 +22,8 @@ export const compactStyles = {
   title: "font-sans text-base font-medium leading-6 text-zinc-900",
   header: "pb-4",
   close: "right-3 top-3",
+  // Bottom sheet keeps its top-only radius; only the padding tightens.
+  drawerContent: "p-5",
 };
 
 // Drawer specific styles

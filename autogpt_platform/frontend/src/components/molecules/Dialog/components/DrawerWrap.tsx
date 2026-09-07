@@ -27,6 +27,7 @@ export function DrawerWrap({
 }: Props) {
   const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
+  const isCompact = variant === "compact";
 
   const closeBtn = (
     <Button
@@ -35,7 +36,7 @@ export function DrawerWrap({
       onClick={handleClose}
       className="!focus-visible:ring-0 p-0"
     >
-      <Icon icon={Cancel01Icon} width="1.5rem" />
+      <Icon icon={Cancel01Icon} width={isCompact ? "1.25rem" : "1.5rem"} />
     </Button>
   );
 
@@ -44,20 +45,27 @@ export function DrawerWrap({
       <Drawer.Overlay className={drawerStyles.overlay} />
       <Drawer.Content
         aria-describedby={undefined}
-        className={cn(drawerStyles.content, className)}
+        className={cn(
+          drawerStyles.content,
+          isCompact && compactStyles.drawerContent,
+          className,
+        )}
         data-testid={testId}
         onInteractOutside={handleClose}
       >
         <div
-          className={`flex w-full shrink-0 items-center justify-between ${
-            hasVisibleTitle ? "pb-6" : "pb-0"
-          }`}
+          className={cn(
+            "flex w-full shrink-0 items-center justify-between",
+            hasVisibleTitle
+              ? isCompact
+                ? compactStyles.header
+                : "pb-6"
+              : "pb-0",
+          )}
         >
           {hasVisibleTitle ? (
             <Drawer.Title
-              className={
-                variant === "compact" ? compactStyles.title : drawerStyles.title
-              }
+              className={isCompact ? compactStyles.title : drawerStyles.title}
             >
               {accessibleTitle}
             </Drawer.Title>
