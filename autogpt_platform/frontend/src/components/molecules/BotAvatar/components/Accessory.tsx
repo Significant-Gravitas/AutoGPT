@@ -43,6 +43,9 @@ export function Accessory({
   const { cx, eyeY, eyeGap, top, bottom } = anchors;
   const body = ellipsoidFor(anchors);
   const edge = outline ? { stroke: INK, strokeWidth: 2 } : {};
+  const soft = outline
+    ? { stroke: INK, strokeWidth: 2 }
+    : { stroke: deep, strokeWidth: 3 };
   const eyeLat = surfacePointAt(cx, eyeY, body).lat;
   const eyeLon = surfacePointAt(cx + eyeGap / 2, eyeY, body).lon;
 
@@ -95,8 +98,10 @@ export function Accessory({
       <path
         d={polygonPath(points, pose, body)}
         fill={fill}
-        {...edge}
+        stroke={outline ? INK : fill}
+        strokeWidth={outline ? 2 : 3.5}
         strokeLinejoin="round"
+        strokeLinecap="round"
       />
     );
   }
@@ -248,7 +253,13 @@ export function Accessory({
       return (
         <Disc center={center} normal={center} minDepth={0.5}>
           <circle r={9} fill={deep} {...edge} />
-          <path d={STAR} fill="#fff" />
+          <path
+            d={STAR}
+            fill="#fff"
+            stroke="#fff"
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+          />
         </Disc>
       );
     }
@@ -260,13 +271,13 @@ export function Accessory({
             <path
               d="M0,0 L-11,-6 L-11,6 Z"
               fill={deep}
-              {...edge}
+              {...soft}
               strokeLinejoin="round"
             />
             <path
               d="M0,0 L11,-6 L11,6 Z"
               fill={deep}
-              {...edge}
+              {...soft}
               strokeLinejoin="round"
             />
             <circle r={2.6} fill={deep} {...edge} />
@@ -299,18 +310,18 @@ export function Accessory({
       );
     }
     case "crown": {
-      const crownLat = surfacePointAt(cx, top + 8, body).lat;
+      const crownLat = surfacePointAt(cx, top + 16, body).lat;
       const base: Vec3[] = Array.from({ length: 25 }, (_, index) =>
         fromSurface(-Math.PI + (2 * Math.PI * index) / 24, crownLat, 1.04),
       );
       const spikes = [-0.9, -0.3, 0.3, 0.9].map((lon) => [
-        fromSurface(lon - 0.22, crownLat, 1.04),
-        fromSurface(lon, crownLat + 0.3, 1.18),
-        fromSurface(lon + 0.22, crownLat, 1.04),
+        fromSurface(lon - 0.3, crownLat, 1.04),
+        fromSurface(lon, crownLat + 0.42, 1.36),
+        fromSurface(lon + 0.3, crownLat, 1.04),
       ]);
       return (
         <g>
-          <Strand points={base} width={4} />
+          <Strand points={base} width={5.5} />
           {spikes.map((spike, index) => (
             <Slab key={index} points={spike} />
           ))}
@@ -401,15 +412,15 @@ export function Accessory({
             <ellipse
               key={angle}
               cx={0}
-              cy={-6}
-              rx={3.6}
-              ry={5.2}
+              cy={-7.5}
+              rx={4.6}
+              ry={6.6}
               fill="#fff"
               {...edge}
               transform={`rotate(${angle})`}
             />
           ))}
-          <circle r={3.4} fill={deep} {...edge} />
+          <circle r={4.2} fill={deep} {...edge} />
         </Disc>
       );
     }
@@ -421,27 +432,29 @@ export function Accessory({
       );
       return (
         <Disc center={chin} normal={chin} minDepth={0.35}>
-          <path
-            d="M0,0 L-11,-6 L-11,6 Z"
-            fill={deep}
-            {...edge}
-            strokeLinejoin="round"
-          />
-          <path
-            d="M0,0 L11,-6 L11,6 Z"
-            fill={deep}
-            {...edge}
-            strokeLinejoin="round"
-          />
-          <rect
-            x={-2.6}
-            y={-3}
-            width={5.2}
-            height={6}
-            rx={1.5}
-            fill={deep}
-            {...edge}
-          />
+          <g transform="scale(1.35)">
+            <path
+              d="M0,0 L-11,-6 L-11,6 Z"
+              fill={deep}
+              {...soft}
+              strokeLinejoin="round"
+            />
+            <path
+              d="M0,0 L11,-6 L11,6 Z"
+              fill={deep}
+              {...soft}
+              strokeLinejoin="round"
+            />
+            <rect
+              x={-2.6}
+              y={-3}
+              width={5.2}
+              height={6}
+              rx={1.5}
+              fill={deep}
+              {...edge}
+            />
+          </g>
         </Disc>
       );
     }
@@ -459,7 +472,7 @@ export function Accessory({
             <path
               d="M0,0 L-9,4 L-6,10 Z M0,0 L-2,10 L-7,14 Z"
               fill={deep}
-              {...edge}
+              {...soft}
               strokeLinejoin="round"
             />
           </Disc>
