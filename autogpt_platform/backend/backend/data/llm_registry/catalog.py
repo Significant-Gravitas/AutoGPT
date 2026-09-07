@@ -565,6 +565,8 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=45.0,
@@ -579,6 +581,8 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=1, input_credits_per_1m=15.0, output_credits_per_1m=60.0
                 ),
@@ -591,13 +595,17 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=188.0,
                     output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=18.75,
                     high_context_threshold_tokens=200000,
                     high_context_input_credits_per_1m=375.0,
                     high_context_output_credits_per_1m=2250.0,
+                    high_context_cache_read_credits_per_1m=37.5,
                 ),
             ),
             CatalogModel(
@@ -608,6 +616,8 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=75.0,
@@ -622,6 +632,8 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=38.0,
@@ -636,13 +648,17 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=65536,
                 price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                    cache_read_credits_per_1m=30.0,
                     high_context_threshold_tokens=200000,
                     high_context_input_credits_per_1m=600.0,
                     high_context_output_credits_per_1m=2700.0,
+                    high_context_cache_read_credits_per_1m=60.0,
                 ),
             ),
             CatalogModel(

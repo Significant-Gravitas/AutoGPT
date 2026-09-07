@@ -87,6 +87,7 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
         block_name="Send Email",
         outputs={},
         provider="google",
+        credential_type="oauth2",
         session_id="test-session",
     )
     without_provider = with_provider.model_copy(update={"provider": None})
@@ -115,6 +116,29 @@ def test_run_block_does_not_report_llm_credential_use() -> None:
     )
 
     assert tool.activity_event(session=session, result=model_call) is None
+
+
+def test_run_block_distinguishes_google_api_key_from_oauth() -> None:
+    tool = RunBlockTool()
+    session = _make_session()
+    google_oauth_call = BlockOutputResponse(
+        message="Block executed",
+        block_id="block-1",
+        block_name="Google Drive",
+        outputs={},
+        provider="google",
+        credential_type="oauth2",
+        session_id="test-session",
+    )
+    google_llm_call = google_oauth_call.model_copy(
+        update={
+            "block_name": "AITextGeneratorBlock",
+            "credential_type": "api_key",
+        }
+    )
+
+    assert tool.activity_event(session=session, result=google_oauth_call) is not None
+    assert tool.activity_event(session=session, result=google_llm_call) is None
 
 
 def test_google_api_key_is_llm_but_google_oauth_is_integration() -> None:

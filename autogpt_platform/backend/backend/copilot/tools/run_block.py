@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any
 
-from backend.blocks.llm import LLM_EXCLUSIVE_PROVIDER_NAMES
+from backend.blocks.llm import is_llm_credentials
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
@@ -92,7 +92,7 @@ class RunBlockTool(BaseTool):
             or not result.success
             or result.is_dry_run
             or not result.provider
-            or result.provider in LLM_EXCLUSIVE_PROVIDER_NAMES
+            or is_llm_credentials(result.provider, result.credential_type)
         ):
             return None
         return ActivityEventDraft(

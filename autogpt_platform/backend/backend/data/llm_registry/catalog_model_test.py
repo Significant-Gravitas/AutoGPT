@@ -65,6 +65,7 @@ def test_invalid_model_fields_rejected(field, value):
         "high_context_threshold_tokens",
         "high_context_input_credits_per_1m",
         "high_context_output_credits_per_1m",
+        "high_context_cache_read_credits_per_1m",
     ],
 )
 def test_negative_costs_rejected(field):

@@ -149,11 +149,12 @@ class TokenRate(BaseModel):
 
 
 class HighContextTokenRate(BaseModel):
-    """Replacement input/output rates above a prompt-token threshold."""
+    """Replacement token rates above a prompt-token threshold."""
 
     threshold: int
     input: float
     output: float
+    cache_read: float
 
 
 # TOKEN_COST populates gradually as we migrate LLM blocks to the TOKENS
@@ -196,12 +197,14 @@ def _high_context_token_cost_from_catalog() -> dict[LLMModel, HighContextTokenRa
             cost.high_context_threshold_tokens is None
             or cost.high_context_input_credits_per_1m is None
             or cost.high_context_output_credits_per_1m is None
+            or cost.high_context_cache_read_credits_per_1m is None
         ):
             continue
         rates[member] = HighContextTokenRate(
             threshold=cost.high_context_threshold_tokens,
             input=cost.high_context_input_credits_per_1m,
             output=cost.high_context_output_credits_per_1m,
+            cache_read=cost.high_context_cache_read_credits_per_1m,
         )
     return rates
 
@@ -236,6 +239,7 @@ def compute_token_credits(
     high_context_rate = HIGH_CONTEXT_TOKEN_COST.get(model) if model else None
     input_rate = rate.input
     output_rate = rate.output
+    cache_read_rate = rate.cache_read
     if (
         high_context_rate is not None
         and stats.input_token_count > high_context_rate.threshold
@@ -244,11 +248,12 @@ def compute_token_credits(
         # only to tokens above the threshold.
         input_rate = high_context_rate.input
         output_rate = high_context_rate.output
+        cache_read_rate = high_context_rate.cache_read
 
     total = (
         stats.input_token_count * input_rate
         + stats.output_token_count * output_rate
-        + stats.cache_read_token_count * rate.cache_read
+        + stats.cache_read_token_count * cache_read_rate
         + stats.cache_creation_token_count * rate.cache_creation
     )
     return max(0, math.ceil(total / 1_000_000))

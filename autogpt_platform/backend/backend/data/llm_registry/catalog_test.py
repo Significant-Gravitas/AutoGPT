@@ -124,6 +124,22 @@ def test_exactly_one_enabled_recommended_model():
     assert len(recommended) == 1, recommended
 
 
+def test_direct_gemini_models_declare_tool_and_json_support():
+    direct_gemini_slugs = {
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+    }
+    by_slug = {model.slug: model for model in CATALOG.models}
+
+    for slug in direct_gemini_slugs:
+        assert by_slug[slug].supports_tools, slug
+        assert by_slug[slug].supports_json_output, slug
+
+
 def test_kimi_k3_bills_at_authored_rates():
     """The flagship catalog-native model's billing projections — flat tier
     and per-1M token rates — must match its authored catalog entry."""

@@ -798,6 +798,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     provider: str | None = None
+    credential_type: str | None = None
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
