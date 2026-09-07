@@ -1,7 +1,5 @@
 """Public browse and install for marketplace skill listings."""
 
-import logging
-
 import autogpt_libs.auth
 import fastapi
 from fastapi import Path, Query, Security
@@ -9,8 +7,6 @@ from fastapi import Path, Query, Security
 from backend.copilot.tools.skills import SkillLimitError
 
 from . import skill_db, skill_model
-
-logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
 

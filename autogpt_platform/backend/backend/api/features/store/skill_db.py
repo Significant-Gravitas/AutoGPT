@@ -7,8 +7,6 @@ key — a catalogue this size gains nothing from it, and it lives on the listing
 because installs accumulate across versions.
 """
 
-import logging
-
 import prisma.enums
 import prisma.models
 import prisma.types
@@ -19,8 +17,6 @@ from backend.util.models import Pagination
 
 from . import skill_model
 from .categories import category_filter_values
-
-logger = logging.getLogger(__name__)
 
 _LISTING_INCLUDE: prisma.types.SkillListingInclude = {
     "ActiveVersion": True,
