@@ -67,13 +67,16 @@ export default function ArtifactsPage() {
     isLoadingMore,
     loadMore,
   } = useArtifactsPage();
-  const { folders } = useArtifactsFolders();
+  const { folders, isLoading: isFoldersLoading } = useArtifactsFolders();
 
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
   const showFolders = !isInFolder && !isSearching;
   const hasFolders = showFolders && folders.length > 0;
+  // At the root the empty state depends on whether folders exist, so hold
+  // the loading state until both queries have settled.
+  const isListLoading = isLoading || (showFolders && isFoldersLoading);
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
@@ -160,7 +163,7 @@ export default function ArtifactsPage() {
       >
         <ArtifactsList
           files={files}
-          isLoading={isLoading}
+          isLoading={isListLoading}
           isError={isError}
           error={error}
           emptyMessage={getEmptyMessage({
