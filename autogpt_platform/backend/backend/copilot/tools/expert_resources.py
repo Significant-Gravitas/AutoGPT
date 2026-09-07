@@ -24,10 +24,7 @@ logger = logging.getLogger(__name__)
 
 _EXPERT_ID_PARAM = {
     "type": "string",
-    "description": (
-        "Personal AutoPilot only: the expert to act on (see list_team). "
-        "An expert session always acts on itself and must omit this."
-    ),
+    "description": "Target expert (AutoPilot only; experts act on themselves).",
 }
 
 
@@ -54,10 +51,9 @@ class InstallExpertWorkflowTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Install a workflow on an expert so it can run, edit, and schedule "
-            "it. Source is one of: library_agent_id (owner's library), "
-            "username_agent_slug ('user/agent', marketplace), or "
-            "store_listing_version_id (marketplace)."
+            "Install a workflow on an expert so it can run it. Give exactly one "
+            "source: library_agent_id, username_agent_slug, or "
+            "store_listing_version_id."
         )
 
     @property
@@ -65,9 +61,15 @@ class InstallExpertWorkflowTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "library_agent_id": {"type": "string"},
-                "username_agent_slug": {"type": "string"},
-                "store_listing_version_id": {"type": "string"},
+                "library_agent_id": {"type": "string", "description": "Library agent."},
+                "username_agent_slug": {
+                    "type": "string",
+                    "description": "Marketplace 'creator/slug'.",
+                },
+                "store_listing_version_id": {
+                    "type": "string",
+                    "description": "Marketplace listing version.",
+                },
                 "expert_id": _EXPERT_ID_PARAM,
             },
             "required": [],
@@ -160,18 +162,15 @@ class RemoveExpertWorkflowTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Uninstall a workflow from an expert by workflow_id or "
-            "library_agent_id. The agent stays in the owner's library."
-        )
+        return "Uninstall a workflow from an expert (agent stays in the library)."
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
-                "library_agent_id": {"type": "string"},
+                "workflow_id": {"type": "string", "description": "Installed workflow."},
+                "library_agent_id": {"type": "string", "description": "Library agent."},
                 "expert_id": _EXPERT_ID_PARAM,
             },
             "required": [],
@@ -251,11 +250,7 @@ class GrantExpertCredentialTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Let an expert use one of the owner's integration credentials. "
-            "credential_id comes from a run's missing-credentials hint or the "
-            "expert's Integrations page."
-        )
+        return "Let an expert use one of the owner's credentials (id from a missing-credentials hint)."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -263,7 +258,7 @@ class GrantExpertCredentialTool(BaseTool):
             "type": "object",
             "properties": {
                 "expert_id": {"type": "string", "description": "Expert to grant to."},
-                "credential_id": {"type": "string"},
+                "credential_id": {"type": "string", "description": "Credential id."},
             },
             "required": ["expert_id", "credential_id"],
         }
@@ -303,7 +298,7 @@ class RevokeExpertCredentialTool(BaseTool):
                     "type": "string",
                     "description": "Expert to revoke from.",
                 },
-                "credential_id": {"type": "string"},
+                "credential_id": {"type": "string", "description": "Credential id."},
             },
             "required": ["expert_id", "credential_id"],
         }
@@ -383,10 +378,7 @@ class ListExpertWorkflowsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "List the workflows installed on an expert — the only ones it can "
-            "run, edit, or schedule."
-        )
+        return "List an expert's installed workflows (the only ones it can run)."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -445,10 +437,7 @@ class ListExpertCredentialsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "List the integration credentials an expert has been granted — the "
-            "only ones its workflows, blocks, and MCP tools can use."
-        )
+        return "List the credentials an expert has been granted."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -523,9 +512,8 @@ class RequestCredentialGrantTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Ask the owner to grant this expert an existing account credential "
-            "(credential_id from a missing-credentials hint). Ends the turn "
-            "waiting on the owner; do not retry the run until they answer."
+            "Ask the owner to grant this expert an account credential, then "
+            "stop and wait for their answer."
         )
 
     @property
@@ -533,14 +521,14 @@ class RequestCredentialGrantTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "credential_id": {"type": "string"},
+                "credential_id": {"type": "string", "description": "Credential id."},
                 "provider": {
                     "type": "string",
                     "description": "Provider slug, for the note.",
                 },
                 "reason": {
                     "type": "string",
-                    "description": "One sentence on what the credential unblocks.",
+                    "description": "What it unblocks, one sentence.",
                     "maxLength": 300,
                 },
             },
