@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useStoreCategories } from "@/hooks/useStoreCategories";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
@@ -61,6 +62,8 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
+  const { categories } = useStoreCategories();
+
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
   const [openAccordion, setOpenAccordion] = React.useState("");
@@ -75,18 +78,10 @@ export function AgentInfoStep({
     form.setValue("recommendedScheduleCron", cronExpression);
   };
 
-  const categoryOptions = [
-    { value: "productivity", label: "Productivity" },
-    { value: "writing", label: "Writing & Content" },
-    { value: "development", label: "Development" },
-    { value: "data", label: "Data & Analytics" },
-    { value: "marketing", label: "Marketing & SEO" },
-    { value: "research", label: "Research & Learning" },
-    { value: "creative", label: "Creative & Design" },
-    { value: "business", label: "Business & Finance" },
-    { value: "personal", label: "Personal Assistant" },
-    { value: "other", label: "Other" },
-  ];
+  const categoryOptions = categories.map((category) => ({
+    value: category.value,
+    label: category.label,
+  }));
 
   const isSubmitDisabled =
     Object.keys(form.formState.errors).length > 0 || isSubmitting;

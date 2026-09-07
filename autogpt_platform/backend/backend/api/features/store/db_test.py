@@ -9,6 +9,7 @@ from prisma import Prisma
 
 from backend.util.exceptions import NotFoundError
 
+from . import categories as store_categories
 from . import db
 from .model import MyAgentsSortBy, Profile, SubmissionStats
 
@@ -35,6 +36,7 @@ async def test_get_store_agents(mocker):
             agent_video=None,
             agent_image=["image.jpg"],
             featured=False,
+            verified=False,
             creator_username="creator",
             creator_avatar="avatar.jpg",
             sub_heading="Test heading",
@@ -80,6 +82,7 @@ async def test_get_store_agent_details(mocker):
         agent_video="video.mp4",
         agent_image=["image.jpg"],
         featured=False,
+        verified=False,
         creator_username="creator",
         creator_avatar="avatar.jpg",
         sub_heading="Test heading",
@@ -167,6 +170,7 @@ async def test_create_store_submission(mocker):
         username="testuser",
         description="Test",
         isFeatured=False,
+        isVerified=False,
         links=[],
         createdAt=now,
         updatedAt=now,
@@ -222,6 +226,7 @@ async def test_create_store_submission(mocker):
         imageUrls=[],
         categories=[],
         isFeatured=False,
+        isVerified=False,
         isDeleted=False,
         version=1,
         storeListingId="listing-id",
@@ -283,6 +288,7 @@ async def test_update_profile(mocker):
         links=["link1"],
         avatarUrl="avatar.jpg",
         isFeatured=False,
+        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -327,6 +333,7 @@ async def test_update_profile_creates_when_missing(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
+        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -365,6 +372,7 @@ async def test_update_profile_tolerates_create_race(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
+        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -377,6 +385,7 @@ async def test_update_profile_tolerates_create_race(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
+        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -418,6 +427,7 @@ async def test_get_user_profile(mocker):
         links=["link1", "link2"],
         avatarUrl="avatar.jpg",
         isFeatured=False,
+        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
         userId="user-id",
@@ -485,7 +495,7 @@ async def test_get_store_agents_with_search_and_filters_parameterized():
 
         assert isinstance(result.agents, list)
         fallback_sql, *fallback_params = fallback_query_raw.call_args.args
-        assert malicious_category in fallback_params
+        assert [malicious_category] in fallback_params
         assert malicious_category not in fallback_sql
         assert [malicious_creator, "creator2"] in fallback_params
 
@@ -508,7 +518,7 @@ async def test_get_store_agents_search_category_array_injection():
 
         assert isinstance(result.agents, list)
         fallback_sql, *fallback_params = fallback_query_raw.call_args.args
-        assert malicious_category in fallback_params
+        assert [malicious_category] in fallback_params
         assert malicious_category not in fallback_sql
 
 
@@ -1193,3 +1203,74 @@ async def test_get_agent_skips_graph_access_check(mocker):
         for_export=True,
         skip_access_check=True,
     )
+
+
+@pytest.fixture
+def store_agent_query(mocker):
+    """Capture the where/order Prisma is asked for, without a database."""
+    mock = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock.return_value.find_many = AsyncMock(return_value=[])
+    mock.return_value.count = AsyncMock(return_value=0)
+    return mock.return_value.find_many
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_unsorted_browse_ranks_verified_first(store_agent_query):
+    await db.get_store_agents()
+
+    assert store_agent_query.call_args.kwargs["order"] == [{"verified": "desc"}]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("sorted_by", list(db.StoreAgentsSortOptions))
+async def test_every_browse_sort_ranks_verified_first(store_agent_query, sorted_by):
+    await db.get_store_agents(sorted_by=sorted_by)
+
+    order = store_agent_query.call_args.kwargs["order"]
+    assert order[0] == {"verified": "desc"}
+    assert len(order) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_featured_listings_must_also_be_verified(store_agent_query):
+    await db.get_store_agents(featured=True)
+
+    where = store_agent_query.call_args.kwargs["where"]
+    assert where["featured"] is True
+    assert where["verified"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_category_filter_matches_the_canonical_value_and_its_aliases(
+    store_agent_query,
+):
+    await db.get_store_agents(category="content")
+
+    matches = store_agent_query.call_args.kwargs["where"]["categories"]["has_some"]
+    assert "content" in matches
+    assert "writing" in matches
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uncategorised_listings_are_shown_while_the_setting_is_off(
+    store_agent_query,
+):
+    assert db.settings.config.marketplace_require_canonical_category is False
+
+    await db.get_store_agents()
+
+    assert "categories" not in store_agent_query.call_args.kwargs["where"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_uncategorised_listings_are_hidden_when_the_setting_is_on(
+    store_agent_query, monkeypatch
+):
+    monkeypatch.setattr(
+        db.settings.config, "marketplace_require_canonical_category", True
+    )
+
+    await db.get_store_agents()
+
+    matches = store_agent_query.call_args.kwargs["where"]["categories"]["has_some"]
+    assert set(store_categories.all_category_match_values()) == set(matches)

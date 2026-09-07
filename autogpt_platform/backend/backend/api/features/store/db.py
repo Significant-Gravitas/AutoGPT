@@ -25,6 +25,7 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from .categories import all_category_match_values, category_match_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
@@ -181,13 +182,19 @@ async def _fallback_store_agent_search(
         # No search query — use Prisma for simple filtered listing
         where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
         if featured:
+            # A front-page slot is only ever held by a verified listing.
             where_clause["featured"] = featured
+            where_clause["verified"] = True
         if creators:
             where_clause["creator_username"] = {"in": creators}
         if category:
-            where_clause["categories"] = {"has": category}
+            where_clause["categories"] = {"has_some": category_match_values(category)}
+        elif settings.config.marketplace_require_canonical_category:
+            where_clause["categories"] = {"has_some": all_category_match_values()}
 
-        order_by = []
+        # Verified listings lead every browse ordering, including the unsorted
+        # default, which had no ORDER BY at all.
+        order_by: list[Any] = [{"verified": "desc"}]
         if sorted_by == StoreAgentsSortOptions.RATING:
             order_by.append({"rating": "desc"})
         elif sorted_by == StoreAgentsSortOptions.RUNS:
@@ -212,14 +219,18 @@ async def _fallback_store_agent_search(
     param_idx = 2
 
     if featured:
-        filters.append("sa.featured = true")
+        filters.append("sa.featured = true AND sa.verified = true")
     if creators:
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
     if category:
-        params.append(category)
-        filters.append(f"${param_idx} = ANY(sa.categories)")
+        params.append(category_match_values(category))
+        filters.append(f"sa.categories && ${param_idx}")
+        param_idx += 1
+    elif settings.config.marketplace_require_canonical_category:
+        params.append(all_category_match_values())
+        filters.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_sql = " AND ".join(filters)

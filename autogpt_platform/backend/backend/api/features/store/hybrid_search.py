@@ -25,8 +25,12 @@ from backend.api.features.search.hybrid_search import (
     bm25_rerank,
 )
 from backend.data.db import query_raw_with_schema
+from backend.util.settings import Settings
+
+from .categories import all_category_match_values, category_match_values
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 @dataclass
@@ -149,7 +153,7 @@ async def hybrid_search(
     where_parts = ["sa.is_available = true"]
 
     if featured:
-        where_parts.append("sa.featured = true")
+        where_parts.append("sa.featured = true AND sa.verified = true")
 
     if creators:
         params.append(creators)
@@ -157,8 +161,12 @@ async def hybrid_search(
         param_idx += 1
 
     if category:
-        params.append(category)
-        where_parts.append(f"${param_idx} = ANY(sa.categories)")
+        params.append(category_match_values(category))
+        where_parts.append(f"sa.categories && ${param_idx}")
+        param_idx += 1
+    elif settings.config.marketplace_require_canonical_category:
+        params.append(all_category_match_values())
+        where_parts.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
     where_clause = " AND ".join(where_parts)

@@ -233,6 +233,7 @@ async def test_add_agent_to_library(mocker):
         description="Test Description",
         categories=["test"],
         isFeatured=False,
+        isVerified=False,
         isDeleted=False,
         isAvailable=True,
         storeListingId="listing123",
