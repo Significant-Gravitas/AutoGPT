@@ -494,9 +494,9 @@ async def mcp_store_token(
     # says nothing about the credential, and refusing to store would strand
     # the user.
     #
-    # Redirects are not followed. A cross-host redirect strips the header, so
-    # the target would answer 401 to an effectively anonymous request and we
-    # would blame the user for a credential that is fine.
+    # Redirects are not followed: a cross-host hop either carries the
+    # credential somewhere the user never named, or (once #14419 lands) drops
+    # it and earns a 401 we would wrongly report as "you mistyped this".
     probe_client = MCPClient(
         server_url, authorization=authorization, follow_redirects=False
     )
