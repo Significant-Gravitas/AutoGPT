@@ -206,6 +206,46 @@ class TestHeaderParams:
         assert collect_header_params({"type": "object", "properties": {}}) == []
         assert collect_header_params(None) == []
 
+    @pytest.mark.parametrize(
+        "instance_keyword",
+        ["default", "const", "enum", "examples", "example"],
+    )
+    def test_annotation_inside_instance_data_is_not_an_annotation(
+        self, instance_keyword: str
+    ):
+        """``x-mcp-header`` in a value, not a schema, must not drop the tool.
+
+        A tool whose argument *is* a JSON Schema can legitimately carry an
+        ``x-mcp-header`` key inside a ``default``/``enum``/``examples`` value.
+        That is payload the server echoes back, not an annotation for us.
+        """
+        payload = {"x-mcp-header": "X-Not-An-Annotation"}
+        value = [payload] if instance_keyword in ("enum", "examples") else payload
+        assert collect_header_params(
+            {
+                "type": "object",
+                "properties": {
+                    "schema_arg": {"type": "object", instance_keyword: value},
+                    "region": {"type": "string", "x-mcp-header": "X-Region"},
+                },
+            }
+        ) == [HeaderParam(path=("region",), header_name="X-Region", json_type="string")]
+
+    def test_annotation_behind_composition_is_still_rejected(self):
+        """Skipping instance data must not weaken the reachability guard."""
+        with pytest.raises(InvalidHeaderAnnotation):
+            collect_header_params(
+                {
+                    "properties": {
+                        "a": {
+                            "type": "object",
+                            "default": {"x-mcp-header": "X-Payload"},
+                            "anyOf": [{"type": "string", "x-mcp-header": "X-Hidden"}],
+                        }
+                    }
+                }
+            )
+
 
 # ───────────────────────── era cache ─────────────────────────
 
@@ -649,6 +689,56 @@ class TestEraDetection:
         tools = await client.list_tools()
         assert tools == []
         assert transport.methods() == ["server/discover", "tools/list"]
+
+
+class TestSloppyServerPayloads:
+    """A single out-of-spec field must not take down a whole server."""
+
+    async def test_null_tool_description_is_tolerated(self):
+        """``"description": null`` must not fail model validation.
+
+        The key is present, so ``.get(..., "")`` returns ``None``; without a
+        fallback that raises ``ValidationError``, which the discovery route
+        does not catch and answers 502 for every tool on the server.
+        """
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/list": [
+                    _FakeResponse(
+                        200,
+                        _rpc_result(
+                            {
+                                "tools": [
+                                    {
+                                        "name": "quiet",
+                                        "description": None,
+                                        "inputSchema": {"type": "object"},
+                                    }
+                                ]
+                            }
+                        ),
+                    )
+                ],
+            }
+        )
+        tools = await _client(transport).list_tools()
+        assert [(t.name, t.description) for t in tools] == [("quiet", "")]
+
+    async def test_non_object_content_items_become_text_blocks(self):
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/call": [
+                    _FakeResponse(
+                        200, _rpc_result({"content": ["plain", {"type": "text"}]})
+                    )
+                ],
+            }
+        )
+        result = await _client(transport).call_tool("echo", {})
+        assert result.content == [{"type": "text", "text": "plain"}, {"type": "text"}]
+        assert result.is_error is False
 
 
 class TestHttpRetries:

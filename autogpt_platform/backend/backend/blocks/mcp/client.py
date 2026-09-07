@@ -808,11 +808,36 @@ class MCPClient:
             tools.append(
                 MCPTool(
                     name=name,
-                    description=tool_data.get("description", ""),
+                    # ``or ""``: a server may send an explicit ``null`` rather
+                    # than omitting the key, and the model requires a string.
+                    description=tool_data.get("description") or "",
                     input_schema=input_schema,
                 )
             )
         return tools
+
+    def _content_blocks(self, raw: Any) -> list[dict[str, Any]]:
+        """Content blocks from a ``tools/call`` result, tolerating sloppy servers.
+
+        Every item is an object per the spec.  A bare scalar would fail model
+        validation and take the whole call down, so wrap it as a text block
+        instead; ``parse_mcp_content`` then reads it the same way.
+        """
+        if not isinstance(raw, list):
+            return []
+        blocks: list[dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, dict):
+                blocks.append(item)
+            else:
+                logger.warning(
+                    "MCP server %s returned a %s content item, not an object; "
+                    "treating it as text",
+                    self.server_url,
+                    type(item).__name__,
+                )
+                blocks.append({"type": "text", "text": str(item)})
+        return blocks
 
     @staticmethod
     def _header_params_from_schema(
@@ -889,6 +914,6 @@ class MCPClient:
             return MCPCallResult(is_error=True)
 
         return MCPCallResult(
-            content=result.get("content") or [],
+            content=self._content_blocks(result.get("content")),
             is_error=bool(result.get("isError", False)),
         )

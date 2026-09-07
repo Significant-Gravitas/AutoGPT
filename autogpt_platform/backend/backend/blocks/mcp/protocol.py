@@ -246,17 +246,13 @@ _HEADER_PARAM_TYPES = {"string", "integer", "boolean"}
 _SAFE_INT_MIN = -(2**53) + 1
 _SAFE_INT_MAX = 2**53 - 1
 _HEADER_PARAM_PROPERTY = "x-mcp-header"
-_SCHEMA_ARRAY_OR_COMPOSITION_KEYS = (
-    "items",
-    "prefixItems",
-    "oneOf",
-    "anyOf",
-    "allOf",
-    "not",
-    "if",
-    "then",
-    "else",
-    "$ref",
+# JSON Schema keywords whose values are *instance data*, not subschemas.  A
+# ``default``/``const``/``enum``/``examples`` value may legitimately be an
+# object carrying an ``x-mcp-header`` key (a tool that takes a schema as an
+# argument, say); that is payload, not an annotation, so the walk below must
+# not read it as one.
+_SCHEMA_INSTANCE_VALUE_KEYS = frozenset(
+    {"default", "const", "enum", "examples", "example"}
 )
 
 
@@ -347,11 +343,11 @@ def _reject_unreachable_annotations(schema: Any) -> None:
                     "`properties` only"
                 )
             for key, sub in node.items():
+                if key in _SCHEMA_INSTANCE_VALUE_KEYS:
+                    continue
                 if key == "properties" and isinstance(sub, dict):
                     for child in sub.values():
                         walk(child, reachable)
-                elif key in _SCHEMA_ARRAY_OR_COMPOSITION_KEYS:
-                    walk(sub, False)
                 elif isinstance(sub, (dict, list)):
                     walk(sub, False)
         elif isinstance(node, list):
