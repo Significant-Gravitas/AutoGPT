@@ -35,6 +35,28 @@ describe("PromptInputTextarea Enter handling", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // This component used to track composition itself with
+  // onCompositionStart/onCompositionEnd state. That layer is gone, so walk the
+  // full browser sequence and prove the keydown flags alone are sufficient.
+  it("submits only after the composition has ended", () => {
+    const { textarea, onSubmit } = renderComposer();
+
+    fireEvent.compositionStart(textarea, { data: "ねこ" });
+    // Chrome and Firefox flag the confirming Enter itself.
+    fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(textarea, { data: "猫" });
+    // Safari fires its confirming Enter after compositionend, with
+    // isComposing already false and only keyCode 229 left to go on.
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // The next Enter is the user asking to send.
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 13 });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("does not submit on Shift+Enter", () => {
     const { textarea, onSubmit } = renderComposer();
 

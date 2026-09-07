@@ -32,10 +32,14 @@ function fakeTextarea(value: string, caret = value.length) {
   return { value, selectionStart: caret } as HTMLTextAreaElement;
 }
 
-function keyEvent(key: string, isComposing = false) {
+function keyEvent(key: string, composing: boolean | "keyCode229" = false) {
+  const isComposing = composing === true;
+  // Safari confirms a candidate with an Enter fired after compositionend, so
+  // isComposing is already false and only the legacy keyCode is left.
+  const keyCode = composing === "keyCode229" ? 229 : key === "Enter" ? 13 : 0;
   return {
     key,
-    nativeEvent: { key, isComposing },
+    nativeEvent: { key, isComposing, keyCode },
     preventDefault: vi.fn(),
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
@@ -205,6 +209,44 @@ describe("useChatMentions", () => {
       expect(result.current.onKeyDown(keyEvent("ArrowDown", true))).toBe(false);
     });
     expect(result.current.highlightedIndex).toBe(0);
+  });
+
+  it("does not accept a mention on a composing Enter or Tab", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+    const setValue = vi.fn();
+    const addWorkspaceFile = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @al",
+          setValue,
+          addWorkspaceFile,
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @al")));
+    await waitFor(() => expect(result.current.files).toHaveLength(1));
+
+    for (const event of [
+      keyEvent("Enter", true),
+      keyEvent("Enter", "keyCode229"),
+      keyEvent("Tab", true),
+    ]) {
+      act(() => {
+        expect(result.current.onKeyDown(event)).toBe(false);
+      });
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+
+    expect(setValue).not.toHaveBeenCalled();
+    expect(addWorkspaceFile).not.toHaveBeenCalled();
+    expect(result.current.isOpen).toBe(true);
   });
 
   it("ignores accept when the highlighted item is out of bounds", async () => {

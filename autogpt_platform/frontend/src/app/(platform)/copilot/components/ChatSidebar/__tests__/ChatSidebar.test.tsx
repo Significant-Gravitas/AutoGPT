@@ -462,7 +462,10 @@ describe("ChatSidebar — rename", () => {
     fireEvent.change(input, { target: { value: "新しいチャット" } });
 
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
-    expect(screen.getByLabelText("Rename chat")).toBeDefined();
+    // The IME owns this Enter: the field stays in edit mode and, more to the
+    // point, no rename request goes out.
+    expect(screen.queryByLabelText("Rename chat")).not.toBeNull();
+    expect(titleBodies).toEqual([]);
 
     fireEvent.keyDown(input, { key: "Enter" });
     await vi.waitFor(() => {
