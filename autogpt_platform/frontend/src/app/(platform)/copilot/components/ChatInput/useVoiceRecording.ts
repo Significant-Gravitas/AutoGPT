@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { isKey } from "@/lib/keyboard";
 
 const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 
@@ -232,7 +233,7 @@ export function useVoiceRecording({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // Allow space to toggle recording (start when empty, stop when recording)
-      if (event.key === " " && !isTranscribing) {
+      if (isKey(event, " ") && !isTranscribing) {
         if (isRecordingRef.current) {
           // Stop recording on space
           event.preventDefault();

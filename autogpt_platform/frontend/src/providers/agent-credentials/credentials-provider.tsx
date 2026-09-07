@@ -48,6 +48,7 @@ export type CredentialsProviderData = {
   mcpOAuthCallback: (
     code: string,
     state_token: string,
+    iss?: string,
   ) => Promise<CredentialsMetaResponse>;
   /** Stores a manually entered MCP credential for a server without OAuth. */
   mcpStoreToken: (
@@ -170,11 +171,13 @@ export default function CredentialsProvider({
     async (
       code: string,
       state_token: string,
+      iss?: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
         const response = await postV2ExchangeOauthCodeForMcpTokens({
           code,
           state_token,
+          iss,
         });
         if (response.status !== 200) throw response.data;
         const credsMeta: CredentialsMetaResponse = {
