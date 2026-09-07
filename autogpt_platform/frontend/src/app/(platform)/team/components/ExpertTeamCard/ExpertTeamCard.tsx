@@ -160,14 +160,14 @@ export function ExpertTeamCard({
         <ExpertCover color={expert.color} status={rosterStatus} />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="relative z-10 -mt-11 ml-1 block shrink-0">
+          <span className="relative z-10 -mt-12 ml-1 block shrink-0">
             {isUploadedAvatar(expert.avatar_url) ? (
-              <Avatar className="size-[5.25rem] rounded-full ring-4 ring-white">
+              <Avatar className="size-[5.5rem] rounded-full ring-4 ring-white">
                 <AvatarImage
                   src={expert.avatar_url ?? undefined}
                   alt={expert.name}
-                  width={84}
-                  height={84}
+                  width={88}
+                  height={88}
                   className="bg-white"
                 />
                 <AvatarFallback className="grain-overlay">
@@ -175,7 +175,7 @@ export function ExpertTeamCard({
                 </AvatarFallback>
               </Avatar>
             ) : (
-              <span className="flex size-[5.25rem] items-center justify-center rounded-full bg-white ring-4 ring-white">
+              <span className="flex size-[5.5rem] items-center justify-center rounded-full bg-white ring-4 ring-white">
                 <BotAvatar
                   config={expertAvatarConfig({
                     name: expert.name,
@@ -183,7 +183,7 @@ export function ExpertTeamCard({
                     color: expert.color,
                   })}
                   status={AVATAR_STATUS[rosterStatus]}
-                  size={72}
+                  size={80}
                   title={expert.name}
                 />
               </span>

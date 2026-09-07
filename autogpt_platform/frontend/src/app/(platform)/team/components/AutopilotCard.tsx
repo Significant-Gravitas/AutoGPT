@@ -34,10 +34,10 @@ export function AutopilotCard({
         <ExpertCover color={undefined} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="relative z-10 -mt-11 ml-1 flex size-[5.25rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
+          <span className="relative z-10 -mt-12 ml-1 flex size-[5.5rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
             <BotAvatar
               config={AUTOPILOT_AVATAR}
-              size={72}
+              size={80}
               title="Autopilot"
               showBadge={false}
             />
