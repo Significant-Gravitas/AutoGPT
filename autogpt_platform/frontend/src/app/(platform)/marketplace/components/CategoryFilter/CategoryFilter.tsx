@@ -18,11 +18,16 @@ export function CategoryFilter({ selected, onSelect }: Props) {
   }
 
   return (
+    // Labelled because the hero above carries its own chip row of search
+    // terms, and the two overlap on names like "Marketing".
     <div
       className="mb-8 flex flex-wrap items-center gap-2.5"
       role="group"
-      aria-label="Filter workflows by category"
+      aria-label="Browse by category"
     >
+      <span className="mr-1 text-sm font-medium text-zinc-500">
+        Browse by category
+      </span>
       <CategoryChip
         label="All"
         isSelected={selected === null}
