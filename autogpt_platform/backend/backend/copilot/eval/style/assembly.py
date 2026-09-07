@@ -1,7 +1,8 @@
 """What production would send: the assembled system prompt and the routed model.
 
 Every piece is imported from the engine modules rather than retyped, so a
-change to any of them changes what the gate measures.
+change to any of them changes what the check measures — and shows up as a
+changed fingerprint component.
 """
 
 import hashlib
@@ -35,33 +36,12 @@ from backend.copilot.prompting import (
 )
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
-from .models import ExpertFixture, GateConfig, LedeFacts, Rubric
+from .models import Baseline, ExpertFixture, LedeFacts, Rubric
 
 STYLE_DIR = Path(__file__).resolve().parent
 FIXTURES_DIR = STYLE_DIR / "fixtures"
 RUBRIC_PATH = STYLE_DIR / "rubric.json"
-GATE_PATH = STYLE_DIR / "gate.json"
-
-# Repo-relative paths whose change re-runs the gate; the workflow's ``paths:``
-# filter must equal this list (pinned by assembly_test). Prompt-bearing and
-# model-routing files, plus the gate's own inputs.
-TRIGGER_PATHS: tuple[str, ...] = (
-    ".github/workflows/platform-expert-style-gate.yml",
-    "autogpt_platform/backend/backend/copilot/eval/style/**",
-    "autogpt_platform/backend/backend/copilot/service.py",
-    "autogpt_platform/backend/backend/copilot/prompting.py",
-    "autogpt_platform/backend/backend/copilot/expert_context.py",
-    "autogpt_platform/backend/backend/api/features/experts/seed.py",
-    "autogpt_platform/backend/backend/api/features/experts/models.py",
-    "autogpt_platform/backend/backend/copilot/briefing/narrative.py",
-    "autogpt_platform/backend/backend/copilot/model_router.py",
-    "autogpt_platform/backend/backend/copilot/model_normalize.py",
-    "autogpt_platform/backend/backend/copilot/config.py",
-    "autogpt_platform/backend/backend/copilot/engine.py",
-    "autogpt_platform/backend/backend/data/llm_registry/catalog.py",
-    "autogpt_platform/backend/backend/copilot/sdk/service.py",
-    "autogpt_platform/backend/backend/copilot/baseline/service.py",
-)
+BASELINE_PATH = STYLE_DIR / "baseline.json"
 
 
 class RoutedModel(BaseModel):
@@ -199,7 +179,13 @@ async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
     )
 
 
-def fingerprint(
+def fingerprint(parts: dict[str, str]) -> str:
+    """One hash over the components below: unchanged means the baseline still
+    describes what the experts are being asked, so there is nothing to re-run."""
+    return _sha(json.dumps(parts, sort_keys=True))
+
+
+def fingerprint_parts(
     experts: list[Expert],
     fixtures: list[ExpertFixture],
     rubric: Rubric,
@@ -207,19 +193,25 @@ def fingerprint(
     chat_model: str,
     lede_model: str,
     judge_model: str,
-) -> str:
-    """sha256 of everything the score depends on; unchanged means the last
-    gated run still stands."""
-    payload = {
-        "chat": {e.name: chat_system_prompt(e) for e in experts},
-        "prefix": {e.name: user_prefix(e, experts) for e in experts},
-        "autopilot": chat_system_prompt(None) + user_prefix(None, experts),
-        "lede": {e.name: _system_prompt(e) for e in experts},
-        "models": {"chat": chat_model, "lede": lede_model, "judge": judge_model},
-        "fixtures": [f.model_dump() for f in fixtures],
-        "rubric": rubric.model_dump(),
+) -> dict[str, str]:
+    """Everything a score depends on, hashed component by component so a
+    mismatch names what moved. The models are the ROUTED names: OpenRouter
+    and direct Anthropic spell one model differently, and a fingerprint that
+    changed with the transport would report a change nobody made."""
+    by_name = {f"prompt:{e.name}": chat_system_prompt(e) for e in experts}
+    by_name |= {f"context:{e.name}": user_prefix(e, experts) for e in experts}
+    by_name |= {f"lede:{e.name}": _system_prompt(e) for e in experts}
+    by_name |= {f"fixture:{f.expert}": f.model_dump_json() for f in fixtures}
+    return {
+        "autopilot": _sha(chat_system_prompt(None) + user_prefix(None, experts)),
+        "rubric": _sha(rubric.model_dump_json()),
+        "models": _sha(f"{chat_model}|{lede_model}|{judge_model}"),
+        **{key: _sha(value) for key, value in sorted(by_name.items())},
     }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _sha(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def load_fixtures(names: list[str] | None = None) -> list[ExpertFixture]:
@@ -235,9 +227,11 @@ def load_rubric() -> Rubric:
     return Rubric.model_validate_json(RUBRIC_PATH.read_text(encoding="utf-8"))
 
 
-def load_gate() -> GateConfig:
-    return GateConfig.model_validate_json(GATE_PATH.read_text(encoding="utf-8"))
+def load_baseline() -> Baseline:
+    return Baseline.model_validate_json(BASELINE_PATH.read_text(encoding="utf-8"))
 
 
-def save_gate(gate: GateConfig) -> None:
-    GATE_PATH.write_text(gate.model_dump_json(indent=2) + "\n", encoding="utf-8")
+def save_baseline(baseline: Baseline) -> None:
+    BASELINE_PATH.write_text(
+        baseline.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )

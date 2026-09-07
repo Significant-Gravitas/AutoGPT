@@ -1,4 +1,4 @@
-"""Data shapes for the expert style gate: fixtures, rubric, gate, results."""
+"""Data shapes for the expert style check: fixtures, rubric, baseline, results."""
 
 from typing import Literal
 
@@ -17,7 +17,7 @@ PROMPT_KINDS: tuple[PromptKind, ...] = (
 PROMPTS_PER_EXPERT = 30
 
 # Which arm produced a response: the expert's own suffix judged against its
-# own spec (the number the gate reads), the same response judged against a
+# own spec (the number the baseline stores), the same response judged against a
 # different expert's spec, or plain AutoPilot with no suffix at all. The two
 # controls exist to prove the judge separates before the score is trusted.
 Arm = Literal["expert", "wrong_spec", "no_suffix"]
@@ -81,15 +81,6 @@ class Rubric(BaseModel):
     scale_min: int
     scale_max: int
     dimensions: list[RubricDimension]
-
-
-class GateConfig(BaseModel):
-    pass_threshold: float
-    judge_model: str
-    # sha256 of the assembled prompts, resolved models, fixtures and rubric at
-    # the last gated run; the paid legs are skipped while it still matches.
-    last_gated_fingerprint: str | None = None
-    last_gated_at: str | None = None
 
 
 class DimensionJudgement(BaseModel):
@@ -176,12 +167,43 @@ class Separation(BaseModel):
     separated: bool | None
 
 
-class GateOutcome(BaseModel):
-    threshold: float
-    passed: bool
-    failing: list[str]
-    skipped: bool = False
-    reason: str = ""
+class BaselineExpert(BaseModel):
+    expert: str
+    scores: Distribution
+    by_kind: dict[str, Distribution]
+    # Per-prompt scores, so a later run compares prompt by prompt instead of
+    # mean against mean.
+    by_prompt: dict[str, float]
+
+
+class Baseline(BaseModel):
+    """The scores a run is read against, and what produced them."""
+
+    run_id: str
+    ts: str
+    chat_model: str
+    lede_model: str
+    judge_model: str
+    cost_usd: float
+    note: str = ""
+    fingerprint: str
+    # Component hashes behind the fingerprint, so a mismatch can name what
+    # changed rather than only that something did.
+    parts: dict[str, str] = Field(default_factory=dict)
+    experts: list[BaselineExpert]
+    separation: Separation | None = None
+
+
+class ExpertComparison(BaseModel):
+    expert: str
+    mean: float
+    baseline_mean: float | None
+    # Mean of (this run - baseline) over the prompts both ran, with its
+    # standard error: the same response set, so the noise between prompts
+    # cancels.
+    paired_delta: float | None = None
+    paired_sem: float | None = None
+    shared_prompts: int = 0
 
 
 class StyleEvalResult(BaseModel):
@@ -193,7 +215,7 @@ class StyleEvalResult(BaseModel):
     judge_model: str
     experts: list[ExpertSummary]
     separation: Separation | None
-    gate: GateOutcome | None
+    comparison: list[ExpertComparison]
     cost_usd: float
     cost_known: bool
     input_tokens: int

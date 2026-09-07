@@ -1,9 +1,10 @@
-"""Expert writing-style gate (SECRT-2600).
+"""Expert writing-style check (SECRT-2600).
 
 Scores what each seeded expert would write for a fixed reference set of
-prompts against that expert's own style specification, and fails when an
-expert's score drops below the agreed threshold. Runs from CI on changes to
-the prompt-bearing and model-routing files (``assembly.TRIGGER_PATHS``).
+prompts against that expert's own style specification, and reads the result
+against the stored ``baseline.json``. Run by hand before shipping a prompt
+or model-routing change — ``poetry run expert-style-eval --dry-run`` says
+whether anything it measures has moved since the baseline.
 
 The generation leg prompts the routed production model with the system
 prompt production assembles — imported from the engines' own modules, never

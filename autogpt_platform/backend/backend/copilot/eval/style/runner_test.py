@@ -1,5 +1,6 @@
-"""The runner without a model: prompt set per expert, the gate's two
-directions with a stubbed judge, the fingerprint skip, and the summary shape."""
+"""The runner without a model: the prompt set per expert, the summary and
+its comparison against the stored baseline, and the drift line that says
+whether a paid run would measure anything new."""
 
 import json
 from pathlib import Path
@@ -9,7 +10,7 @@ import pytest
 
 from backend.copilot.config import ChatConfig
 
-from .assembly import load_fixtures, load_rubric, roster_experts
+from .assembly import load_baseline, load_fixtures, load_rubric, roster_experts
 from .generation import Turn
 from .models import (
     DimensionJudgement,
@@ -22,7 +23,8 @@ from .runner import (
     Job,
     RunOptions,
     cache_prefix,
-    evaluate_gate,
+    compare,
+    drift,
     generate,
     plan_jobs,
     run,
@@ -110,27 +112,33 @@ def _row(
     )
 
 
-def test_gate_fails_below_threshold_and_passes_above():
-    below = summarize_expert("Maria", [_row("Maria", 65.0), _row("Maria", 68.0)])
-    above = summarize_expert("Max", [_row("Max", 80.0), _row("Max", 90.0)])
-    outcome = evaluate_gate([below, above], threshold=70)
-    assert not outcome.passed
-    assert outcome.failing == ["Maria"]
-    assert "Maria: mean 66.5" in outcome.reason
-    assert evaluate_gate([above], threshold=70).passed
-    assert not evaluate_gate([above], threshold=85.01).passed
+def test_the_comparison_pairs_this_run_against_the_baseline_prompt_by_prompt():
+    """Mean against mean would mostly report which prompts happened to be
+    scored; the baseline stores every prompt's score so the pairing is real."""
+    baseline = load_baseline()
+    stored = next(b for b in baseline.experts if b.expert == "Max")
+    prompts = sorted(stored.by_prompt)[:4]
+    rows = [_row("Max", stored.by_prompt[pid] + 6.0, prompt_id=pid) for pid in prompts]
+    comparison = compare(summarize_expert("Max", rows), rows, baseline)
+    assert comparison.shared_prompts == 4
+    assert comparison.paired_delta == 6.0
+    assert comparison.paired_sem == 0.0
+    assert comparison.baseline_mean == stored.scores.mean
 
 
-def test_gate_fails_an_expert_with_too_many_errors():
-    rows = [_row("Max", 90.0)] + [_row("Max", None, error="boom") for _ in range(4)]
-    summary = summarize_expert("Max", rows)
-    assert summary.errors == 4
-    assert not evaluate_gate([summary], threshold=70).passed
+def test_the_comparison_says_so_when_a_prompt_set_has_no_baseline():
+    baseline = load_baseline()
+    rows = [_row("Max", 80.0, prompt_id="max-invented-01")]
+    comparison = compare(summarize_expert("Max", rows), rows, baseline)
+    assert comparison.shared_prompts == 0
+    assert comparison.paired_delta is None
+    assert comparison.baseline_mean is not None
 
-
-def test_gate_fails_an_expert_with_no_scores():
-    empty = summarize_expert("Frankie", [])
-    assert not evaluate_gate([empty], threshold=1).passed
+    unknown = [_row("Nobody", 80.0)]
+    assert (
+        compare(summarize_expert("Nobody", unknown), unknown, baseline).baseline_mean
+        is None
+    )
 
 
 def test_summary_reports_distribution_and_repeats():
@@ -169,12 +177,11 @@ def test_the_generation_cost_is_counted_once_across_the_cross_spec_copies():
     result = summarize(
         rows,
         roster_experts(["Maria"]),
-        load_rubric(),
+        load_baseline(),
         fingerprint_value="f",
         chat_model="m",
         lede_model="m",
         judge_model="m",
-        threshold=None,
     )
     assert result.cost_usd == pytest.approx(1.0)
     assert result.input_tokens == 100
@@ -282,97 +289,83 @@ def stubbed_models(tmp_path: Path):
         patch(f"{_RUNNER}.generate_turn", AsyncMock(return_value=turn)),
         patch(f"{_RUNNER}.generate_lede", AsyncMock(return_value=("lede", usage))),
         patch(f"{_RUNNER}.judge_response", judge),
-        patch(f"{_RUNNER}.save_gate") as save_gate,
+        patch(f"{_RUNNER}.save_baseline") as save_baseline,
     ):
-        yield judge, save_gate
+        yield judge, save_baseline
 
 
 @pytest.mark.asyncio
-async def test_run_scores_every_prompt_and_gates(stubbed_models, tmp_path: Path):
-    judge, save_gate = stubbed_models
+async def test_run_scores_every_prompt_and_reads_it_against_the_baseline(
+    stubbed_models, tmp_path: Path
+):
+    judge, save_baseline = stubbed_models
     out = tmp_path / "r.json"
-    result, code = await run(
-        RunOptions(experts=["Max"], out=out, gate=True, force=True)
-    )
+    result = await run(RunOptions(experts=["Max"], out=out))
     assert result is not None
-    assert code == 0
-    assert result.gate is not None and result.gate.passed
     assert result.experts[0].scores.n == 30
     assert result.experts[0].scores.mean == 75.0
     assert result.experts[0].tool_calls == 27
     assert judge.await_count == 30
     assert result.cost_usd == pytest.approx(0.06)
-    save_gate.assert_called_once()
+    (comparison,) = result.comparison
+    assert comparison.expert == "Max"
+    assert comparison.shared_prompts == 28, "the baseline's two unscored prompts"
+    save_baseline.assert_not_called()
     written = json.loads(out.read_text())
     assert written["fingerprint"] == result.fingerprint
     assert len(written["responses"]) == 30
 
 
 @pytest.mark.asyncio
-async def test_run_fails_the_gate_below_threshold(stubbed_models, tmp_path: Path):
-    judge, save_gate = stubbed_models
-    judge.return_value = (_judgement(2), Usage(model="m"))
-    result, code = await run(
-        RunOptions(experts=["Max"], out=tmp_path / "r.json", gate=True, force=True)
+async def test_write_baseline_stores_every_prompt_of_this_run(
+    stubbed_models, tmp_path: Path
+):
+    _, save_baseline = stubbed_models
+    result = await run(
+        RunOptions(experts=["Max"], out=tmp_path / "r.json", write_baseline=True)
     )
-    assert result is not None and result.gate is not None
-    assert code == 1
-    assert result.gate.failing == ["Max"]
-    save_gate.assert_not_called()
+    assert result is not None
+    (stored,) = save_baseline.call_args.args[0].experts
+    assert stored.expert == "Max"
+    assert len(stored.by_prompt) == 30
+    assert save_baseline.call_args.args[0].fingerprint == result.fingerprint
+
+
+def test_drift_names_the_components_that_moved_since_the_baseline():
+    """The one line that decides whether a run is worth paying for."""
+    baseline = load_baseline()
+    assert "unchanged since" in drift(dict(baseline.parts), baseline)
+    moved = dict(baseline.parts) | {"rubric": "0" * 64}
+    assert "1 component(s) changed" in drift(moved, baseline)
+    assert "rubric" in drift(moved, baseline)
+    assert "records no fingerprint" in drift(
+        dict(baseline.parts), baseline.model_copy(update={"parts": {}})
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_makes_no_calls(stubbed_models, tmp_path: Path):
+    judge, _ = stubbed_models
+    assert await run(RunOptions(experts=["Max"], dry_run=True)) is None
+    assert judge.await_count == 0
 
 
 @pytest.mark.asyncio
 async def test_the_fingerprint_survives_a_change_of_transport(
     stubbed_models, tmp_path: Path, monkeypatch
 ):
-    """CI runs direct-Anthropic and we run through OpenRouter, which spell the
-    same model differently. Fingerprinting the transport name would make CI
-    re-run the paid legs on every PR."""
+    """We run through OpenRouter and CI ran direct-Anthropic, which spell the
+    same model differently. A fingerprint that moved with the transport would
+    report a change nobody made."""
     fingerprints = []
     for openrouter in ("true", "false"):
         monkeypatch.setenv("CHAT_USE_OPENROUTER", openrouter)
-        result, _ = await run(RunOptions(experts=["Max"], out=tmp_path / "r.json"))
+        result = await run(RunOptions(experts=["Max"], out=tmp_path / "r.json"))
         assert result is not None
         fingerprints.append((result.chat_model, result.fingerprint))
     (or_model, or_fp), (direct_model, direct_fp) = fingerprints
     assert or_model != direct_model
     assert or_fp == direct_fp
-
-
-@pytest.mark.asyncio
-async def test_gate_skips_while_fingerprint_unchanged(stubbed_models, tmp_path: Path):
-    from .assembly import load_gate
-
-    judge, _ = stubbed_models
-    gate = load_gate()
-    with (
-        patch(f"{_RUNNER}.fingerprint", return_value="same"),
-        patch(
-            f"{_RUNNER}.load_gate",
-            return_value=gate.model_copy(update={"last_gated_fingerprint": "same"}),
-        ),
-    ):
-        result, code = await run(
-            RunOptions(experts=["Max"], out=tmp_path / "r.json", gate=True)
-        )
-        assert (result, code) == (None, 0)
-        assert judge.await_count == 0
-        result, code = await run(
-            RunOptions(experts=["Max"], out=tmp_path / "r.json", gate=True, force=True)
-        )
-        assert result is not None and code == 0
-
-
-@pytest.mark.asyncio
-async def test_run_without_gate_writes_no_verdict(stubbed_models, tmp_path: Path):
-    _, save_gate = stubbed_models
-    result, code = await run(
-        RunOptions(experts=["Max"], kinds=["failure"], out=tmp_path / "r.json")
-    )
-    assert result is not None and code == 0
-    assert result.gate is None
-    assert result.experts[0].scores.n == 6
-    save_gate.assert_not_called()
 
 
 def test_reference_prompt_rejects_mismatched_inputs():

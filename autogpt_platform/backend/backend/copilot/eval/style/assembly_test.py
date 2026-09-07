@@ -1,11 +1,9 @@
-"""The gate measures production: same rendering, same routing, same trigger
-list as the workflow, and a fingerprint that moves when any of it does."""
+"""The check measures production: same rendering, same routing, and a
+fingerprint whose components move when any of it does."""
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import yaml
 
 from backend.copilot.briefing.narrative import _system_prompt
 from backend.copilot.config import ChatConfig
@@ -17,22 +15,19 @@ from backend.copilot.prompting import get_sdk_supplement
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
 from .assembly import (
-    TRIGGER_PATHS,
     attach_workflows,
     chat_system_prompt,
     fingerprint,
+    fingerprint_parts,
     lede_prompt,
+    load_baseline,
     load_fixtures,
-    load_gate,
     load_rubric,
     resolve_chat_model,
     roster_experts,
     user_prefix,
 )
 from .models import PROMPT_KINDS, PROMPTS_PER_EXPERT, LedeFacts, LedeRun
-
-REPO_ROOT = Path(__file__).resolve().parents[6]
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "platform-expert-style-gate.yml"
 
 
 def test_rubric_has_three_anchors_per_dimension():
@@ -44,10 +39,16 @@ def test_rubric_has_three_anchors_per_dimension():
         assert dim.question.endswith("?")
 
 
-def test_gate_config_loads():
-    gate = load_gate()
-    assert 0 < gate.pass_threshold < 100
-    assert gate.judge_model
+def test_the_baseline_covers_the_whole_roster_and_says_what_produced_it():
+    baseline = load_baseline()
+    assert {b.expert for b in baseline.experts} == {e.name for e in roster_experts()}
+    for stored in baseline.experts:
+        assert stored.scores.n == len(stored.by_prompt) > 0
+        assert 0 <= stored.scores.mean <= 100
+    assert baseline.judge_model and baseline.chat_model
+    assert baseline.cost_usd > 0
+    assert baseline.note
+    assert baseline.fingerprint == fingerprint(baseline.parts)
 
 
 @pytest.mark.parametrize("expert", [e.name for e in roster_experts()])
@@ -142,24 +143,30 @@ async def test_chat_model_comes_from_the_router_without_launchdarkly():
     assert routed.source == "env"
 
 
-def test_fingerprint_moves_with_the_voice_spec_and_models():
+def test_the_fingerprint_names_the_component_that_moved():
     experts = roster_experts()
     fixtures, rubric = load_fixtures(), load_rubric()
     models = {"chat_model": "m", "lede_model": "l", "judge_model": "j"}
-    base = fingerprint(experts, fixtures, rubric, **models)
-    assert base == fingerprint(experts, fixtures, rubric, **models)
-    assert base != fingerprint(
-        experts, fixtures, rubric, **{**models, "chat_model": "m2"}
-    )
-    changed = [e.model_copy(update={"voice_preferences": "Terse."}) for e in experts]
-    assert base != fingerprint(changed, fixtures, rubric, **models)
-    with_workflows = [attach_workflows(e, f) for e, f in zip(experts, fixtures)]
-    assert base != fingerprint(with_workflows, fixtures, rubric, **models)
+    base = fingerprint_parts(experts, fixtures, rubric, **models)
+    assert base == fingerprint_parts(experts, fixtures, rubric, **models)
+    assert _moved(
+        base,
+        fingerprint_parts(experts, fixtures, rubric, **{**models, "chat_model": "x"}),
+    ) == {"models"}
+    terse = [
+        e.model_copy(update={"voice_preferences": "Terse."}) if e.name == "Max" else e
+        for e in experts
+    ]
+    assert _moved(base, fingerprint_parts(terse, fixtures, rubric, **models)) == {
+        "prompt:Max",
+        "lede:Max",
+    }, "the voice spec reaches the chat prompt and the briefing lede"
+    installed = [attach_workflows(e, f) for e, f in zip(experts, fixtures)]
+    assert _moved(base, fingerprint_parts(installed, fixtures, rubric, **models)) == {
+        "autopilot",
+        *(f"context:{e.name}" for e in experts),
+    }, "installed workflows show in every first-turn block, AutoPilot's included"
 
 
-def test_workflow_triggers_on_exactly_the_declared_paths():
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    assert set(workflow[True]["pull_request"]["paths"]) == set(TRIGGER_PATHS)
-    for path in TRIGGER_PATHS:
-        target = REPO_ROOT / path.removesuffix("/**")
-        assert target.exists(), path
+def _moved(before: dict[str, str], after: dict[str, str]) -> set[str]:
+    return {k for k, v in after.items() if before.get(k) != v}

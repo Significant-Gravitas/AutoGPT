@@ -1,20 +1,21 @@
-"""Run the gate: generate every reference prompt in the expert's voice, judge
-each response, aggregate per expert, and decide against the threshold.
+"""Score what each expert writes against its own style spec, by hand.
 
-    poetry run expert-style-eval --dry-run          # prompt sizes, no calls
-    poetry run expert-style-eval --repeats 3 --cross-spec --control 3
-    poetry run expert-style-eval --gate             # exit 1 below threshold
+    poetry run expert-style-eval --dry-run          # what changed, no calls
+    poetry run expert-style-eval                    # score against baseline.json
+    poetry run expert-style-eval --model <slug>     # check a proposed model
+    poetry run expert-style-eval --write-baseline   # make this run the baseline
 
-``--gate`` skips the paid legs while the fingerprint in ``gate.json`` still
-matches the assembled prompts, models, fixtures and rubric; a passing gate
-run writes the new fingerprint back so the next unchanged run is free.
+Every run costs money, so start with ``--dry-run``: it prints which of the
+prompts, models, fixtures or rubric differ from the ones ``baseline.json``
+was measured on, and an unchanged fingerprint means the baseline still
+stands. A scored run reports each expert's distribution against the
+baseline, prompt by prompt.
 """
 
 import argparse
 import asyncio
 import logging
 import statistics
-import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,13 +34,14 @@ from .assembly import (
     attach_workflows,
     chat_system_prompt,
     fingerprint,
+    fingerprint_parts,
     lede_prompt,
+    load_baseline,
     load_fixtures,
-    load_gate,
     load_rubric,
     resolve_chat_model,
     roster_experts,
-    save_gate,
+    save_baseline,
     user_prefix,
 )
 from .generation import (
@@ -50,10 +52,12 @@ from .generation import (
 )
 from .models import (
     Arm,
+    Baseline,
+    BaselineExpert,
     Distribution,
+    ExpertComparison,
     ExpertFixture,
     ExpertSummary,
-    GateOutcome,
     PairedAdvantage,
     PromptKind,
     ReferencePrompt,
@@ -68,8 +72,6 @@ from .scorer import judge_response, response_score, to_usage
 logger = logging.getLogger(__name__)
 
 LEDE_MAX_OUTPUT_TOKENS = 200
-# An expert with more errored rows than this cannot be scored honestly.
-MAX_ERRORS_PER_EXPERT = 3
 # Paired own-vs-wrong-spec comparisons needed before the separation verdict
 # means anything, and the share of them the own spec must win.
 MIN_PAIRED_COMPARISONS = 20
@@ -89,8 +91,7 @@ class RunOptions(BaseModel):
     judge: str | None = None
     concurrency: int = 6
     out: Path = Path("expert_style_results.json")
-    gate: bool = False
-    force: bool = False
+    write_baseline: bool = False
     dry_run: bool = False
     cross_spec: bool = False
     # Prompts per expert to also run as plain AutoPilot, no suffix.
@@ -104,8 +105,8 @@ class Job(BaseModel):
     repeat: int
 
 
-async def run(options: RunOptions) -> tuple[StyleEvalResult | None, int]:
-    """Returns the result (``None`` on a dry run) and the process exit code."""
+async def run(options: RunOptions) -> StyleEvalResult | None:
+    """Returns the run's result, or ``None`` on a dry run."""
     config = ChatConfig()
     fixtures = load_fixtures(options.experts)
     fixture_by_name = {f.expert: f for f in fixtures}
@@ -113,19 +114,16 @@ async def run(options: RunOptions) -> tuple[StyleEvalResult | None, int]:
         attach_workflows(e, fixture_by_name[e.name])
         for e in roster_experts(options.experts)
     ]
-    rubric, gate = load_rubric(), load_gate()
+    rubric, baseline = load_rubric(), load_baseline()
     routed = await resolve_chat_model(config)
-    # The fingerprint reads the ROUTED names, not the transport ones: the
-    # OpenRouter and direct-Anthropic spellings of one model differ, so
-    # fingerprinting the transport name would never match between a local
-    # run and CI, and the skip that pays for the broad path list would never
-    # fire where it matters.
+    # The fingerprint reads the ROUTED names, not the transport ones, so it
+    # does not move when the same run is made through the other provider.
     chat_route = options.model or routed.slug
-    judge_route = options.judge or gate.judge_model
+    judge_route = options.judge or baseline.judge_model
     chat_model = normalize_model_for_transport(chat_route, config)
     lede_model = normalize_model_for_transport(config.title_model, config)
     judge_model = normalize_model_for_transport(judge_route, config)
-    current = fingerprint(
+    parts = fingerprint_parts(
         experts,
         fixtures,
         rubric,
@@ -136,14 +134,12 @@ async def run(options: RunOptions) -> tuple[StyleEvalResult | None, int]:
     print(
         f"chat model {chat_model} ({routed.mode}/standard via {routed.source}"
         f"{', overridden' if options.model else ''}); lede model {lede_model}; "
-        f"judge {judge_model}; fingerprint {current}"
+        f"judge {judge_model}; fingerprint {fingerprint(parts)}"
     )
+    print(drift(parts, baseline))
     if options.dry_run:
         _print_dry_run(experts, fixtures)
-        return None, 0
-    if options.gate and not options.force and current == gate.last_gated_fingerprint:
-        print(f"gate: prompts and models unchanged since {gate.last_gated_at}; skipped")
-        return None, 0
+        return None
 
     jobs = plan_jobs(experts, fixtures, options)
     rows = await generate_all(
@@ -157,22 +153,37 @@ async def run(options: RunOptions) -> tuple[StyleEvalResult | None, int]:
     result = summarize(
         rows,
         experts,
-        rubric,
-        fingerprint_value=current,
+        baseline,
+        fingerprint_value=fingerprint(parts),
         chat_model=chat_model,
         lede_model=lede_model,
         judge_model=judge_model,
-        threshold=gate.pass_threshold if options.gate else None,
     )
     options.out.write_text(result.model_dump_json(indent=2), encoding="utf-8")
     print_summary(result, options.out)
-    if result.gate is None:
-        return result, 0
-    if result.gate.passed:
-        gate.last_gated_fingerprint = current
-        gate.last_gated_at = result.ts
-        save_gate(gate)
-    return result, 0 if result.gate.passed else 1
+    if options.write_baseline:
+        save_baseline(new_baseline(result, rows, parts))
+        print(f"baseline: rewritten from this run ({len(result.experts)} experts)")
+    return result
+
+
+def drift(parts: dict[str, str], baseline: Baseline) -> str:
+    """What the run is being asked that the baseline was not. This is the
+    whole reason to spend money on a run, so it is the first line printed."""
+    changed = sorted(
+        {k for k, v in parts.items() if baseline.parts.get(k) != v}
+        | {k for k in baseline.parts if k not in parts}
+    )
+    if not baseline.parts:
+        return "baseline: records no fingerprint; cannot say what changed"
+    if not changed:
+        return (
+            f"baseline: prompts, models, fixtures and rubric unchanged since "
+            f"{baseline.ts}; a run would re-measure the same thing"
+        )
+    return f"baseline: {len(changed)} component(s) changed since " + (
+        f"{baseline.ts}: {', '.join(changed)}"
+    )
 
 
 def plan_jobs(
@@ -389,13 +400,12 @@ async def judge_all(
 def summarize(
     rows: list[ScoredResponse],
     experts: list[Expert],
-    rubric: Rubric,
+    baseline: Baseline,
     *,
     fingerprint_value: str,
     chat_model: str,
     lede_model: str,
     judge_model: str,
-    threshold: float | None,
 ) -> StyleEvalResult:
     summaries = [summarize_expert(e.name, rows) for e in experts]
     usages = [u for r in rows for u in (r.generation, r.judging) if u is not None]
@@ -409,7 +419,7 @@ def summarize(
         judge_model=judge_model,
         experts=summaries,
         separation=separation(rows),
-        gate=None if threshold is None else evaluate_gate(summaries, threshold),
+        comparison=[compare(s, rows, baseline) for s in summaries],
         cost_usd=round(sum(c for c in costs if c is not None), 4),
         cost_known=all(c is not None for c in costs),
         input_tokens=sum(
@@ -418,6 +428,73 @@ def summarize(
         ),
         output_tokens=sum(u.output_tokens for u in usages),
         responses=rows,
+    )
+
+
+def compare(
+    summary: ExpertSummary, rows: list[ScoredResponse], baseline: Baseline
+) -> ExpertComparison:
+    """This expert against the stored baseline, paired on the prompts both
+    ran: an unpaired mean-to-mean difference mostly reports which prompts
+    happened to be scored."""
+    stored = next((b for b in baseline.experts if b.expert == summary.expert), None)
+    if stored is None:
+        return ExpertComparison(
+            expert=summary.expert, mean=summary.scores.mean, baseline_mean=None
+        )
+    deltas = [
+        row.score - stored.by_prompt[row.prompt_id]
+        for row in rows
+        if row.expert == summary.expert
+        and row.arm == "expert"
+        and row.score is not None
+        and row.prompt_id in stored.by_prompt
+    ]
+    if not deltas:
+        return ExpertComparison(
+            expert=summary.expert,
+            mean=summary.scores.mean,
+            baseline_mean=stored.scores.mean,
+        )
+    sd = statistics.stdev(deltas) if len(deltas) > 1 else 0.0
+    return ExpertComparison(
+        expert=summary.expert,
+        mean=summary.scores.mean,
+        baseline_mean=stored.scores.mean,
+        paired_delta=round(mean(deltas), 2),
+        paired_sem=round(sd / len(deltas) ** 0.5, 2),
+        shared_prompts=len(deltas),
+    )
+
+
+def new_baseline(
+    result: StyleEvalResult, rows: list[ScoredResponse], parts: dict[str, str]
+) -> Baseline:
+    return Baseline(
+        run_id=result.run_id,
+        ts=result.ts,
+        chat_model=result.chat_model,
+        lede_model=result.lede_model,
+        judge_model=result.judge_model,
+        cost_usd=result.cost_usd,
+        fingerprint=result.fingerprint,
+        parts=parts,
+        separation=result.separation,
+        experts=[
+            BaselineExpert(
+                expert=s.expert,
+                scores=s.scores,
+                by_kind=s.by_kind,
+                by_prompt={
+                    r.prompt_id: r.score
+                    for r in rows
+                    if r.expert == s.expert
+                    and r.arm == "expert"
+                    and r.score is not None
+                },
+            )
+            for s in result.experts
+        ],
     )
 
 
@@ -527,24 +604,6 @@ def is_separated(paired: PairedAdvantage) -> bool:
     )
 
 
-def evaluate_gate(summaries: list[ExpertSummary], threshold: float) -> GateOutcome:
-    failing = [
-        s.expert
-        for s in summaries
-        if s.scores.n == 0
-        or s.scores.mean < threshold
-        or s.errors > MAX_ERRORS_PER_EXPERT
-    ]
-    reason = "; ".join(
-        f"{s.expert}: mean {s.scores.mean} over {s.scores.n}, {s.errors} errors"
-        for s in summaries
-        if s.expert in failing
-    )
-    return GateOutcome(
-        threshold=threshold, passed=not failing, failing=failing, reason=reason
-    )
-
-
 def print_summary(result: StyleEvalResult, out: Path) -> None:
     for s in result.experts:
         kinds = ", ".join(f"{k} {d.mean}" for k, d in s.by_kind.items())
@@ -569,14 +628,22 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
             f"gap {sep.gap}, {paired}"
             f"-> {'separated' if sep.separated else 'NOT separated'}"
         )
+    for c in result.comparison:
+        if c.baseline_mean is None:
+            print(f"{c.expert:<8} no baseline")
+        elif c.paired_delta is None:
+            print(f"{c.expert:<8} mean {c.mean} vs baseline {c.baseline_mean}")
+        else:
+            print(
+                f"{c.expert:<8} {c.paired_delta:+.2f} ± {c.paired_sem} against the "
+                f"baseline over {c.shared_prompts} shared prompts "
+                f"(mean {c.mean} vs {c.baseline_mean})"
+            )
     known = "" if result.cost_known else " (some rows unpriced)"
     print(
         f"cost ${result.cost_usd:.4f}{known}; tokens in {result.input_tokens} "
         f"out {result.output_tokens}; results {out}"
     )
-    if result.gate:
-        verdict = "PASS" if result.gate.passed else f"FAIL ({result.gate.reason})"
-        print(f"gate: threshold {result.gate.threshold} -> {verdict}")
 
 
 def _print_dry_run(experts: list[Expert], fixtures: list[ExpertFixture]) -> None:
@@ -617,13 +684,14 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=6)
     parser.add_argument("--out", type=Path, default=Path("expert_style_results.json"))
     parser.add_argument(
-        "--gate", action="store_true", help="exit 1 below the threshold"
+        "--write-baseline",
+        action="store_true",
+        help="store this run as the baseline later runs are read against",
     )
     parser.add_argument(
-        "--force", action="store_true", help="run even if the fingerprint is unchanged"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="assemble prompts, make no calls"
+        "--dry-run",
+        action="store_true",
+        help="say what changed since the baseline, make no calls",
     )
     parser.add_argument(
         "--cross-spec",
@@ -645,14 +713,12 @@ def main() -> None:
         judge=args.judge,
         concurrency=args.concurrency,
         out=args.out,
-        gate=args.gate,
-        force=args.force,
+        write_baseline=args.write_baseline,
         dry_run=args.dry_run,
         cross_spec=args.cross_spec,
         control=args.control,
     )
-    _, code = asyncio.run(run(options))
-    sys.exit(code)
+    asyncio.run(run(options))
 
 
 if __name__ == "__main__":

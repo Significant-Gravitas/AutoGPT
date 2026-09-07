@@ -1,6 +1,0 @@
-{
-  "pass_threshold": 70,
-  "judge_model": "anthropic/claude-haiku-4-5",
-  "last_gated_fingerprint": null,
-  "last_gated_at": null
-}
