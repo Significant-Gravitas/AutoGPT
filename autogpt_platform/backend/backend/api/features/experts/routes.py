@@ -450,9 +450,7 @@ async def update_expert_budget(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> Expert:
     try:
-        return await experts_db.update_budget(
-            user_id, expert_id, request.weekly_budget
-        )
+        return await experts_db.update_budget(user_id, expert_id, request.weekly_budget)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
