@@ -95,8 +95,11 @@ describe("trial account isolation", () => {
     server.use(
       getGetTrialsGetTrialStatusMockHandler200(() =>
         trialResponse({
-          allowance_used_percent:
-            useAuthStore.getState().user?.id === "user-a" ? 42.4 : 15,
+          offer: {
+            ...trialOffer,
+            unit_amount:
+              useAuthStore.getState().user?.id === "user-a" ? 2000 : 3000,
+          },
         }),
       ),
       getPostTrialsCancelTrialMockHandler200(cancel),
@@ -107,7 +110,7 @@ describe("trial account isolation", () => {
     );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
-    await screen.findByText(/allowance used: 15%/i);
+    await screen.findByText(/\$30\.00/);
     pending.resolve(trialResponse({ cancel_at_period_end: true }));
     await waitFor(() =>
       expect(
@@ -117,6 +120,6 @@ describe("trial account isolation", () => {
       ).toBe(false),
     );
     expect(screen.queryByText(/Cancellation confirmed/)).toBeNull();
-    expect(screen.getByText(/allowance used: 15%/i)).toBeDefined();
+    expect(screen.getByText(/\$30\.00/)).toBeDefined();
   });
 });

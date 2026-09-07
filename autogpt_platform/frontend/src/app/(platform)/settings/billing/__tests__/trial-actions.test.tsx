@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("trial billing actions", () => {
-  it("shows trial usage and cancels without ending the remaining trial access", async () => {
+  it("hides trial usage and cancels without ending the remaining trial access", async () => {
     const pending = deferredTrialResponse<ReturnType<typeof trialResponse>>();
     const cancel = vi.fn(() => pending.promise);
     server.use(
@@ -36,8 +36,9 @@ describe("trial billing actions", () => {
     );
     render(<TrialCard />);
     const button = await screen.findByRole("button", { name: "Cancel trial" });
-    expect(screen.getByRole("progressbar").getAttribute("value")).toBe("42.4");
-    expect(screen.getByText(/allowance used: 42%/i)).toBeDefined();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/trial allowance used/i)).toBeNull();
+    expect(screen.getByText(/Your trial ends.*\$20\.00/)).toBeDefined();
     fireEvent.click(button);
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(button.hasAttribute("disabled")).toBe(true);
