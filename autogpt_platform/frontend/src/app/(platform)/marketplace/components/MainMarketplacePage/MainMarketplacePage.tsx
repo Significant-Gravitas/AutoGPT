@@ -9,6 +9,7 @@ import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
+import { SkillsSection } from "../SkillsSection/SkillsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
@@ -27,6 +28,7 @@ export const MainMarkeplacePage = () => {
   } = useMainMarketplacePage();
   const { isLoggedIn, isUserLoading } = useAuth();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
+  const isSkillsHubEnabled = useGetFlag(Flag.SKILLS_HUB);
   // Hiring is still behind the flag, but the expert pages are public: a
   // visitor browsing the marketplace needs a way to reach them. Signed-in
   // users keep the flag gate so the beta stays invisible to them.
@@ -83,6 +85,7 @@ export const MainMarkeplacePage = () => {
             </AgentsSection>
           </div>
         )}
+        {isSkillsHubEnabled ? <SkillsSection /> : null}
         {featuredCreators && (
           <div className="mb-4">
             <FeaturedCreators featuredCreators={featuredCreators.creators} />
