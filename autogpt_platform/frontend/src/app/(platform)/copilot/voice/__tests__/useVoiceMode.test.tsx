@@ -406,6 +406,24 @@ describe("useVoiceMode", () => {
     expect(sessions[0].destroy).toHaveBeenCalled();
   });
 
+  it("destroys a mic session that finishes starting after the host unmounted", async () => {
+    // Navigating away mid-start: nothing to destroy yet, so unless the start
+    // is invalidated the session opens the mic on a page that is gone and
+    // marks later text turns as voice turns.
+    let finishLoading!: () => void;
+    vadLoad = new Promise<void>((resolve) => (finishLoading = resolve));
+    const view = render({});
+
+    act(() => view.result.current.toggle());
+    view.unmount();
+    await act(async () => finishLoading());
+    await act(async () => undefined);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].destroy).toHaveBeenCalled();
+    expect(isVoiceTurn()).toBe(false);
+  });
+
   it("does not send a transcript for an utterance the user opted out of", async () => {
     vi.useFakeTimers();
     let finishTranscribing!: (text: string) => void;
@@ -650,6 +668,7 @@ function render(overrides: Props) {
       props = { ...props, ...next };
       view.rerender();
     },
+    unmount: view.unmount,
   };
 }
 

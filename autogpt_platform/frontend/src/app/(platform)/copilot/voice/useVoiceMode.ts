@@ -414,8 +414,10 @@ export function useVoiceMode({
   }
 
   function teardown() {
-    // Unmount without deactivate — navigating away mid-session. Leaving this
-    // set would mark later text turns as voice turns.
+    // Unmount without deactivate — navigating away mid-session. A mic session
+    // still starting would otherwise finish after this, open the mic, and
+    // flag later text turns as voice turns.
+    activation.current += 1;
     setVoiceTurnActive(false);
     clearTimers();
     playerRef.current?.destroy();
