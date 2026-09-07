@@ -1248,3 +1248,134 @@ class _StubCreditDB:
 
     async def spend_credits(self, **kwargs):
         return None
+
+
+class TestSpendApproval:
+    """Seam B of SECRT-2599: a paid block in an expert's chat waits for the
+    user once she has reached her spend threshold."""
+
+    @staticmethod
+    def _needed():
+        from backend.api.features.experts.spend_approval import SpendApprovalNeeded
+
+        return SpendApprovalNeeded(
+            expert_id="expert-1",
+            expert_name="Ada",
+            spent=250,
+            threshold=250,
+            window="week",
+        )
+
+    @staticmethod
+    def _paid_block():
+        block = make_mock_block_with_schema(
+            block_id="paid-block",
+            name="Paid Block",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+        block.executed = False
+
+        async def execute(input_data, **kwargs):
+            block.executed = True
+            yield "response", "ok"
+
+        block.execute = execute
+        return block
+
+    @staticmethod
+    def _patches(block, gate, *, cost: int = 5, flag: bool = True):
+        credit = MagicMock(
+            get_credits=AsyncMock(return_value=1_000), spend_credits=AsyncMock()
+        )
+        workspace = MagicMock(
+            get_or_create_workspace=AsyncMock(return_value=MagicMock(id="ws"))
+        )
+        return [
+            patch("backend.copilot.tools.helpers.get_block", return_value=block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(cost, {}),
+            ),
+            patch("backend.copilot.tools.helpers.spend_approval_db", return_value=gate),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.is_feature_enabled",
+                AsyncMock(return_value=flag),
+            ),
+        ]
+
+    async def _run(self, session, block, gate, **kw):
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            for p in self._patches(block, gate, **kw):
+                stack.enter_context(p)
+            return await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="paid-block",
+                input_data={"prompt": "hi"},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_at_threshold_parks_a_paid_block(self):
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        gate = MagicMock(
+            spend_approval_required=AsyncMock(return_value=self._needed()),
+            open_chat_spend_review=AsyncMock(
+                return_value="copilot-node-expert-spend:expert-1:abcd1234"
+            ),
+        )
+
+        response = await self._run(session, block, gate)
+
+        assert isinstance(response, ReviewRequiredResponse)
+        assert response.review_id == "copilot-node-expert-spend:expert-1:abcd1234"
+        assert response.graph_exec_id.startswith("copilot-session-")
+        assert not block.executed
+        gate.spend_approval_required.assert_awaited_once_with(_TEST_USER_ID, "expert-1")
+        assert (
+            gate.open_chat_spend_review.await_args.kwargs["block_name"] == "Paid Block"
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("expert_id,cost", [(None, 5), ("expert-1", 0)])
+    async def test_plain_sessions_and_free_blocks_are_not_gated(self, expert_id, cost):
+        session = make_session(user_id=_TEST_USER_ID, expert_id=expert_id)
+        block = self._paid_block()
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=self._needed()))
+
+        response = await self._run(session, block, gate, cost=cost)
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        gate.spend_approval_required.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("flag,metered", [(True, True), (False, False)])
+    async def test_below_threshold_executes_and_meters_only_with_the_flag(
+        self, flag, metered
+    ):
+        session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
+        block = self._paid_block()
+        gate = MagicMock(spend_approval_required=AsyncMock(return_value=None))
+
+        with patch(
+            "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
+        ) as add_spend:
+            response = await self._run(session, block, gate, flag=flag)
+
+        assert isinstance(response, BlockOutputResponse)
+        assert block.executed
+        if metered:
+            add_spend.assert_awaited_once_with("expert-1", 5)
+        else:
+            add_spend.assert_not_awaited()

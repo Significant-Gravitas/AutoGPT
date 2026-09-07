@@ -16,7 +16,7 @@ from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
-from .helpers import execute_block, resolve_block_credentials
+from .helpers import execute_block, metered_expert_id, resolve_block_credentials
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -151,6 +151,7 @@ class ContinueRunBlockTool(BaseTool):
             dry_run=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=await metered_expert_id(user_id, session),
         )
 
         # Delete review record after successful execution (one-time use)

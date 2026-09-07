@@ -14,7 +14,9 @@ from .base import BaseTool
 from .helpers import (
     BlockPreparation,
     check_hitl_review,
+    check_spend_approval,
     execute_block,
+    metered_expert_id,
     prepare_block_for_execution,
 )
 from .models import (
@@ -272,6 +274,11 @@ class RunBlockTool(BaseTool):
                 user_authenticated=True,
             )
 
+        if not dry_run:
+            spend_gate = await check_spend_approval(prep, user_id, session)
+            if spend_gate is not None:
+                return spend_gate
+
         hitl_or_err = await check_hitl_review(
             prep,
             user_id,
@@ -294,6 +301,7 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=await metered_expert_id(user_id, session),
         )
 
 
