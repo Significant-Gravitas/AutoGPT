@@ -16,7 +16,10 @@ import { Plug01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useBottomScrollShadow } from "../../../components/SoulDrawer/useBottomScrollShadow";
 import { useFitListToDialog } from "../useFitListToDialog";
-import { useExpertConnectServiceDialog } from "./useExpertConnectServiceDialog";
+import {
+  SERVICE_FILTERS,
+  useExpertConnectServiceDialog,
+} from "./useExpertConnectServiceDialog";
 
 const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
 const HEIGHT_TRANSITION = { duration: 0.2, ease: [0, 0, 0.2, 1] as const };
@@ -52,6 +55,8 @@ export function ExpertConnectServiceDialog({
   const {
     query,
     setQuery,
+    filter,
+    setFilter,
     providers,
     isLoading,
     isError,
@@ -79,6 +84,7 @@ export function ExpertConnectServiceDialog({
 
   return (
     <Dialog
+      variant="compact"
       styling={{ maxWidth: "40rem", maxHeight: "60vh" }}
       controlled={{
         isOpen: open,
@@ -127,13 +133,10 @@ export function ExpertConnectServiceDialog({
                     className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1">
-                      <Text
-                        variant="h3"
-                        className="!text-[1.25rem] text-zinc-900"
-                      >
+                      <Text variant="lead-medium" as="h3" tone="primary">
                         Connect a service for {expertName}
                       </Text>
-                      <Text variant="small" className="!text-zinc-500">
+                      <Text variant="small" tone="muted">
                         Pick a service to connect. {expertName} will be able to
                         use it on your behalf.
                       </Text>
@@ -156,11 +159,30 @@ export function ExpertConnectServiceDialog({
                     ) : (
                       <div className="flex flex-col gap-3">
                         <SearchInput
+                          size="small"
                           value={query}
                           onChange={setQuery}
                           placeholder="Search services..."
                           aria-label="Search services"
                         />
+                        <div
+                          role="group"
+                          aria-label="Filter services"
+                          className="flex items-center gap-1"
+                        >
+                          {SERVICE_FILTERS.map((option) => (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant="toggle"
+                              size="xs"
+                              aria-pressed={filter === option.value}
+                              onClick={() => setFilter(option.value)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
                         {providers.length === 0 ? (
                           <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#DADADC] py-8 text-center">
                             <Icon
@@ -168,10 +190,12 @@ export function ExpertConnectServiceDialog({
                               size={24}
                               className="text-[#83838C]"
                             />
-                            <Text variant="body" className="text-[#505057]">
+                            <Text variant="body" tone="secondary">
                               {query.trim()
                                 ? `No services match "${query.trim()}"`
-                                : "No services available."}
+                                : filter === "connected"
+                                  ? "No services connected yet."
+                                  : "No services available."}
                             </Text>
                           </div>
                         ) : (
@@ -185,6 +209,7 @@ export function ExpertConnectServiceDialog({
                                 <li key={provider.id}>
                                   <ConnectProviderRow
                                     provider={provider}
+                                    className="rounded-lg"
                                     onSelect={handleSelect}
                                     isConnected={connectedProviders.has(
                                       provider.id,
@@ -217,7 +242,7 @@ export function ExpertConnectServiceDialog({
               <>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="xs"
                   onClick={handleBackToList}
                 >
                   Back
@@ -225,7 +250,7 @@ export function ExpertConnectServiceDialog({
                 {showContinue ? (
                   <Button
                     variant="primary"
-                    size="small"
+                    size="xs"
                     disabled={isContinueDisabled}
                     loading={isConnecting}
                     onClick={handleContinue}
@@ -235,7 +260,7 @@ export function ExpertConnectServiceDialog({
                 ) : null}
               </>
             ) : (
-              <Button variant="secondary" size="small" onClick={onClose}>
+              <Button variant="secondary" size="xs" onClick={onClose}>
                 Cancel
               </Button>
             )}

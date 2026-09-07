@@ -3,19 +3,20 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   expert: Expert;
   onEditSoul: () => void;
+  onChat: () => void;
 }
 
-export function ExpertDetailHeader({ expert, onEditSoul }: Props) {
+export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
   const accent = getRaisedExpertAccent(expert.role, expert.color);
 
   return (
@@ -31,36 +32,33 @@ export function ExpertDetailHeader({ expert, onEditSoul }: Props) {
             <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
               {expert.name}
             </h1>
-            <span
+            <Text
+              variant="body-medium"
+              as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-sm font-medium",
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5",
                 accent.pill,
               )}
             >
               <Icon icon={accent.roleIcon} size={14} />
               {expert.role}
-            </span>
+            </Text>
           </div>
-          {expert.tagline ? (
-            <p className="mt-1 text-sm text-zinc-500">{expert.tagline}</p>
-          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="secondary"
-            size="small"
-            className={ACTION_BUTTON_CLASS}
-            leftIcon={<Icon icon={PencilEdit02Icon} size={14} />}
+            size="xs"
+            leadingIcon={PencilEdit02Icon}
             onClick={onEditSoul}
           >
             Edit Soul
           </Button>
           <Button
-            as="NextLink"
-            href={`/copilot?expertId=${expert.id}`}
             variant="primary"
-            size="small"
-            className={ACTION_BUTTON_CLASS}
+            size="xs"
+            leadingIcon={BubbleChatIcon}
+            onClick={onChat}
           >
             Chat
           </Button>

@@ -1,10 +1,8 @@
 "use client";
 
-import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import {
   GridViewIcon,
@@ -16,7 +14,6 @@ import {
   filterExpertWorkflows,
   WORKFLOW_FILTERS,
   WorkflowFilter,
-  ACTION_BUTTON_CLASS,
 } from "../../helpers";
 import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
 import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
@@ -30,31 +27,48 @@ const VIEW_OPTIONS = [
 ] as const;
 
 interface Props {
-  expert: Expert;
-  onInstallWorkflow: () => void;
+  expertName: string;
+  workflows: ExpertWorkflowRef[];
+  accentClassName: string;
+  expertId?: string;
+  coverColor?: string;
+  emptyMessage?: string;
+  onInstallWorkflow?: () => void;
+  onAskWorkflow?: (prompt: string) => void;
 }
 
-export function ExpertWorkflowsSection({ expert, onInstallWorkflow }: Props) {
+export function ExpertWorkflowsSection({
+  expertName,
+  workflows,
+  accentClassName,
+  expertId,
+  coverColor,
+  emptyMessage,
+  onInstallWorkflow,
+  onAskWorkflow,
+}: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<WorkflowFilter>("all");
   const { view, setView } = useExpertWorkflowsView();
-  const accent = getRaisedExpertAccent(expert.role, expert.color);
-  const visible = filterExpertWorkflows(expert.workflows, query, filter);
+  const visible = filterExpertWorkflows(workflows, query, filter);
 
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium">{expert.name}&apos;s Workflows</Text>
+        <Text variant="body-medium" tone="primary">
+          {expertName}&apos;s Workflows
+        </Text>
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="small"
-            className={ACTION_BUTTON_CLASS}
-            leftIcon={<Icon icon={PlusSignIcon} size={14} />}
-            onClick={onInstallWorkflow}
-          >
-            Install workflow
-          </Button>
+          {onInstallWorkflow ? (
+            <Button
+              variant="secondary"
+              size="xs"
+              leadingIcon={PlusSignIcon}
+              onClick={onInstallWorkflow}
+            >
+              Install workflow
+            </Button>
+          ) : null}
           <SearchInput
             size="xsmall"
             value={query}
@@ -72,20 +86,24 @@ export function ExpertWorkflowsSection({ expert, onInstallWorkflow }: Props) {
           <ViewToggle value={view} options={VIEW_OPTIONS} onChange={setView} />
         </div>
       </div>
-      {expert.workflows.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          No workflows yet. Install one to give {expert.name} something to run.
-        </p>
+      {workflows.length === 0 ? (
+        <Text variant="body" tone="muted">
+          {emptyMessage ??
+            `No workflows yet. Install one to give ${expertName} something to run.`}
+        </Text>
       ) : visible.length === 0 ? (
-        <p className="text-sm text-zinc-500">No workflows match.</p>
+        <Text variant="body" tone="muted">
+          No workflows match.
+        </Text>
       ) : view === "list" ? (
         <div className="flex flex-col gap-3 pt-4" data-testid="workflow-list">
           {visible.map((workflow) => (
             <ExpertWorkflowListItem
               key={workflow.id}
               workflow={workflow}
-              expertId={expert.id}
-              accentClassName={accent.pill}
+              expertId={expertId}
+              accentClassName={accentClassName}
+              onAsk={onAskWorkflow}
             />
           ))}
         </div>
@@ -95,8 +113,9 @@ export function ExpertWorkflowsSection({ expert, onInstallWorkflow }: Props) {
             <ExpertWorkflowCard
               key={workflow.id}
               workflow={workflow}
-              expertId={expert.id}
-              coverColor={expert.color}
+              expertId={expertId}
+              coverColor={coverColor}
+              onAsk={onAskWorkflow}
             />
           ))}
         </div>

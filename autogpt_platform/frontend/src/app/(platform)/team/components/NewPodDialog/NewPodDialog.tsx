@@ -29,6 +29,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
 
   return (
     <Dialog
+      variant="compact"
       title="New pod"
       styling={{ maxWidth: "28rem" }}
       controlled={{
@@ -42,7 +43,9 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-1">
           <Input
             id="pod-name"
+            size="small"
             label="Pod name"
+            labelVariant="small-medium"
             placeholder="e.g. Growth"
             value={name}
             maxLength={POD_NAME_MAX_LENGTH}
@@ -50,10 +53,16 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
             wrapperClassName="!mb-0"
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <Button
+              size="xs"
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+            >
               Cancel
             </Button>
             <Button
+              size="xs"
               type="submit"
               variant="primary"
               disabled={!trimmed || isCreating}

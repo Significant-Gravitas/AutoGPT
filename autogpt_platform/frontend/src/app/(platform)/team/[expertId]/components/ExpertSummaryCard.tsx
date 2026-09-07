@@ -45,7 +45,7 @@ export function ExpertSummaryCard({
         className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-4"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="large-medium" className="text-base text-zinc-700">
+          <Text variant="body-medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}
@@ -53,7 +53,7 @@ export function ExpertSummaryCard({
         {isActivityLoading ? (
           <Skeleton className="h-[5.25rem] w-full rounded-lg" />
         ) : isActivityError ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             Activity unavailable
           </Text>
         ) : visibleActivityDays && summary ? (
@@ -62,7 +62,7 @@ export function ExpertSummaryCard({
               days={visibleActivityDays}
               color={expert.color}
             />
-            <Text variant="small" className="text-zinc-500">
+            <Text variant="small" tone="muted">
               {summary.totalsLabel} · {summary.rangeLabel}
             </Text>
           </>
@@ -76,7 +76,7 @@ export function ExpertSummaryCard({
         {isActivityLoading ? (
           <Skeleton className="h-16 w-full rounded-lg" />
         ) : isActivityError ? (
-          <Text variant="small" className="text-zinc-500">
+          <Text variant="small" tone="muted">
             Streak unavailable
           </Text>
         ) : (
@@ -87,10 +87,10 @@ export function ExpertSummaryCard({
               className="shrink-0 text-zinc-400"
             />
             <div className="min-w-0">
-              <Text variant="h4" className="tabular-nums text-zinc-900">
+              <Text variant="h4" tone="primary" className="tabular-nums">
                 {streak ?? 0}
               </Text>
-              <Text variant="small" className="text-sm text-zinc-500">
+              <Text variant="body" tone="muted">
                 day streak
               </Text>
             </div>
@@ -115,7 +115,7 @@ function ActivityStatus({ isActive }: ActivityStatusProps) {
           isActive ? "bg-emerald-500" : "bg-zinc-300",
         )}
       />
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         {isActive ? "Active this week" : "Quiet lately"}
       </Text>
     </span>

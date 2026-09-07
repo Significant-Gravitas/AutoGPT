@@ -6,50 +6,50 @@ import { okData } from "@/app/api/helpers";
 import { isOutputType } from "@/components/organisms/WorkOutputSheet/helpers";
 import { WorkOutputSheet } from "@/components/organisms/WorkOutputSheet/WorkOutputSheet";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { RunStatusBadge } from "@/components/molecules/RunStatusBadge/RunStatusBadge";
-import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
+import { FilterIconMenu } from "../FilterIconMenu";
+import {
+  filterExpertRuns,
+  getWorkEmptyMessage,
+  WORK_FILTERS,
+  WorkFilter,
+  getRunMeta,
+} from "./helpers";
 
 interface Props {
   expertId: string;
+  expertName: string;
   enabled: boolean;
 }
 
-export function ExpertWorkSection({ expertId, enabled }: Props) {
-  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
+export function ExpertWorkSection({ expertId, expertName, enabled }: Props) {
+  const [filter, setFilter] = useState<WorkFilter>("all");
   const [activeRun, setActiveRun] = useState<ExpertRun | null>(null);
 
   const runsQuery = useListExpertRuns(expertId, {
     query: { select: (res) => okData(res) ?? null, enabled },
   });
   const runs = runsQuery.data ?? [];
-  const reviewCount = runs.filter((run) => run.needs_review).length;
-  const visibleRuns = needsReviewOnly
-    ? runs.filter((run) => run.needs_review)
-    : runs;
+  const visibleRuns = filterExpertRuns(runs, filter);
 
   return (
     <section>
-      <div className="mb-2.5 flex items-center justify-end gap-2 empty:mb-0">
-        {reviewCount > 0 ? (
-          <button
-            type="button"
-            aria-pressed={needsReviewOnly}
-            onClick={() => setNeedsReviewOnly((value) => !value)}
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
-              needsReviewOnly
-                ? "bg-amber-100 text-amber-700 ring-amber-200"
-                : "bg-white text-zinc-500 ring-zinc-200 hover:text-zinc-800",
-            )}
-          >
-            Needs review ({reviewCount})
-          </button>
-        ) : null}
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
+        <Text variant="body-medium" tone="primary">
+          {expertName}&apos;s Work
+        </Text>
+        <FilterIconMenu
+          label="Filter work"
+          value={filter}
+          defaultValue="all"
+          options={WORK_FILTERS}
+          onChange={setFilter}
+        />
       </div>
 
       {runsQuery.isLoading ? (
@@ -64,11 +64,9 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
           onRetry={() => runsQuery.refetch()}
         />
       ) : visibleRuns.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          {needsReviewOnly
-            ? "Nothing is waiting on your review."
-            : "No completed work yet. Finished runs will show up here."}
-        </p>
+        <Text variant="body" tone="muted">
+          {getWorkEmptyMessage(filter)}
+        </Text>
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Expert work">
           {visibleRuns.map((run) => (
@@ -102,27 +100,34 @@ export function ExpertWorkSection({ expertId, enabled }: Props) {
 }
 
 function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
+  const meta = getRunMeta(run);
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 ring-1 ring-inset ring-zinc-200">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-zinc-900">
+        <Text variant="body-medium" tone="primary" className="truncate">
           {run.agent_name}
-        </p>
-        <div className="mt-1 flex items-center gap-2">
+        </Text>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
           <RunStatusBadge status={run.status} />
           {run.needs_review && run.status.toUpperCase() !== "REVIEW" ? (
             <Badge variant="warning" size="small">
               Needs review
             </Badge>
           ) : null}
+          {meta.parts.length > 0 ? (
+            <Text
+              variant="small"
+              as="span"
+              tone="muted"
+              title={meta.startedAt?.toLocaleString()}
+              data-testid="expert-run-meta"
+            >
+              {meta.parts.join(" · ")}
+            </Text>
+          ) : null}
         </div>
       </div>
-      <Button
-        variant="secondary"
-        size="small"
-        className={ACTION_BUTTON_CLASS}
-        onClick={onOpen}
-      >
+      <Button variant="secondary" size="xs" onClick={onOpen}>
         Open
       </Button>
     </div>

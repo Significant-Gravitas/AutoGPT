@@ -6,13 +6,12 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { BookOpen01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { ExpertSkillEntry } from "./useExpertSkills";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 interface Props {
   entry: ExpertSkillEntry;
   accentClassName?: string;
-  isSaving: boolean;
-  onRemove: (name: string) => void;
+  isSaving?: boolean;
+  onRemove?: (name: string) => void;
 }
 
 export function ExpertSkillListItem({
@@ -41,19 +40,22 @@ export function ExpertSkillListItem({
           <Text variant="body-medium" className="break-words">
             {entry.name}
           </Text>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" tone="muted">
             {entry.library?.description ??
               "Marketplace skill. Not in your library yet."}
           </Text>
           {triggers.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {triggers.map((trigger) => (
-                <span
+                <Text
                   key={trigger}
-                  className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                  variant="small"
+                  as="span"
+                  tone="secondary"
+                  className="rounded-md bg-zinc-100 px-2 py-0.5"
                 >
                   {trigger}
-                </span>
+                </Text>
               ))}
             </div>
           ) : null}
@@ -65,23 +67,23 @@ export function ExpertSkillListItem({
             as="NextLink"
             href="/library/skills"
             variant="ghost"
-            size="small"
-            className={ACTION_BUTTON_CLASS}
+            size="xs"
           >
             Open in library
           </Button>
         ) : null}
-        <Button
-          variant="secondary"
-          size="small"
-          className={ACTION_BUTTON_CLASS}
-          disabled={isSaving}
-          onClick={() => onRemove(entry.name)}
-          aria-label={`Remove ${entry.name}`}
-        >
-          <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
-          Remove
-        </Button>
+        {onRemove ? (
+          <Button
+            variant="secondary"
+            size="xs"
+            leadingIcon={Delete02Icon}
+            disabled={isSaving}
+            onClick={() => onRemove(entry.name)}
+            aria-label={`Remove ${entry.name}`}
+          >
+            Remove
+          </Button>
+        ) : null}
       </div>
     </div>
   );

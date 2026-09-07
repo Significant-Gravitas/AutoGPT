@@ -4,7 +4,6 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { EditScheduleModal } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedScheduleView/components/EditScheduleModal/EditScheduleModal";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { GraphScheduleListItem } from "@/components/contextual/SchedulesPanel/components/GraphScheduleListItem/GraphScheduleListItem";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
@@ -47,18 +46,21 @@ export function ExpertSchedulesSection({
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <Text variant="large-medium">{title}</Text>
+          <Text variant="body-medium" tone="primary">
+            {title}
+          </Text>
           {lastRunLabel ? (
-            <span className="text-xs text-zinc-500">{lastRunLabel}</span>
+            <Text variant="small" as="span" tone="muted">
+              {lastRunLabel}
+            </Text>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
           {expertId && workflows ? (
             <Button
               variant="secondary"
-              size="small"
-              className={ACTION_BUTTON_CLASS}
-              leftIcon={<Icon icon={PlusSignIcon} size={14} />}
+              size="xs"
+              leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
               Create schedule
@@ -81,12 +83,14 @@ export function ExpertSchedulesSection({
         </div>
       </div>
       {schedules.length === 0 ? (
-        <p className="pt-4 text-sm text-zinc-500">
+        <Text variant="body" tone="muted" className="pt-4">
           No schedules yet. Workflows with a schedule will run {expertName}{" "}
           automatically and show up here.
-        </p>
+        </Text>
       ) : visible.length === 0 ? (
-        <p className="pt-4 text-sm text-zinc-500">No schedules match.</p>
+        <Text variant="body" tone="muted" className="pt-4">
+          No schedules match.
+        </Text>
       ) : (
         <ul className="flex flex-col gap-3 pt-4" aria-label="Expert schedules">
           {visible.map((schedule) => (

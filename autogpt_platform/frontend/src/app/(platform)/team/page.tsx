@@ -16,6 +16,7 @@ import { KanbanIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { notFound } from "next/navigation";
 import { EmptyTeamState } from "./components/EmptyTeamState";
+import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
@@ -27,7 +28,7 @@ import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
 const MAIN_CLASS =
-  "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 pb-16 pt-6 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
+  "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 px-4 pb-16 pt-6 duration-500 sm:px-8 md:px-12 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 const TABS = [
   { value: "overview", label: "Team Overview", icon: UserGroupIcon },
@@ -41,7 +42,6 @@ export default function TeamPage() {
     pods,
     podForExpert,
     podGroups,
-    ungroupedExperts,
     schedulesForExpert,
     isLoading,
     isError,
@@ -53,6 +53,10 @@ export default function TeamPage() {
     soulDrawerKey,
     openSoul,
     closeSoul,
+    chatTarget,
+    chatDrawerKey,
+    openChat,
+    closeChat,
     isNewPodOpen,
     openNewPod,
     closeNewPod,
@@ -87,6 +91,7 @@ export default function TeamPage() {
         currentPod={podForExpert(expert)}
         onInstallWorkflow={installWorkflow}
         onEditSoul={openSoul}
+        onChat={openChat}
         onAssignPod={assignPod}
       />
     );
@@ -99,9 +104,11 @@ export default function TeamPage() {
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <Icon icon={UserGroupIcon} size={18} className="text-zinc-950" />
-              <Text variant="h5">Team</Text>
+              <Text variant="large-medium" as="h5" tone="primary">
+                Team
+              </Text>
             </div>
-            <Text variant="body" className="max-w-prose text-zinc-600">
+            <Text variant="body" tone="secondary" className="max-w-prose">
               Autopilot and your hired experts, ready to work.
             </Text>
           </div>
@@ -116,19 +123,14 @@ export default function TeamPage() {
           />
         ) : null}
 
-        <TabsLine defaultValue="overview">
-          <TabsLineList
-            flush
-            className="overflow-x-auto border-b-transparent"
-            indicatorClassName="bg-zinc-900"
-          >
+        <TabsLine variant="compact" defaultValue="overview">
+          <TabsLineList className="overflow-x-auto border-b-transparent">
             {TABS.map((tab) => (
               <TabsLineTrigger
                 key={tab.value}
                 value={tab.value}
-                className="gap-1.5 px-2.5 py-2 text-xs leading-5 data-[state=active]:text-zinc-900"
+                icon={tab.icon}
               >
-                <Icon icon={tab.icon} size={14} />
                 {tab.label}
               </TabsLineTrigger>
             ))}
@@ -140,6 +142,7 @@ export default function TeamPage() {
               experts={hiredExperts}
               schedulesForExpert={schedulesForExpert}
               renderCard={renderCard}
+              onAutopilotChat={() => openChat(null)}
             />
 
             {!isLoading && !isError && hiredExperts.length === 0 ? (
@@ -151,8 +154,8 @@ export default function TeamPage() {
             <PodBoard
               isLoading={isLoading}
               podGroups={podGroups}
-              ungroupedExperts={ungroupedExperts}
               onNewPod={openNewPod}
+              renderCard={renderCard}
             />
           </TabsLineContent>
         </TabsLine>
@@ -172,6 +175,12 @@ export default function TeamPage() {
       </main>
 
       <SoulDrawer key={soulDrawerKey} expert={soulExpert} onClose={closeSoul} />
+      <ExpertChatDrawer
+        target={chatTarget}
+        threadKey={chatDrawerKey}
+        onClose={closeChat}
+        resumeLatest={false}
+      />
     </div>
   );
 }
