@@ -39,6 +39,7 @@ from backend.api.features.experts.models import (
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertRunSource,
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
@@ -404,6 +405,7 @@ async def list_expert_runs(
         where={"userId": user_id, "expertId": expert_id, "isDeleted": False},
         order={"createdAt": "desc"},
         take=limit,
+        include={"AgentPreset": True},
     )
     if not executions:
         return []
@@ -590,6 +592,13 @@ def _node_exec_inputs(
     }
 
 
+def _run_source(execution: prisma.models.AgentGraphExecution) -> ExpertRunSource:
+    preset = getattr(execution, "AgentPreset", None)
+    if preset is None:
+        return "manual"
+    return "trigger" if preset.webhookId else "scheduled"
+
+
 def _to_expert_run(
     execution: prisma.models.AgentGraphExecution,
     workflow: prisma.models.ExpertWorkflow | None,
@@ -618,6 +627,7 @@ def _to_expert_run(
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,
+        source=_run_source(execution),
         started_at=execution.startedAt,
         ended_at=execution.endedAt,
         link=run_link(library_agent_id, execution.id),
@@ -1064,6 +1074,28 @@ async def update_avatar(user_id: str, expert_id: str, avatar_url: str | None) ->
             "visibility": ResourceVisibility.PRIVATE,
         },
         data={"avatarUrl": avatar_url},
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
+async def update_budget(
+    user_id: str, expert_id: str, weekly_budget: int | None
+) -> Expert:
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        data={"weeklyBudget": weekly_budget},
     )
     if updated == 0:
         raise ExpertNotFoundError(expert_id)
