@@ -44,6 +44,7 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summary_if_disabled,
 )
 from backend.api.features.experts import experts_db
+from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
@@ -2616,12 +2617,14 @@ async def list_graph_execution_schedules(
     graph_id: str = Path(),
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
         organization_id=ctx.org_id,
         team_ids=team_ids,
+        include_paused=True,
     )
+    return await visible_graph_schedules(schedules, user_id)
 
 
 @v1_router.get(
@@ -2635,11 +2638,13 @@ async def list_all_graphs_execution_schedules(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[scheduler.GraphExecutionJobInfo]:
     team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await get_scheduler_client().get_graph_execution_schedules(
+    schedules = await get_scheduler_client().get_graph_execution_schedules(
         user_id=user_id,
         organization_id=ctx.org_id,
         team_ids=team_ids,
+        include_paused=True,
     )
+    return await visible_graph_schedules(schedules, user_id)
 
 
 @v1_router.get(

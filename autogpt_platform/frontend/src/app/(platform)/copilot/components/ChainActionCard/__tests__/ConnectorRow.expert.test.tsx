@@ -12,7 +12,12 @@ import { ConnectorRow } from "../ConnectorRow";
 import type { ConnectorRow as Row } from "../helpers";
 
 const mockGrant = vi.fn();
+const mockGrants = vi.fn(() => ({
+  data: [] as { credential_id: string }[],
+  refetch: vi.fn(),
+}));
 vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  useListExpertCredentials: () => mockGrants(),
   useGrantExpertCredentials: () => ({
     mutateAsync: mockGrant,
     isPending: false,
@@ -60,6 +65,7 @@ vi.mock(
 afterEach(() => {
   cleanup();
   mockGrant.mockReset();
+  mockGrants.mockReturnValue({ data: [], refetch: vi.fn() });
 });
 
 const savedGithub = {
@@ -99,6 +105,84 @@ function row(overrides: Partial<Row> = {}): Row {
 }
 
 describe("ConnectorRow in an expert chat", () => {
+  it("restores a persisted expert grant without triggering another run", async () => {
+    mockGrants.mockReturnValue({
+      data: [{ credential_id: "spare-cred" }],
+      refetch: vi.fn(),
+    });
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(current.select).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "spare-cred" }),
+      ),
+    );
+    expect(mockGrant).not.toHaveBeenCalled();
+    expect(current.onConnected).not.toHaveBeenCalled();
+  });
+
+  it("clears a selected credential after the grant is revoked", async () => {
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+      selected: { id: "spare-cred", provider: "github", type: "oauth2" },
+    });
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(current.select).toHaveBeenCalledWith(undefined));
+  });
+
+  it("preserves the chosen account when multiple matching accounts are granted", () => {
+    mockGrants.mockReturnValue({
+      data: [{ credential_id: "spare-cred" }, { credential_id: "other-cred" }],
+      refetch: vi.fn(),
+    });
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+      selected: { id: "other-cred", provider: "github", type: "oauth2" },
+    });
+    render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([
+          savedGithub,
+          { ...savedGithub, id: "other-cred" },
+        ])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(current.select).not.toHaveBeenCalled();
+  });
+
+  it("does not hydrate a granted credential lacking the required scopes", () => {
+    mockGrants.mockReturnValue({
+      data: [{ credential_id: "spare-cred" }],
+      refetch: vi.fn(),
+    });
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+      schema: {
+        credentials_provider: ["github"],
+        credentials_types: ["oauth2"],
+        credentials_scopes: ["repo"],
+      },
+    });
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(current.select).not.toHaveBeenCalled();
+  });
+
   it("does not treat the account's credential as connected", () => {
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },

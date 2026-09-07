@@ -30,6 +30,7 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  useListExpertCredentials: () => ({ data: [], refetch: vi.fn() }),
   useGrantExpertCredentials: () => ({
     mutateAsync: vi.fn(),
     isPending: false,

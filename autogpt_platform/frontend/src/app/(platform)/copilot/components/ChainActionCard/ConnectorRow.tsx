@@ -15,6 +15,7 @@ import {
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useContext, useEffect, useRef, useState } from "react";
 import type { ConnectorRow as Row } from "./helpers";
+import { useExpertCredentialSelection } from "./useExpertCredentialSelection";
 import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
 
 interface Props {
@@ -38,6 +39,7 @@ export function ConnectorRow({ row }: Props) {
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
+  const grantedCredentials = useExpertCredentialSelection(row, allProviders);
 
   // A credential the user already had — or one they just created in the
   // dialog — satisfies this row, so pick it up as soon as the providers
@@ -62,6 +64,7 @@ export function ConnectorRow({ row }: Props) {
       setGrantError("Couldn't grant access. Try again.");
       return false;
     }
+    await grantedCredentials.refetch();
     setConnected(null);
     row.select({
       id: credential.id,
