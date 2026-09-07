@@ -21598,6 +21598,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -22027,6 +22031,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -22089,6 +22097,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],

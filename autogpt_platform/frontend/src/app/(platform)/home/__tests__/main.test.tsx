@@ -234,6 +234,35 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
 });
 
+test("says which workflow is running now and shows its picture", async () => {
+  mockDashboard({
+    ...dashboard,
+    active_tasks: [
+      {
+        id: "active-2",
+        title: "Tell me a fact!",
+        status: "running",
+        image_url: "https://example.com/tell-me-a-fact.png",
+        started_at: new Date("2026-08-09T11:52:00Z"),
+        link: "/library",
+      },
+    ],
+    upcoming_tasks: [],
+  });
+
+  render(<HomePage />);
+
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(within(tile).getByText("Tell me a fact!")).toBeDefined();
+  expect(within(tile).getByText("workflow")).toBeDefined();
+  const picture = await within(tile).findByRole("img", {
+    name: "Tell me a fact!",
+  });
+  expect(picture.getAttribute("src")).toBe(
+    "https://example.com/tell-me-a-fact.png",
+  );
+});
+
 test("shows weekly spend per agent and on the team line", async () => {
   mockDashboard({
     ...dashboard,

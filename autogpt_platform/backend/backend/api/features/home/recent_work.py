@@ -168,6 +168,7 @@ def _actor(
         return HomeWorkActor(
             kind="workflow",
             name=agent.name,
+            image_url=agent.image_url,
             link=(
                 f"/library/agents/{agent.library_agent_id}"
                 if agent.library_agent_id
