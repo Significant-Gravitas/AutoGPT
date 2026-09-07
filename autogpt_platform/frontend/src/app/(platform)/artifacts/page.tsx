@@ -10,10 +10,12 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
+import { getEmptyMessage } from "./components/ArtifactsList/helpers";
+import { NewMenu } from "./components/NewMenu/NewMenu";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
 import { StorageUsage } from "./components/StorageUsage/StorageUsage";
+import { ViewToggle } from "./components/ViewToggle/ViewToggle";
 import { FolderBreadcrumb } from "./components/WorkspaceFolders/FolderBreadcrumb";
-import { WorkspaceFolders } from "./components/WorkspaceFolders/WorkspaceFolders";
 import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
 
@@ -59,6 +61,8 @@ export default function ArtifactsPage() {
     setOriginFilter,
     selectedFolderId,
     setSelectedFolderId,
+    view,
+    setView,
     hasMore,
     isLoadingMore,
     loadMore,
@@ -66,6 +70,7 @@ export default function ArtifactsPage() {
   const { folders } = useArtifactsFolders();
 
   const isSearching = searchTerm.length > 0;
+  const isInFolder = selectedFolderId !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   useEffect(() => {
@@ -83,7 +88,7 @@ export default function ArtifactsPage() {
 
   return (
     <main className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <motion.div
           className="flex flex-col gap-1"
           variants={variants}
@@ -101,6 +106,7 @@ export default function ArtifactsPage() {
           </Text>
         </motion.div>
         <motion.div
+          className="flex items-center gap-3"
           variants={variants}
           initial="hidden"
           animate="show"
@@ -110,68 +116,72 @@ export default function ArtifactsPage() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
           />
+          <NewMenu selectedFolderId={selectedFolderId} />
         </motion.div>
       </div>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <motion.div
-          className="flex w-full md:w-2/5"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.16 }}
         >
-          <StorageUsage />
+          <OriginFilter value={originFilter} onChange={setOriginFilter} />
         </motion.div>
+        <motion.div
+          variants={variants}
+          initial="hidden"
+          animate="show"
+          transition={{ delay: reduceMotion ? 0 : 0.2 }}
+        >
+          <ViewToggle value={view} onChange={setView} />
+        </motion.div>
+      </div>
+      {isInFolder ? (
         <motion.div
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.24 }}
         >
-          <OriginFilter value={originFilter} onChange={setOriginFilter} />
-        </motion.div>
-      </div>
-      {selectedFolderId !== null ? (
-        <motion.div
-          variants={variants}
-          initial="hidden"
-          animate="show"
-          transition={{ delay: reduceMotion ? 0 : 0.3 }}
-        >
           <FolderBreadcrumb
             folderName={selectedFolder?.name ?? "Folder"}
             onBack={() => setSelectedFolderId(null)}
           />
         </motion.div>
-      ) : (
-        !isSearching && (
-          <motion.div
-            variants={variants}
-            initial="hidden"
-            animate="show"
-            transition={{ delay: reduceMotion ? 0 : 0.3 }}
-          >
-            <WorkspaceFolders onSelectFolder={setSelectedFolderId} />
-          </motion.div>
-        )
-      )}
+      ) : null}
       <motion.div
         variants={variants}
         initial="hidden"
         animate="show"
-        transition={{ delay: reduceMotion ? 0 : 0.32 }}
+        transition={{ delay: reduceMotion ? 0 : 0.28 }}
       >
         <ArtifactsList
           files={files}
           isLoading={isLoading}
           isError={isError}
           error={error}
-          hasSearchTerm={searchTerm.length > 0}
+          emptyMessage={getEmptyMessage({
+            hasSearchTerm: isSearching,
+            isInFolder,
+          })}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
           listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
+          view={view}
+          showFolders={!isInFolder && !isSearching}
+          onSelectFolder={setSelectedFolderId}
         />
+      </motion.div>
+      <motion.div
+        className="w-full pt-4 md:w-2/5"
+        variants={variants}
+        initial="hidden"
+        animate="show"
+        transition={{ delay: reduceMotion ? 0 : 0.32 }}
+      >
+        <StorageUsage />
       </motion.div>
     </main>
   );
@@ -189,9 +199,12 @@ function ArtifactsPageSkeleton({ showNewLayout }: Props) {
     >
       <Skeleton className="h-8 w-48 rounded-md" />
       <Skeleton className="h-4 w-80 rounded-md" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+      <div className="flex flex-col divide-y divide-zinc-100">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-64 w-full rounded-2xl" />
+          <div key={i} className="flex items-center gap-4 py-3">
+            <Skeleton className="h-10 w-10 rounded-xl" />
+            <Skeleton className="h-4 w-56" />
+          </div>
         ))}
       </div>
     </main>
