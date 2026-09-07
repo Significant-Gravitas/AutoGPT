@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -15,16 +15,29 @@ import {
   openOAuthPopup,
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
 import { getOAuthErrorMessage } from "./helpers";
 
 interface Args {
   provider: string;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
+  /** Scopes the requesting block needs. Omit for a provider-level connect,
+   *  where the provider's default scopes are the whole ask. */
+  scopes?: string[];
+  /** Existing account to upgrade. The backend unions its scopes with the
+   *  requested ones, so a re-auth cannot narrow what the user already had. */
+  credentialID?: string;
 }
 
-export function useOAuthConnect({ provider, onSuccess }: Args) {
+export function useOAuthConnect({
+  provider,
+  onSuccess,
+  scopes,
+  credentialID,
+}: Args) {
   const queryClient = useQueryClient();
+  const credentialsActions = useContext(CredentialsActionsContext);
   const [isPending, setIsPending] = useState(false);
   const isPendingRef = useRef(false);
   const abortRef = useRef<(() => void) | null>(null);
@@ -65,7 +78,16 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     const preOpenedWindow = preOpenOAuthPopup();
     preOpenedWindowRef.current = preOpenedWindow;
     try {
-      const initiateResponse = await getV1InitiateOauthFlow(provider);
+      // Without the scopes the consent screen grants provider defaults, and
+      // a credential missing a required scope never satisfies the caller.
+      const initiateResponse = await initiateLogin(
+        provider,
+        scopes,
+        credentialID,
+        // The list that produced the dead id is stale; refresh it now so a
+        // cancelled popup does not make every later click pay the retry too.
+        () => credentialsActions?.reload(),
+      );
       // customMutator rejects non-2xx, so this branch is unreachable at
       // runtime — it exists only to narrow the discriminated union so the
       // 200-only LoginResponse shape is accessible below.
@@ -116,6 +138,10 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
 
       toast({ title: "Connected via OAuth", variant: "success" });
       await invalidateConnectionQueries(queryClient);
+      // The provider's in-memory list only reloads off a React Query cache
+      // event, which invalidation never emits unless something already
+      // subscribed to that query — so ask it directly.
+      credentialsActions?.reload();
       // customMutator rejects non-2xx, so a 200 is the only way to get here;
       // the check narrows the union rather than guarding a real branch.
       onSuccess(exchanged.status === 200 ? exchanged.data : undefined);
@@ -143,4 +169,50 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   }
 
   return { connect, isPending };
+}
+
+function buildLoginParams(scopes?: string[], credentialID?: string) {
+  const params: { scopes?: string; credential_id?: string } = {};
+  if (scopes?.length) params.scopes = scopes.join(",");
+  if (credentialID) params.credential_id = credentialID;
+  return Object.keys(params).length > 0 ? params : undefined;
+}
+
+/** The upgrade target comes from an in-memory list that can be stale — the
+ *  very staleness this flow exists to survive — and the backend 404s an id it
+ *  cannot find. Fall back to a fresh grant rather than leaving a dead button.
+ *  Only that 404 retries: the endpoint also 404s a provider without OAuth
+ *  support, before it ever reads the upgrade target, and re-sending that
+ *  fails identically. */
+async function initiateLogin(
+  provider: string,
+  scopes?: string[],
+  credentialID?: string,
+  onStaleCredential?: () => void,
+) {
+  try {
+    return await getV1InitiateOauthFlow(
+      provider,
+      buildLoginParams(scopes, credentialID),
+    );
+  } catch (error) {
+    if (!credentialID || !isMissingUpgradeTarget(error)) throw error;
+    onStaleCredential?.();
+    return getV1InitiateOauthFlow(provider, buildLoginParams(scopes));
+  }
+}
+
+/** Matches only `_prepare_scope_upgrade`'s "Credential to upgrade not found".
+ *  If the backend rewords it the retry stops happening and the original 404
+ *  surfaces — the behaviour before the retry existed. */
+function isMissingUpgradeTarget(error: unknown) {
+  const { status, response } = (error ?? {}) as {
+    status?: number;
+    response?: { detail?: unknown };
+  };
+  return (
+    status === 404 &&
+    typeof response?.detail === "string" &&
+    response.detail.toLowerCase().includes("upgrade")
+  );
 }

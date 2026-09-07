@@ -33,6 +33,8 @@ from .run_mcp_tool import RunMCPToolTool
 _USER_ID = "test-user-mcp-manual-token"
 _SERVER_URL = "https://mcp.datafa.st/mcp"
 _TOKEN = "dft_live_token_value"
+# A bare token is stored (and sent) as a complete Bearer header.
+_AUTHORIZATION = f"Bearer {_TOKEN}"
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -90,10 +92,16 @@ async def store():
         ),
         patch("backend.api.features.mcp.routes.creds_manager.store", fake),
         # ``invalidate_mcp_credential`` goes through ``mgr.delete``, which
-        # takes a Redis lock. Only the store is faked here.
+        # takes a Redis lock, and every write publishes a creds-changed event
+        # over Redis. Neither is what this test is about; only the store is
+        # faked, everything between the route and it runs for real.
         patch(
             "backend.integrations.creds_manager.IntegrationCredentialsManager._locked",
             _noop_lock,
+        ),
+        patch(
+            "backend.integrations.creds_manager._invoke_creds_changed_hook",
+            new_callable=AsyncMock,
         ),
     ):
         yield fake
@@ -167,7 +175,7 @@ async def test_stored_token_reaches_the_mcp_client(client, store):
         )
 
     assert isinstance(response, MCPToolsDiscoveredResponse)
-    MockClient.assert_called_once_with(_SERVER_URL, auth_token=_TOKEN)
+    MockClient.assert_called_once_with(_SERVER_URL, authorization=_AUTHORIZATION)
 
 
 async def test_connect_card_reports_connected_after_storing_a_token(client, store):
@@ -207,7 +215,7 @@ async def test_trailing_slash_variant_still_resolves(client, store):
             server_url=f"{_SERVER_URL}/",
         )
 
-    assert MockClient.call_args.kwargs["auth_token"] == _TOKEN
+    assert MockClient.call_args.kwargs["authorization"] == _AUTHORIZATION
 
 
 async def test_dead_token_is_invalidated_on_401(client, store):
@@ -270,4 +278,6 @@ async def test_another_users_token_is_not_resolved(client, store):
             server_url=_SERVER_URL,
         )
 
-    assert MockClient.call_args.kwargs["auth_token"] is None
+    # No credential resolved: the client is built without an Authorization
+    # header at all rather than with an empty one.
+    assert MockClient.call_args.kwargs.get("authorization") is None

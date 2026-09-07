@@ -582,6 +582,44 @@ async def test_preset_trigger_refuses_foreign_owner(mocker):
     add_exec.assert_not_awaited()
 
 
+async def test_preset_trigger_deactivates_only_when_the_graph_version_is_gone(mocker):
+    """The graph read here locates the webhook input node; authorization to run
+    happens in add_graph_execution. Without `skip_access_check` a read denial
+    also reads as `None` and permanently disables a live trigger, which is a
+    one-way write the user has to undo by hand.
+    """
+    from backend.api.features.integrations import router as ingress_router
+
+    mocker.patch.object(ingress_router, "add_graph_execution", new_callable=AsyncMock)
+    update = mocker.patch.object(
+        ingress_router, "update_preset", new_callable=AsyncMock
+    )
+    get_graph = mocker.patch.object(
+        ingress_router,
+        "get_graph",
+        new_callable=AsyncMock,
+        return_value=_make_trigger_graph(),
+    )
+    preset = _make_expert_preset()
+    preset.expert_id = None
+    webhook = _make_webhook(ProviderName.GITHUB)
+
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    assert get_graph.await_args.kwargs["skip_access_check"] is True
+    update.assert_not_awaited()
+
+    # Only a genuinely missing graph version disables the preset.
+    get_graph.return_value = None
+    await ingress_router._execute_webhook_preset_trigger(
+        preset, webhook, WEBHOOK_ID, "pull_request", {}
+    )
+
+    update.assert_awaited_once_with(preset.user_id, preset.id, is_active=False)
+
+
 def _make_expert_preset(
     *,
     organization_id: str | None = "personal-org",
@@ -691,6 +729,7 @@ async def test_expert_preset_trigger_uses_current_tenancy_after_conversion(
     get_graph.assert_awaited_once()
     add_exec.assert_awaited_once()
     assert add_exec.await_args.kwargs["organization_id"] == "personal-org"
+    assert get_graph.await_args.kwargs["skip_access_check"] is True
     assert add_exec.await_args.kwargs["team_id"] == "personal-team"
     assert add_exec.await_args.kwargs["expert_id"] == "expert-1"
 

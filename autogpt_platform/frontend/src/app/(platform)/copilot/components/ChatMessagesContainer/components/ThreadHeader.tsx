@@ -117,8 +117,9 @@ export function ThreadHeader({
       >
         {/* The integrations popover is its own button, so the chip is a
             container and only the identity half opens the activity card —
-            nesting the two triggers would be button-in-button. */}
-        <div className="pointer-events-auto flex items-center whitespace-nowrap rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-3 shadow-sm backdrop-blur-md">
+            nesting the two triggers would be button-in-button. Each half
+            carries its own padding so its hover fill reaches the chip's edge. */}
+        <div className="pointer-events-auto flex items-center whitespace-nowrap rounded-full border border-zinc-200/70 bg-white/75 shadow-sm backdrop-blur-md">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -131,7 +132,7 @@ export function ThreadHeader({
                         : `${name}, ${role}. Open session activity`
                     }
                     onClick={() => toggleContextPanelTab("files")}
-                    className="-my-1 -ml-1.5 flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-1.5 transition-colors hover:bg-zinc-100/80"
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
                   >
                     {chipContent}
                   </button>
@@ -143,7 +144,7 @@ export function ThreadHeader({
                   <div
                     tabIndex={0}
                     aria-label={`${name} — ${role}`}
-                    className="flex min-w-0 items-center gap-2 rounded-full"
+                    className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
                   >
                     {chipContent}
                   </div>

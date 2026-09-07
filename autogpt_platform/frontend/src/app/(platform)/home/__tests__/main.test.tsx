@@ -76,6 +76,32 @@ const approvalItem: HomeAttentionItem = {
   },
 };
 
+const cameraResearch: HomeBriefingOutcome = {
+  id: "outcome-1",
+  status: "completed",
+  title: "Your camera research is ready",
+  summary: "Compared 18 cameras and shortlisted the best three.",
+  expert: maria,
+  agent_name: "Product Researcher",
+  occurred_at: NOW,
+  duration_seconds: 812,
+  cost_cents: 42,
+  link: "/library",
+};
+
+const schedulingFailure: HomeBriefingOutcome = {
+  id: "outcome-2",
+  status: "failed",
+  title: "Learning sessions could not be scheduled",
+  summary: "Nova needs Calendar access before the plan can continue.",
+  expert: maria,
+  agent_name: "Weekly Learning Coach",
+  occurred_at: NOW,
+  duration_seconds: 44,
+  cost_cents: 3,
+  link: "/team/maria",
+};
+
 const dashboard: HomeDashboardResponse = {
   generated_at: NOW,
   timezone: "UTC",
@@ -98,32 +124,7 @@ const dashboard: HomeDashboardResponse = {
     completed_count: 14,
     failed_count: 1,
     routine_count: 13,
-    outcomes: [
-      {
-        id: "outcome-1",
-        status: "completed",
-        title: "Your camera research is ready",
-        summary: "Compared 18 cameras and shortlisted the best three.",
-        expert: maria,
-        agent_name: "Product Researcher",
-        occurred_at: NOW,
-        duration_seconds: 812,
-        cost_cents: 42,
-        link: "/library",
-      },
-      {
-        id: "outcome-2",
-        status: "failed",
-        title: "Learning sessions could not be scheduled",
-        summary: "Nova needs Calendar access before the plan can continue.",
-        expert: maria,
-        agent_name: "Weekly Learning Coach",
-        occurred_at: NOW,
-        duration_seconds: 44,
-        cost_cents: 3,
-        link: "/team/maria",
-      },
-    ],
+    outcomes: [cameraResearch, schedulingFailure],
   },
   active_tasks: [
     {
@@ -170,6 +171,26 @@ const dashboard: HomeDashboardResponse = {
       },
     ],
   },
+  recent_work: {
+    window_started_at: new Date("2026-08-02T12:00:00Z"),
+    completed_count: 14,
+    failed_count: 1,
+    total_count: 0,
+    groups: [
+      {
+        actor: {
+          kind: "expert",
+          name: "Maria",
+          expert: maria,
+          link: "/copilot?expertId=maria",
+        },
+        latest_at: NOW,
+        runs: [cameraResearch, schedulingFailure],
+        items: [],
+        run_count: 14,
+      },
+    ],
+  },
 };
 
 afterEach(() => {
@@ -193,12 +214,12 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your briefing" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
-  expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your agents" })).toBeDefined();
+  expect(screen.getByText("14 runs")).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
   expect(
-    screen.getByRole("link", { name: /View all 10 agents/ }),
+    screen.getByRole("link", { name: /View all 10 experts/ }),
   ).toBeDefined();
   expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
   expect(
@@ -224,16 +245,20 @@ test("shows weekly spend per agent and on the team line", async () => {
 
   render(<HomePage />);
 
-  // Spend sits in its own non-truncating element, so a long detail line can
-  // never clip the figure this tile exists to show.
-  const spend = await screen.findByText("· $9.00 this week");
-  expect(spend.className).toContain("shrink-0");
+  expect(await screen.findByText(/\$9\.00 this week/)).toBeDefined();
   expect(
     screen.getByText("1 working now · 7 ready · $12.50 this week"),
   ).toBeDefined();
-  // An expert with no attributed spend keeps its detail line unadorned.
-  expect(screen.getByText("Ready for the next task")).toBeDefined();
-  expect(screen.queryByText("· $0.00 this week")).toBeNull();
+  // An expert with no attributed spend shows no spend line at all, and the
+  // setup detail stays with Needs you rather than repeating here.
+  expect(screen.queryByText(/\$0\.00 this week/)).toBeNull();
+  expect(screen.queryByText("Ready for the next task")).toBeNull();
+  expect(
+    screen.getAllByRole("link", { name: /^Chat with / }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    screen.getAllByRole("link", { name: /^Manage / }).length,
+  ).toBeGreaterThan(0);
 });
 
 test("falls back to an Unknown badge for an unrecognised agent status", async () => {
@@ -292,7 +317,7 @@ test("keeps a Review deep link alongside the approval shortcuts", async () => {
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
 });
 
-test("shows calm, useful empty states without hiding the page structure", async () => {
+test("shows calm, useful empty states and drops the empty inbox", async () => {
   mockDashboard({
     ...dashboard,
     attention: [],
@@ -307,62 +332,18 @@ test("shows calm, useful empty states without hiding the page structure", async 
     upcoming_tasks: [],
     team: { total: 0, ready: 0, working: 0, needs_attention: 0 },
     agents: [],
+    recent_work: { groups: [], total_count: 0 },
   });
 
   render(<HomePage />);
 
-  expect(await screen.findByText("You are all caught up")).toBeDefined();
-  expect(screen.getByText("No new outcomes yet")).toBeDefined();
+  expect(await screen.findByText("Nothing to show yet")).toBeDefined();
+  // The header already says nothing needs you, so an empty "Needs you"
+  // tile would only repeat it.
+  expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
+  expect(screen.queryByText("You are all caught up")).toBeNull();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
-});
-
-test("filters briefing outcomes by their real status", async () => {
-  const user = userEvent.setup();
-  mockDashboard(dashboard);
-
-  render(<HomePage />);
-
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-  await user.click(screen.getByRole("menuitemradio", { name: "Failed" }));
-
-  expect(
-    screen.getByText("Learning sessions could not be scheduled"),
-  ).toBeDefined();
-  expect(screen.queryByText("Your camera research is ready")).toBeNull();
-});
-
-test("labels a filter option for an unrecognised briefing status", async () => {
-  const user = userEvent.setup();
-  mockDashboard({
-    ...dashboard,
-    briefing: {
-      ...dashboard.briefing,
-      outcomes: [
-        dashboard.briefing.outcomes[0],
-        {
-          ...dashboard.briefing.outcomes[1],
-          status: "cancelled" as HomeBriefingOutcome["status"],
-        },
-      ],
-    },
-  });
-
-  render(<HomePage />);
-
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-
-  expect(
-    screen.getByRole("menuitemradio", { name: "cancelled" }),
-  ).toBeDefined();
 });
 
 test("shows a retryable page error when the aggregate cannot load", async () => {
@@ -427,7 +408,7 @@ test("renders the briefing unchanged when no narrative was generated", async () 
   render(<HomePage />);
 
   expect(
-    await screen.findByRole("heading", { name: "Your briefing" }),
+    await screen.findByRole("heading", { name: "Recent work" }),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
 });

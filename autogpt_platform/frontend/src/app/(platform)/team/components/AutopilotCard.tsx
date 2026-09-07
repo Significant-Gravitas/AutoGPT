@@ -1,34 +1,79 @@
-import { Avatar, AvatarFallback } from "@/components/atoms/Avatar/Avatar";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Robot01Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+import Link from "next/link";
+import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
+import { CardStat, CardStats } from "./CardStats";
+import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
-export function AutopilotCard() {
+interface Props {
+  skillCount: number;
+  scheduleCount: number;
+  workflowCount: number;
+  onChat: () => void;
+}
+
+export function AutopilotCard({
+  skillCount,
+  scheduleCount,
+  workflowCount,
+  onChat,
+}: Props) {
   return (
-    <div className="flex flex-col gap-3 rounded-[1.75rem] border border-zinc-200 bg-white p-5">
-      <div className="flex items-center gap-3">
-        <Avatar className="h-12 w-12">
-          <AvatarFallback>
-            <Icon icon={Robot01Icon} size={24} />
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <Text variant="large-medium">Autopilot</Text>
-          <Text variant="small" className="text-zinc-500">
-            Generalist — runs the shop
+    <section
+      aria-label="Autopilot"
+      className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white"
+    >
+      <Link
+        href="/team/autopilot"
+        aria-label="View Autopilot"
+        className="flex flex-1 flex-col items-start p-2 pb-4"
+      >
+        <ExpertCover color={undefined} status="built-in" />
+
+        <div className="flex w-full items-start gap-3 px-2">
+          <span className="relative z-10 -mt-11 ml-1 flex size-[5.25rem] shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
+            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-11" />
+          </span>
+        </div>
+
+        <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
+          <Text
+            variant="lead-medium"
+            tone="primary"
+            className="w-full truncate pb-1"
+          >
+            Autopilot
+          </Text>
+          <Text variant="body" tone="muted">
+            {AUTOPILOT_ROLE}
+          </Text>
+          <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
+            {AUTOPILOT_BLURB}
           </Text>
         </div>
-      </div>
-      <Text variant="body">
-        Your built-in generalist. It runs your workflows, answers questions, and
-        hands work to your hired experts.
-      </Text>
-      <div className="mt-auto flex gap-2">
-        <Button as="NextLink" href="/copilot" variant="secondary" size="small">
+
+        <div className="w-full px-2">
+          <CardStats className="mt-3 w-full">
+            <CardStat label="Schedules">{scheduleCount}</CardStat>
+            <CardStat label="Skills">{skillCount}</CardStat>
+            <CardStat label="Workflows">{workflowCount}</CardStat>
+          </CardStats>
+        </div>
+      </Link>
+
+      <div className="flex items-center gap-2 px-4 pb-4">
+        <Button
+          variant="secondary"
+          size="xs"
+          className="flex-1"
+          leadingIcon={BubbleChatIcon}
+          onClick={onChat}
+        >
           Chat
         </Button>
       </div>
-    </div>
+    </section>
   );
 }

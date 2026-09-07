@@ -92,6 +92,8 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -153,6 +155,8 @@ def _make_chat_session_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 

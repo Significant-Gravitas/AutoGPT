@@ -259,6 +259,24 @@ class GithubMakePullRequestBlock(Block):
             yield "error", str(e)
 
 
+TEST_PR_PAYLOAD = {
+    "title": "Title of the pull request",
+    "body": "This is the body of the pull request.",
+    "user": {"login": "username"},
+    "draft": False,
+    "mergeable": True,
+    "mergeable_state": "clean",
+    "head": {
+        "ref": "feature-branch",
+        "repo": {"full_name": "someone/repo"},
+    },
+    "base": {
+        "ref": "main",
+        "repo": {"full_name": "owner/repo"},
+    },
+}
+
+
 class GithubReadPullRequestBlock(Block):
     class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
@@ -277,6 +295,20 @@ class GithubReadPullRequestBlock(Block):
         body: str = SchemaField(description="Body of the pull request")
         author: str = SchemaField(description="User who created the pull request")
         changes: str = SchemaField(description="Changes made in the pull request")
+        pull_request: dict = SchemaField(
+            description="The full pull request object from the API, including "
+            "head/base refs (with fork repo and branch name for cross-repo PRs), "
+            "mergeability (mergeable, mergeable_state, rebaseable), draft state, "
+            "review/comment counts, labels, milestone, and diff/commit stats."
+        )
+        head_branch: str = SchemaField(
+            description="Name of the branch the PR is created from (the head "
+            "branch). For cross-repo PRs, this branch lives in the fork — see "
+            "pull_request.head.repo for the fork's URL."
+        )
+        target_branch: str = SchemaField(
+            description="Name of the branch the PR targets (the base branch)"
+        )
         error: str = SchemaField(
             description="Error message if reading the pull request failed"
         )
@@ -284,7 +316,8 @@ class GithubReadPullRequestBlock(Block):
     def __init__(self):
         super().__init__(
             id="bf94b2a4-1a30-4600-a783-a8a44ee31301",
-            description="This block reads the body, title, user, and changes of a specified GitHub pull request.",
+            description="This block reads the body, title, user, changes, and full "
+            "raw object of a specified GitHub pull request.",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=GithubReadPullRequestBlock.Input,
             output_schema=GithubReadPullRequestBlock.Output,
@@ -298,29 +331,57 @@ class GithubReadPullRequestBlock(Block):
                 ("title", "Title of the pull request"),
                 ("body", "This is the body of the pull request."),
                 ("author", "username"),
+                ("pull_request", TEST_PR_PAYLOAD),
+                ("head_branch", "feature-branch"),
+                ("target_branch", "main"),
                 ("changes", "List of changes made in the pull request."),
             ],
             test_mock={
-                "read_pr": lambda *args, **kwargs: (
-                    "Title of the pull request",
-                    "This is the body of the pull request.",
-                    "username",
-                ),
+                "read_pr": lambda *args, **kwargs: TEST_PR_PAYLOAD,
                 "read_pr_changes": lambda *args, **kwargs: "List of changes made in the pull request.",
             },
         )
 
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        pull_request = await self.read_pr(
+            credentials,
+            input_data.pr_url,
+        )
+        title, body, author = self._pr_summary(pull_request)
+        yield "title", title
+        yield "body", body
+        yield "author", author
+        yield "pull_request", pull_request
+        yield "head_branch", pull_request.get("head", {}).get("ref", "")
+        yield "target_branch", pull_request.get("base", {}).get("ref", "")
+
+        if input_data.include_pr_changes:
+            changes = await self.read_pr_changes(
+                credentials,
+                input_data.pr_url,
+            )
+            yield "changes", changes
+
     @staticmethod
-    async def read_pr(
-        credentials: GithubCredentials, pr_url: str
-    ) -> tuple[str, str, str]:
+    async def read_pr(credentials: GithubCredentials, pr_url: str) -> dict:
         api = get_api(credentials)
-        issue_url = pr_url.replace("/pull/", "/issues/")
-        response = await api.get(issue_url)
-        data = response.json()
-        title = data.get("title", "No title found")
-        body = data.get("body", "No body content found")
-        author = data.get("user", {}).get("login", "Unknown author")
+        pr_api_url = prepare_pr_api_url(pr_url=pr_url, path="").rstrip("/")
+        response = await api.get(pr_api_url)
+        return response.json()
+
+    @staticmethod
+    def _pr_summary(pull_request: dict) -> tuple[str, str, str]:
+        # GitHub returns an explicit `"body": null` for PRs with no description,
+        # so `.get(..., default)` alone won't catch it — `or` does.
+        title = pull_request.get("title") or "No title found"
+        body = pull_request.get("body") or "No body content found"
+        author = (pull_request.get("user") or {}).get("login") or "Unknown author"
         return title, body, author
 
     @staticmethod
@@ -351,28 +412,6 @@ class GithubReadPullRequestBlock(Block):
                 patch_header += f"+++ {is_filename}\n"
             changes.append(patch_header + diff)
         return "\n\n".join(changes)
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: GithubCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        title, body, author = await self.read_pr(
-            credentials,
-            input_data.pr_url,
-        )
-        yield "title", title
-        yield "body", body
-        yield "author", author
-
-        if input_data.include_pr_changes:
-            changes = await self.read_pr_changes(
-                credentials,
-                input_data.pr_url,
-            )
-            yield "changes", changes
 
 
 class GithubAssignPRReviewerBlock(Block):
