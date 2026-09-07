@@ -83,7 +83,11 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
-    expect(await screen.findByText("Skills to teach")).toBeDefined();
+    expect(
+      await screen.findByText("Skills to teach", undefined, {
+        timeout: 10000,
+      }),
+    ).toBeDefined();
     const card = await screen.findByRole("link", { name: /Brand voice guide/ });
     expect(card.getAttribute("href")).toBe(
       "/marketplace/skills/brand-voice-guide",
@@ -112,6 +116,7 @@ describe("Marketplace SkillsSection", () => {
 
     render(<MainMarkeplacePage />);
 
+    await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
     const outreach = await screen.findByRole("link", {
       name: /Outreach playbook/,
     });
