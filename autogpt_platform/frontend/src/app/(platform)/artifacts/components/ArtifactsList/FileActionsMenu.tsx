@@ -1,6 +1,5 @@
 "use client";
 
-import { useDeleteWorkspaceFile } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
@@ -10,9 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   Delete02Icon,
   Download04Icon,
@@ -22,10 +19,8 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { useState } from "react";
-import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
 import { MoveToFolderDialog } from "../MoveToFolderDialog/MoveToFolderDialog";
-import { deriveFileOrigin, downloadFileBlob } from "./helpers";
+import { useFileActionsMenu } from "./useFileActionsMenu";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -33,55 +28,16 @@ interface Props {
 }
 
 export function FileActionsMenu({ file, className }: Props) {
-  const origin = deriveFileOrigin(file.path);
-  const goLabel = origin.kind === "session" ? "Open chat" : "Open in Builder";
-  const [isMoveOpen, setIsMoveOpen] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { mutateAsync: deleteFile, isPending: isDeleting } =
-    useDeleteWorkspaceFile({
-      mutation: {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: ARTIFACTS_LIST_QUERY_KEY,
-          });
-          toast({ title: "File deleted" });
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete file",
-            description:
-              error instanceof Error ? error.message : "Please try again.",
-            variant: "destructive",
-          });
-        },
-      },
-    });
-
-  async function handleDownload() {
-    if (isDownloading) return;
-    setIsDownloading(true);
-    try {
-      await downloadFileBlob(file.id, file.name);
-    } catch (error) {
-      toast({
-        title: "Failed to download file",
-        description:
-          error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDownloading(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (isDeleting) return;
-    const confirmed = window.confirm(`Delete "${file.name}"?`);
-    if (!confirmed) return;
-    await deleteFile({ fileId: file.id });
-  }
+  const {
+    goLabel,
+    goHref,
+    isMoveOpen,
+    setIsMoveOpen,
+    isDownloading,
+    isDeleting,
+    handleDownload,
+    handleDelete,
+  } = useFileActionsMenu(file);
 
   return (
     <>
@@ -120,7 +76,7 @@ export function FileActionsMenu({ file, className }: Props) {
             {isDownloading ? "Downloading…" : "Download"}
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href={origin.href} data-testid="artifacts-origin-link">
+            <Link href={goHref} data-testid="artifacts-origin-link">
               <Icon icon={LinkSquare01Icon} size={16} className="mr-2" />
               {goLabel}
             </Link>
