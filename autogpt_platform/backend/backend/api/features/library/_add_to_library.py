@@ -75,7 +75,11 @@ async def resolve_graph_model_for_library(
     *,
     admin: bool,
 ) -> GraphModel:
-    """Resolve the graph for an already-validated marketplace version."""
+    """Resolve the graph for an already-validated marketplace version.
+
+    `skip_access_check`: the agent isn't in the user's library yet, so
+    `get_graph()` would deny; `resolve_store_version_for_library()` authorized.
+    """
     ag = _require_graph(store_listing_version)
 
     graph_model = (
@@ -84,7 +88,10 @@ async def resolve_graph_model_for_library(
         )
         if admin
         else await graph_db.get_graph(
-            graph_id=ag.id, version=ag.version, user_id=user_id
+            graph_id=ag.id,
+            version=ag.version,
+            user_id=user_id,
+            skip_access_check=True,
         )
     )
     if not graph_model:
@@ -171,7 +178,6 @@ async def restore_existing_library_agent(
     return library_model.LibraryAgent.from_db(
         restored,
         schedule_info=schedule_info,
-        store_listing_version_id=store_listing_version.id,
     )
 
 
@@ -216,7 +222,6 @@ async def add_graph_to_library(
     return library_model.LibraryAgent.from_db(
         added_agent,
         schedule_info=schedule_info,
-        store_listing_version_id=store_listing_version.id,
     )
 
 

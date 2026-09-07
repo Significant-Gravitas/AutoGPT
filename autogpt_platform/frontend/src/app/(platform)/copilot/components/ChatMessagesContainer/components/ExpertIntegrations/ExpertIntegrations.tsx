@@ -36,7 +36,7 @@ export function ExpertIntegrations({ expertId, expertName }: Props) {
   return (
     <Popover>
       <PopoverTrigger
-        className="ml-2 flex shrink-0 items-center gap-1 rounded-full px-1.5 py-1 hover:bg-zinc-100"
+        className="flex shrink-0 items-center gap-1 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
         aria-label={`${expertName}'s integrations`}
         data-testid="expert-integrations"
       >

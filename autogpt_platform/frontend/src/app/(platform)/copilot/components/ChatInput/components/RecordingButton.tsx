@@ -15,6 +15,7 @@ interface Props {
   // dump: AutoPilot's intro invites them to record, so the button it
   // points at has to be findable.
   highlight?: boolean;
+  className?: string;
 }
 
 export function RecordingButton({
@@ -24,6 +25,7 @@ export function RecordingButton({
   disabled,
   onClick,
   highlight = false,
+  className,
 }: Props) {
   return (
     <Button
@@ -35,6 +37,7 @@ export function RecordingButton({
       onClick={onClick}
       className={cn(
         "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
+        className,
         disabled && "opacity-40",
         isRecording && "animate-pulse bg-red-500 text-white hover:bg-red-600",
         isTranscribing && "bg-zinc-100 text-zinc-400",

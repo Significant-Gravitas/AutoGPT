@@ -23,6 +23,7 @@ import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { isKey } from "@/lib/keyboard";
+import { retryUnlessClientError } from "../../helpers/graphLoadError";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -91,6 +92,7 @@ export function useBuilderChatPanel({
       query: {
         select: okData,
         enabled: !!flowID,
+        retry: retryUnlessClientError,
       },
     },
   );

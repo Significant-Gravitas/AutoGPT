@@ -89,6 +89,7 @@ export function SubscriptionStep() {
                 loading={isUpdatingTier && selectedPlan === plan.key}
                 disabled={isUpdatingTier && selectedPlan !== plan.key}
                 priceCaption="billing-period"
+                ctaGoalSurface="onboarding_paywall"
                 className={cn(
                   plan.key === PLAN_KEYS.MAX && "order-1 md:order-none",
                   plan.key === PLAN_KEYS.PRO && "order-2 md:order-none",
