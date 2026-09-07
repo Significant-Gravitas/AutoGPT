@@ -450,6 +450,21 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 """
 
 
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
+
+
 # Environment-specific supplement templates
 def _build_storage_supplement(
     working_dir: str,

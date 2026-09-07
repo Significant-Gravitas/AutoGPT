@@ -1079,3 +1079,49 @@ describe("ChatInput stop button", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 });
+
+describe("ChatInput voice mode", () => {
+  it("hands the composer over to the voice bar", () => {
+    const { rerender } = render(
+      <ChatInput onSend={mockOnSend} sessionId="session-1" />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    expect(isShown(textarea)).toBe(true);
+
+    rerender(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+
+    // Typing, attaching and sending do nothing hands-free, so the whole
+    // control row goes rather than each button being disabled in place.
+    expect(screen.getByTestId("voice-bar")).toBeDefined();
+    expect(isShown(textarea)).toBe(false);
+  });
+
+  it("gives the composer back, with the draft intact", () => {
+    const { rerender } = render(
+      <ChatInput
+        onSend={mockOnSend}
+        sessionId="session-1"
+        voiceBar={<div data-testid="voice-bar" />}
+      />,
+    );
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "half a thought" } });
+
+    rerender(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
+
+    expect(screen.queryByTestId("voice-bar")).toBeNull();
+    expect(isShown(textarea)).toBe(true);
+    expect(textarea.value).toBe("half a thought");
+  });
+});
+
+/** `display: none` on an ancestor, which `toBeVisible` cannot see in jsdom. */
+function isShown(element: HTMLElement): boolean {
+  return !element.closest(".hidden");
+}

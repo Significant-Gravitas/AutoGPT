@@ -620,7 +620,7 @@ class CoPilotProcessor:
             # same events as they are produced.
             raw_stream = stream_fn(
                 session_id=entry.session_id,
-                message=entry.message if entry.message else None,
+                message=entry.message or None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,

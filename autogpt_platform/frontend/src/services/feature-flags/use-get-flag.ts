@@ -50,6 +50,10 @@ export enum Flag {
   // Marketplace review is pending) without a deploy. Missing keys default to
   // visible — only an explicit ``false`` hides a card.
   COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
+  // Voice mode on /copilot: hands-free listen → send → speak → listen.
+  // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
+  // so both sides must agree. Fail-closed.
+  COPILOT_VOICE_MODE = "copilot-voice-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -85,6 +89,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
+  [Flag.COPILOT_VOICE_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -154,6 +159,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_VOICE_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }

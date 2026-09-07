@@ -6,8 +6,8 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "pnpm run generate:api:force && next dev --turbo",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build",
+    "dev": "pnpm run copy:vad-assets && pnpm run generate:api:force && next dev --turbo",
+    "build": "pnpm run copy:vad-assets && cross-env NODE_OPTIONS=--max-old-space-size=16384 next build",
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
@@ -27,7 +27,8 @@
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
     "generate:api": "npx --yes tsx ./scripts/generate-api-queries.ts && orval --config ./orval.config.ts",
-    "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts"
+    "generate:api:force": "npx --yes tsx ./scripts/generate-api-queries.ts --force && orval --config ./orval.config.ts",
+    "copy:vad-assets": "node ./scripts/copy-vad-assets.mjs"
   },
   "browserslist": [
     "defaults"
@@ -64,6 +65,7 @@
     "@radix-ui/react-tabs": "1.1.13",
     "@radix-ui/react-toast": "1.2.15",
     "@radix-ui/react-tooltip": "1.2.8",
+    "@ricky0123/vad-web": "0.0.30",
     "@rjsf/core": "6.1.2",
     "@rjsf/utils": "6.1.2",
     "@rjsf/validator-ajv8": "6.1.2",
