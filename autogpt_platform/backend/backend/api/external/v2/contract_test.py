@@ -186,8 +186,92 @@ async def test_a_review_id_from_another_run_is_rejected(
     with pytest.raises(HTTPException) as exc_info:
         await _submit({"node_exec_id": "node-from-another-run", "approved": True})
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
     assert "node-from-another-run" in str(exc_info.value.detail)
+
+
+async def test_a_review_belonging_to_another_run_is_not_reachable_through_this_one(
+    mocker: pytest_mock.MockFixture,
+):
+    """The URL's run is tenancy-checked; the reviews must be that run's own.
+
+    `get_reviews_by_node_exec_ids` scopes to the user, not to the org, so a
+    review of a run in another tenant would otherwise be decidable here.
+    """
+    elsewhere = _review("node-a", ReviewStatus.WAITING)
+    elsewhere.graph_exec_id = "run-2"
+    _mock_review_db(mocker, pending=[elsewhere], processed={}, still_pending=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert exc_info.value.status_code == 404
+
+
+async def test_reviews_are_refused_on_a_run_that_is_not_awaiting_them(
+    mocker: pytest_mock.MockFixture,
+):
+    """v2 had no status check where the internal route answers 409."""
+    from backend.api.features.executions.review import service as review_service
+    from backend.data.execution import ExecutionStatus
+
+    _mock_review_db(
+        mocker,
+        pending=[_review("node-a", ReviewStatus.WAITING)],
+        processed={},
+        still_pending=True,
+    )
+    mocker.patch.object(
+        review_service,
+        "get_graph_execution_meta",
+        new=mock.AsyncMock(return_value=mock.Mock(status=ExecutionStatus.COMPLETED)),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _submit({"node_exec_id": "node-a", "approved": True})
+
+    assert exc_info.value.status_code == 409
+
+
+async def test_an_auto_approved_review_records_the_node_and_ignores_edits(
+    mocker: pytest_mock.MockFixture,
+):
+    """The internal route has always supported this; v2 dropped it silently."""
+    from backend.api.features.executions.review import service as review_service
+
+    approved = _review("node-a", ReviewStatus.APPROVED)
+    _mock_review_db(
+        mocker,
+        pending=[approved],
+        processed={"node-a": approved},
+        still_pending=True,
+    )
+    mocker.patch.object(
+        review_service,
+        "get_node_executions",
+        new=mock.AsyncMock(
+            return_value=[mock.Mock(node_exec_id="node-a", node_id="node-def-1")]
+        ),
+    )
+    record = mocker.patch.object(
+        review_service, "create_auto_approval_record", new=mock.AsyncMock()
+    )
+
+    await _submit(
+        {
+            "node_exec_id": "node-a",
+            "approved": True,
+            "edited_payload": {"ignored": True},
+            "auto_approve_future": True,
+        }
+    )
+
+    record.assert_awaited_once()
+    assert record.await_args.kwargs["node_id"] == "node-def-1"
+    decisions = review_service.process_all_reviews_for_execution.await_args.kwargs[
+        "review_decisions"
+    ]
+    assert decisions["node-a"][1] is None
 
 
 async def test_a_failed_resume_does_not_fail_the_submission(
@@ -636,8 +720,9 @@ def _mock_review_db(
     processed: dict[str, PendingHumanReviewModel],
     still_pending: bool,
 ) -> None:
+    from backend.api.features.executions.review import service as review_service
     from backend.data import execution as execution_db
-    from backend.data import human_review
+    from backend.data.execution import ExecutionStatus
 
     # The run carries the tenancy the reviews are checked against.
     mocker.patch.object(
@@ -648,17 +733,22 @@ def _mock_review_db(
         ),
     )
     mocker.patch.object(
-        human_review,
-        "get_pending_reviews_for_execution",
-        new=mock.AsyncMock(return_value=pending),
+        review_service,
+        "get_reviews_by_node_exec_ids",
+        new=mock.AsyncMock(return_value={r.node_exec_id: r for r in pending}),
     )
     mocker.patch.object(
-        human_review,
+        review_service,
+        "get_graph_execution_meta",
+        new=mock.AsyncMock(return_value=mock.Mock(status=ExecutionStatus.REVIEW)),
+    )
+    mocker.patch.object(
+        review_service,
         "process_all_reviews_for_execution",
         new=mock.AsyncMock(return_value=processed),
     )
     mocker.patch.object(
-        human_review,
+        review_service,
         "has_pending_reviews_for_graph_exec",
         new=mock.AsyncMock(return_value=still_pending),
     )
@@ -666,26 +756,26 @@ def _mock_review_db(
 
 def _mock_resume_path(mocker: pytest_mock.MockFixture) -> mock.AsyncMock:
     """Stub everything the resume needs; returns the enqueue mock to assert on."""
+    from backend.api.features.executions.review import service as review_service
     from backend.data.graph import GraphSettings
-    from backend.executor import utils as execution_utils
-
-    from . import runs
 
     mocker.patch.object(
-        runs,
+        review_service,
         "get_user_by_id",
         new=mock.AsyncMock(return_value=mock.Mock(timezone="Europe/Amsterdam")),
     )
     mocker.patch.object(
-        runs, "get_graph_settings", new=mock.AsyncMock(return_value=GraphSettings())
+        review_service,
+        "get_graph_settings",
+        new=mock.AsyncMock(return_value=GraphSettings()),
     )
     mocker.patch.object(
-        runs,
+        review_service,
         "get_or_create_workspace",
         new=mock.AsyncMock(return_value=mock.Mock(id="workspace-1")),
     )
     enqueue = mock.AsyncMock()
-    mocker.patch.object(execution_utils, "add_graph_execution", new=enqueue)
+    mocker.patch.object(review_service, "add_graph_execution", new=enqueue)
     return enqueue
 
 

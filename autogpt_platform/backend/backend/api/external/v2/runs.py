@@ -11,16 +11,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Security
 from prisma.enums import APIKeyPermission, ReviewStatus
-from pydantic import JsonValue
 from starlette import status
 
+from backend.api.features.executions.review.model import ReviewItem
+from backend.api.features.executions.review.service import process_reviews
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
-from backend.data.execution import ExecutionContext
-from backend.data.graph import get_graph_settings
-from backend.data.model import USER_TIMEZONE_NOT_SET
-from backend.data.user import get_user_by_id
-from backend.data.workspace import get_or_create_workspace
 from backend.executor import utils as execution_utils
 from backend.util.settings import Settings
 
@@ -110,83 +106,27 @@ async def submit_reviews(
     # Reviews carry no organization of their own; the run they belong to does.
     await _assert_run_in_tenant(run_id, auth)
 
-    # Validate run_id: ensure the submitted node_exec_ids belong to this run
-    pending_reviews = await review_db.get_pending_reviews_for_execution(
+    outcome = await process_reviews(
+        auth.user_id,
+        [
+            ReviewItem(
+                node_exec_id=decision.node_exec_id,
+                approved=decision.approved,
+                reviewed_data=decision.edited_payload,
+                message=decision.message,
+                auto_approve_future=decision.auto_approve_future,
+            )
+            for decision in request.reviews
+        ],
         graph_exec_id=run_id,
-        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
-    valid_node_exec_ids = {r.node_exec_id for r in pending_reviews}
-    submitted_ids = {d.node_exec_id for d in request.reviews}
-    invalid_ids = submitted_ids - valid_node_exec_ids
-    if invalid_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Review IDs not found for run {run_id}: " f"{', '.join(invalid_ids)}"
-            ),
-        )
-
-    # Build review decisions dict for process_all_reviews_for_execution
-    review_decisions: dict[str, tuple[ReviewStatus, JsonValue | None, str | None]] = {}
-
-    for decision in request.reviews:
-        decision_status = (
-            ReviewStatus.APPROVED if decision.approved else ReviewStatus.REJECTED
-        )
-        review_decisions[decision.node_exec_id] = (
-            decision_status,
-            decision.edited_payload,
-            decision.message,
-        )
-
-    results = await review_db.process_all_reviews_for_execution(
-        user_id=auth.user_id,
-        review_decisions=review_decisions,
-    )
-
-    approved_count = sum(
-        1 for r in results.values() if r.status == ReviewStatus.APPROVED
-    )
-    rejected_count = sum(
-        1 for r in results.values() if r.status == ReviewStatus.REJECTED
-    )
-
-    # Resume graph execution if no more pending reviews remain
-    if results:
-        still_has_pending = await review_db.has_pending_reviews_for_graph_exec(run_id)
-        if not still_has_pending:
-            first_review = next(iter(results.values()))
-            try:
-                user = await get_user_by_id(auth.user_id)
-                settings = await get_graph_settings(
-                    user_id=auth.user_id, graph_id=first_review.graph_id
-                )
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
-                workspace = await get_or_create_workspace(auth.user_id)
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=(settings.human_in_the_loop_safe_mode),
-                    sensitive_action_safe_mode=(settings.sensitive_action_safe_mode),
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-                await execution_utils.add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=auth.user_id,
-                    graph_exec_id=run_id,
-                    execution_context=execution_context,
-                    organization_id=auth.organization_id,
-                    team_id=auth.team_id,
-                )
-                logger.info(f"Resumed execution {run_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {run_id}: {e}")
 
     return AgentRunReviewsSubmitResponse(
         run_id=run_id,
-        approved_count=approved_count,
-        rejected_count=rejected_count,
+        approved_count=outcome.approved_count,
+        rejected_count=outcome.rejected_count,
     )
 
 

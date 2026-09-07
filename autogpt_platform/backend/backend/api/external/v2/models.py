@@ -927,6 +927,13 @@ class AgentRunReviewDecision(BaseModel):
     message: Optional[str] = Field(
         default=None, description="Optional message from reviewer", max_length=2000
     )
+    auto_approve_future: bool = Field(
+        default=False,
+        description=(
+            "Approve future reviews from this block automatically. Applies only "
+            "when this review is approved, and ignores `edited_payload`."
+        ),
+    )
 
 
 class AgentRunReviewsSubmitRequest(BaseModel):
