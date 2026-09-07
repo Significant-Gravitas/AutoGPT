@@ -52,11 +52,9 @@ from .scorer import to_usage
 
 GENERATION_MAX_TOKENS = 2000
 GENERATION_TIMEOUT_SECONDS = 180.0
-# Production's loop is unbounded. A turn still calling tools at the cap has
-# no finished answer to judge, so the runner records it as an error rather
-# than scoring the narration it left behind. Forcing text with
-# tool_choice=none is not an option: it invalidates the prompt cache and
-# Claude answers it with an empty message.
+# A turn still calling tools here has no finished answer, so the runner
+# records it as an error. Forcing text with tool_choice=none instead would
+# invalidate the prompt cache and come back empty.
 MAX_TOOL_ROUNDS = 10
 # Ends the turn in production (the user answers on a card), so it ends the
 # loop here with the questions rendered as the turn's visible text.

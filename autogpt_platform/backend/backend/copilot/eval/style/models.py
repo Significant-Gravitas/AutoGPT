@@ -198,9 +198,8 @@ class ExpertComparison(BaseModel):
     expert: str
     mean: float
     baseline_mean: float | None
-    # Mean of (this run - baseline) over the prompts both ran, with its
-    # standard error: the same response set, so the noise between prompts
-    # cancels.
+    # Mean of (this run - baseline) over the prompts both ran, and its
+    # standard error: same prompts, so the noise between them cancels.
     paired_delta: float | None = None
     paired_sem: float | None = None
     shared_prompts: int = 0
