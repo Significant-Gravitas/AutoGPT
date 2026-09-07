@@ -3,6 +3,7 @@ import {
   type AvatarConfig,
   type AvatarStatus,
 } from "@/components/molecules/BotAvatar/helpers";
+import type { ExpressionId } from "@/components/molecules/BotAvatar/expressions";
 import { SIZE_LADDER, STAGE_SIZE, turnToPose, type Turn } from "../helpers";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,6 +15,7 @@ interface Props {
   status: AvatarStatus;
   turn: Turn;
   outline: boolean;
+  expression: ExpressionId | null;
   onStatusChange: (status: AvatarStatus) => void;
   onTurnChange: (turn: Turn) => void;
   onOutlineChange: (outline: boolean) => void;
@@ -24,6 +26,7 @@ export function AvatarStage({
   status,
   turn,
   outline,
+  expression,
   onStatusChange,
   onTurnChange,
   onOutlineChange,
@@ -39,6 +42,7 @@ export function AvatarStage({
           config={config}
           status={status}
           size={STAGE_SIZE}
+          expression={expression ?? undefined}
           trackPointer
           poseOffset={poseOffset}
           outline={outline}
@@ -63,6 +67,7 @@ export function AvatarStage({
             config={config}
             status={status}
             size={size}
+            expression={expression ?? undefined}
             animated={false}
             poseOffset={poseOffset}
             outline={outline}

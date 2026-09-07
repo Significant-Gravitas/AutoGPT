@@ -81,7 +81,9 @@ describe("AvatarPage", () => {
     render(<AvatarPage />);
 
     await user.click(screen.getByRole("button", { name: "Shuffle" }));
-    expect(stageAvatar().getAttribute("data-avatar")).toBe("bean.butter.headband");
+    expect(stageAvatar().getAttribute("data-avatar")).toBe(
+      "bean.butter.headband",
+    );
 
     await user.click(pickerRadio("Status", "Working"));
     await user.click(screen.getByRole("button", { name: "Reset" }));
@@ -115,6 +117,21 @@ describe("AvatarPage", () => {
     expect(
       avatars.every((svg) => svg.getAttribute("data-outline") === "true"),
     ).toBe(true);
+  });
+
+  test("pinning an expression overrides the status pool until reset", async () => {
+    const user = userEvent.setup();
+    render(<AvatarPage />);
+
+    expect(stageAvatar().getAttribute("data-expression")).toBe("neutral");
+    await user.click(pickerRadio("Expression", "Angry"));
+    expect(stageAvatar().getAttribute("data-expression")).toBe("angry");
+
+    await user.click(pickerRadio("Status", "Done"));
+    expect(stageAvatar().getAttribute("data-expression")).toBe("angry");
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(stageAvatar().getAttribute("data-expression")).toBe("neutral");
   });
 
   test("copy link writes the current url and confirms", async () => {

@@ -1,4 +1,10 @@
 import { motion } from "framer-motion";
+import {
+  findExpression,
+  type BrowKind,
+  type ExpressionId,
+  type EyeSpec,
+} from "../expressions";
 import { INK, type AvatarStatus, type ShapeAnchors } from "../helpers";
 import {
   ellipsoidFor,
@@ -13,62 +19,102 @@ interface Props {
   anchors: ShapeAnchors;
   pose: Pose;
   status: AvatarStatus;
+  expression: ExpressionId;
   blush: string;
   isLive: boolean;
   isBlinking: boolean;
 }
 
-const PUPIL: Record<
-  AvatarStatus,
-  { rx: number; ry: number; dx: number; dy: number }
-> = {
-  idle: { rx: 4.5, ry: 6, dx: 0, dy: 0 },
-  thinking: { rx: 4.5, ry: 6, dx: 1.6, dy: -2.2 },
-  working: { rx: 4.5, ry: 4.2, dx: 0.6, dy: 1 },
-  waiting: { rx: 5, ry: 7, dx: 0, dy: -0.5 },
-  done: { rx: 4.5, ry: 6, dx: 0, dy: 0 },
-  failed: { rx: 4.5, ry: 6, dx: 0, dy: 0 },
-  sleeping: { rx: 4.5, ry: 6, dx: 0, dy: 0 },
-};
-
-const MOUTH: Record<AvatarStatus, string> = {
-  idle: "M-4,0 Q0,3.5 4,0",
-  thinking: "M-3,0.5 Q0,2 3,-0.5",
-  working: "M-3.5,0.5 L3.5,0.5",
-  waiting: "M-2.4,0 A2.4,2.4 0 1 0 2.4,0 A2.4,2.4 0 1 0 -2.4,0",
-  done: "M-6,-0.5 Q0,6.5 6,-0.5",
-  failed: "M-5,1 Q-2.5,-2 0,1 Q2.5,4 5,1",
-  sleeping: "M-1.8,0 A1.8,1.8 0 1 0 1.8,0 A1.8,1.8 0 1 0 -1.8,0",
-};
-
 const SPRING = { type: "spring", stiffness: 260, damping: 20 } as const;
+
+const BROWS: Record<Exclude<BrowKind, "none">, (side: number) => string> = {
+  raised: () => "M-5,-10 Q0,-13 5,-10",
+  wave: () => "M-5,-10 Q-2.5,-13 0,-10 Q2.5,-7 5,-10",
+  furrow: (side) => (side < 0 ? "M-5,-10 L5,-8" : "M-5,-8 L5,-10"),
+  sad: (side) => (side < 0 ? "M-5,-8 L5,-10.5" : "M-5,-10.5 L5,-8"),
+  flat: () => "M-5,-9.5 L5,-9.5",
+};
+
+function Eye({
+  spec,
+  isBlinking,
+  isLive,
+}: {
+  spec: EyeSpec;
+  isBlinking: boolean;
+  isLive: boolean;
+}) {
+  const popIn = isLive ? { scale: 0.5, opacity: 0 } : false;
+  if (spec.kind === "cross") {
+    return (
+      <motion.path
+        d="M-4,-4 L4,4 M4,-4 L-4,4"
+        fill="none"
+        stroke={INK}
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        initial={popIn}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={SPRING}
+      />
+    );
+  }
+  if (spec.kind === "arc") {
+    return (
+      <motion.path
+        d="M-5,1 Q0,-5 5,1"
+        fill="none"
+        stroke={INK}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        initial={popIn}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={SPRING}
+      />
+    );
+  }
+  const closed = isBlinking || spec.kind === "flat";
+  return (
+    <motion.g
+      initial={false}
+      animate={{
+        x: spec.dx,
+        y: spec.dy,
+        rotate: spec.tilt,
+        scaleY: isBlinking ? 0.08 : 1,
+      }}
+      transition={isBlinking ? { duration: 0.06 } : SPRING}
+    >
+      <motion.ellipse
+        fill={INK}
+        initial={false}
+        animate={{ rx: spec.rx, ry: spec.ry }}
+        transition={SPRING}
+      />
+      {closed ? null : <circle cx={-1.4} cy={-2.2} r={1.5} fill="#fff" />}
+    </motion.g>
+  );
+}
 
 export function Face({
   anchors,
   pose,
   status,
+  expression,
   blush,
   isLive,
   isBlinking,
 }: Props) {
   const { cx, eyeY, eyeGap } = anchors;
   const body = ellipsoidFor(anchors);
-  const pupil = PUPIL[status];
-  const isClosed = status === "done" || status === "sleeping";
-  const isCrossed = status === "failed";
-  const closedPath =
-    status === "sleeping" ? "M-5,-1 Q0,3 5,-1" : "M-5,1 Q0,-5 5,1";
-  const eyeScaleY = isBlinking ? 0.08 : 1;
+  const spec = findExpression(expression);
   const sides = [-1, 1] as const;
-
-  function popIn(from: { x?: number; y?: number; scale?: number }) {
-    return isLive ? { ...from, opacity: 0 } : false;
-  }
-
   const mouth = project(surfacePointAt(cx, eyeY + 13, body), pose, body);
+  const browPath = spec.brow === "none" ? null : BROWS[spec.brow];
+  const browWaves = spec.brow === "wave" && isLive;
 
   return (
-    <g data-status={status}>
+    <g data-status={status} data-expression={expression}>
       {sides.map((side) => {
         const cheek = project(
           surfacePointAt(cx + side * (eyeGap / 2 + 6), eyeY + 8, body),
@@ -84,98 +130,39 @@ export function Face({
             ry={2.4}
             fill={blush}
             initial={false}
-            animate={{ opacity: status === "done" ? 0.85 : 0.5 }}
+            animate={{ opacity: spec.blush }}
           />
         );
       })}
       {sides.map((side) => {
-        const eye = project(
+        const point = project(
           surfacePointAt(cx + side * (eyeGap / 2), eyeY, body),
           pose,
           body,
         );
-        if (!isVisible(eye)) return null;
+        if (!isVisible(point)) return null;
+        const eyeSpec = side < 0 ? spec.left : spec.right;
         return (
-          <g key={side} transform={foreshortenTransform(eye, 0.12)}>
-            {isCrossed ? (
+          <g key={side} transform={foreshortenTransform(point, 0.12)}>
+            <Eye spec={eyeSpec} isBlinking={isBlinking} isLive={isLive} />
+            {browPath ? (
               <motion.path
-                d="M-4,-4 L4,4 M4,-4 L-4,4"
-                fill="none"
-                stroke={INK}
-                strokeWidth={2.4}
-                strokeLinecap="round"
-                initial={popIn({ scale: 0.4 })}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={SPRING}
-              />
-            ) : isClosed ? (
-              <motion.path
-                d={closedPath}
-                fill="none"
-                stroke={INK}
-                strokeWidth={2.6}
-                strokeLinecap="round"
-                initial={popIn({ scale: 0.6 })}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={SPRING}
-              />
-            ) : (
-              <motion.g
-                initial={false}
-                animate={{ x: pupil.dx, y: pupil.dy, scaleY: eyeScaleY }}
-                transition={isBlinking ? { duration: 0.06 } : SPRING}
-              >
-                <motion.ellipse
-                  fill={INK}
-                  initial={false}
-                  animate={{ rx: pupil.rx, ry: pupil.ry }}
-                  transition={SPRING}
-                />
-                <circle cx={-1.4} cy={-2.2} r={1.5} fill="#fff" />
-              </motion.g>
-            )}
-            {status === "thinking" ? (
-              <motion.path
-                d="M-5,-10 Q-2.5,-13 0,-10 Q2.5,-7 5,-10"
+                d={browPath(side)}
                 fill="none"
                 stroke={INK}
                 strokeWidth={2}
                 strokeLinecap="round"
-                initial={popIn({ y: 2 })}
+                initial={isLive ? { y: 3, opacity: 0 } : false}
                 animate={
-                  isLive
+                  browWaves
                     ? { y: [0, -2, 0, 2, 0], opacity: 1 }
                     : { y: 0, opacity: 1 }
                 }
                 transition={
-                  isLive
+                  browWaves
                     ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" }
                     : SPRING
                 }
-              />
-            ) : null}
-            {status === "waiting" ? (
-              <motion.path
-                d="M-5,-10 Q0,-13 5,-10"
-                fill="none"
-                stroke={INK}
-                strokeWidth={2}
-                strokeLinecap="round"
-                initial={popIn({ y: 3 })}
-                animate={{ y: 0, opacity: 1 }}
-                transition={SPRING}
-              />
-            ) : null}
-            {status === "working" ? (
-              <motion.path
-                d={side < 0 ? "M-5,-10 L5,-8" : "M-5,-8 L5,-10"}
-                fill="none"
-                stroke={INK}
-                strokeWidth={2}
-                strokeLinecap="round"
-                initial={popIn({ y: -3 })}
-                animate={{ y: 0, opacity: 1 }}
-                transition={SPRING}
               />
             ) : null}
           </g>
@@ -190,7 +177,7 @@ export function Face({
             strokeLinecap="round"
             strokeLinejoin="round"
             initial={false}
-            animate={{ d: MOUTH[status] }}
+            animate={{ d: spec.mouth }}
             transition={SPRING}
           />
         </g>

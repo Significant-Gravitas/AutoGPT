@@ -10,6 +10,7 @@ import {
   type ShapeId,
 } from "@/components/molecules/BotAvatar/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import type { ExpressionId } from "@/components/molecules/BotAvatar/expressions";
 import { useQueryState } from "nuqs";
 import { useRef, useState } from "react";
 import {
@@ -26,6 +27,7 @@ export function useAvatarPage() {
   const [status, setStatus] = useState<AvatarStatus>("idle");
   const [turn, setTurn] = useState(FRONT_TURN);
   const [outline, setOutline] = useState(false);
+  const [expression, setExpression] = useState<ExpressionId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const config = decodeConfig(encoded);
@@ -54,6 +56,7 @@ export function useAvatarPage() {
     setEncoded(encodeConfig(DEFAULT_CONFIG));
     setStatus("idle");
     setTurn(FRONT_TURN);
+    setExpression(null);
   }
 
   async function copyLink() {
@@ -100,6 +103,8 @@ export function useAvatarPage() {
     setTurn,
     outline,
     setOutline,
+    expression,
+    setExpression,
     setShape,
     setColor,
     setAccessory,

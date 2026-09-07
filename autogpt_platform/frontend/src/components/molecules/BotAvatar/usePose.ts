@@ -3,9 +3,6 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { AvatarStatus } from "./helpers";
 import { FRONT_POSE, type Pose } from "./projection";
 
-const BLINK_MS = 130;
-const BLINK_MIN_GAP_MS = 2600;
-const BLINK_MAX_GAP_MS = 5200;
 const LOOK_REACH_PX = 320;
 const LOOK_YAW = 0.55;
 const LOOK_PITCH = 0.3;
@@ -105,7 +102,6 @@ export function usePose({
   const reducedMotion = useReducedMotion();
   const isLive = animated && !reducedMotion;
   const [pose, setPose] = useState<Pose>(FRONT_POSE);
-  const [isBlinking, setIsBlinking] = useState(false);
   const look = useRef({ yaw: 0, pitch: 0 });
   const smoothed = useRef<Pose>(FRONT_POSE);
   const changedAt = useRef<number | null>(null);
@@ -114,25 +110,6 @@ export function usePose({
   useEffect(() => {
     changedAt.current = clock.current;
   }, [status]);
-
-  useEffect(() => {
-    if (!isLive) return;
-    let timer: ReturnType<typeof setTimeout>;
-    function schedule() {
-      const gap =
-        BLINK_MIN_GAP_MS +
-        Math.random() * (BLINK_MAX_GAP_MS - BLINK_MIN_GAP_MS);
-      timer = setTimeout(() => {
-        setIsBlinking(true);
-        timer = setTimeout(() => {
-          setIsBlinking(false);
-          schedule();
-        }, BLINK_MS);
-      }, gap);
-    }
-    schedule();
-    return () => clearTimeout(timer);
-  }, [isLive]);
 
   useEffect(() => {
     if (!isLive || !trackPointer) return;
@@ -184,5 +161,5 @@ export function usePose({
         roll: poseOffset?.roll ?? 0,
       };
 
-  return { isLive, isBlinking, pose: resolved };
+  return { isLive, pose: resolved };
 }

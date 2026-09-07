@@ -15,11 +15,14 @@ import {
   type AvatarStatus,
 } from "./helpers";
 import type { Pose } from "./projection";
+import { useExpression } from "./useExpression";
 import { usePose } from "./usePose";
+import type { ExpressionId } from "./expressions";
 
 interface Props {
   config: AvatarConfig;
   status?: AvatarStatus;
+  expression?: ExpressionId;
   size?: number;
   animated?: boolean;
   trackPointer?: boolean;
@@ -33,6 +36,7 @@ interface Props {
 export function BotAvatar({
   config,
   status = "idle",
+  expression: expressionOverride,
   size = 96,
   animated = true,
   trackPointer = false,
@@ -48,12 +52,17 @@ export function BotAvatar({
   const gradientId = `${ids}-body-${config.color}`;
   const shape = findShape(config.shape);
   const color = findColor(config.color);
-  const { isLive, isBlinking, pose } = usePose({
+  const { isLive, pose } = usePose({
     status,
     animated,
     trackPointer,
     poseOffset,
     svgRef,
+  });
+  const { expression, isBlinking } = useExpression({
+    status,
+    isLive,
+    override: expressionOverride,
   });
   const { cx, bottom } = shape.anchors;
   const rollDeg = (pose.roll * 180) / Math.PI;
@@ -72,6 +81,7 @@ export function BotAvatar({
       data-testid="bot-avatar"
       data-avatar={encodeConfig(config)}
       data-status={status}
+      data-expression={expression}
       data-outline={outline}
       className={cn("shrink-0 overflow-visible", className)}
     >
@@ -106,6 +116,7 @@ export function BotAvatar({
           anchors={shape.anchors}
           pose={pose}
           status={status}
+          expression={expression}
           blush={color.mid}
           isLive={isLive}
           isBlinking={isBlinking}

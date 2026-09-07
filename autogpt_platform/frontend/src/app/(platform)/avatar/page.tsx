@@ -6,6 +6,7 @@ import { AccessoryPicker } from "./components/AccessoryPicker";
 import { ActionBar } from "./components/ActionBar";
 import { AvatarStage } from "./components/AvatarStage";
 import { ColorPicker } from "./components/ColorPicker";
+import { ExpressionPicker } from "./components/ExpressionPicker";
 import { RosterPreview } from "./components/RosterPreview";
 import { ShapePicker } from "./components/ShapePicker";
 import { useAvatarPage } from "./useAvatarPage";
@@ -22,6 +23,8 @@ export default function AvatarPage() {
     setTurn,
     outline,
     setOutline,
+    expression,
+    setExpression,
     setShape,
     setColor,
     setAccessory,
@@ -50,6 +53,7 @@ export default function AvatarPage() {
         status={status}
         turn={turn}
         outline={outline}
+        expression={expression}
         onStatusChange={setStatus}
         onTurnChange={setTurn}
         onOutlineChange={setOutline}
@@ -61,6 +65,12 @@ export default function AvatarPage() {
         onDownloadSvg={downloadSvg}
         onDownloadPng={downloadPng}
         isExporting={isExporting}
+      />
+      <ExpressionPicker
+        config={config}
+        outline={outline}
+        selected={expression}
+        onSelect={setExpression}
       />
       <ShapePicker config={config} outline={outline} onSelect={setShape} />
       <ColorPicker selected={config.color} onSelect={setColor} />
@@ -74,6 +84,7 @@ export default function AvatarPage() {
         <BotAvatar
           config={config}
           status={status}
+          expression={expression ?? undefined}
           animated={false}
           outline={outline}
         />
