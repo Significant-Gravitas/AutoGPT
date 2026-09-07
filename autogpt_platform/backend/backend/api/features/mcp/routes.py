@@ -478,10 +478,8 @@ async def mcp_store_token(
     server_url = normalize_mcp_url(request.server_url)
     hostname = server_host(server_url)
 
-    # The token travels in an ``Authorization`` header, so refuse to send it
-    # over a scheme that puts it on the wire in cleartext (CWE-319).
-    # ``validate_url_host`` permits http:// for MCP servers generally; a
-    # credential is a higher bar.
+    # ``validate_url_host`` permits http:// for MCP servers generally, but a
+    # credential travels in a header and must not go out in cleartext.
     if not server_url.lower().startswith("https://"):
         raise fastapi.HTTPException(
             status_code=400,
@@ -490,15 +488,20 @@ async def mcp_store_token(
         )
 
     # A 2xx from this endpoint is what turns the setup card's pill green, so
-    # it has to mean "this token authenticates against the server" rather than
-    # "a row was written". One ``initialize`` round-trip is the cheapest proof.
-    # Only an unambiguous rejection blocks the save: any other outcome says
-    # nothing about the token, and refusing to store would strand the user.
-    probe_client = MCPClient(server_url, authorization=authorization)
+    # it has to mean "this credential authenticates against the server" rather
+    # than "a row was written". One ``initialize`` round-trip is the cheapest
+    # proof. Only an unambiguous rejection blocks the save: any other outcome
+    # says nothing about the credential, and refusing to store would strand
+    # the user.
+    #
+    # Redirects are not followed. A cross-host redirect strips the header, so
+    # the target would answer 401 to an effectively anonymous request and we
+    # would blame the user for a credential that is fine.
+    probe_client = MCPClient(
+        server_url, authorization=authorization, follow_redirects=False
+    )
     try:
-        # MCPClient sets no timeout and no retry ceiling, so an unbounded probe
-        # can pin this handler indefinitely on a server that keeps answering
-        # 503. Verification is best-effort — cap it and move on.
+        # MCPClient sets no timeout and no retry ceiling of its own.
         await asyncio.wait_for(
             probe_client.initialize(), timeout=_PROBE_TIMEOUT_SECONDS
         )
@@ -509,16 +512,13 @@ async def mcp_store_token(
                 detail=f"{hostname} rejected this credential. "
                 "Please check that you copied it correctly and try again.",
             )
-        # Includes a bare 403, which is as often a scope decision or a WAF
-        # blocking our egress IP as it is a bad token.
         logger.info(
             "Could not verify MCP credential against %s (HTTP %s) — storing anyway",
             hostname,
             e.status_code,
         )
     except Exception as e:
-        # No ``exc_info``: HTTPClientError embeds the whole decoded response
-        # body, which a hostile server controls.
+        # No ``exc_info``: the error text embeds a server-controlled body.
         logger.info(
             "Could not verify MCP credential against %s (%s) — storing anyway",
             hostname,

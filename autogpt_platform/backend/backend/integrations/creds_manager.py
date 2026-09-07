@@ -267,9 +267,6 @@ class IntegrationCredentialsManager:
         if credentials.refresh_strategy == "provider_runtime":
             return credentials
 
-        # Returns the caller's snapshot rather than re-reading the store as
-        # the locked path would; for a credential that cannot refresh, that
-        # re-read only ever produced the same no-op result.
         if not _may_need_refresh(credentials):
             return credentials
 

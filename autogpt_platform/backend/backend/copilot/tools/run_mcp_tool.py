@@ -251,10 +251,6 @@ class RunMCPToolTool(BaseTool):
                     except HTTPClientError as probe_err:
                         if probe_err.status_code in AUTH_STATUS_CODES:
                             connected = False
-                            # Only a 401 proves the credential itself was
-                            # refused; a bare 403 is as often a scope decision
-                            # about a valid token, and deleting on that forces
-                            # a re-entry that fails identically.
                             if (
                                 probe_err.status_code
                                 in CREDENTIAL_REJECTED_STATUS_CODES
@@ -316,11 +312,7 @@ class RunMCPToolTool(BaseTool):
 
         except HTTPClientError as e:
             if e.status_code in AUTH_STATUS_CODES:
-                # 401/403 → user needs to (re)authenticate. Fire the setup card
-                # whether or not we have a stored credential row. Drop the row
-                # only on a 401, which is the one status that means the
-                # credential itself was refused — a 403 is routinely a
-                # per-tool scope decision about a token that is otherwise fine.
+                # Fire the setup card whether or not a credential row exists.
                 if (
                     creds is not None
                     and e.status_code in CREDENTIAL_REJECTED_STATUS_CODES

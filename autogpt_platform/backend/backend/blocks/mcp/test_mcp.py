@@ -613,3 +613,26 @@ class TestMCPToolBlock:
 
         assert captured_tokens == [None]
         assert outputs == [("result", "ok")]
+
+
+@pytest.mark.asyncio
+async def test_verification_client_does_not_follow_redirects():
+    """A verification probe must not chase a redirect.
+
+    ``Requests`` strips ``Authorization`` when a redirect crosses origins, so
+    the target would answer an anonymous request — and a caller asking "was
+    this credential accepted?" would read the resulting 401 as a rejection.
+    """
+    client = MCPClient(
+        "https://mcp.example.com/mcp",
+        authorization="Bearer secret",
+        follow_redirects=False,
+    )
+    with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+        MockRequests.return_value.post = AsyncMock(
+            side_effect=RuntimeError("stop here")
+        )
+        with pytest.raises(RuntimeError):
+            await client._send_request("initialize")
+
+    assert MockRequests.return_value.post.call_args.kwargs["allow_redirects"] is False

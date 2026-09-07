@@ -875,7 +875,9 @@ class TestStoreToken:
             )
 
         MockClient.assert_called_once_with(
-            "https://mcp.example.com/mcp", authorization="Bearer my-api-key-123"
+            "https://mcp.example.com/mcp",
+            authorization="Bearer my-api-key-123",
+            follow_redirects=False,
         )
         probe.close.assert_awaited_once()
 
@@ -963,6 +965,31 @@ class TestStoreToken:
         assert response.status_code == 200
         mock_cm.create.assert_called_once()
         assert cancelled.is_set()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_does_not_follow_redirects(self, client):
+        """A cross-host redirect strips the Authorization header, so the target
+        answers an effectively anonymous request. Following it would turn a
+        fine credential into "you mistyped this"."""
+        probe = _probe_client()
+        with (
+            patch(
+                "backend.api.features.mcp.routes.MCPClient", return_value=probe
+            ) as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        assert MockClient.call_args.kwargs["follow_redirects"] is False
 
 
 class TestSSRFValidation:
