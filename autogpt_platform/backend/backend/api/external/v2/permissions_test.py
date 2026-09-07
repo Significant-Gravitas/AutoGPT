@@ -338,7 +338,9 @@ def _client() -> fastapi.testclient.TestClient:
 def _offline(mocker: pytest_mock.MockFixture) -> None:
     """No test here is about Redis or the org tables."""
     mocker.patch(
-        "backend.api.utils.rate_limit.RateLimiter.check", new_callable=mock.AsyncMock
+        "backend.api.utils.rate_limit.RateLimiter.check",
+        new_callable=mock.AsyncMock,
+        return_value=None,
     )
     mocker.patch(
         "backend.api.external.v2.tenancy.resolve_credential_tenancy",

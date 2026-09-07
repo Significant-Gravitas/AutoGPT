@@ -269,9 +269,11 @@ async def test_bearer_api_key_gets_the_authenticated_rate_limit(
         return_value=_api_key_auth,
     )
     authenticated = mocker.patch.object(
-        global_rate_limit._authenticated_limiter, "check"
+        global_rate_limit._authenticated_limiter, "check", return_value=None
     )
-    anonymous = mocker.patch.object(global_rate_limit._anonymous_limiter, "check")
+    anonymous = mocker.patch.object(
+        global_rate_limit._anonymous_limiter, "check", return_value=None
+    )
 
     await _call_rate_limit_middleware(headers=[(b"authorization", b"Bearer agpt_test")])
 
