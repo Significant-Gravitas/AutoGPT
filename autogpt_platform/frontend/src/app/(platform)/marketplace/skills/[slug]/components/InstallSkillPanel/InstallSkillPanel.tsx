@@ -75,10 +75,7 @@ export function InstallSkillPanel({ slug, requiredProviders }: Props) {
       )}
 
       {installedName && pendingConnections.length > 0 ? (
-        <ConnectStep
-          names={pendingConnections.map((provider) => provider.name)}
-          onConnect={openConnect}
-        />
+        <ConnectStep names={pendingConnections} onConnect={openConnect} />
       ) : null}
 
       <ConnectServiceDialog

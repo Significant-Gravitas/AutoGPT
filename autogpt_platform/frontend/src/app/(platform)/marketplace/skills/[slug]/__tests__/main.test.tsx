@@ -1,6 +1,7 @@
 import {
   getGetV2GetMarketplaceSkillMockHandler200,
   getPostV2InstallMarketplaceSkillMockHandler200,
+  getPostV2InstallMarketplaceSkillMockHandler401,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { getGetV1ListCredentialsMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
@@ -113,6 +114,20 @@ describe("Marketplace skill page", () => {
     const cta = await screen.findByRole("link", { name: "Add to AutoPilot" });
     expect(cta.getAttribute("href")).toBe("/login");
     expect(screen.queryByTestId("skill-install-button")).toBeNull();
+  });
+
+  test("keeps the panel usable when the install fails", async () => {
+    renderPage([]);
+    await screen.findByTestId("skill-install-button");
+    // A rejected install must not leave an unhandled rejection or a stuck
+    // spinner: the button comes back and no success state is claimed.
+    server.use(getPostV2InstallMarketplaceSkillMockHandler401());
+
+    await userEvent.click(screen.getByTestId("skill-install-button"));
+
+    expect(await screen.findByTestId("skill-install-button")).toBeDefined();
+    expect(screen.queryByTestId("skill-installed")).toBeNull();
+    expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
 
   test("shows no connect step before the skill is installed", async () => {

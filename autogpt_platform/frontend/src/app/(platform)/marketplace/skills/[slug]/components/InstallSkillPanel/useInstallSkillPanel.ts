@@ -34,8 +34,15 @@ export function useInstallSkillPanel({ slug, requiredProviders }: Args) {
     (credentialsQuery.data ?? []).map((credential) => credential.provider),
   );
 
-  const { mutateAsync: install, isPending } = usePostV2InstallMarketplaceSkill({
+  const { mutate: install, isPending } = usePostV2InstallMarketplaceSkill({
     mutation: {
+      onSuccess: (response) => {
+        if (response.status !== 200) return;
+        setInstalledName(response.data.name);
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetMarketplaceSkillQueryKey(slug),
+        });
+      },
       onError: (error) =>
         toast({
           title: "Couldn't add this skill",
@@ -46,13 +53,8 @@ export function useInstallSkillPanel({ slug, requiredProviders }: Args) {
     },
   });
 
-  async function addToAutoPilot() {
-    const response = await install({ slug });
-    if (response.status !== 200) return;
-    setInstalledName(response.data.name);
-    queryClient.invalidateQueries({
-      queryKey: getGetV2GetMarketplaceSkillQueryKey(slug),
-    });
+  function addToAutoPilot() {
+    install({ slug });
   }
 
   function handleConnected() {
@@ -72,10 +74,7 @@ export function useInstallSkillPanel({ slug, requiredProviders }: Args) {
     // used to offer what is still worth setting up, after the install landed.
     pendingConnections: requiredProviders
       .filter((provider) => !connected.has(provider))
-      .map((provider) => ({
-        id: provider,
-        name: formatProviderName(provider),
-      })),
+      .map(formatProviderName),
     isConnectOpen,
     openConnect: () => setIsConnectOpen(true),
     setIsConnectOpen,
