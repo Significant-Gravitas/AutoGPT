@@ -424,6 +424,22 @@ describe("useVoiceMode", () => {
     expect(isVoiceTurn()).toBe(false);
   });
 
+  it("stays quiet when an abandoned mic start fails", async () => {
+    // The page was left while the mic was still starting; the failure that
+    // follows belongs to nobody, and a toast for it lands on the next page.
+    let failLoading!: (error: Error) => void;
+    vadLoad = new Promise<void>((_, reject) => (failLoading = reject));
+    const view = render({});
+
+    act(() => view.result.current.toggle());
+    view.unmount();
+    await act(async () => failLoading(new Error("mic went away")));
+    await act(async () => undefined);
+
+    expect(toast).not.toHaveBeenCalled();
+    expect(tracked.map(([event]) => event)).not.toContain("voice_mode_error");
+  });
+
   it("does not send a transcript for an utterance the user opted out of", async () => {
     vi.useFakeTimers();
     let finishTranscribing!: (text: string) => void;

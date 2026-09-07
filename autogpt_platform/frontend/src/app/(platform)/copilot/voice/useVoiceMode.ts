@@ -158,6 +158,9 @@ export function useVoiceMode({
         onSpeechEnd: (wav) => void handleUtterance(wav),
       });
     } catch (error) {
+      // A start the user already abandoned — left the page, or toggled off —
+      // has nobody to tell; a toast here lands on whatever page is showing.
+      if (mine !== activation.current) return;
       report(error);
       const denied =
         error instanceof DOMException && error.name === "NotAllowedError";
