@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { delay, http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
@@ -170,13 +170,19 @@ describe("ArtifactsPage - basic rendering", () => {
   test("waits for folders before choosing an empty state", async () => {
     useStorageHandler();
     let filesServed = false;
+    // Hold the folders response until the test releases it, so the
+    // "files empty, folders unknown" state can be asserted deterministically.
+    let releaseFolders = () => {};
+    const foldersReady = new Promise<void>((resolve) => {
+      releaseFolders = resolve;
+    });
     server.use(
       http.get("/api/proxy/api/workspace/files", () => {
         filesServed = true;
         return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
       http.get("/api/proxy/api/workspace/folders", async () => {
-        await delay(300);
+        await foldersReady;
         return HttpResponse.json({
           folders: [
             {
@@ -199,6 +205,8 @@ describe("ArtifactsPage - basic rendering", () => {
     // state yet, only skeleton rows.
     expect(screen.getByTestId("artifacts-loading")).toBeDefined();
     expect(screen.queryByTestId("artifacts-empty")).toBeNull();
+
+    releaseFolders();
 
     expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
   });
