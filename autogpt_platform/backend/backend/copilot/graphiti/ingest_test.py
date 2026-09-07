@@ -338,7 +338,7 @@ class TestEnqueueConversationTurn:
             ),
             patch.object(
                 ingest,
-                "_resolve_user_name",
+                "resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
@@ -419,7 +419,7 @@ class TestQueueFullScenario:
                 return_value="user_abc-valid-id",
             ),
             patch(
-                "backend.copilot.graphiti.ingest._resolve_user_name",
+                "backend.copilot.graphiti.ingest.resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
@@ -455,7 +455,7 @@ class TestResolveUserName:
             "backend.data.db_accessors.understanding_db",
             mock_db,
         ):
-            name = await ingest._resolve_user_name("some-user-id")
+            name = await ingest.resolve_user_name("some-user-id")
 
         assert name == "User"
 
@@ -471,7 +471,7 @@ class TestResolveUserName:
             "backend.data.db_accessors.understanding_db",
             mock_db,
         ):
-            name = await ingest._resolve_user_name("some-user-id")
+            name = await ingest.resolve_user_name("some-user-id")
 
         assert name == "Alice"
 
@@ -484,7 +484,7 @@ class TestResolveUserName:
             "backend.data.db_accessors.understanding_db",
             mock_db,
         ):
-            name = await ingest._resolve_user_name("some-user-id")
+            name = await ingest.resolve_user_name("some-user-id")
 
         assert name == "User"
 
@@ -623,7 +623,7 @@ class TestDerivedFindingLane:
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
             patch(
-                "backend.copilot.graphiti.ingest._resolve_user_name",
+                "backend.copilot.graphiti.ingest.resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
@@ -645,7 +645,7 @@ class TestDerivedFindingLane:
             patch.object(ingest, "derive_memory_group_id", return_value="user_abc"),
             patch.object(ingest, "_enqueue_payload", new=enqueue_mock),
             patch(
-                "backend.copilot.graphiti.ingest._resolve_user_name",
+                "backend.copilot.graphiti.ingest.resolve_user_name",
                 new_callable=AsyncMock,
                 return_value="Alice",
             ),
@@ -1019,3 +1019,14 @@ class TestEnqueueEpisodeEdgeMetadata:
             )
             payload = q.get_nowait()
             assert payload["_completion"] is completion
+
+
+class TestExtractionInstructions:
+    """A stored fact becomes an edge only if the extractor may create both the
+    user and the product as entities; 0/25 did under the old wording."""
+
+    def test_user_and_products_stay_extractable(self) -> None:
+        text = ingest.CUSTOM_EXTRACTION_INSTRUCTIONS
+        assert '"User"' not in text
+        assert "software tool names" not in text
+        assert '"user" field' in text
