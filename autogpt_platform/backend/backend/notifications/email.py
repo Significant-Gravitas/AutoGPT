@@ -116,8 +116,7 @@ class EmailSender:
         headers: dict[str, str] | None,
     ) -> None:
         if not self.postmark:
-            logger.warning("Email tried to send without Postmark configured")
-            return
+            raise RuntimeError("Postmark is not configured; cannot send notification")
         logger.debug("Sending email to %s with subject %s", user_email, subject)
         # postmarker's send is a blocking HTTP call; keep it off the event loop
         # so a slow Postmark response can't stall the notification service.
