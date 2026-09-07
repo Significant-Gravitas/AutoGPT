@@ -88,6 +88,9 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+SENSITIVE_HEADERS = ("Authorization", "Proxy-Authorization", "Cookie")
+
+
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
     """
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
@@ -98,9 +101,8 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
         or (old_url.hostname != new_url.hostname)
         or (old_url.port != new_url.port)
     ):
-        headers.pop("Authorization", None)
-        headers.pop("Proxy-Authorization", None)
-        headers.pop("Cookie", None)
+        for name in SENSITIVE_HEADERS:
+            headers.pop(name, None)
     return headers
 
 
@@ -418,6 +420,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         retry_kwargs: dict[str, Any] = {
@@ -441,6 +444,7 @@ class Requests:
                 json=json,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
+                drop_headers=drop_headers,
                 **kwargs,
             )
 
@@ -457,6 +461,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -521,6 +526,12 @@ class Requests:
         if self.extra_headers is not None:
             req_headers.update(self.extra_headers)
 
+        # A cross-origin redirect already stripped these; the merge above would
+        # put them straight back, so a 302 to an attacker-controlled host would
+        # replay the caller's bearer token. Drop them again, for every hop.
+        for name in drop_headers:
+            req_headers.pop(name, None)
+
         # Set default User-Agent if not provided
         if "User-Agent" not in req_headers and "user-agent" not in req_headers:
             req_headers["User-Agent"] = DEFAULT_USER_AGENT
@@ -579,7 +590,7 @@ class Requests:
                     redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
-                        req_headers, parsed_url, redirect_url
+                        dict(req_headers), parsed_url, redirect_url
                     )
 
                     return await self.request(
@@ -591,6 +602,8 @@ class Requests:
                         files=files,
                         data=data,
                         json=json,
+                        drop_headers=drop_headers
+                        | (req_headers.keys() - new_headers.keys()),
                         **kwargs,
                     )
 

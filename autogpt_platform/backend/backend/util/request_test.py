@@ -244,3 +244,59 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.asyncio
+async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
+    """A redirect to a different origin must not carry the caller's bearer token.
+
+    ``_remove_insecure_headers`` strips it for the next hop, but the recursive
+    call re-merged ``extra_headers`` afterwards and put it straight back — so
+    a hostile MCP server could harvest a token just by answering 302.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    attacker_site = aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0)
+    await attacker_site.start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned so the test can't pass by ``extra_headers`` never being
+        # attached in the first place.
+        seen["origin_authorization"] = _request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(
+            f"http://127.0.0.1:{attacker_port}/collect",
+        )
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/mcp", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    origin_site = aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0)
+    await origin_site.start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            extra_headers={"Authorization": "Bearer dft_secret_token"},
+        )
+        await requests.get(f"http://127.0.0.1:{origin_port}/mcp")
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_authorization"] == "Bearer dft_secret_token"
+    assert seen["authorization"] is None
