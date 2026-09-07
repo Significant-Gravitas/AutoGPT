@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useState } from "react";
 import { PencilIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   currentName: string;
@@ -88,7 +89,7 @@ export function EditNameDialog({ currentName }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (isKey(e, "Enter")) {
                 e.preventDefault();
                 handleSave();
               }

@@ -16,6 +16,7 @@ import {
   mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { isKey } from "@/lib/keyboard";
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
@@ -477,7 +478,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                   detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && handleManualToken()
+                  isKey(e, "Enter") && !loading && handleManualToken()
                 }
                 className="flex-1 rounded border px-2 py-1 text-sm"
               />

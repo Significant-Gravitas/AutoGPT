@@ -71,6 +71,7 @@ const recentWork: HomeRecentWork = {
           duration_seconds: 812,
           cost_cents: 42,
           link: "/library/agents/lib-2?activeTab=runs&activeItem=run-1",
+          trigger: "schedule",
         },
         {
           id: "run-3",
@@ -127,6 +128,7 @@ const recentWork: HomeRecentWork = {
           duration_seconds: 44,
           cost_cents: 3,
           link: "/library/agents/lib-1?activeTab=runs&activeItem=run-2",
+          trigger: "webhook",
         },
       ],
       items: [
@@ -224,13 +226,17 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(
     within(mariaGroup).getByText("3 runs · 2 files · 1 schedule"),
   ).toBeDefined();
-  // Only the first run tells its story; later completed runs are one line.
+  // Every run is one line: the AI summary stays out of the card, and the
+  // row says whether a schedule or a person started it.
   expect(
     within(mariaGroup).getByText("Newsletter draft is ready"),
   ).toBeDefined();
+  expect(within(mariaGroup).queryByText(/Compared 18 cameras/)).toBeNull();
   expect(
     within(mariaGroup).queryByText(/Drafted the September newsletter/),
   ).toBeNull();
+  expect(within(mariaGroup).getByText("Scheduled run")).toBeDefined();
+  expect(within(mariaGroup).getByText("Manual run")).toBeDefined();
 
   const workflowGroup = screen.getByRole("article", {
     name: "Release Note Generator",
@@ -241,6 +247,8 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(
     within(workflowGroup).getByText("Release notes could not be generated"),
   ).toBeDefined();
+  expect(within(workflowGroup).getByText("Triggered run")).toBeDefined();
+  expect(within(workflowGroup).queryByText(/GitHub returned 401/)).toBeNull();
   expect(within(workflowGroup).getByText("Send Email")).toBeDefined();
   expect(within(workflowGroup).getByText(/google/)).toBeDefined();
 
@@ -248,6 +256,37 @@ test("groups the week's runs and deliverables by who did them", async () => {
   expect(
     within(autopilotGroup).getByText("competitor-pricing.csv"),
   ).toBeDefined();
+});
+
+test("puts the team first and workflows in their own section below", async () => {
+  mockDashboard(dashboard);
+
+  render(<HomePage />);
+
+  const heading = await screen.findByRole("heading", { name: "Recent work" });
+  const tile = heading.closest("section");
+  if (!tile) throw new Error("Recent work tile not found");
+  expect(
+    within(tile)
+      .getAllByRole("article")
+      .map((article) => article.getAttribute("aria-label")),
+  ).toEqual(["Maria", "Autopilot", "Release Note Generator"]);
+
+  const label = within(tile).getByText("Workflows");
+  const autopilotGroup = within(tile).getByRole("article", {
+    name: "Autopilot",
+  });
+  const workflowGroup = within(tile).getByRole("article", {
+    name: "Release Note Generator",
+  });
+  expect(
+    autopilotGroup.compareDocumentPosition(label) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    label.compareDocumentPosition(workflowGroup) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 test("links each actor to its home and thread work to its session", async () => {

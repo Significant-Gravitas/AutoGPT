@@ -107,6 +107,12 @@ interface Props {
    *  every other host (share viewer, memory and builder panels) leaves this
    *  off, whatever the persisted panel state says. */
   areFilesOpen?: boolean;
+  /** Compact thread for side panels: smaller text, tighter bubbles and
+   *  spacing. */
+  variant?: "default" | "compact";
+  /** Hosts that already name the thread (e.g. the expert chat drawer)
+   *  turn the floating identity chip off. */
+  showThreadHeader?: boolean;
 }
 
 /**
@@ -308,7 +314,10 @@ export function ChatMessagesContainer({
   hasFloatingControls = false,
   canOpenActivity = false,
   areFilesOpen = false,
+  variant = "default",
+  showThreadHeader = true,
 }: Props) {
+  const isCompact = variant === "compact";
   const messages = useMemo(
     () => revealKickoffMessages(allMessages),
     [allMessages],
@@ -462,14 +471,16 @@ export function ChatMessagesContainer({
 
   return (
     <>
-      <ThreadHeader
-        expertIdentity={expertIdentity}
-        readOnly={readOnly}
-        sessionId={sessionID}
-        hasFloatingControls={hasFloatingControls}
-        canOpenActivity={canOpenActivity}
-      />
-      <ChatMinimap messages={messages} />
+      {showThreadHeader && (
+        <ThreadHeader
+          expertIdentity={expertIdentity}
+          readOnly={readOnly}
+          sessionId={sessionID}
+          hasFloatingControls={hasFloatingControls}
+          canOpenActivity={canOpenActivity}
+        />
+      )}
+      {!isCompact && <ChatMinimap messages={messages} />}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -483,6 +494,8 @@ export function ChatMessagesContainer({
         <ConversationContent
           className={cn(
             "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            isCompact && "gap-4 px-4 pt-4",
+            !showThreadHeader && "pt-4",
             areFilesOpen && "xl:-translate-x-40",
           )}
           style={
@@ -604,14 +617,16 @@ export function ChatMessagesContainer({
                 className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
                 <MessageContent
-                  className={
-                    "text-[1rem] leading-relaxed " +
-                    "group-[.is-user]:rounded-3xl group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900 " +
-                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
+                  className={cn(
+                    isCompact
+                      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
-                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
-                  }
+                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
+                  )}
                 >
                   {isAssistant ? (
                     <ChainMessageParts
@@ -772,7 +787,14 @@ export function ChatMessagesContainer({
           {!readOnly &&
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">
-                <MessageContent className="flex flex-col gap-1 rounded-3xl border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-[1rem] leading-relaxed text-zinc-900 opacity-60">
+                <MessageContent
+                  className={cn(
+                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    isCompact
+                      ? "rounded-xl text-sm leading-6"
+                      : "rounded-3xl text-[1rem] leading-relaxed",
+                  )}
+                >
                   <span>{msg}</span>
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Icon icon={Clock01Icon} className="size-3" />

@@ -99,6 +99,7 @@ export function UseExistingCredentialsDialog({
 
   return (
     <Dialog
+      variant="compact"
       styling={{ maxWidth: "40rem", maxHeight: "60vh" }}
       title="Use an existing connection"
       controlled={{
@@ -120,10 +121,7 @@ export function UseExistingCredentialsDialog({
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
               </button>
-              <Text
-                variant="small"
-                className="text-sm leading-5 !text-zinc-500"
-              >
+              <Text variant="body" tone="muted" className="leading-5">
                 You have {selected.credentials.length} {selected.provider.name}{" "}
                 connections. Choose which one {expertName} should use.
               </Text>
@@ -145,12 +143,17 @@ export function UseExistingCredentialsDialog({
                         provider={credential.provider}
                         size={24}
                       />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">
+                      <Text
+                        variant="body-medium"
+                        as="span"
+                        tone="primary"
+                        className="min-w-0 flex-1 truncate"
+                      >
                         {name}
-                      </span>
+                      </Text>
                       <Button
                         variant="secondary"
-                        size="small"
+                        size="xs"
                         disabled={isGranting}
                         onClick={() => onUse(credential.id)}
                         aria-label={`Let ${expertName} use ${name}`}
@@ -164,10 +167,7 @@ export function UseExistingCredentialsDialog({
             </>
           ) : (
             <>
-              <Text
-                variant="small"
-                className="text-sm leading-5 !text-zinc-500"
-              >
+              <Text variant="body" tone="muted" className="leading-5">
                 These connections are already set up on your account but{" "}
                 {expertName} can&apos;t use them yet. Choose one to give{" "}
                 {expertName} access. Nothing is re-authorised, and you can
@@ -180,7 +180,7 @@ export function UseExistingCredentialsDialog({
                 placeholder="Search connections"
               />
               {groups.length === 0 ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   {credentials.length === 0
                     ? `${expertName} can already use everything in your account.`
                     : "No connections match."}
@@ -224,7 +224,7 @@ export function UseExistingCredentialsDialog({
             </>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="xs" onClick={onClose}>
               Cancel
             </Button>
           </div>

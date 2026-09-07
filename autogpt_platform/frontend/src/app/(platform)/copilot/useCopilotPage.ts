@@ -67,6 +67,7 @@ export function useCopilotPage() {
   const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
   const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
+  const [newThreadParam] = useQueryState("new", parseAsString);
   const expertId = isExpertsEnabled ? expertIdParam : null;
   const [kickoffParam, setKickoffParam] = useQueryState(
     "kickoff",
@@ -141,7 +142,11 @@ export function useCopilotPage() {
     refetchSession,
     sessionDryRun,
     sessionChatStatus,
-  } = useChatSession({ dryRun: isDryRun, expertId });
+  } = useChatSession({
+    dryRun: isDryRun,
+    expertId,
+    adoptLatestExpertThread: !newThreadParam,
+  });
 
   // An open session owns its identity: the URL param only describes who the
   // NEXT session will address, and it is absent whenever a thread is reached

@@ -1061,9 +1061,10 @@ def test_graph_args_expert_id_defaults_to_none():
 
 
 @pytest.mark.asyncio
-async def test_execute_graph_forwards_expert_id():
-    """An expert-attributed schedule must stamp its expert_id onto the
-    execution it creates, so any surface can answer "who ran this"."""
+async def test_execute_graph_forwards_expert_id_and_schedule_id():
+    """An expert-attributed schedule must stamp its expert_id and its own id
+    onto the execution it creates, so any surface can answer "who ran this"
+    and "did it run on schedule"."""
     args = GraphExecutionJobArgs(
         schedule_id="sched-1",
         user_id="user-1",
@@ -1088,6 +1089,7 @@ async def test_execute_graph_forwards_expert_id():
         await _execute_graph(**args.model_dump(mode="json"))
 
     assert mock_add.call_args.kwargs["expert_id"] == "expert-1"
+    assert mock_add.call_args.kwargs["schedule_id"] == "sched-1"
 
 
 @pytest.mark.asyncio

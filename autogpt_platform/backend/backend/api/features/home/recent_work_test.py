@@ -42,6 +42,8 @@ def _execution(
     status: ExecutionStatus = ExecutionStatus.COMPLETED,
     minutes_ago: int = 0,
     expert_id: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
     activity_status: str | None = "I generated release notes.",
 ) -> GraphExecutionMeta:
     ended_at = NOW - timedelta(minutes=minutes_ago)
@@ -58,6 +60,8 @@ def _execution(
         started_at=ended_at - timedelta(minutes=1),
         ended_at=ended_at,
         expert_id=expert_id,
+        schedule_id=schedule_id,
+        webhook_id=webhook_id,
         stats=GraphExecutionMeta.Stats(
             activity_status=activity_status, error=None, duration=60.0, cost=7
         ),
@@ -269,6 +273,22 @@ def test_counts_the_weeks_runs_and_orders_groups_by_latest_activity() -> None:
     ]
     # Failures lead within a group so they get looked at first.
     assert [run.id for run in work.groups[1].runs] == ["failed", "done"]
+
+
+def test_a_run_says_what_started_it() -> None:
+    executions = [
+        _execution(exec_id="cron", schedule_id="sched-1", minutes_ago=5),
+        _execution(exec_id="hook", webhook_id="hook-1", minutes_ago=8),
+        _execution(exec_id="hand", minutes_ago=10),
+    ]
+
+    work = _compose(executions)
+
+    assert {run.id: run.trigger for run in work.groups[0].runs} == {
+        "cron": "schedule",
+        "hook": "webhook",
+        "hand": "manual",
+    }
 
 
 def test_deliverables_older_than_the_window_are_left_out() -> None:
