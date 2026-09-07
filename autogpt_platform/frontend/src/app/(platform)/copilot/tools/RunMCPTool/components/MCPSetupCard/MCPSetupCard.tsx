@@ -22,6 +22,7 @@ import {
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { isKey } from "@/lib/keyboard";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
@@ -461,7 +462,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                   detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && handleManualToken()
+                  isKey(e, "Enter") && !loading && handleManualToken()
                 }
                 className="flex-1 rounded border px-2 py-1 text-sm"
               />

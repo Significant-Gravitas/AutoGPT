@@ -48,6 +48,7 @@ import {
   getErrorMessage,
   getErrorStatus,
 } from "@/lib/mcp-errors";
+import { isKey } from "@/lib/keyboard";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -447,7 +448,7 @@ export function MCPToolDialog({
                   setError(null);
                   startOAuthRef.current = false;
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                 disabled={loading || oauthLoading}
                 autoFocus
               />
@@ -489,7 +490,7 @@ export function MCPToolDialog({
                     setManualToken(value);
                     detectSchemeFrom(value);
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                   disabled={loading || oauthLoading}
                   autoFocus
                 />
