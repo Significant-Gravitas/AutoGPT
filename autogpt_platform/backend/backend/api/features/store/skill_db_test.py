@@ -12,13 +12,19 @@ async def _make_listing(
     slug: str,
     *,
     approved: bool = True,
+    has_approved_version: bool | None = None,
     verified: bool = False,
     available: bool = True,
     categories: list[str] | None = None,
     body: str = "# body\n",
 ) -> prisma.models.SkillListing:
     listing = await prisma.models.SkillListing.prisma().create(
-        data={"slug": slug, "hasApprovedVersion": approved}
+        data={
+            "slug": slug,
+            "hasApprovedVersion": (
+                approved if has_approved_version is None else has_approved_version
+            ),
+        }
     )
     version = await prisma.models.SkillListingVersion.prisma().create(
         data={
@@ -57,8 +63,8 @@ async def clean_skill_listings(server: SpinTestServer):
 
 
 async def test_browse_puts_verified_first():
-    await _make_listing("plain-one", verified=False)
     await _make_listing("verified-one", verified=True)
+    await _make_listing("plain-one", verified=False)
 
     result = await skill_db.get_marketplace_skills()
 
@@ -74,6 +80,16 @@ async def test_browse_hides_unapproved_and_unavailable_listings():
     result = await skill_db.get_marketplace_skills()
 
     assert [s.slug for s in result.skills] == ["live-one"]
+
+
+async def test_browse_hides_a_listing_whose_live_version_was_rejected():
+    """`hasApprovedVersion` means some version was approved once, not that the
+    active one still is — a version rejected on re-review must leave the shelf."""
+    await _make_listing("re-rejected-one", approved=False, has_approved_version=True)
+
+    result = await skill_db.get_marketplace_skills()
+
+    assert [s.slug for s in result.skills] == []
 
 
 async def test_browse_filters_by_category():
@@ -104,11 +120,23 @@ async def test_detail_carries_the_body_and_providers():
     assert detail.triggers == ["t1"]
 
 
-async def test_detail_of_an_unapproved_listing_is_not_found():
-    await _make_listing("pending-one", approved=False)
+# Two ways a listing can be off the shelf: never approved (the listing flag is
+# false) and approved once but rejected on re-review (the flag stays true and
+# only the live version's status says so).
+OFF_SHELF = [
+    pytest.param(False, id="never-approved"),
+    pytest.param(True, id="live-version-rejected"),
+]
+
+
+@pytest.mark.parametrize("has_approved_version", OFF_SHELF)
+async def test_detail_of_an_off_shelf_listing_is_not_found(has_approved_version: bool):
+    await _make_listing(
+        "off-shelf-one", approved=False, has_approved_version=has_approved_version
+    )
 
     with pytest.raises(NotFoundError):
-        await skill_db.get_marketplace_skill("pending-one")
+        await skill_db.get_marketplace_skill("off-shelf-one")
 
 
 async def test_install_stores_under_the_listing_slug_and_counts(mocker):
@@ -130,12 +158,17 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker):
     assert refreshed.installCount == 1
 
 
-async def test_install_of_an_unapproved_listing_never_reaches_the_library(mocker):
-    await _make_listing("pending-one", approved=False)
+@pytest.mark.parametrize("has_approved_version", OFF_SHELF)
+async def test_install_of_an_off_shelf_listing_never_reaches_the_library(
+    mocker, has_approved_version: bool
+):
+    await _make_listing(
+        "off-shelf-one", approved=False, has_approved_version=has_approved_version
+    )
     stored = mocker.patch.object(skill_db, "store_user_skill")
 
     with pytest.raises(NotFoundError):
-        await skill_db.install_marketplace_skill("user-1", "pending-one")
+        await skill_db.install_marketplace_skill("user-1", "off-shelf-one")
 
     stored.assert_not_awaited()
 
