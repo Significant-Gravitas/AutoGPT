@@ -83,7 +83,7 @@ export function ExpertSidePanel({
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-[#80808017] bg-sidebar"
+          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-sidebar-border bg-sidebar"
         >
           <PanelResizeHandle
             panelSelector={panelSelector}
@@ -152,7 +152,7 @@ function PanelHeader({
   onClose,
 }: HeaderProps) {
   return (
-    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-[#80808017] px-3">
+    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-sidebar-border px-3">
       {showIdentity ? (
         <>
           <IdentityAvatar

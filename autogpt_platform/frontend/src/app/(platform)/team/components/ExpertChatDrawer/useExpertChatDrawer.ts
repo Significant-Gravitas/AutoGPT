@@ -134,10 +134,10 @@ export function useExpertChatDrawer({
     if (isCreating || !target) return;
     setIsCreating(true);
     try {
-      const response = (await createSession(
+      const response = await createSession(
         expertId ? { data: { expert_id: expertId } } : { data: null },
-      )) as unknown as { status: number; data?: { id?: string } };
-      if (response.status !== 200 || !response.data?.id) {
+      );
+      if (response.status !== 200) {
         throw new Error("Failed to create expert chat session");
       }
       pendingPromptRef.current = firstMessage;

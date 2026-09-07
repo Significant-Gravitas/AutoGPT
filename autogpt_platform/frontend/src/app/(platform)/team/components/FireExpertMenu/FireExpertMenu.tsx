@@ -24,6 +24,7 @@ export function FireExpertMenu({ expertName, onFire, testId }: Props) {
           size="icon-sm"
           leadingIcon={MoreVerticalIcon}
           aria-label={`${expertName} actions`}
+          withTooltip={false}
           data-testid={testId}
           onClick={(event) => event.stopPropagation()}
         />
