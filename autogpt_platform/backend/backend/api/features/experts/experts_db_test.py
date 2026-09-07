@@ -3972,3 +3972,53 @@ def test_expert_soul_fields_patch_strips_and_preserves_none():
     assert patch.voice_preferences == ""
     assert patch.boundaries == "Keep it short."
     assert patch.identity is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_every_name_before_copying(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    copies: list[str] = []
+
+    async def _find(user_id, name):
+        return None if name == "missing" else name
+
+    async def _copy(user_id, expert_id, name):
+        copies.append(name)
+        return name
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slug", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["valid", "missing"]
+        )
+    assert copies == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_skill_names_add_and_remove_atomically(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+
+    await asyncio.gather(
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "alpha"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "beta"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "Alpha"),
+    )
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert sorted(s.lower() for s in row.skills) == sorted(
+        {*(s.lower() for s in template.skills), "alpha", "beta"}
+    )
+
+    await experts_db.remove_expert_skill_name(test_user.id, expert_id, "ALPHA")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert "alpha" not in {s.lower() for s in row.skills}

@@ -384,6 +384,10 @@ async def delete_user_skill(
     manager = await _get_user_skill_manager(user_id, scope)
     info = await manager.get_file_info_by_path(_skill_md_path(slug, expert_id))
     if info is None:
+        if expert_id is not None:
+            # A stale name from an earlier failed delete: drop it so the row
+            # never lists a skill the expert cannot read.
+            await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
         raise SkillNotFoundError(f"Skill '{slug}' not found")
 
     # Audit-log the delete BEFORE the workspace mutation runs so the
@@ -885,6 +889,8 @@ async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str |
         return None
     manager = await _get_user_skill_manager(user_id)
     if await manager.get_file_info_by_path(_skill_md_path(slug, expert_id)):
+        # Reconcile a copy whose row update failed earlier; idempotent.
+        await experts_db().add_expert_skill_name(user_id, expert_id, slug)
         return slug
     source = await read_user_skill_with_body(user_id, slug)
     if source is None:

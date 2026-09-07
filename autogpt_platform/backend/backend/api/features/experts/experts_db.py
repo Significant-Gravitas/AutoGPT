@@ -62,6 +62,7 @@ from backend.copilot.tools.skills import (
     find_user_skill_slug,
     get_default_skill_with_body,
 )
+from backend.data.db import execute_raw_with_schema
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.expert_attribution import (
@@ -904,7 +905,16 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
-    await _copy_library_skills(user_id, expert.id, resolved.skill_names)
+    failed_skills = await _copy_library_skills(user_id, expert.id, resolved.skill_names)
+    if failed_skills:
+        expert = (
+            await prisma.models.Expert.prisma().update(
+                where={"id": expert.id},
+                data={"skills": [s for s in expert.skills if s not in failed_skills]},
+                include=_WORKFLOW_INCLUDE,
+            )
+            or expert
+        )
     failed_attachments = await raise_attachments.install_workflows(
         user_id, expert.id, resolved.workflows
     )
@@ -917,10 +927,14 @@ async def create_raised_expert(
     return RaiseResult(expert=hydrated, failed_attachments=failed_attachments)
 
 
-async def _copy_library_skills(user_id: str, expert_id: str, names: list[str]) -> None:
+async def _copy_library_skills(
+    user_id: str, expert_id: str, names: list[str]
+) -> list[str]:
     """Give a freshly raised expert its own copies of the AutoPilot skills it
-    was raised with. Defaults and marketplace names have nothing to copy;
-    a failed copy is logged, never fatal to the raise."""
+    was raised with. Defaults and marketplace names have nothing to copy.
+    Returns the names whose copy failed so the caller can drop them from the
+    expert's row rather than list a skill the expert cannot read."""
+    failed: list[str] = []
     for name in names:
         if get_default_skill_with_body(name.strip().lower()) is not None:
             continue
@@ -928,6 +942,8 @@ async def _copy_library_skills(user_id: str, expert_id: str, names: list[str]) -
             await copy_skill_to_expert(user_id, expert_id, name)
         except Exception:
             logger.exception(f"Failed to copy skill {name!r} to expert #{expert_id}")
+            failed.append(name)
+    return failed
 
 
 async def _create_raised_expert_row(
@@ -1009,14 +1025,25 @@ async def update_skills(
     if row is None:
         raise ExpertNotFoundError(expert_id)
 
+    # Resolve every name before any write, so a bad name rejects the whole
+    # request instead of leaving a half-applied prefix of copies behind.
     current = {name.lower(): name for name in row.skills or []}
-    resolved = [
-        current.get(name.lower())
-        or await _attach_library_skill(user_id, expert_id, name)
-        for name in skills
+    plan = [
+        await _plan_skill(user_id, current.get(name.lower()), name) for name in skills
     ]
-    for listing_id in marketplace_listing_ids or []:
-        name = await _resolve_marketplace_skill_name(listing_id)
+    marketplace = [
+        await _resolve_marketplace_skill_name(listing_id)
+        for listing_id in marketplace_listing_ids or []
+    ]
+    resolved: list[str] = []
+    for canonical, folder in plan:
+        if folder is not None:
+            # Idempotent: also heals a name kept from before skills were
+            # owned per expert, which had no copy in the expert's folder.
+            copied = await copy_skill_to_expert(user_id, expert_id, folder)
+            canonical = copied or canonical
+        resolved.append(canonical)
+    for name in marketplace:
         if name.lower() not in {r.lower() for r in resolved}:
             resolved.append(name)
     kept = {r.lower() for r in resolved}
@@ -1044,24 +1071,27 @@ async def _resolve_marketplace_skill_name(store_listing_version_id: str) -> str:
     return listing.name
 
 
-async def _attach_library_skill(user_id: str, expert_id: str, name: str) -> str:
-    slug = name.strip().lower()
+async def _plan_skill(
+    user_id: str, kept_name: str | None, name: str
+) -> tuple[str, str | None]:
+    """Decide the stored name and which AutoPilot folder, if any, to copy.
+
+    A name the expert already carries is kept as is; its folder is looked up
+    so a legacy assignment without a copy gets one. A new name must be a
+    default skill or one of AutoPilot's skills, resolved to its folder (a
+    hand-written skill may be listed under a frontmatter name that differs
+    from the folder). Raises ``NotFoundError`` before anything is written.
+    """
+    slug = (kept_name or name).strip().lower()
     default = get_default_skill_with_body(slug)
     if default is not None:
-        return default.name
-    # A skill whose frontmatter name differs from its folder slug (anything
-    # not written through store_user_skill) is listed by the library UI under
-    # the frontmatter name; resolve it to its folder so the expert gets a
-    # real copy, never just a name on its row.
+        return default.name, None
     folder = await find_user_skill_slug(user_id, slug)
-    copied = (
-        await copy_skill_to_expert(user_id, expert_id, folder)
-        if folder is not None
-        else None
-    )
-    if copied is None:
+    if kept_name is not None:
+        return kept_name, folder
+    if folder is None:
         raise NotFoundError(f"Skill '{name}' is not in your library")
-    return copied
+    return folder, folder
 
 
 async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
@@ -1072,25 +1102,31 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
 
 
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Record a skill the expert now owns (idempotent, case-insensitive)."""
-    row = await _owned_active_expert(user_id, expert_id)
-    if row is None or name.lower() in {s.lower() for s in row.skills or []}:
-        return
-    await prisma.models.Expert.prisma().update(
-        where={"id": row.id}, data={"skills": [*(row.skills or []), name]}
+    """Record a skill the expert now owns.
+
+    A single atomic array update, so concurrent stores never overwrite each
+    other's names; idempotent and case-insensitive."""
+    await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"Expert" SET "skills" = array_append("skills", $1) '
+        'WHERE "id" = $2 AND "ownerUserId" = $3 AND "isTemplate" = false '
+        'AND "isArchived" = false '
+        'AND NOT EXISTS (SELECT 1 FROM unnest("skills") s WHERE lower(s) = lower($1))',
+        name,
+        expert_id,
+        user_id,
     )
 
 
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
-    """Forget a skill the expert no longer owns."""
-    row = await _owned_active_expert(user_id, expert_id)
-    if row is None:
-        return
-    remaining = [s for s in row.skills or [] if s.lower() != name.lower()]
-    if len(remaining) != len(row.skills or []):
-        await prisma.models.Expert.prisma().update(
-            where={"id": row.id}, data={"skills": remaining}
-        )
+    """Forget a skill the expert no longer owns (atomic, case-insensitive)."""
+    await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"Expert" SET "skills" = '
+        'ARRAY(SELECT s FROM unnest("skills") s WHERE lower(s) <> lower($1)) '
+        'WHERE "id" = $2 AND "ownerUserId" = $3',
+        name,
+        expert_id,
+        user_id,
+    )
 
 
 async def _owned_active_expert(
