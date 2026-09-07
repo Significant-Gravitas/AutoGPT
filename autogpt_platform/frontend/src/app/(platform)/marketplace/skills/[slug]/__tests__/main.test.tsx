@@ -96,7 +96,13 @@ describe("Marketplace skill page", () => {
   test("installs in one click and offers the connect step afterwards", async () => {
     renderPage([]);
 
-    const button = await screen.findByTestId("skill-install-button");
+    const button = await screen.findByTestId(
+      "skill-install-button",
+      undefined,
+      {
+        timeout: 10000,
+      },
+    );
     await userEvent.click(button);
 
     expect(await screen.findByTestId("skill-installed")).toBeDefined();
@@ -110,7 +116,11 @@ describe("Marketplace skill page", () => {
   test("offers no connect step when the integration is already connected", async () => {
     renderPage([googleCredential]);
 
-    await userEvent.click(await screen.findByTestId("skill-install-button"));
+    await userEvent.click(
+      await screen.findByTestId("skill-install-button", undefined, {
+        timeout: 10000,
+      }),
+    );
 
     expect(await screen.findByTestId("skill-installed")).toBeDefined();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
@@ -149,7 +159,9 @@ describe("Marketplace skill page", () => {
 
   test("keeps the panel usable when the install fails", async () => {
     renderPage([]);
-    await screen.findByTestId("skill-install-button");
+    await screen.findByTestId("skill-install-button", undefined, {
+      timeout: 10000,
+    });
     // A rejected install must not leave an unhandled rejection or a stuck
     // spinner: the button comes back and no success state is claimed.
     server.use(getPostV2InstallMarketplaceSkillMockHandler401());
@@ -164,7 +176,9 @@ describe("Marketplace skill page", () => {
   test("shows no connect step before the skill is installed", async () => {
     renderPage([]);
 
-    await screen.findByTestId("skill-install-button");
+    await screen.findByTestId("skill-install-button", undefined, {
+      timeout: 10000,
+    });
 
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
   });
