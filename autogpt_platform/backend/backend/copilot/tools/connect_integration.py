@@ -119,7 +119,6 @@ class ConnectIntegrationTool(BaseTool):
 
         Returns an :class:`ErrorResponse` if *provider* is unknown.
         """
-        _ = user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider = (provider or "").strip().lower()
         reason = (reason or "").strip()[:500]  # cap LLM-controlled text
@@ -155,6 +154,12 @@ class ConnectIntegrationTool(BaseTool):
         ]
         if reason:
             message_parts.append(reason)
+        if session.expert_id is not None:
+            message_parts.append(
+                "Note: a credential connected here belongs to the account and "
+                "still needs to be granted to this expert before it can use it; "
+                "the next run will name it if so."
+            )
 
         # Route the single-provider entry through the shared serializer
         # used by run_block / run_agent so the payload shape (sorted scopes,

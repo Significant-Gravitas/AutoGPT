@@ -760,6 +760,7 @@ async def test_run_agent_schedule_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
     setup_test_data,
+    request,
 ):
     """A schedule created from an expert-scoped chat session must carry the
     session's expert_id, otherwise it never shows on the Team card / expert
@@ -786,6 +787,12 @@ async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
         expert_id=expert_id,
     )
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.get_scheduler_client",
         return_value=fake_scheduler,
@@ -951,6 +958,7 @@ async def test_run_agent_execution_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     setup_test_data,
+    request,
 ):
     user = setup_test_data["user"]
     store_submission = setup_test_data["store_submission"]
@@ -958,6 +966,12 @@ async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
     session = make_session(user_id=user.id, expert_id="expert-1")
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
         new_callable=AsyncMock,

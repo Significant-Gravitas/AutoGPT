@@ -30,6 +30,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
+from .expert_scope import require_installed_workflow
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -187,6 +188,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
         if error:
             return error
         assert graph is not None
+        scope_error = await require_installed_workflow(
+            user_id, session, graph_id=graph.id, name=graph.name
+        )
+        if scope_error is not None:
+            return scope_error
 
         if not (trigger_node := graph.webhook_input_node):
             return ErrorResponse(

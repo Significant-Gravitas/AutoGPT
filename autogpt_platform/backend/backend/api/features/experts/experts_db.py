@@ -20,6 +20,15 @@ from backend.api.features.experts.credential_counts import count_expert_credenti
 from backend.api.features.experts.credentials import (
     expert_allowed_credential_ids as expert_allowed_credential_ids,
 )
+from backend.api.features.experts.credentials import (
+    grant_expert_credentials as grant_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    list_expert_credentials as list_expert_credentials,
+)
+from backend.api.features.experts.credentials import (
+    revoke_expert_credential as revoke_expert_credential,
+)
 from backend.api.features.experts.errors import (
     ACTIVE_EXPERT_LIMIT,
     LIFETIME_RAISED_EXPERT_LIMIT,

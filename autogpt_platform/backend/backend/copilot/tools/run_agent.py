@@ -38,6 +38,7 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
+from .expert_scope import require_installed_workflow, ungranted_credential_hint
 from .helpers import get_inputs_from_schema
 from .models import (
     AgentDetails,
@@ -343,6 +344,11 @@ class RunAgentTool(BaseTool):
                     message=f"Agent '{identifier}' not found",
                     session_id=session_id,
                 )
+            scope_error = await require_installed_workflow(
+                user_id, session, graph_id=graph.id, name=graph.name
+            )
+            if scope_error is not None:
+                return scope_error
 
             # Builder-bound sessions can only run their bound agent.  We
             # resolve the graph first so the user sees a precise error that
@@ -660,7 +666,16 @@ class RunAgentTool(BaseTool):
                 graph, graph_credentials
             )
             return graph_credentials, SetupRequirementsResponse(
-                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
+                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)
+                + await ungranted_credential_hint(
+                    user_id,
+                    expert_id,
+                    {
+                        str(m.get("provider", ""))
+                        for m in missing_credentials_dict.values()
+                    }
+                    - {""},
+                ),
                 session_id=session_id,
                 setup_info=SetupInfo(
                     agent_id=graph.id,

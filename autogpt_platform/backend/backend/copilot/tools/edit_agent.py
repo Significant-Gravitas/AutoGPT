@@ -15,6 +15,7 @@ from .agent_json_input import (
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import require_installed_workflow
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -108,6 +109,12 @@ class EditAgentTool(BaseTool):
                 error="missing_agent_id",
                 session_id=session_id,
             )
+        if user_id:
+            scope_error = await require_installed_workflow(
+                user_id, session, graph_id=agent_id, name=agent_id
+            )
+            if scope_error is not None:
+                return scope_error
 
         agent_json, resolve_error = await resolve_agent_json_or_error(
             agent_json=agent_json,

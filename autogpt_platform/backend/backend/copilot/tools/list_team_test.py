@@ -27,6 +27,8 @@ def _expert(
         avatar_url=None,
         is_archived=is_archived,
         schedules_paused_at=schedules_paused_at,
+        workflows=[],
+        credential_count=0,
     )
 
 

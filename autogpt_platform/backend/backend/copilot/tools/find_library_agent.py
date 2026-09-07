@@ -12,6 +12,7 @@ from .agent_search import (
     search_library_for_creation,
 )
 from .base import BaseTool
+from .expert_scope import session_workflow_scope
 from .models import AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
@@ -97,6 +98,49 @@ class FindLibraryAgentTool(BaseTool):
         for_creation: bool = False,
         goal_summary: str = "",
         **kwargs,
+    ) -> ToolResponseBase:
+        result = await self._search(
+            user_id,
+            session,
+            query=query,
+            agent_id=agent_id,
+            include_graph=include_graph,
+            write_graph_to=write_graph_to,
+            for_creation=for_creation,
+            goal_summary=goal_summary,
+        )
+        if not user_id or not isinstance(result, AgentsFoundResponse):
+            return result
+        scope = await session_workflow_scope(user_id, session)
+        if scope is None:
+            return result
+        agents = [
+            a
+            for a in result.agents
+            if scope.allows_agent(library_agent_id=a.id, graph_id=a.graph_id)
+        ]
+        return result.model_copy(
+            update={
+                "agents": agents,
+                "count": len(agents),
+                "message": (
+                    f"{result.message} Only this expert's installed workflows are "
+                    "listed; install_expert_workflow adds more."
+                ),
+            }
+        )
+
+    async def _search(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        *,
+        query: str,
+        agent_id: str,
+        include_graph: bool,
+        write_graph_to: str,
+        for_creation: bool,
+        goal_summary: str,
     ) -> ToolResponseBase:
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty

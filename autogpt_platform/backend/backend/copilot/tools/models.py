@@ -49,6 +49,9 @@ class ResponseType(str, Enum):
     # Schedules
     SCHEDULE_LIST = "schedule_list"
     SCHEDULE_DELETED = "schedule_deleted"
+    # Expert resources (installed workflows, credential grants)
+    EXPERT_WORKFLOW = "expert_workflow"
+    EXPERT_CREDENTIALS = "expert_credentials"
     SCHEDULE_CREATED = "schedule_created"
 
     # Agent triggers
@@ -597,6 +600,8 @@ class TeamExpertInfo(BaseModel):
     color: str = ""
     avatar_url: str | None = None
     is_paused: bool = False
+    workflow_count: int = 0
+    credential_count: int = 0
 
 
 class TeamRosterResponse(ToolResponseBase):

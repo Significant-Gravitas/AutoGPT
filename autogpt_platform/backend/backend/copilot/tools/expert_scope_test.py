@@ -1,0 +1,163 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.expert_scope import (
+    ExpertWorkflowScope,
+    install_saved_agent,
+    require_installed_workflow,
+    resolve_target_expert,
+    ungranted_credential_hint,
+)
+from backend.copilot.tools.models import AgentSavedResponse, ErrorResponse
+
+_PATH = "backend.copilot.tools.expert_scope"
+
+
+def _expert(expert_id: str, graph_ids: list[str] = ()):
+    return MagicMock(
+        id=expert_id,
+        workflows=[
+            MagicMock(library_agent_id=f"lib-{g}", graph_id=g) for g in graph_ids
+        ],
+    )
+
+
+@pytest.fixture
+def experts():
+    db = MagicMock()
+    db.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: (
+            _expert(expert_id, ["installed"]) if expert_id == "expert-a" else None
+        )
+    )
+    db.install_workflow = AsyncMock()
+    db.expert_allowed_credential_ids = AsyncMock(return_value=["granted-cred"])
+    with patch(f"{_PATH}.experts_db", return_value=db):
+        yield db
+
+
+def _expert_session(expert_id: str | None = "expert-a") -> ChatSession:
+    return ChatSession.new("user-1", dry_run=False, expert_id=expert_id)
+
+
+def test_scope_allows_only_installed_workflows():
+    scope = ExpertWorkflowScope(
+        expert_id="e", library_agent_ids=["lib-1"], graph_ids=["graph-1"]
+    )
+    assert scope.allows_graph("graph-1")
+    assert not scope.allows_graph("graph-2")
+    assert scope.allows_agent(library_agent_id="lib-1", graph_id=None)
+    assert scope.allows_agent(library_agent_id="other", graph_id="graph-1")
+    assert not scope.allows_agent(library_agent_id="other", graph_id="graph-2")
+
+
+async def test_expert_is_refused_uninstalled_workflow(experts):
+    error = await require_installed_workflow(
+        "user-1", _expert_session(), graph_id="other", name="Other"
+    )
+    assert isinstance(error, ErrorResponse)
+    assert error.error == "workflow_not_installed"
+    assert "install_expert_workflow" in error.message
+
+
+async def test_expert_may_use_installed_workflow(experts):
+    assert (
+        await require_installed_workflow(
+            "user-1", _expert_session(), graph_id="installed", name="x"
+        )
+        is None
+    )
+
+
+async def test_personal_autopilot_may_use_any_workflow(experts):
+    assert (
+        await require_installed_workflow(
+            "user-1", _expert_session(None), graph_id="anything", name="x"
+        )
+        is None
+    )
+    experts.get_expert.assert_not_awaited()
+
+
+async def test_missing_expert_fails_closed(experts):
+    error = await require_installed_workflow(
+        "user-1", _expert_session("expert-gone"), graph_id="installed", name="x"
+    )
+    assert isinstance(error, ErrorResponse)
+
+
+async def test_expert_session_targets_itself_only(experts):
+    assert await resolve_target_expert("user-1", _expert_session(), None) == "expert-a"
+    assert (
+        await resolve_target_expert("user-1", _expert_session(), "expert-a")
+        == "expert-a"
+    )
+    denied = await resolve_target_expert("user-1", _expert_session(), "expert-b")
+    assert isinstance(denied, ErrorResponse) and denied.error == "access_denied"
+
+
+async def test_personal_autopilot_must_name_a_real_expert(experts):
+    missing = await resolve_target_expert("user-1", _expert_session(None), None)
+    assert isinstance(missing, ErrorResponse) and missing.error == "expert_required"
+    unknown = await resolve_target_expert("user-1", _expert_session(None), "nope")
+    assert isinstance(unknown, ErrorResponse) and unknown.error == "expert_not_found"
+    assert (
+        await resolve_target_expert("user-1", _expert_session(None), "expert-a")
+        == "expert-a"
+    )
+
+
+def _saved() -> AgentSavedResponse:
+    return AgentSavedResponse(
+        message="Saved.",
+        agent_id="graph-new",
+        agent_name="New",
+        library_agent_id="lib-new",
+        library_agent_link="/library/agents/lib-new",
+        agent_page_link="/build?flowID=graph-new",
+    )
+
+
+async def test_agent_built_by_expert_is_installed_on_it(experts):
+    result = await install_saved_agent("user-1", _expert_session(), _saved())
+    experts.install_workflow.assert_awaited_once_with(
+        "user-1", "expert-a", library_agent_id="lib-new"
+    )
+    assert isinstance(result, AgentSavedResponse)
+    assert "Installed on this expert" in result.message
+
+
+async def test_failed_install_is_reported_not_raised(experts):
+    experts.install_workflow.side_effect = RuntimeError("boom")
+    result = await install_saved_agent("user-1", _expert_session(), _saved())
+    assert "install_expert_workflow" in result.message
+
+
+async def test_personal_autopilot_build_is_not_installed_anywhere(experts):
+    result = await install_saved_agent("user-1", _expert_session(None), _saved())
+    experts.install_workflow.assert_not_awaited()
+    assert result.message == "Saved."
+
+
+async def test_hint_lists_owned_but_ungranted_credentials(experts):
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            MagicMock(id="granted-cred", provider="github", title="GH granted"),
+            MagicMock(id="spare-cred", provider="github", title="GH spare"),
+            MagicMock(id="other-cred", provider="slack", title="Slack"),
+        ]
+    )
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        hint = await ungranted_credential_hint("user-1", "expert-a", {"github"})
+        none = await ungranted_credential_hint("user-1", "expert-a", {"notion"})
+        personal = await ungranted_credential_hint("user-1", None, {"github"})
+    assert "spare-cred" in hint and "GH spare" in hint
+    assert "granted-cred" not in hint and "other-cred" not in hint
+    assert "grant_expert_credential" in hint
+    assert none == "" and personal == ""
