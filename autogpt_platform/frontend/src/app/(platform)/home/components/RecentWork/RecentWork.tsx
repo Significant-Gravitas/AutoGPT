@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { HomeSectionLabel } from "../HomeSectionLabel/HomeSectionLabel";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
+import { BriefingByline } from "./components/BriefingByline";
 import { WorkGroup } from "./components/WorkGroup";
 import { splitGroupsBySection } from "./helpers";
 
@@ -66,15 +67,7 @@ export function RecentWork({ dashboard, className }: Props) {
         />
       ) : (
         <div className="divide-y divide-zinc-200">
-          {briefing.narrative ? (
-            <Text
-              variant="body"
-              tone="secondary"
-              className="text-pretty px-4 py-3 leading-5"
-            >
-              {briefing.narrative}
-            </Text>
-          ) : null}
+          {briefing.narrative ? <BriefingByline briefing={briefing} /> : null}
           {team.map((group) => (
             <WorkGroup
               key={groupKey(group)}

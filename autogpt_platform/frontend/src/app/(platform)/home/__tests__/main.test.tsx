@@ -6,7 +6,12 @@ import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAtten
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import HomePage from "../page";
 
 const { setFlagStatusMock } = vi.hoisted(() => ({
@@ -125,6 +130,7 @@ const dashboard: HomeDashboardResponse = {
     failed_count: 1,
     routine_count: 13,
     outcomes: [cameraResearch, schedulingFailure],
+    author: { kind: "autopilot", name: "Autopilot", role: "Head of AI" },
   },
   active_tasks: [
     {
@@ -400,6 +406,25 @@ test("opens the briefing with the AI-written narrative when there is one", async
     ),
   ).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
+});
+
+test("bylines the briefing to Autopilot, not to the expert it reports on", async () => {
+  mockDashboard({
+    ...dashboard,
+    briefing: {
+      ...dashboard.briefing,
+      narrative: "Maria finished your camera research overnight.",
+    },
+  });
+
+  render(<HomePage />);
+
+  const byline = within(await screen.findByTestId("briefing-byline"));
+  expect(byline.getByText("Autopilot")).toBeDefined();
+  expect(byline.getByText("Head of AI")).toBeDefined();
+  // Maria's run is reported all over the page; the byline is the one place
+  // she must not appear as the author of.
+  expect(byline.queryByText("Maria")).toBeNull();
 });
 
 test("renders the briefing unchanged when no narrative was generated", async () => {

@@ -4,7 +4,6 @@ import {
   PlugIcon,
   RepeatIcon,
   Robot01Icon,
-  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
@@ -22,7 +21,6 @@ export function getWorkItemIcon(
 
 export function getActorIcon(kind: HomeWorkActorKind): IconSvgElement {
   if (kind === "workflow") return FlowIcon;
-  if (kind === "autopilot") return SparklesIcon;
   return Robot01Icon;
 }
 
