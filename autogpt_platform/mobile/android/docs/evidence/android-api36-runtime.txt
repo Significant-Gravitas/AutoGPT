@@ -1,0 +1,25 @@
+INSTRUMENTATION_STATUS: stream=webview_capabilities: PASS
+
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: stream=cookie_deletion_callback: PASS
+
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: stream=fixture_auth_exchange_and_cancellation: PASS
+
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: stream=native_download_origin_boundary: PASS
+
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: checks_passed=4
+INSTRUMENTATION_RESULT: cookie_deletion_callback=PASS
+INSTRUMENTATION_RESULT: current_check=native_download_origin_boundary
+INSTRUMENTATION_RESULT: fixture_auth_exchange_and_cancellation=PASS
+INSTRUMENTATION_RESULT: native_download_origin_boundary=PASS
+INSTRUMENTATION_RESULT: probe_status=PASS
+INSTRUMENTATION_RESULT: stream=
+Runtime probe PASS: 4 checks; WebView 133.0.6943.137
+
+INSTRUMENTATION_RESULT: suite=fixture
+INSTRUMENTATION_RESULT: webview_capabilities=PASS
+INSTRUMENTATION_RESULT: webview_version=133.0.6943.137
+INSTRUMENTATION_CODE: -1

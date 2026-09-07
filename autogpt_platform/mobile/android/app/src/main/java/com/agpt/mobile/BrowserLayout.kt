@@ -1,6 +1,7 @@
 package com.agpt.mobile
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
@@ -24,7 +25,7 @@ class BrowserLayout(context: Context) : LinearLayout(context) {
     private val panelTitle = TextView(context)
     private val panelDetail = TextView(context)
     private val action = Button(context)
-    private val secondaryAction = Button(context)
+    private val secondaryAction = Button(context, null, android.R.attr.borderlessButtonStyle)
 
     init {
         orientation = VERTICAL
@@ -105,13 +106,41 @@ class BrowserLayout(context: Context) : LinearLayout(context) {
                 bottomMargin = dp(24)
             },
         )
-        action.isAllCaps = false
-        secondaryAction.isAllCaps = false
-        panel.addView(action, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
-        panel.addView(
+        val actions =
+            object : LinearLayout(context) {
+                    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                        val boundedWidth =
+                            MeasureSpec.makeMeasureSpec(
+                                minOf(MeasureSpec.getSize(widthMeasureSpec), dp(400)),
+                                MeasureSpec.getMode(widthMeasureSpec),
+                            )
+                        super.onMeasure(boundedWidth, heightMeasureSpec)
+                    }
+                }
+                .apply { orientation = VERTICAL }
+        action.apply {
+            isAllCaps = false
+            textSize = 16f
+            minimumHeight = dp(56)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            backgroundTintList = ColorStateList.valueOf(color(R.color.shell_accent))
+            setTextColor(color(R.color.shell_on_accent))
+        }
+        secondaryAction.apply {
+            isAllCaps = false
+            textSize = 16f
+            minimumHeight = dp(48)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            setTextColor(color(R.color.shell_accent))
+        }
+        actions.addView(action, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        actions.addView(
             secondaryAction,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT),
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            },
         )
+        panel.addView(actions, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         panelScroll.apply {
             isFillViewport = true
             setBackgroundColor(color(R.color.shell_panel))

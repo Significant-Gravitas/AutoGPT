@@ -74,3 +74,33 @@ The launcher image reuses the web app's notification icon. The themed monochrome
 Automated checks cover exact-origin matching and spoof attempts, debug HTTP restrictions, the RFC 7636 challenge vector, callback state/expiry/cancellation, session-cookie protection, download message bounds, untrusted-frame rejection, exact byte counts, chunk ordering, and cancellation. Android lint and the debug APK build run for the entire project.
 
 Device verification is still required for real browser sign-in and switching between two accounts, Custom Tabs callbacks, file pickers and cloud document providers, portrait/landscape keyboard behavior, predictive Back, background process death, TalkBack, large text, and real streaming chats. An APK build and JVM tests do not substitute for those runtime checks.
+
+## Disposable-device runtime probe
+
+The dependency-free instrumentation suite checks the installed WebView's required capabilities, completion ordering of full browsing-data deletion, and the real native download listener. Its top-frame request gets a simulated picker cancellation, malformed metadata is rejected, a same-origin iframe cannot launch a picker, and an unrelated origin receives no bridge object.
+
+With `--fixture-origin`, it also verifies the real `AuthViewModel` against the labelled local fixture: PKCE callback and native HTTP exchange, both token and cache cookies, old-account cookie removal before success, authenticated fixture requests, and preservation of the current cookies when sign-in is cancelled. The fixture origin must be a loopback host or Android's emulator host alias; the runner checks `/health` identifies the native fixture first.
+
+**The probe clears this app's WebView data. Use only a disposable emulator without real accounts.** It requires an explicit test-only argument. Start the local server using `../testing/README.md`, then run:
+
+```sh
+./gradlew assembleDebug assembleDebugAndroidTest
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 reverse tcp:8765 tcp:8765
+python3 scripts/run-runtime-probe.py --serial emulator-5554 --disposable \
+  --fixture-origin http://127.0.0.1:8765 --output runtime-probe.txt
+adb -s emulator-5554 reverse --remove tcp:8765
+```
+
+Pass `--adb /absolute/path/to/adb` if it is not on `PATH`. Omit `--fixture-origin` to run only the three Android platform checks. The wrapper enforces a three-minute deadline and checks the explicit `PASS` status, suite name, expected check count, and `INSTRUMENTATION_CODE: -1` (`Activity.RESULT_OK`). An `adb shell` exit status of zero alone is insufficient: failed instrumentation can still return zero. For direct inspection, the full-fixture command is:
+
+```sh
+adb -s emulator-5554 shell am instrument -w -r -e disposable true \
+  -e fixtureOrigin http://127.0.0.1:8765 \
+  com.agpt.mobile.test/com.agpt.mobile.RuntimeProbe
+```
+
+All four checks passed on the API 36 Google APIs arm64 revision 7 image with a Pixel 9 Pro profile and Google WebView 133.0.6943.137. Omitting the disposable-device argument was verified to refuse execution; the wrapper was also verified to fail on an actual instrumentation failure. This is API 36 emulator evidence, distinct from the intended Pixel 11 Pro device target. Browser sign-in UI, real system save/upload pickers, and physical-device microphone quality still need separate validation.
+
+Screenshots, exact environment, APK hash, and raw results are in [Android runtime evidence](docs/evidence/README.md).

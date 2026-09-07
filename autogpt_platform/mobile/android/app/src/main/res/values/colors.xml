@@ -6,4 +6,5 @@
     <color name="shell_primary">#18181B</color>
     <color name="shell_secondary">#52525B</color>
     <color name="shell_accent">#6142F5</color>
+    <color name="shell_on_accent">#FFFFFF</color>
 </resources>

@@ -13,6 +13,10 @@ final class AutoGPTUITests: XCTestCase {
     XCTAssertTrue(scroll.waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Native status title"].exists)
     XCTAssertTrue(app.staticTexts["Native status message"].exists)
+    let initial = XCTAttachment(screenshot: app.screenshot())
+    initial.name = "Native status - landscape accessibility XXXL"
+    initial.lifetime = .keepAlways
+    add(initial)
     for title in ["Sign in to AutoGPT", "Open in browser"] {
       let button = app.buttons[title]
       for _ in 0..<6 {
@@ -22,6 +26,10 @@ final class AutoGPTUITests: XCTestCase {
       XCTAssertTrue(button.exists, "The \(title) action must remain accessible.")
       XCTAssertTrue(button.isHittable, "The \(title) action must be reachable by scrolling.")
     }
+    let scrolled = XCTAttachment(screenshot: app.screenshot())
+    scrolled.name = "Native status - actions reached after scrolling"
+    scrolled.lifetime = .keepAlways
+    add(scrolled)
   }
 
   @MainActor
