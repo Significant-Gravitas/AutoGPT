@@ -17,6 +17,7 @@ from backend.copilot.baseline.service import (
     _baseline_llm_caller,
     _baseline_tool_executor,
     _BaselineStreamState,
+    _begin_baseline_tool_round,
     _budget_exhausted_notice_text,
     _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
@@ -263,6 +264,9 @@ class TestBaselineConversationUpdater:
         tool_results = [
             ToolCallResult(tool_call_id="tc_1", tool_name="search", content="ok"),
         ]
+        _begin_baseline_tool_round(state, response)
+        for result in tool_results:
+            state.tool_persistence.record_result(result)
 
         _baseline_conversation_updater(
             messages,
@@ -1255,6 +1259,9 @@ class TestMidLoopPendingFlushOrdering:
             ),
         ]
         openai_messages: list = []
+        _begin_baseline_tool_round(state, response)
+        for result in tool_results:
+            state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             openai_messages,
             response,
@@ -1290,6 +1297,9 @@ class TestMidLoopPendingFlushOrdering:
                 tool_call_id="tc_2", tool_name="calc", content="calc output"
             ),
         ]
+        _begin_baseline_tool_round(state, response2)
+        for result in tool_results2:
+            state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             openai_messages,
             response2,
@@ -1356,14 +1366,15 @@ class TestMidLoopPendingFlushOrdering:
             prompt_tokens=0,
             completion_tokens=0,
         )
+        result = ToolCallResult(
+            tool_call_id="tc_1", tool_name="search", content="result"
+        )
+        _begin_baseline_tool_round(state, response1)
+        state.tool_persistence.record_result(result)
         _baseline_conversation_updater(
             [],
             response1,
-            tool_results=[
-                ToolCallResult(
-                    tool_call_id="tc_1", tool_name="search", content="result"
-                )
-            ],
+            tool_results=[result],
             transcript_builder=builder,
             state=state,
             model="test-model",

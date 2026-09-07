@@ -18,11 +18,7 @@ class TestSSEParsing:
     """Tests for SSE (text/event-stream) response parsing."""
 
     def test_parse_sse_simple(self):
-        sse = (
-            "event: message\n"
-            'data: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n'
-            "\n"
-        )
+        sse = 'event: message\ndata: {"jsonrpc":"2.0","result":{"tools":[]},"id":1}\n\n'
         body = MCPClient._parse_sse_response(sse)
         assert body["result"] == {"tools": []}
         assert body["id"] == 1
@@ -94,7 +90,7 @@ class TestMCPClient:
         assert headers["Content-Type"] == "application/json"
 
     def test_build_headers_with_auth(self):
-        client = MCPClient("https://mcp.example.com", auth_token="my-token")
+        client = MCPClient("https://mcp.example.com", authorization="Bearer my-token")
         headers = client._build_headers()
         assert headers["Authorization"] == "Bearer my-token"
 
@@ -572,8 +568,8 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
-            captured_tokens.append(auth_token)
+        async def mock_call(server_url, tool_name, arguments, authorization=None):
+            captured_tokens.append(authorization)
             return "ok"
 
         block._call_mcp_tool = mock_call  # type: ignore
@@ -592,7 +588,7 @@ class TestMCPToolBlock:
         ):
             pass
 
-        assert captured_tokens == ["resolved-token"]
+        assert captured_tokens == ["Bearer resolved-token"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_run_without_credentials(self):
@@ -605,8 +601,8 @@ class TestMCPToolBlock:
 
         captured_tokens: list[str | None] = []
 
-        async def mock_call(server_url, tool_name, arguments, auth_token=None):
-            captured_tokens.append(auth_token)
+        async def mock_call(server_url, tool_name, arguments, authorization=None):
+            captured_tokens.append(authorization)
             return "ok"
 
         block._call_mcp_tool = mock_call  # type: ignore

@@ -31,6 +31,7 @@ CLAUDE_5_FAMILY_PREFIXES: tuple[str, ...] = (
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
 )
 
 # The tokenizer generation introduced with Opus 4.7 (shared by the whole
@@ -140,7 +141,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     O3_PRO = "o3-pro"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5.6 models (current flagship, July 2026)
+    # GPT-6 models (September 2026)
+    GPT6_ASTRA = "gpt-6-astra"
+    # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
     GPT5_6_TERRA = "gpt-5.6-terra"
     GPT5_6_LUNA = "gpt-5.6-luna"
@@ -172,6 +175,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
     CLAUDE_4_7_OPUS = "claude-opus-4-7"
+    CLAUDE_5_OPUS = "claude-opus-5"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_5_SONNET = "claude-sonnet-5"
     # AI/ML API models

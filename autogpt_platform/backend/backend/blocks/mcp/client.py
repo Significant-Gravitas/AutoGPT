@@ -18,6 +18,66 @@ from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_AUTH_SCHEMES = {
+    "basic": "Basic",
+    "bearer": "Bearer",
+}
+
+
+def normalize_mcp_authorization(value: str) -> str:
+    """Turn a user-supplied credential into a canonical Authorization value.
+
+    Accepts a bare token (sent as Bearer for backward compatibility), an
+    explicit ``Basic``/``Bearer`` prefix, or a complete ``Authorization:``
+    header.  Runs once, where user input enters the system; stored values go
+    through ``helpers.mcp_authorization_header`` and are never re-parsed.
+    """
+    candidate = value.strip()
+    if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
+        raise ValueError("Authentication credential must be a single line.")
+    if not candidate:
+        raise ValueError("Authentication credential must not be blank.")
+
+    header_name, separator, header_value = candidate.partition(":")
+    included_header_name = (
+        bool(separator) and header_name.strip().casefold() == "authorization"
+    )
+    if included_header_name:
+        candidate = header_value.strip()
+        if not candidate:
+            raise ValueError("Authorization header must include a credential.")
+
+    parts = candidate.split(None, 1)
+    scheme_key = parts[0].casefold()
+    known_scheme = scheme_key in _SUPPORTED_AUTH_SCHEMES
+    remainder = parts[1].strip() if len(parts) == 2 else ""
+    if known_scheme and remainder:
+        scheme = _SUPPORTED_AUTH_SCHEMES[scheme_key]
+        credential = remainder
+    elif known_scheme:
+        scheme_name = _SUPPORTED_AUTH_SCHEMES[scheme_key]
+        raise ValueError(f"{scheme_name} authentication requires a credential.")
+    elif included_header_name:
+        raise ValueError(
+            "Authorization header must use Basic or Bearer authentication."
+        )
+    else:
+        scheme = "Bearer"
+        credential = candidate
+
+    if scheme == "Basic":
+        # RFC 7617: the wire value is Base64 of user:password, so neither
+        # character can appear in a valid credential.
+        if ":" in credential:
+            raise ValueError(
+                "Basic authentication expects the Base64 of user:password, "
+                "not the pair itself."
+            )
+        if " " in credential:
+            raise ValueError("A Basic credential must not contain spaces.")
+
+    return f"{scheme} {credential}"
+
 
 @dataclass
 class MCPTool:
@@ -47,18 +107,19 @@ class MCPClient:
     Async HTTP client for the MCP Streamable HTTP transport.
 
     Communicates with MCP servers using JSON-RPC 2.0 over HTTP POST.
-    Supports optional Bearer token authentication.
+    ``authorization`` is sent verbatim as the ``Authorization`` header; callers
+    pass an already-canonical value.
     """
 
     def __init__(
         self,
         server_url: str,
-        auth_token: str | None = None,
+        authorization: str | None = None,
     ):
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
-        self.auth_token = auth_token
+        self.authorization = authorization
         self._request_id = 0
         self._session_id: str | None = None
 
@@ -71,8 +132,8 @@ class MCPClient:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
-        if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
+        if self.authorization:
+            headers["Authorization"] = self.authorization
         if self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         return headers
