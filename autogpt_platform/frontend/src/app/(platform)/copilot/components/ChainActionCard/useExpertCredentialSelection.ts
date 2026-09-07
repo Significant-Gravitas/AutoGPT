@@ -39,10 +39,10 @@ export function useExpertCredentialSelection(
     );
   }
   const credential = findCredential(row.selected?.id) ?? findCredential();
+  const hasGrant = Boolean(row.expertGrant);
 
   useEffect(() => {
-    if (!row.expertGrant || !grants.data || !providers || grants.isFetching)
-      return;
+    if (!hasGrant || !grants.data || !providers || grants.isFetching) return;
     if (row.selected?.id === credential?.id) return;
     row.select(
       credential
@@ -54,7 +54,15 @@ export function useExpertCredentialSelection(
           }
         : undefined,
     );
-  }, [row, credential, grants.data, grants.isFetching, providers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- row is rebuilt each render by the card; track the fields it reads
+  }, [
+    hasGrant,
+    row.selected?.id,
+    credential?.id,
+    grants.data,
+    grants.isFetching,
+    providers,
+  ]);
 
   return grants;
 }
