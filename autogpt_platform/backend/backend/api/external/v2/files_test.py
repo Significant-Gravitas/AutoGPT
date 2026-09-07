@@ -6,6 +6,7 @@ never appeared in the list and had no id to download or delete.
 """
 
 import io
+import mimetypes
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -189,16 +190,10 @@ def _workspace_file(name: str, size_bytes: int) -> WorkspaceFile:
         name=name,
         path=name,
         storage_path=f"local://{name}",
-        mime_type=_mime_by_name.get(name, "application/octet-stream"),
+        # Same derivation the real WorkspaceManager applies.
+        mime_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
         size_bytes=size_bytes,
     )
-
-
-_mime_by_name = {
-    "report.csv": "text/csv",
-    "clip.mp4": "video/mp4",
-    "notes.txt": "text/plain",
-}
 
 
 def _upload(
