@@ -3013,6 +3013,11 @@ class TestTeamManagementByTeamId:
 
         assert resp.status_code == 200
         self.prisma.team.update.assert_awaited_once()
+        # The admin lookup must target the URL's ws_id, not the caller's
+        # (absent) active team.
+        self.prisma.teammember.find_unique.assert_awaited_with(
+            where={"teamId_userId": {"teamId": WS_ID, "userId": USER_ID}}
+        )
 
     def test_org_admin_updates_team_they_do_not_belong_to(self, _app_and_client):
         _, client = _app_and_client
@@ -3068,6 +3073,9 @@ class TestTeamManagementByTeamId:
 
         assert resp.status_code == 403
         self.prisma.team.update.assert_not_awaited()
+        self.prisma.teammember.find_unique.assert_awaited_with(
+            where={"teamId_userId": {"teamId": WS_ID, "userId": OTHER_USER_ID}}
+        )
 
     # --- member role update (PATCH /{ws_id}/members/{uid}) ------------------
 
@@ -3201,7 +3209,7 @@ class TestTeamManagementByTeamId:
             return_value=_make_workspace(id=WS_ID, isDefault=False)
         )
         # Only remove_team_member's target lookup hits this (org permission
-        # short-circuits before is_team_admin); target is not an admin.
+        # short-circuits before is_admin_of_team); target is not an admin.
         self.prisma.teammember.find_unique = AsyncMock(
             return_value=_make_ws_member(
                 workspaceId=WS_ID, userId=OTHER_USER_ID, isAdmin=False
@@ -3237,7 +3245,7 @@ class TestTeamManagementByTeamId:
         assert resp.status_code == 403
         self.prisma.teammember.delete.assert_not_awaited()
 
-    # --- is_team_admin denial branches --------------------------------------
+    # --- is_admin_of_team denial branches -----------------------------------
 
     def test_active_non_admin_member_cannot_update_team(self, _app_and_client):
         _, client = _app_and_client

@@ -23,21 +23,21 @@ router = APIRouter()
 async def _authorize_team_management(
     ctx: RequestContext, org_id: str, ws_id: str
 ) -> None:
-    """Authorize a management action against the target team from the URL path.
+    """Authorize a management action against the target workspace from the URL path.
 
     Independent of the caller's active team (X-Team-Id): allowed when the caller
-    administers the target team directly, or holds org-level MANAGE_WORKSPACES
-    over the org that owns it. The target team must belong to the path org.
+    administers the target workspace directly, or holds org-level MANAGE_WORKSPACES
+    over the org that owns it. The target workspace must belong to the path org.
     """
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     await team_db.get_team(ws_id, expected_org_id=org_id)
     if check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES):
         return
-    if await team_db.is_team_admin(ws_id, ctx.user_id):
+    if await team_db.is_admin_of_team(ws_id, ctx.user_id):
         return
     raise HTTPException(
-        403, detail="Must be a team admin or org admin to manage this team"
+        403, detail="Must be a workspace admin or org admin to manage this workspace"
     )
 
 
