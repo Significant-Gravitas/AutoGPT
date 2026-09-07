@@ -26,11 +26,7 @@ from typing import (
     overload,
 )
 
-try:
-    import httpx2 as httpx
-    import httpx2  # noqa: F401 — keep the bare module name in scope for pyright
-except ImportError:
-    import httpx
+import httpx2 as httpx
 
 import uvicorn
 from fastapi import FastAPI, Request, responses
