@@ -190,7 +190,7 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     assert isinstance(result, ScheduleListResponse)
     mock_client.get_execution_schedules.assert_called_once_with(
-        graph_id="graph-42", user_id=_USER
+        graph_id="graph-42", user_id=_USER, include_paused=True
     )
 
 
@@ -447,3 +447,20 @@ async def test_expert_cannot_pause_another_experts_schedule():
 
     assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
     mock_client.pause_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_marks_paused_entries(list_tool, session):
+    paused = _make_graph_info(schedule_id="paused-job")
+    paused.next_run_time = ""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert result.schedules[0].paused is True
+    assert (
+        mock_client.get_execution_schedules.call_args.kwargs["include_paused"] is True
+    )

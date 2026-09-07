@@ -52,6 +52,8 @@ class ScheduleSummary(BaseModel):
     next_run_time: str
     # Owning expert; None for personal AutoPilot schedules.
     expert_id: str | None = None
+    # No next fire is scheduled: paused, or a one-shot that already ran.
+    paused: bool = False
     # Either cron (recurring) or run_at (one-shot) is populated, never both.
     cron: str | None = None
     run_at: str | None = None
@@ -78,6 +80,7 @@ def _to_summary(
             schedule_id=job.id,
             kind="graph",
             expert_id=job.expert_id,
+            paused=not job.next_run_time,
             name=job.name,
             timezone=job.timezone,
             next_run_time=job.next_run_time,
@@ -90,6 +93,7 @@ def _to_summary(
         schedule_id=job.id,
         kind="copilot_turn",
         expert_id=job.expert_id,
+        paused=not job.next_run_time,
         name=job.name,
         timezone=job.timezone,
         next_run_time=job.next_run_time,
@@ -180,9 +184,12 @@ class ListSchedulesTool(BaseTool):
                 )
             graph_id = lib_agent.graph_id
 
+        # include_paused: a paused schedule must stay listable so its id can
+        # be handed to resume_schedule or delete_schedule later.
         jobs = await get_scheduler_client().get_execution_schedules(
             graph_id=graph_id,
             user_id=user_id,
+            include_paused=True,
         )
 
         schedules = [
