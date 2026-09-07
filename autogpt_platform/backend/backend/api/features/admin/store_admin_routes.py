@@ -164,8 +164,8 @@ async def admin_add_agent_to_library(
     Add a pending marketplace agent to the admin's library for review.
     Uses admin-level access to bypass marketplace APPROVED-only checks.
 
-    The builder can load the graph because get_graph() checks library
-    membership as a fallback: "you added it, you keep it."
+    The builder can then load the graph: get_graph() grants a library
+    version that was submitted, and PENDING counts as submitted.
     """
     return await library_db.add_store_agent_to_library_as_admin(
         store_listing_version_id=store_listing_version_id,

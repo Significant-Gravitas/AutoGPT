@@ -53,9 +53,11 @@ class HireExpertTool(BaseTool):
         return (
             "Propose hiring a ready-made expert from the roster. Never "
             "writes: returns who would join plus a one-time confirmation_id. "
-            "Show the user who they'd hire and, only after they approve, "
-            "call confirm_expert_change with that id. Use raise_expert when "
-            "no template fits."
+            "The user sees who would join on a card with Approve and Decline "
+            "buttons, so do not describe them in text — one short line at "
+            "most, then wait. Only after they approve, call "
+            "confirm_expert_change with that id. Use raise_expert when no "
+            "template fits."
         )
 
     @property
@@ -118,6 +120,7 @@ class HireExpertTool(BaseTool):
             kind="hire",
             name=params.name or template.name,
             role=template.role,
+            tagline=template.tagline or "",
             about=template.identity,
             boundaries=template.boundaries,
             voice_preferences=template.voice_preferences,
@@ -138,8 +141,9 @@ class HireExpertTool(BaseTool):
         )
         return ExpertChangeProposedResponse(
             message=(
-                "Nothing hired yet. Show the user who would join, what they "
-                "own, and that the hire draws on the shared weekly budget. "
+                "Nothing hired yet. The user is looking at this expert on a "
+                "card with Approve and Decline buttons — do not describe "
+                "them in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
                 "confirm_expert_change with this confirmation_id."
             ),

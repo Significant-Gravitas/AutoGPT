@@ -584,7 +584,7 @@ class TestEnsurePlatformUser:
         import types
 
         db_mod = types.ModuleType("backend.data.db")
-        db_mod.prisma = Mock()
+        setattr(db_mod, "prisma", Mock())
         # A list means "successive calls" -- used to model the row appearing
         # between the initial probe and the post-failure re-check.
         db_mod.prisma.user.find_unique = (
@@ -594,7 +594,7 @@ class TestEnsurePlatformUser:
         )
 
         user_mod = types.ModuleType("backend.data.user")
-        user_mod.get_or_create_user_with_status = provisioner
+        setattr(user_mod, "get_or_create_user_with_status", provisioner)
 
         mocker.patch.dict(
             sys.modules,
@@ -698,7 +698,7 @@ class TestRequestContextProvisioning:
         org_member.Org = Mock(deletedAt=None)
 
         db_mod = types.ModuleType("backend.data.db")
-        db_mod.prisma = Mock()
+        setattr(db_mod, "prisma", Mock())
         # No personal org -> the self-heal branch.
         db_mod.prisma.orgmember.find_first = AsyncMock(return_value=None)
         db_mod.prisma.orgmember.find_unique = AsyncMock(return_value=org_member)
@@ -708,7 +708,7 @@ class TestRequestContextProvisioning:
             return "org-1", "team-1"
 
         orgs_mod = types.ModuleType("backend.api.features.orgs.db")
-        orgs_mod.get_user_default_team = _default_team
+        setattr(orgs_mod, "get_user_default_team", _default_team)
 
         mocker.patch.dict(
             sys.modules,

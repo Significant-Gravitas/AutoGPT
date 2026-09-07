@@ -24,6 +24,7 @@ from backend.data import graph as graph_db
 from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.db_accessors import LiveResourceAccessRevoked, live_resource_lease
 from backend.data.execution import ExecutionContext
 from backend.data.grants import resolve_graph_grant
 from backend.data.tenancy import (
@@ -97,15 +98,18 @@ async def execute_graph_block(
     data: BlockInput,
     auth: APIAuthorizationInfo = require_permission(APIKeyPermission.EXECUTE_BLOCK),
 ) -> CompletedBlockOutput:
-    async with live_resource_access_barrier(
-        auth.user_id,
-        auth.organization_id,
-        auth.team_id_restriction,
-        "execute",
-    ) as allowed:
-        if not allowed:
-            raise HTTPException(403, detail="Execution access was revoked")
-        return await _execute_graph_block_live(block_id, data, auth)
+    try:
+        async with live_resource_lease(
+            auth.user_id,
+            auth.organization_id,
+            auth.team_id_restriction,
+            "execute",
+        ) as lease:
+            if not lease:
+                raise HTTPException(403, detail="Execution access was revoked")
+            return await lease.run(_execute_graph_block_live(block_id, data, auth))
+    except LiveResourceAccessRevoked:
+        raise HTTPException(403, detail="Execution access was revoked") from None
 
 
 async def _execute_graph_block_live(

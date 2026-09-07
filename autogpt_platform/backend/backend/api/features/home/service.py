@@ -16,6 +16,7 @@ from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
 from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
+from backend.data import activity_event as activity_db
 from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
+_WORK_EVENT_LIMIT = 200
 # Enough of a user id to correlate log lines for one user without writing the
 # whole identifier into logs that are retained and widely readable.
 _LOG_ID_CHARS = 12
@@ -54,6 +56,7 @@ class HomeSourceData(BaseModel):
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo]
     credits_balance: int | None
     questions: list[ChatSessionInfo]
+    work_events: list[activity_db.ActivityEvent]
     timezone_name: str
 
 
@@ -76,20 +79,31 @@ async def build_home_dashboard(
         {execution.graph_id for execution in data.executions}
         | {review.graph_id for review in data.reviews}
     )
+    work_session_ids = list(
+        {event.session_id for event in data.work_events if event.session_id}
+    )
     # Both depend on the gathered data (graph ids / timezone) but not on each
     # other, so the briefing read costs no extra round-trip.
-    library_refs, persisted_briefing = await asyncio.gather(
+    library_refs, persisted_briefing, session_titles = await asyncio.gather(
         library_db.get_library_agent_refs_by_graph_ids(
             user_id,
             graph_ids,
             organization_id=organization_id,
             team_id_restriction=team_id,
+            include_deleted=True,
         ),
         _persisted_briefing(
             user_id=user_id,
             organization_id=organization_id,
+            team_id=team_id,
             timezone_name=data.timezone_name,
             now=now,
+        ),
+        _get_session_titles(
+            user_id=user_id,
+            session_ids=work_session_ids,
+            organization_id=organization_id,
+            team_id=team_id,
         ),
     )
 
@@ -105,6 +119,8 @@ async def build_home_dashboard(
         timezone_name=data.timezone_name,
         questions=data.questions,
         persisted_briefing=persisted_briefing,
+        work_events=data.work_events,
+        session_titles=session_titles,
     )
 
 
@@ -112,6 +128,7 @@ async def _persisted_briefing(
     *,
     user_id: str,
     organization_id: str | None,
+    team_id: str | None,
     timezone_name: str,
     now: datetime,
 ) -> BriefingContent | None:
@@ -134,6 +151,8 @@ async def _persisted_briefing(
     card would then look up tomorrow's row for a dashboard composed against
     yesterday.
     """
+    if team_id is not None:
+        return None
     if organization_id is not None:
         try:
             if await get_personal_org_owner(organization_id) != user_id:
@@ -240,6 +259,15 @@ async def _load_home_source_data(
             team_ids=team_ids,
         )
     )
+    work_events_task = asyncio.create_task(
+        _get_work_events(
+            user_id=user_id,
+            since=week_start,
+            organization_id=organization_id,
+            team_id=team_id,
+            team_ids=team_ids,
+        )
+    )
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
     # otherwise leave the rest detached with their exceptions never retrieved.
@@ -251,6 +279,7 @@ async def _load_home_source_data(
         schedules_task,
         credits_task,
         questions_task,
+        work_events_task,
         user_task,
     ]
     await asyncio.gather(*started)
@@ -265,6 +294,7 @@ async def _load_home_source_data(
         schedules=schedules_task.result(),
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
+        work_events=work_events_task.result(),
         timezone_name=get_user_timezone_or_utc(user.timezone if user else None),
     )
 
@@ -315,6 +345,63 @@ async def _get_pending_questions(
             user_id[:_LOG_ID_CHARS],
         )
         return []
+
+
+async def _get_work_events(
+    *,
+    user_id: str,
+    since: datetime,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    team_ids: list[str] | None = None,
+) -> list[activity_db.ActivityEvent]:
+    # Fail-soft like schedules and credits: a broken audit read costs the
+    # Recent work card, not the page. Ships with the expert-team surface,
+    # so it is gated exactly like pending questions.
+    try:
+        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
+            return []
+        return await activity_db.list_activity_events(
+            user_id,
+            since=since,
+            categories=["FILE", "INTEGRATION", "SCHEDULE"],
+            limit=_WORK_EVENT_LIMIT,
+            organization_id=organization_id,
+            team_id=team_id,
+            team_ids=team_ids,
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return []
+
+
+async def _get_session_titles(
+    *,
+    user_id: str,
+    session_ids: list[str],
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> dict[str, str | None]:
+    try:
+        team_ids = (
+            await get_user_team_ids(user_id, organization_id)
+            if organization_id is not None and team_id is None
+            else []
+        )
+        return await chat_db.get_session_titles(
+            user_id,
+            session_ids,
+            organization_id=organization_id,
+            team_id=team_id,
+            team_ids=team_ids,
+        )
+    except Exception:
+        logger.warning(
+            "Home could not load session titles for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        return {}
 
 
 async def _get_credits(*, user_id: str, organization_id: str | None) -> int | None:

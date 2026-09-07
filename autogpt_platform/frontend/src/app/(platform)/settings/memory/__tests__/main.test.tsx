@@ -1,3 +1,4 @@
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
@@ -297,4 +298,24 @@ describe("Settings memory page", () => {
       await screen.findByText("Here's what I know about you."),
     ).toBeDefined();
   });
+});
+
+it("keeps personal expert memory available from a shared workspace", async () => {
+  useOrgTeamStore.setState({
+    activeOrgID: "shared-org",
+    activeTeamID: "shared-team",
+  });
+  mockHappyPath();
+  const rosterScopes: Array<[string | null, string | null]> = [];
+  server.use(
+    getListExpertsMockHandler200(({ request }) => {
+      rosterScopes.push([
+        request.headers.get("X-Org-Id"),
+        request.headers.get("X-Team-Id"),
+      ]);
+      return [];
+    }),
+  );
+  render(<SettingsMemoryPage />);
+  await waitFor(() => expect(rosterScopes).toEqual([[null, null]]));
 });

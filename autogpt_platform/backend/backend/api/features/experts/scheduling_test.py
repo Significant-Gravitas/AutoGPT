@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import prisma.models
@@ -6,6 +8,20 @@ from prisma.enums import ResourceVisibility
 
 from backend.api.features.experts import scheduling
 from backend.util.exceptions import ExpertRunPausedError
+
+
+@pytest.mark.asyncio
+async def test_budget_message_skips_unscoped_expert(mocker) -> None:
+    post = mocker.patch.object(
+        scheduling.chat_db, "append_expert_run_message", new=AsyncMock()
+    )
+    expert = cast(
+        prisma.models.Expert, SimpleNamespace(id="legacy-expert", organizationId=None)
+    )
+
+    await scheduling._post_budget_message("owner", expert, 90, 100, False)
+
+    post.assert_not_awaited()
 
 
 @pytest.mark.asyncio

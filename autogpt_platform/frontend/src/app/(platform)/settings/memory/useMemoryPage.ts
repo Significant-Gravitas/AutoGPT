@@ -1,4 +1,8 @@
 import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import {
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
   getListMyExpertMemoryFactsQueryKey,
@@ -12,7 +16,10 @@ import {
   useListMyExpertMemoryFacts,
   useListMyMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  getListExpertsQueryKey,
+  useListExperts,
+} from "@/app/api/__generated__/endpoints/experts/experts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -24,7 +31,12 @@ export function useMemoryPage() {
 
   // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
   // manageable here even if the hiring UI is dark.
-  const expertsQuery = useListExperts();
+  const expertsQuery = useListExperts({
+    query: {
+      queryKey: getTeamScopedQueryKey(getListExpertsQueryKey(), null, null),
+    },
+    request: getTenantRequestInit(null, null),
+  });
   const expertsSettled = expertsQuery.data?.status === 200;
   const experts = getActiveExperts(
     expertsQuery.data?.status === 200 ? expertsQuery.data.data : undefined,

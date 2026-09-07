@@ -1,5 +1,8 @@
 "use client";
 
+import { usePersonalExpertWorkspace } from "@/services/experts/usePersonalExpertWorkspace";
+import { PersonalExpertWorkspaceNotice } from "@/components/contextual/PersonalExpertWorkspaceNotice/PersonalExpertWorkspaceNotice";
+
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
@@ -15,12 +18,20 @@ const RaiseFlow = dynamic(
 
 export default function RaisePage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
+  const workspace = usePersonalExpertWorkspace();
 
-  if (!ready) {
+  if (!ready || (enabled && !workspace.isReady)) {
     return <RaiseSkeleton />;
   }
   if (!enabled) {
     notFound();
+  }
+  if (!workspace.canUseExperts) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-6 py-10">
+        <PersonalExpertWorkspaceNotice />
+      </main>
+    );
   }
 
   return <RaiseFlow />;

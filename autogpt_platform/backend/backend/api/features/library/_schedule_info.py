@@ -5,7 +5,7 @@ from typing import Optional
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
-ScheduleScopeKey = tuple[str, int, str | None, str | None]
+ScheduleScopeKey = tuple[str, str | None, str | None]
 
 
 async def _fetch_schedule_info(
@@ -32,7 +32,6 @@ async def _fetch_schedule_info(
             key: str | ScheduleScopeKey = (
                 (
                     schedule.graph_id,
-                    schedule.graph_version,
                     schedule.organization_id or None,
                     schedule.team_id,
                 )

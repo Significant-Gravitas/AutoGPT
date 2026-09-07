@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from fastapi.params import Depends as DependsParameter
 from prisma.enums import APIKeyPermission, APIKeyStatus
 
+from backend.api.external import authorization_principal as principal
 from backend.api.external import middleware
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
@@ -119,37 +120,41 @@ def api_key_auth(*permissions: APIKeyPermission) -> APIKeyInfo:
 
 
 @pytest.mark.asyncio
-async def test_api_key_principal_row_is_locked_through_action(mocker) -> None:
+async def test_api_key_principal_releases_transaction_before_action(mocker) -> None:
     tx = MagicMock()
     tx.query_raw = AsyncMock(return_value=[{"id": "key-1"}])
     transaction = MagicMock()
     transaction.__aenter__ = AsyncMock(return_value=tx)
     transaction.__aexit__ = AsyncMock(return_value=False)
     mocker.patch.object(
-        middleware, "prisma", MagicMock(tx=MagicMock(return_value=transaction))
+        principal, "prisma", MagicMock(tx=MagicMock(return_value=transaction))
     )
     delegate = MagicMock(
         find_unique=AsyncMock(
             return_value=MagicMock(
                 status=APIKeyStatus.ACTIVE,
+                revokedAt=None,
+                organizationId="org-1",
+                teamIdRestriction="team-1",
+                ownerType=None,
                 userId="user-1",
                 permissions=[APIKeyPermission.READ_GRAPH],
             )
         )
     )
-    mocker.patch.object(middleware.PrismaAPIKey, "prisma", return_value=delegate)
+    mocker.patch.object(principal.PrismaAPIKey, "prisma", return_value=delegate)
 
     async with middleware._live_authorization_principal(
         api_key_auth(APIKeyPermission.READ_GRAPH),
         (APIKeyPermission.READ_GRAPH,),
     ):
-        transaction.__aexit__.assert_not_awaited()
+        transaction.__aexit__.assert_awaited_once()
 
-    tx.query_raw.assert_awaited_once_with(
+    tx.query_raw.assert_awaited_with(
         'SELECT "id" FROM "APIKey" WHERE "id" = $1 FOR SHARE',
         "key-1",
     )
-    transaction.__aexit__.assert_awaited_once()
+    assert transaction.__aexit__.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -159,18 +164,22 @@ async def test_api_key_permission_downgrade_fails_after_lock(mocker) -> None:
     transaction.__aenter__ = AsyncMock(return_value=tx)
     transaction.__aexit__ = AsyncMock(return_value=False)
     mocker.patch.object(
-        middleware, "prisma", MagicMock(tx=MagicMock(return_value=transaction))
+        principal, "prisma", MagicMock(tx=MagicMock(return_value=transaction))
     )
     delegate = MagicMock(
         find_unique=AsyncMock(
             return_value=MagicMock(
                 status=APIKeyStatus.ACTIVE,
+                revokedAt=None,
+                organizationId="org-1",
+                teamIdRestriction="team-1",
+                ownerType=None,
                 userId="user-1",
                 permissions=[],
             )
         )
     )
-    mocker.patch.object(middleware.PrismaAPIKey, "prisma", return_value=delegate)
+    mocker.patch.object(principal.PrismaAPIKey, "prisma", return_value=delegate)
 
     with pytest.raises(HTTPException) as exc:
         async with middleware._live_authorization_principal(

@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Self, cast
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
 
 from prisma.enums import GrantCapability, SubmissionStatus
 from prisma.models import (
@@ -18,7 +18,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
-    StoreListingVersionWhereInput,
+    LibraryAgentWhereInput,
 )
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
@@ -1095,9 +1095,9 @@ class GraphModel(Graph, GraphMeta):
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
-                    node_errors[node.id][field_name] = (
-                        f"Requires {', '.join(missing_deps)} to be set"
-                    )
+                    node_errors[node.id][
+                        field_name
+                    ] = f"Requires {', '.join(missing_deps)} to be set"
 
         return node_errors
 
@@ -1365,14 +1365,22 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
+    Access: the caller owns it, or has that exact version in their library
+    AND that version was submitted to the marketplace. Neither half of the
+    latter suffices alone.
+
     With ``organization_id`` (from a membership-verified RequestContext),
     org/team visibility rules apply — a member can open any graph the
     list endpoints show them (own + org-home + member-team graphs).
 
-    See also: `get_graph_as_admin()` which bypasses ownership and marketplace
-    checks for admin-only routes.
+    ``skip_access_check=True`` is for callers that authorized the read
+    themselves: the executor, and the marketplace install/download paths,
+    which validate the StoreListingVersion instead.
 
-    Returns `None` if the record is not found.
+    See also: `get_graph_as_admin()`, which bypasses this check entirely for
+    admin-only routes.
+
+    Returns `None` if the record is not found or not accessible.
     """
     graph = None
 
@@ -1410,50 +1418,25 @@ async def get_graph(
             order={"version": "desc"},
         )
 
-    # Use store listed graph to find not owned graph
-    if graph is None:
-        store_where_clause: StoreListingVersionWhereInput = {
-            "agentGraphId": graph_id,
-            "submissionStatus": SubmissionStatus.APPROVED,
-            "isDeleted": False,
-            "isAvailable": True,
-            "StoreListing": {"is": {"isDeleted": False}},
-        }
-        if version is not None:
-            store_where_clause["agentGraphVersion"] = version
-
-        if store_listing := await StoreListingVersion.prisma().find_first(
-            where=store_where_clause,
-            order={"agentGraphVersion": "desc"},
-            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
-        ):
-            graph = store_listing.AgentGraph
-
-    # Fall back to library membership: if the user has the agent in their
-    # library (non-deleted, non-archived), grant access even if the agent is
-    # no longer published. "You added it, you keep it."
-    if graph is None and user_id is not None:
-        library_where: dict[str, object] = {
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "isArchived": False,
-        }
-        if version is not None:
-            library_where["agentGraphVersion"] = version
-        if organization_id is not None:
-            team_ids = await get_user_team_ids(user_id, organization_id)
-            library_where["AND"] = [
-                visibility_filter(
-                    user_id,
-                    organization_id,
-                    team_ids,
-                    team_id_restriction=team_id,
-                )
-            ]
-
+    # The only non-owner path. A store listing on its own must not grant
+    # access, so there is deliberately no marketplace lookup beside this one.
+    # validate_graph_execution_permissions() reuses this same filter, so
+    # execute can never be looser than read. See the invariant note there.
+    if graph is None and user_id is not None and not skip_access_check:
+        library_teams = (
+            await get_user_team_ids(user_id, organization_id)
+            if organization_id is not None
+            else []
+        )
         library_agent = await LibraryAgent.prisma().find_first(
-            where=library_where,
+            where=graph_in_library_filter(
+                user_id,
+                graph_id,
+                version,
+                organization_id=organization_id,
+                team_ids=library_teams,
+                team_id_restriction=team_id,
+            ),
             include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
             order={"agentGraphVersion": "desc"},
         )
@@ -1462,7 +1445,7 @@ async def get_graph(
 
     # Fall back to a team grant (share-with-team): pinned grants open exactly
     # the pinned version; followLatest grants open the current active version.
-    if graph is None and user_id is not None:
+    if graph is None and user_id is not None and not skip_access_check:
         grants = await resolve_graph_grants(
             user_id,
             graph_id,
@@ -1506,11 +1489,75 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
+# PENDING is included so admin review can open a not-yet-approved submission
+# from the reviewer's library. A deleted listing still counts as once-submitted.
+SUBMITTED_TO_MARKETPLACE: Final = (
+    SubmissionStatus.PENDING,
+    SubmissionStatus.APPROVED,
+    SubmissionStatus.REJECTED,
+)
+_SUBMITTED_STATUSES: Final = list(SUBMITTED_TO_MARKETPLACE)
+
+
+def graph_in_library_filter(
+    user_id: str,
+    graph_id: str,
+    version: int | None,
+    *,
+    organization_id: str | None = None,
+    team_ids: list[str] | None = None,
+    team_id_restriction: str | None = None,
+) -> LibraryAgentWhereInput:
+    """Non-owner read access: version in the user's library AND submitted.
+
+    One joined query, not two: `AgentGraph` here is the exact `(id, version)`
+    pair, so separate queries could match the library row and the submission
+    on different versions when `version is None`.
+    """
+    where: LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        # Archiving hides an agent, it does not revoke it; isDeleted is the
+        # membership signal.
+        "isDeleted": False,
+        "AgentGraph": {
+            "is": {
+                "StoreListingVersions": {
+                    # agentGraphId is redundant -- the relation already pins
+                    # (id, version) -- but it gives the subquery an indexed
+                    # predicate instead of a scan over every listing version.
+                    "some": {
+                        "agentGraphId": graph_id,
+                        "submissionStatus": {"in": _SUBMITTED_STATUSES},
+                    }
+                }
+            }
+        },
+    }
+    if version is not None:
+        where["agentGraphVersion"] = version
+    if organization_id is not None:
+        scope = visibility_filter(
+            user_id,
+            organization_id,
+            team_ids or [],
+            team_id_restriction=team_id_restriction,
+        )
+        where.pop("userId", None)
+        where["AND"] = [cast(LibraryAgentWhereInput, scope)]
+        submitted_graph = where.pop("AgentGraph")
+        where["OR"] = [
+            {"AgentGraph": submitted_graph},
+            {"AgentGraph": {"is": cast(AgentGraphWhereInput, scope)}},
+        ]
+    return where
+
+
 async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
     """Batch-fetch multiple store-listed graphs by their IDs.
 
-    Only returns graphs that have approved store listings (publicly available).
-    Does not require permission checks since store-listed graphs are public.
+    The APPROVED-listing filter below *is* the authorization: an approved
+    listing is public, so no per-caller permission check is applied.
 
     Args:
         graph_ids: List of graph IDs to fetch
@@ -1753,21 +1800,42 @@ async def delete_graph(
 async def get_graph_settings(
     user_id: str,
     graph_id: str,
-    graph_version: int,
-    organization_id: str | None,
-    team_id: str | None,
+    graph_version: int | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphSettings:
-    lib = await LibraryAgent.prisma().find_first(
-        where={
-            "userId": user_id,
-            "agentGraphId": graph_id,
-            "agentGraphVersion": graph_version,
-            "organizationId": organization_id,
-            "teamId": team_id,
-            "isDeleted": False,
-            "isArchived": False,
-        },
-    )
+    """Settings of the library entry for the version being run.
+
+    Falls back to the user's other live entries when that version has none,
+    which is how an owner running a version they never added to their library
+    still gets their own safe-mode settings instead of the defaults.
+    """
+    # Archived entries stay eligible -- an archived agent still runs -- but the
+    # running version's own entry wins, so a hidden version can never turn the
+    # user's sensitive_action_safe_mode back off.
+    lib = None
+    if graph_version is not None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "organizationId": organization_id,
+                "teamId": team_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
+                "isDeleted": False,
+            },
+        )
+    if lib is None:
+        lib = await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "organizationId": organization_id,
+                "teamId": team_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            },
+            order=[{"isArchived": "asc"}, {"agentGraphVersion": "desc"}],
+        )
     if not lib or not lib.settings:
         return GraphSettings()
 
@@ -1797,10 +1865,12 @@ async def validate_graph_execution_permissions(
 
     ## Logic
     A user can execute a graph if any of these is true:
-    1. They own the graph and some version of it is still listed in their library
-    2. The graph is in the user's library (non-deleted, non-archived)
-    3. The graph is published in the marketplace and listed in their library
-    4. The graph is published in the marketplace and is being executed as a sub-agent
+    1. They own the graph and some version of it is still in their library
+    2. They can *read* the exact version -- it is in their library and that
+       version was submitted to the marketplace (`graph_in_library_filter()`)
+    3. It is published in the marketplace and is executed as a sub-agent.
+       This is the only case where execute is allowed without read; see
+       SECRT-1125 and the INVARIANT comment in the body below.
 
     Args:
         graph_id: The ID of the graph to check
@@ -1811,7 +1881,7 @@ async def validate_graph_execution_permissions(
 
     Raises:
         GraphNotAccessibleError: If the graph is not accessible to the user.
-        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     team_ids = []
@@ -1821,29 +1891,38 @@ async def validate_graph_execution_permissions(
             if team_id_restriction is not None
             else await get_user_team_ids(user_id, organization_id)
         )
-    library_where: dict = {
+    library_where = graph_in_library_filter(
+        user_id,
+        graph_id,
+        graph_version,
+        organization_id=organization_id,
+        team_ids=team_ids,
+        team_id_restriction=team_id_restriction,
+    )
+    owner_library_where: LibraryAgentWhereInput = {
+        "userId": user_id,
         "agentGraphId": graph_id,
-        "agentGraphVersion": graph_version,
         "isDeleted": False,
-        "isArchived": False,
     }
-    if organization_id is None:
-        library_where["userId"] = user_id
-    else:
-        library_where["organizationId"] = organization_id
-        if team_id_restriction is not None:
-            library_where["teamId"] = team_id_restriction
-        else:
-            library_where["OR"] = [
-                {"teamId": None},
-                *([{"teamId": {"in": team_ids}}] if team_ids else []),
-            ]
-
-    graph, library_agent = await asyncio.gather(
+    if organization_id is not None:
+        owner_library_where["organizationId"] = organization_id
+        owner_library_where["AND"] = [
+            cast(
+                LibraryAgentWhereInput,
+                visibility_filter(
+                    user_id,
+                    organization_id,
+                    team_ids,
+                    team_id_restriction=team_id_restriction,
+                ),
+            )
+        ]
+    graph, library_agent, any_live_library_entry = await asyncio.gather(
         AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
         ),
         LibraryAgent.prisma().find_first(where=library_where),
+        LibraryAgent.prisma().find_first(where=owner_library_where),
     )
 
     graph_in_context = bool(
@@ -1862,22 +1941,10 @@ async def validate_graph_execution_permissions(
     )
     user_owns_graph = bool(graph_in_context and graph and graph.userId == user_id)
 
-    # Step 2: Check if the exact graph version is in the library.
     user_has_in_library = library_agent is not None
-    owner_has_live_library_entry = user_has_in_library
-    if user_owns_graph and not user_has_in_library:
-        # Owners are allowed to execute a new version as long as some live
-        # library entry still exists for the graph. Non-owners stay
-        # version-specific.
-        owner_library_where = {
-            key: value
-            for key, value in library_where.items()
-            if key != "agentGraphVersion"
-        }
-        owner_has_live_library_entry = (
-            await LibraryAgent.prisma().find_first(where=owner_library_where)
-            is not None
-        )
+    owner_has_live_library_entry = user_has_in_library or (
+        bool(user_owns_graph) and any_live_library_entry is not None
+    )
 
     # Step 3: Check for a team EXECUTE grant on this exact version. Pinned
     # grants cover only the pinned version; followLatest grants require the
@@ -1921,7 +1988,7 @@ async def validate_graph_execution_permissions(
     ):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
-    # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
     # 2. Check if graph is suspended/disabled (future)
@@ -1985,17 +2052,17 @@ async def fork_graph(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_organization_id: str | None = None,
-    source_team_id: str | None = None,
+    source_team_id_restriction: str | None = None,
 ) -> GraphModel:
     """
-    Forks a graph into the target tenancy while resolving access in its source tenancy.
+    Forks an exported graph using the caller's source organization and team access.
     """
     graph = await get_graph(
         graph_id,
         graph_version,
         user_id=user_id,
         organization_id=source_organization_id,
-        team_id=source_team_id,
+        team_id=source_team_id_restriction,
         for_export=True,
     )
     if not graph:

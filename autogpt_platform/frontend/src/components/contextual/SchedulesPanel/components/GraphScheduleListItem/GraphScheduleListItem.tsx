@@ -25,6 +25,10 @@ interface Props {
   /** Layout overrides for narrow containers (e.g. drawers) where the
    *  side-by-side sm layout would crush the text column. */
   className?: string;
+  /** Tint override for the leading icon tile, e.g. an expert's accent. */
+  iconClassName?: string;
+  /** Size override for the View/Delete buttons, e.g. compact row actions. */
+  actionClassName?: string;
 }
 
 export function GraphScheduleListItem({
@@ -32,6 +36,8 @@ export function GraphScheduleListItem({
   canDelete = true,
   editAction,
   className,
+  iconClassName,
+  actionClassName,
 }: Props) {
   const {
     nextRunLabel,
@@ -53,7 +59,7 @@ export function GraphScheduleListItem({
   return (
     <div
       className={cn(
-        "flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between",
+        "flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
       data-testid="schedule-row"
@@ -65,8 +71,17 @@ export function GraphScheduleListItem({
         className="flex min-w-0 flex-1 items-start gap-3 hover:opacity-80"
         data-testid="schedule-open-agent"
       >
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-emerald-50">
-          <Icon icon={Calendar03Icon} size={18} className="text-emerald-700" />
+        <div
+          className={cn(
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-slate-50 bg-emerald-50",
+            iconClassName,
+          )}
+        >
+          <Icon
+            icon={Calendar03Icon}
+            size={18}
+            className={iconClassName ? "text-inherit" : "text-emerald-700"}
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
@@ -89,7 +104,7 @@ export function GraphScheduleListItem({
             </Text>
             <span className="text-zinc-300">•</span>
             <span
-              className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+              className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
               data-testid="schedule-kind-badge"
             >
               Agent run
@@ -104,6 +119,7 @@ export function GraphScheduleListItem({
           variant="secondary"
           size="small"
           onClick={openView}
+          className={actionClassName}
           data-testid="schedule-view-button"
           aria-label="View schedule"
         >
@@ -115,6 +131,7 @@ export function GraphScheduleListItem({
             variant="secondary"
             size="small"
             onClick={openDelete}
+            className={actionClassName}
             data-testid="schedule-delete-button"
             aria-label="Delete schedule"
           >

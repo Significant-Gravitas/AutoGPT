@@ -6,7 +6,7 @@ import { useCopilotUIStore } from "../../store";
 import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
 import { fetchArtifactResource } from "./artifactRequest";
-import { classifyArtifact } from "./helpers";
+import { classifyArtifactRef } from "./helpers";
 
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
@@ -23,11 +23,7 @@ export function useArtifactPanel() {
   const { activeArtifact } = artifactPanel;
 
   const classification = activeArtifact
-    ? classifyArtifact(
-        activeArtifact.mimeType,
-        activeArtifact.title,
-        activeArtifact.sizeBytes,
-      )
+    ? classifyArtifactRef(activeArtifact)
     : null;
 
   // Reset source view when switching artifacts
@@ -44,7 +40,8 @@ export function useArtifactPanel() {
     classification.type !== "image" &&
     classification.type !== "video" &&
     classification.type !== "download-only" &&
-    classification.type !== "pdf";
+    classification.type !== "pdf" &&
+    classification.type !== "expert";
 
   function handleCopy() {
     if (!activeArtifact || !canCopy) return;

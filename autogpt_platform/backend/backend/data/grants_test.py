@@ -300,7 +300,9 @@ class TestResolveExecutionCredentialsOwner:
     ):
         patch_grant(_cred_grant(credential_mode=GrantCredentialMode.OWNER))
 
-        result = await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+        result = await resolve_execution_credentials_owner(
+            "consumer-1", "g1", 3, organization_id="org-1", team_id_restriction="team-1"
+        )
 
         assert result == ("owner-1", "grant-1")
 
@@ -308,7 +310,16 @@ class TestResolveExecutionCredentialsOwner:
     async def test_consumer_mode_grant_returns_none(self, mock_prisma, patch_grant):
         patch_grant(_cred_grant(credential_mode=GrantCredentialMode.CONSUMER))
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_owner_transfer_requires_fresh_owner_consent(
@@ -322,7 +333,13 @@ class TestResolveExecutionCredentialsOwner:
         )
 
         with pytest.raises(OwnerGrantConsentError, match="current owner"):
-            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
 
     @pytest.mark.asyncio
     async def test_owner_org_removal_rejects_owner_mode_resolution(
@@ -332,7 +349,13 @@ class TestResolveExecutionCredentialsOwner:
         mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
 
         with pytest.raises(OwnerGrantConsentError, match="no longer an active member"):
-            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
 
     @pytest.mark.asyncio
     async def test_owner_billing_downgrade_rejects_owner_mode_resolution(
@@ -344,7 +367,13 @@ class TestResolveExecutionCredentialsOwner:
         )
 
         with pytest.raises(OwnerGrantConsentError, match="no longer an active member"):
-            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
 
     @pytest.mark.asyncio
     async def test_conflicting_covering_modes_fail_closed(self, mock_prisma, mocker):
@@ -362,7 +391,13 @@ class TestResolveExecutionCredentialsOwner:
         )
 
         with pytest.raises(AmbiguousGrantCredentialModeError, match="conflicting"):
-            await resolve_execution_credentials_owner("consumer-1", "g1", 3)
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
 
     @pytest.mark.asyncio
     async def test_different_version_consumer_grant_is_not_ambiguous(
@@ -383,7 +418,9 @@ class TestResolveExecutionCredentialsOwner:
             AsyncMock(return_value=[owner, consumer]),
         )
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) == (
+        assert await resolve_execution_credentials_owner(
+            "consumer-1", "g1", 3, organization_id="org-1", team_id_restriction="team-1"
+        ) == (
             "owner-1",
             "grant-owner",
         )
@@ -395,7 +432,16 @@ class TestResolveExecutionCredentialsOwner:
             "backend.data.grants.resolve_graph_grants", AsyncMock(return_value=[])
         )
 
-        assert await resolve_execution_credentials_owner("owner-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "owner-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
         spy.assert_not_called()
 
     @pytest.mark.asyncio
@@ -403,13 +449,31 @@ class TestResolveExecutionCredentialsOwner:
         # e.g. a marketplace/library run with no team grant at all.
         patch_grant(None)
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_org_mismatch_returns_none(self, mock_prisma, patch_grant):
         patch_grant(_cred_grant(org_id="other-org"))
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_pinned_version_not_covered_returns_none(
@@ -418,14 +482,32 @@ class TestResolveExecutionCredentialsOwner:
         # Grant pins v2; the run is v3.
         patch_grant(_cred_grant(version=2, follow_latest=False))
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_missing_graph_returns_none(self, mock_prisma, patch_grant):
         mock_prisma.agentgraph.find_unique = AsyncMock(return_value=None)
         patch_grant(_cred_grant())
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 3) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                3,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_version_none_resolves_active_version(self, mock_prisma, patch_grant):
@@ -435,7 +517,13 @@ class TestResolveExecutionCredentialsOwner:
         # follow_latest grant so any active version is covered.
         patch_grant(_cred_grant(follow_latest=True))
 
-        result = await resolve_execution_credentials_owner("consumer-1", "g1", None)
+        result = await resolve_execution_credentials_owner(
+            "consumer-1",
+            "g1",
+            None,
+            organization_id="org-1",
+            team_id_restriction="team-1",
+        )
 
         assert result == ("owner-1", "grant-1")
         # Active-version lookup, not a pinned find_unique.
@@ -454,7 +542,16 @@ class TestResolveExecutionCredentialsOwner:
         )
         patch_grant(_cred_grant(follow_latest=True))
 
-        assert await resolve_execution_credentials_owner("consumer-1", "g1", 2) is None
+        assert (
+            await resolve_execution_credentials_owner(
+                "consumer-1",
+                "g1",
+                2,
+                organization_id="org-1",
+                team_id_restriction="team-1",
+            )
+            is None
+        )
 
 
 class TestValidateExecutionCredentialsOwner:
@@ -482,7 +579,13 @@ class TestValidateExecutionCredentialsOwner:
         self._authorize(mock_prisma)
 
         assert await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
@@ -491,7 +594,13 @@ class TestValidateExecutionCredentialsOwner:
         mock_prisma.teammember.find_many = AsyncMock(return_value=[])
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
         mock_prisma.team.find_first.assert_not_awaited()
 
@@ -503,7 +612,13 @@ class TestValidateExecutionCredentialsOwner:
         )
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
@@ -512,7 +627,13 @@ class TestValidateExecutionCredentialsOwner:
         mock_prisma.orgmember.find_first = AsyncMock(return_value=None)
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
@@ -523,7 +644,13 @@ class TestValidateExecutionCredentialsOwner:
         )
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
@@ -534,7 +661,13 @@ class TestValidateExecutionCredentialsOwner:
         mock_prisma.team.find_first = AsyncMock(return_value=None)
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
         where = mock_prisma.team.find_first.call_args.kwargs["where"]
         assert where == {"id": "team-1", "orgId": "org-1", "archivedAt": None}
@@ -569,7 +702,13 @@ class TestValidateExecutionCredentialsOwner:
             grant.createdByUserId = "former-owner"
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
@@ -584,11 +723,19 @@ class TestValidateExecutionCredentialsOwner:
         )
 
         assert not await validate_execution_credentials_owner(
-            "consumer-1", "g1", 3, "owner-1", "grant-1"
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
         )
 
     @pytest.mark.asyncio
-    async def test_newly_ambiguous_modes_raise_configuration_error(self, mock_prisma):
+    async def test_other_team_consumer_mode_does_not_change_selected_owner_grant(
+        self, mock_prisma
+    ):
         owner = _cred_grant(grant_id="grant-1")
         consumer = _cred_grant(
             grant_id="grant-2", credential_mode=GrantCredentialMode.CONSUMER
@@ -601,10 +748,15 @@ class TestValidateExecutionCredentialsOwner:
             return_value=[_membership("team-1"), _membership("team-2")]
         )
 
-        with pytest.raises(AmbiguousGrantCredentialModeError):
-            await validate_execution_credentials_owner(
-                "consumer-1", "g1", 3, "owner-1", "grant-1"
-            )
+        assert await validate_execution_credentials_owner(
+            "consumer-1",
+            "g1",
+            3,
+            "owner-1",
+            "grant-1",
+            organization_id="org-1",
+            team_id_restriction="team-1",
+        )
 
 
 def test_grant_configuration_errors_are_expected_value_errors():

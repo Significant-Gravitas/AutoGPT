@@ -146,7 +146,11 @@ async def resolve_execution_credentials_owner(
     graph_id: str,
     graph_version: int | None = None,
     team_id_restriction: str | None = None,
+    *,
+    organization_id: str | None = None,
 ) -> tuple[str, str] | None:
+    if organization_id is None or team_id_restriction is None:
+        return None
     if graph_version is not None:
         graph = await prisma.agentgraph.find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
@@ -155,7 +159,11 @@ async def resolve_execution_credentials_owner(
         graph = await prisma.agentgraph.find_first(
             where={"id": graph_id, "isActive": True}, order={"version": "desc"}
         )
-    if graph is None or graph.userId == user_id:
+    if (
+        graph is None
+        or graph.userId == user_id
+        or graph.organizationId != organization_id
+    ):
         return None
     resolved_version: int = graph.version
 
@@ -163,12 +171,15 @@ async def resolve_execution_credentials_owner(
         user_id,
         graph_id,
         capability=GrantCapability.EXECUTE,
+        organization_id=organization_id,
         team_id_restriction=team_id_restriction,
     )
     covering_grants = [
         grant
         for grant in grants
         if graph.organizationId == grant.organizationId
+        and grant.organizationId == organization_id
+        and grant.principalId == team_id_restriction
         and grant_covers_version(grant, resolved_version)
         and (not grant.followLatest or graph.isActive)
     ]
@@ -217,22 +228,38 @@ async def validate_execution_credentials_owner(
     graph_version: int,
     owner_user_id: str,
     grant_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id_restriction: str | None = None,
 ) -> bool:
+    if organization_id is None or team_id_restriction is None:
+        return False
     graph = await prisma.agentgraph.find_unique(
         where={"graphVersionId": {"id": graph_id, "version": graph_version}}
     )
-    if graph is None or graph.userId != owner_user_id or graph.userId == user_id:
+    if (
+        graph is None
+        or graph.userId != owner_user_id
+        or graph.userId == user_id
+        or graph.organizationId != organization_id
+    ):
         return False
     if not await _is_active_org_member(owner_user_id, graph.organizationId):
         return False
 
     grants = await resolve_graph_grants(
-        user_id, graph_id, capability=GrantCapability.EXECUTE
+        user_id,
+        graph_id,
+        capability=GrantCapability.EXECUTE,
+        organization_id=organization_id,
+        team_id_restriction=team_id_restriction,
     )
     covering_grants = [
         grant
         for grant in grants
         if graph.organizationId == grant.organizationId
+        and grant.organizationId == organization_id
+        and grant.principalId == team_id_restriction
         and grant_covers_version(grant, graph_version)
         and (not grant.followLatest or graph.isActive)
     ]

@@ -23,11 +23,11 @@ from prisma import Json
 from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
-    AgentPreset,
     AgentGraphExecution,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    AgentPreset,
     Expert,
     LibraryAgent,
     SharedExecutionFile,
@@ -238,6 +238,11 @@ class GraphExecutionMeta(BaseDbModel):
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
 
+    # What started this run, when it was not a person: the scheduler job or
+    # the webhook that fired. Soft references; either may be gone by now.
+    schedule_id: Optional[str] = None
+    webhook_id: Optional[str] = None
+
     class Stats(BaseModel):
         model_config = ConfigDict(
             extra="allow",
@@ -390,6 +395,8 @@ class GraphExecutionMeta(BaseDbModel):
             team_id=_graph_exec.teamId,
             parent_execution_id=_graph_exec.parentGraphExecutionId,
             expert_id=_graph_exec.expertId,
+            schedule_id=_graph_exec.scheduleId,
+            webhook_id=_graph_exec.webhookId,
         )
 
 
@@ -879,6 +886,7 @@ async def get_graph_execution(
     include_node_executions: Literal[True],
     organization_id: str | None = None,
     team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> GraphExecutionWithNodes | None: ...
 
 
@@ -889,6 +897,7 @@ async def get_graph_execution(
     include_node_executions: Literal[False] = False,
     organization_id: str | None = None,
     team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> GraphExecution | None: ...
 
 
@@ -899,6 +908,7 @@ async def get_graph_execution(
     include_node_executions: bool = False,
     organization_id: str | None = None,
     team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> GraphExecution | GraphExecutionWithNodes | None: ...
 
 
@@ -908,9 +918,14 @@ async def get_graph_execution(
     include_node_executions: bool = False,
     organization_id: str | None = None,
     team_id_restriction: str | None = None,
+    exact_scope: bool = False,
 ) -> GraphExecution | GraphExecutionWithNodes | None:
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
-    if organization_id is not None:
+    if exact_scope:
+        where["userId"] = user_id
+        where["organizationId"] = organization_id
+        where["teamId"] = team_id_restriction
+    elif organization_id is not None:
         if team_id_restriction is not None:
             where["organizationId"] = organization_id
             where["teamId"] = team_id_restriction
@@ -1013,6 +1028,8 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     async with live_resource_access_barrier(
         user_id, organization_id, team_id, "execute"
@@ -1044,6 +1061,8 @@ async def create_graph_execution(
                 organization_id=organization_id,
                 team_id=team_id,
                 expert_id=expert_id,
+                schedule_id=schedule_id,
+                webhook_id=webhook_id,
             )
 
 
@@ -1061,6 +1080,8 @@ async def _create_graph_execution_locked(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -1130,6 +1151,8 @@ async def _create_graph_execution_locked(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"expertId": expert_id} if expert_id else {}),
+            **({"scheduleId": schedule_id} if schedule_id else {}),
+            **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -1384,11 +1407,15 @@ async def update_graph_execution_stats(
                 f"This status can only be set at creation or is not a valid target status."
             )
 
-    updated_count = await AgentGraphExecution.prisma().update_many(
+    updated = await AgentGraphExecution.prisma().update_many(
         where=where_clause,
         data=update_data,
     )
-    if status and updated_count == 0:
+    if status is not None and updated == 0:
+        # The row exists but is not in a state this status may be reached
+        # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
+        # the run already finished. Nothing changed, so do not score it,
+        # cascade its children, or hand back a row that suggests it did.
         return None
 
     if status in TERMINAL_GRAPH_EXECUTION_STATUSES:

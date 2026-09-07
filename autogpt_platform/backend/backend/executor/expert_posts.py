@@ -123,7 +123,7 @@ def _post_run_result(
             user_id=graph_exec.user_id,
             expert_id=expert_id,
             content=content,
-            organization_id=graph_exec.execution_context.organization_id,
+            organization_id=context.organization_id,
             team_id=graph_exec.execution_context.team_id,
             message_id=str(
                 uuid.uuid5(_POST_NAMESPACE, f"run-post:{graph_exec.graph_exec_id}")

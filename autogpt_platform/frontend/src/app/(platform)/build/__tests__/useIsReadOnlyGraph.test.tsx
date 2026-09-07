@@ -17,9 +17,13 @@ vi.mock("nuqs", () => ({
 }));
 
 let mockGraph: { id: string; user_id: string } | undefined;
+let mockIsGraphError = false;
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   getGetV1GetSpecificGraphQueryKey: vi.fn(() => ["specific-graph"]),
-  useGetV1GetSpecificGraph: vi.fn(() => ({ data: mockGraph })),
+  useGetV1GetSpecificGraph: vi.fn(() => ({
+    data: mockGraph,
+    isError: mockIsGraphError,
+  })),
 }));
 
 import { useIsReadOnlyGraph } from "../hooks/useIsReadOnlyGraph";
@@ -30,6 +34,7 @@ describe("useIsReadOnlyGraph", () => {
     mockUser = { id: "user-1" };
     mockIsUserLoading = false;
     mockGraph = { id: "graph-1", user_id: "user-1" };
+    mockIsGraphError = false;
   });
 
   afterEach(() => {
@@ -74,6 +79,15 @@ describe("useIsReadOnlyGraph", () => {
     mockUser = null;
     mockIsUserLoading = false;
     mockGraph = { id: "graph-1", user_id: "other-user" };
+
+    const { result } = renderHook(() => useIsReadOnlyGraph());
+
+    expect(result.current.isReadOnly).toBe(true);
+  });
+
+  it("is read-only when the graph fetch fails for a requested flowID", () => {
+    mockGraph = undefined;
+    mockIsGraphError = true;
 
     const { result } = renderHook(() => useIsReadOnlyGraph());
 

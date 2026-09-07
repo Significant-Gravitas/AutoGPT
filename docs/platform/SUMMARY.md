@@ -33,6 +33,8 @@
 
 ## Organizations & Teams
 
+* [Organization access](organizations/access-model.md)
+* [Internal rollout](organizations/internal-rollout.md)
 * [Shared memory](organizations/shared-memory.md)
 
 ## Building Blocks

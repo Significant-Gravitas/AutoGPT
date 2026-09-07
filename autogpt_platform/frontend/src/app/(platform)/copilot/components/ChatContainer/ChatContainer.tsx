@@ -1,6 +1,6 @@
 "use client";
-import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { CopilotTenantScopeProvider } from "../../CopilotTenantScopeContext";
+import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import {
   Tooltip,
   TooltipContent,
@@ -188,7 +188,6 @@ export const ChatContainer = ({
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
   const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
-  const inputLayoutId = "copilot-2-chat-input";
 
   // Measure the usage-limit overlay so the messages scroll area can pad its
   // bottom — otherwise the last message would sit permanently behind the
@@ -300,6 +299,7 @@ export const ChatContainer = ({
                     bottomContentPadding={usageCardHeight}
                     expertIdentity={expertIdentity}
                     hasFloatingControls={hasFloatingControls}
+                    canOpenActivity={isArtifactsEnabled}
                     areFilesOpen={areFilesOpen}
                   />
                   {archivedExpertIdentity ? (
@@ -374,7 +374,6 @@ export const ChatContainer = ({
                 </div>
               ) : (
                 <EmptySession
-                  inputLayoutId={inputLayoutId}
                   isCreatingSession={isCreatingSession}
                   onCreateSession={onCreateSession}
                   onSend={guardedOnSend}

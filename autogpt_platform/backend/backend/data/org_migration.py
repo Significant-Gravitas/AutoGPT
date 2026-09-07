@@ -17,10 +17,12 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import Organization
 
@@ -62,22 +64,21 @@ def _sanitize_slug(raw: str) -> str:
     return slug or "user"
 
 
-async def _resolve_unique_slug(desired: str) -> str:
+async def _resolve_unique_slug(desired: str, client: Prisma | None = None) -> str:
     """Return *desired* if no Organization uses it yet, else append a numeric suffix."""
-    existing = await prisma.organization.find_unique(where={"slug": desired})
+    db = client or prisma
+    existing = await db.organization.find_unique(where={"slug": desired})
     if existing is None:
         # Also check aliases
-        alias = await prisma.organizationalias.find_unique(where={"aliasSlug": desired})
+        alias = await db.organizationalias.find_unique(where={"aliasSlug": desired})
         if alias is None:
             return desired
 
     # Collision — find the next available numeric suffix
     for i in range(1, 10_000):
         candidate = f"{desired}-{i}"
-        org = await prisma.organization.find_unique(where={"slug": candidate})
-        alias = await prisma.organizationalias.find_unique(
-            where={"aliasSlug": candidate}
-        )
+        org = await db.organization.find_unique(where={"slug": candidate})
+        alias = await db.organizationalias.find_unique(where={"aliasSlug": candidate})
         if org is None and alias is None:
             return candidate
 
@@ -95,6 +96,8 @@ async def create_personal_org(
     user_id: str,
     slug_base: str,
     display_name: str,
+    *,
+    client: Prisma | None = None,
 ) -> Organization:
     """Create a personal Organization for *user_id* with all baseline records.
 
@@ -104,6 +107,9 @@ async def create_personal_org(
     and a zero ``OrgBalance`` row. Shared by the sign-up bootstrap and by org
     conversion so every path produces the exact same record shape the backfill
     (``create_orgs_for_existing_users``) creates.
+
+    A supplied client joins its existing transaction, so conversion can replace
+    the personal org without exposing a committed gap to concurrent requests.
 
     Wrapping everything in one transaction is what makes the sign-up race safe:
     two concurrent first-requests for the same user resolve to the same
@@ -116,9 +122,9 @@ async def create_personal_org(
         UniqueViolationError: if the resolved slug was taken concurrently. The
             caller decides whether that means "already bootstrapped" or "retry".
     """
-    slug = await _resolve_unique_slug(slug_base)
+    slug = await _resolve_unique_slug(slug_base, client=client)
 
-    async with transaction() as tx:
+    async with nullcontext(client) if client is not None else transaction() as tx:
         org = await tx.organization.create(
             data={
                 "name": display_name,
@@ -625,6 +631,46 @@ async def _assign_team_tenancy_batched(
         )
 
 
+async def _assign_activity_event_tenancy(
+    renew_lock: _RenewLock | None = None,
+) -> int:
+    return await _assign_team_tenancy_batched(
+        "ActivityEvent",
+        """
+        WITH scoped_events AS (
+            SELECT event.id,
+                   COALESCE(execution."organizationId", session."organizationId") AS org_id,
+                   COALESCE(execution."teamId", session."teamId") AS team_id
+            FROM "ActivityEvent" event
+            LEFT JOIN "ChatSession" session
+              ON session.id = event."sessionId" AND session."userId" = event."userId"
+            LEFT JOIN "AgentGraphExecution" execution
+              ON execution.id = event."graphExecId" AND execution."userId" = event."userId"
+            JOIN "Organization" o
+              ON o.id = COALESCE(execution."organizationId", session."organizationId")
+             AND o."deletedAt" IS NULL
+            WHERE event."organizationId" IS NULL AND event."teamId" IS NULL
+              AND COALESCE(execution."organizationId", session."organizationId") IS NOT NULL
+              AND (event."sessionId" IS NULL OR session.id IS NOT NULL)
+              AND (event."graphExecId" IS NULL OR execution.id IS NOT NULL)
+              AND (
+                  session.id IS NULL OR execution.id IS NULL OR (
+                      session."organizationId" IS NOT DISTINCT FROM execution."organizationId"
+                      AND session."teamId" IS NOT DISTINCT FROM execution."teamId"
+                  )
+              )
+            LIMIT 10000
+        )
+        UPDATE "ActivityEvent" event
+        SET "organizationId" = source.org_id, "teamId" = source.team_id
+        FROM scoped_events source
+        WHERE event.id = source.id
+          AND event."organizationId" IS NULL AND event."teamId" IS NULL
+        """,
+        renew_lock=renew_lock,
+    )
+
+
 async def assign_resources_to_teams(
     renew_lock: _RenewLock | None = None,
 ) -> dict[str, int]:
@@ -649,6 +695,10 @@ async def assign_resources_to_teams(
         """,
         renew_lock=renew_lock,
     )
+
+    results["StoreListing"] = await migrate_store_listings()
+    if renew_lock is not None:
+        await renew_lock()
 
     results["AgentGraphExecution"] = await _assign_team_tenancy_batched(
         "AgentGraphExecution",
@@ -699,6 +749,14 @@ async def assign_resources_to_teams(
         """,
         renew_lock=renew_lock,
     )
+
+    results["ActivityEvent"] = await _assign_activity_event_tenancy(
+        renew_lock=renew_lock
+    )
+
+    from backend.data.workspace_migration import normalize_legacy_workspace_scopes
+
+    results.update(await normalize_legacy_workspace_scopes(renew_lock=renew_lock))
 
     results["AgentPreset"] = await _assign_team_tenancy(
         """
@@ -819,10 +877,14 @@ async def assign_resources_to_teams(
         WHERE graph."id" = slv."agentGraphId"
           AND graph."version" = slv."agentGraphVersion"
           AND listing."id" = slv."storeListingId"
+          AND listing."agentGraphId" = graph."id"
+          AND listing."owningUserId" = graph."userId"
           AND listing."owningOrgId" = graph."organizationId"
           AND graph."organizationId" IS NOT NULL
           AND graph."teamId" IS NOT NULL
           AND (slv."organizationId" IS NULL OR slv."teamId" IS NULL)
+          AND (slv."organizationId" IS NULL OR slv."organizationId" = graph."organizationId")
+          AND (slv."teamId" IS NULL OR slv."teamId" = graph."teamId")
         """,
         renew_lock=renew_lock,
     )
@@ -835,7 +897,7 @@ async def assign_resources_to_teams(
 
 
 async def migrate_store_listings() -> int:
-    """Set owningOrgId on StoreListings that lack it.
+    """Set owningOrgId from owned graphs after their tenancy is assigned.
 
     Returns the number of listings migrated.
     """
@@ -843,11 +905,21 @@ async def migrate_store_listings() -> int:
         """
         UPDATE "StoreListing" sl
         SET "owningOrgId" = o."id"
-        FROM "OrgMember" om
-        JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
-        WHERE sl."owningUserId" = om."userId"
-          AND om."isOwner" = true
+        FROM "AgentGraph" graph
+        JOIN "Organization" o ON o."id" = graph."organizationId" AND o."isPersonal" = true AND o."deletedAt" IS NULL
+        JOIN "OrgMember" om ON om."orgId" = o."id" AND om."isOwner" = true AND om.status = 'ACTIVE'
+        WHERE sl."agentGraphId" = graph."id"
+          AND sl."owningUserId" = graph."userId"
+          AND sl."owningUserId" = om."userId"
           AND sl."owningOrgId" IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM "AgentGraph" other
+              WHERE other."id" = graph."id" AND (
+                  other."userId" IS DISTINCT FROM graph."userId"
+                  OR other."organizationId" IS DISTINCT FROM graph."organizationId"
+                  OR other."teamId" IS DISTINCT FROM graph."teamId"
+              )
+          )
         """
     )
     if result > 0:
@@ -1064,8 +1136,6 @@ async def run_migration() -> None:
         await migrate_org_balances()
         await renew_lock()
         await migrate_credit_transactions()
-        await renew_lock()
-        await migrate_store_listings()
         await renew_lock()
         resource_counts = await assign_resources_to_teams(renew_lock=renew_lock)
         await renew_lock()

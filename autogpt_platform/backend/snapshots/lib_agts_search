@@ -51,8 +51,7 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
-      "marketplace_listing": null,
-      "store_listing_version_id": null
+      "marketplace_listing": null
     },
     {
       "id": "test-agent-2",
@@ -105,8 +104,7 @@
         "sensitive_action_safe_mode": false,
         "builder_chat_session_id": null
       },
-      "marketplace_listing": null,
-      "store_listing_version_id": null
+      "marketplace_listing": null
     }
   ],
   "pagination": {

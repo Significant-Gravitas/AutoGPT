@@ -68,6 +68,25 @@ describe("useCopilotPendingChips", () => {
   });
   afterEach(cleanup);
 
+  it("pins pending-message reads to the session tenant without repeated peeks", async () => {
+    const setMessages = vi.fn();
+    const { rerender } = renderHook(() =>
+      useCopilotPendingChips({
+        sessionId: "s1",
+        status: "ready",
+        messages: [],
+        setMessages,
+        scope: { organizationId: "org-session", teamId: "team-session" },
+      }),
+    );
+    await waitFor(() => expect(mockGetPending).toHaveBeenCalledTimes(1));
+    expect(mockGetPending).toHaveBeenCalledWith("s1", {
+      headers: { "X-Org-Id": "org-session", "X-Team-Id": "team-session" },
+    });
+    rerender();
+    expect(mockGetPending).toHaveBeenCalledTimes(1);
+  });
+
   it("promotes a queued chip to a bubble the instant a data-pending-drained hint arrives", async () => {
     const { view, getMessages } = setupHook([assistantMessage(0)]);
 
@@ -83,7 +102,7 @@ describe("useCopilotPendingChips", () => {
     });
 
     await waitFor(() => {
-      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(mockGetPending).toHaveBeenCalledWith("s1", undefined);
       // Chip cleared from the strip…
       expect(view.result.current.queuedMessages).toEqual([]);
     });
@@ -111,7 +130,9 @@ describe("useCopilotPendingChips", () => {
       view.rerender({ messages: [assistantMessage(1)] });
     });
 
-    await waitFor(() => expect(mockGetPending).toHaveBeenCalledWith("s1"));
+    await waitFor(() =>
+      expect(mockGetPending).toHaveBeenCalledWith("s1", undefined),
+    );
     expect(
       getMessages().some((m) =>
         m.id.startsWith("promoted-midturn-pending-chip-"),
@@ -182,7 +203,7 @@ describe("useCopilotPendingChips", () => {
         await vi.advanceTimersByTimeAsync(10_000);
       });
 
-      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(mockGetPending).toHaveBeenCalledWith("s1", undefined);
       expect(
         getMessages().some((m) =>
           m.id.startsWith("promoted-midturn-pending-chip-"),

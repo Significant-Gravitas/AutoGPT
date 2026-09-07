@@ -1,8 +1,14 @@
 "use client";
 
+import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+
 import { useEffect, useState } from "react";
 import {
   type listExpertsResponse,
+  getListExpertsQueryKey,
   useListExperts,
 } from "@/app/api/__generated__/endpoints/experts/experts";
 import type { Expert } from "@/app/api/__generated__/models/expert";
@@ -21,7 +27,9 @@ export function useMemoryScope() {
   const expertsQuery = useListExperts({
     query: {
       select: selectExperts,
+      queryKey: getTeamScopedQueryKey(getListExpertsQueryKey(), null, null),
     },
+    request: getTenantRequestInit(null, null),
   });
   const experts = expertsQuery.data ?? EMPTY_EXPERTS;
 

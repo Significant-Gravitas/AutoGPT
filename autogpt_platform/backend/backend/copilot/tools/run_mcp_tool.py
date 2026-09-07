@@ -10,6 +10,7 @@ from backend.blocks.mcp.client import MCPClient, MCPClientError
 from backend.blocks.mcp.helpers import (
     auto_lookup_mcp_credential,
     invalidate_mcp_credential,
+    mcp_authorization_header,
     normalize_mcp_url,
     parse_mcp_content,
     release_mcp_credential_leases,
@@ -225,7 +226,11 @@ class RunMCPToolTool(BaseTool):
             normalize_mcp_url(server_url),
             mcp_leases,
         )
-        auth_token = creds.access_token.get_secret_value() if creds else None
+        client = (
+            MCPClient(server_url, authorization=mcp_authorization_header(creds))
+            if creds is not None
+            else None
+        )
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's
@@ -246,8 +251,8 @@ class RunMCPToolTool(BaseTool):
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
-            if creds is not None:
-                probe_client = MCPClient(server_url, auth_token=auth_token)
+            if client is not None and creds is not None:
+                probe_client = client
                 try:
                     try:
                         await run_with_credential_lease_guard(
@@ -293,7 +298,8 @@ class RunMCPToolTool(BaseTool):
                 server_url, session_id, connected=connected
             )
 
-        client = MCPClient(server_url, auth_token=auth_token)
+        if client is None:
+            client = MCPClient(server_url)
 
         async def initialize_and_run_tool():
             await client.initialize()
@@ -439,6 +445,7 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
             input_schema = await self._lookup_tool_schema(client, tool_name)
             try:
@@ -454,7 +461,9 @@ class RunMCPToolTool(BaseTool):
                     session_id=session_id,
                 )
 
-        result = await client.call_tool(tool_name, tool_arguments)
+        result = await client.call_tool(
+            tool_name, tool_arguments, input_schema=input_schema
+        )
 
         if result.is_error:
             error_text = " ".join(

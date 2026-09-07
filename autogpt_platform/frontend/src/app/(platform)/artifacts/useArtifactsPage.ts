@@ -7,6 +7,7 @@ import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers
 import { useOrgTeamStore } from "@/services/org-team/store";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
+export type ArtifactsView = "list" | "grid";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
@@ -26,12 +27,30 @@ export function useArtifactsPage() {
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
+  const [teamSelection, setTeamSelection] = useState<{
+    organizationId: string | null;
+    teamId: string | null;
+  } | null>(null);
+  const browseTeamId =
+    teamSelection?.organizationId === activeOrgID
+      ? teamSelection.teamId
+      : activeTeamID;
   const organizationId = selectedFolderScope
     ? selectedFolderScope.organizationId
     : activeOrgID;
   const teamId = selectedFolderScope
     ? selectedFolderScope.teamId
-    : activeTeamID;
+    : browseTeamId;
+  const [view, setView] = useState<ArtifactsView>("list");
+
+  useEffect(() => {
+    setTeamSelection(null);
+  }, [activeOrgID, activeTeamID]);
+
+  useEffect(() => {
+    setSelectedFolderId(null);
+    setSelectedFolderScope(null);
+  }, [activeOrgID, browseTeamId]);
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -96,6 +115,11 @@ export function useArtifactsPage() {
     originFilter,
     setOriginFilter,
     selectedFolderId,
+    browseScope: { organizationId: activeOrgID, teamId: browseTeamId },
+    selectTeam: (teamId: string | null) =>
+      setTeamSelection({ organizationId: activeOrgID, teamId }),
+    uploadScope: { organizationId, teamId },
+    isTenantReady,
     selectFolder: (folder: WorkspaceFolder | null) => {
       setSelectedFolderId(folder?.id ?? null);
       setSelectedFolderScope(
@@ -107,6 +131,8 @@ export function useArtifactsPage() {
           : null,
       );
     },
+    view,
+    setView,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {

@@ -63,6 +63,7 @@ from backend.integrations.credential_lease import (
 )
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.monitoring.instrumentation import record_graph_run_completion
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -85,6 +86,7 @@ from backend.util.exceptions import (
     get_execution_failure_reason,
 )
 from backend.util.file import clean_exec_files
+from backend.util.llm.saturation import set_executor_id
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
@@ -94,7 +96,7 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
-from . import billing, expert_posts
+from . import activity_events, billing, expert_posts
 from .activity_status_generator import (
     INSUFFICIENT_BALANCE_GUIDANCE,
     generate_activity_status_for_execution,
@@ -257,6 +259,7 @@ def _handle_completion_communications(
     graph_exec: GraphExecutionEntry,
     execution_status: ExecutionStatus,
     execution_stats: GraphExecutionStats,
+    execution_meta: GraphExecutionMeta | None = None,
 ) -> bool:
     lease_id = db_client.acquire_live_resource_lease(
         graph_exec.user_id,
@@ -270,6 +273,10 @@ def _handle_completion_communications(
         expert_posts.handle_expert_run_post(
             db_client, graph_exec, execution_status, execution_stats
         )
+        if execution_meta is not None:
+            activity_events.handle_run_completed(
+                db_client, graph_exec, execution_meta, execution_stats
+            )
     finally:
         released = db_client.release_live_resource_lease(lease_id)
         if not released:
@@ -379,6 +386,8 @@ async def _revalidate_owner_credentials(
         graph_version=graph_version,
         owner_user_id=owner_id,
         grant_id=grant_id,
+        organization_id=execution_context.organization_id,
+        team_id_restriction=execution_context.team_id,
     )
     if not is_authorized:
         raise ValueError(
@@ -1113,6 +1122,12 @@ class ExecutionProcessor:
                     stats=execution_stats,
                     db_client=db_client,
                 )
+                if status == ExecutionStatus.COMPLETED:
+                    await activity_events.log_node_integration_activity(
+                        node_exec=node_exec,
+                        block=node.block,
+                        db_client=db_client,
+                    )
                 if not node_exec.execution_context.dry_run:
                     reconciled_delta, _ = await billing.charge_reconciled_usage(
                         node_exec=node_exec,
@@ -1443,7 +1458,7 @@ class ExecutionProcessor:
         finally:
             try:
                 if not _handle_completion_communications(
-                    db_client, graph_exec, exec_meta.status, exec_stats
+                    db_client, graph_exec, exec_meta.status, exec_stats, exec_meta
                 ):
                     log_metadata.warning(
                         "Skipped the expert run post because access was revoked."
@@ -2011,6 +2026,7 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
+        set_executor_id(self.executor_id)
         self._update_prompt_metrics()
         # Deliberate reuse of pyro_host: despite the legacy name it is the
         # bind address for every service's internal listener (see
@@ -2538,6 +2554,17 @@ def update_node_execution_status(
     return exec_update
 
 
+_TERMINAL_RUN_STATUSES = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED}
+)
+
+
+def _record_terminal_status(status: "ExecutionStatus | None") -> None:
+    """Feed the run-outcome counter exactly once, at the terminal transition."""
+    if status is not None and status in _TERMINAL_RUN_STATUSES:
+        record_graph_run_completion(status.value)
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -2549,6 +2576,7 @@ async def async_update_graph_execution_state(
         graph_exec_id, status, stats
     )
     if graph_update:
+        _record_terminal_status(status)
         await send_async_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
@@ -2564,6 +2592,7 @@ def update_graph_execution_state(
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
+        _record_terminal_status(status)
         send_execution_update(graph_update)
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")

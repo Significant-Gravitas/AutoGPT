@@ -24,6 +24,7 @@ _PROPOSAL_FIELDS = (
     "template_id",
     "name",
     "role",
+    "tagline",
     "about",
     "boundaries",
     "voice_preferences",

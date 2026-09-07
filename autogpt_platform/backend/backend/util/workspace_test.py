@@ -2,12 +2,16 @@
 Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
+import asyncio
+import inspect
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.errors import UniqueViolationError
 
+from backend.data.db_accessors import LiveResourceAccessRevoked
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace import WorkspaceManager
 
@@ -53,6 +57,57 @@ def _unique_violation() -> UniqueViolationError:
 @pytest.fixture
 def manager():
     return WorkspaceManager(user_id="user-123", workspace_id="ws-123")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", ["lease_denied", "lease_error", "scope_error", "cancelled"]
+)
+async def test_scoped_access_failure_closes_unstarted_action(monkeypatch, failure):
+    class Guard:
+        async def run(self, action):
+            raise AssertionError("Action must not reach the execution guard")
+
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        if failure == "lease_error":
+            raise RuntimeError("lease unavailable")
+        yield False if failure == "lease_denied" else Guard()
+
+    scope_check = AsyncMock(
+        side_effect=(
+            asyncio.CancelledError()
+            if failure == "cancelled"
+            else RuntimeError("scope revoked")
+        )
+    )
+    monkeypatch.setattr("backend.util.workspace.live_resource_lease", lease)
+    monkeypatch.setattr(
+        "backend.util.workspace.require_exact_chat_session_scope", scope_check
+    )
+    scoped_manager = WorkspaceManager(
+        user_id="user",
+        workspace_id="workspace",
+        session_id="session",
+        organization_id="org",
+        team_id="team",
+    )
+    called = AsyncMock()
+    pending = called()
+    expected = {
+        "lease_denied": LiveResourceAccessRevoked,
+        "lease_error": RuntimeError,
+        "scope_error": RuntimeError,
+        "cancelled": asyncio.CancelledError,
+    }[failure]
+
+    try:
+        with pytest.raises(expected):
+            await scoped_manager._run_scoped(pending)
+        assert inspect.getcoroutinestate(pending) == inspect.CORO_CLOSED
+        called.assert_not_awaited()
+    finally:
+        pending.close()
 
 
 @pytest.fixture

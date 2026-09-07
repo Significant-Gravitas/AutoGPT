@@ -589,7 +589,6 @@ async def test_add_agent_to_library(mocker):
     assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
-    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "version123"
 
 
 @pytest.mark.asyncio
@@ -655,7 +654,6 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     from_db.assert_called_once_with(
         restored,
         schedule_info={},
-        store_listing_version_id="version123",
     )
 
 
@@ -770,6 +768,7 @@ async def test_get_library_agent_by_graph_id_can_require_exact_org_home_scope(mo
     where = mock_library_agent.return_value.find_first.await_args.kwargs["where"]
     assert where == {
         "agentGraphId": "agent1",
+        "userId": "test-user",
         "organizationId": "org-1",
         "teamId": None,
         "isDeleted": False,
@@ -1318,12 +1317,6 @@ async def test_list_favorite_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
-    matching_version = MagicMock(
-        id="slv-favorite", agentGraphId="agent-fav", agentGraphVersion=1
-    )
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[matching_version])
-
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
         new=mocker.AsyncMock(return_value={"agent-fav": 7}),
@@ -1335,7 +1328,6 @@ async def test_list_favorite_library_agents(mocker):
     assert result.agents[0].id == "fav1"
     assert result.agents[0].name == "Favorite Agent"
     assert result.agents[0].graph_id == "agent-fav"
-    assert result.agents[0].store_listing_version_id == "slv-favorite"
     assert result.pagination.total_items == 1
     assert result.pagination.total_pages == 1
     assert result.pagination.current_page == 1
@@ -1343,7 +1335,7 @@ async def test_list_favorite_library_agents(mocker):
 
 
 @pytest.mark.asyncio
-async def test_get_library_agent_exposes_matching_store_version_id(mocker):
+async def test_get_library_agent_keeps_installed_graph_version(mocker):
     agent_graph = MagicMock(id="graph-id", version=7)
     library_agent = MagicMock(
         id="library-id",
@@ -1370,10 +1362,6 @@ async def test_get_library_agent_exposes_matching_store_version_id(mocker):
         "backend.api.features.library.db._fetch_schedule_info",
         new=mocker.AsyncMock(return_value={}),
     )
-    mocker.patch(
-        "backend.api.features.library.db._fetch_matching_store_version_ids",
-        new=mocker.AsyncMock(return_value={("graph-id", 7): "slv-exact"}),
-    )
     mocker.patch.object(
         db.graph_db, "get_sub_graphs", new=mocker.AsyncMock(return_value=[])
     )
@@ -1385,7 +1373,8 @@ async def test_get_library_agent_exposes_matching_store_version_id(mocker):
     result = await db.get_library_agent("library-id", "test-user")
 
     assert result is converted
-    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "slv-exact"
+    assert mock_from_db.call_args.args[0] is library_agent
+    assert library_agent.agentGraphVersion == 7
 
 
 @pytest.mark.asyncio
@@ -3176,11 +3165,11 @@ async def test_fork_library_agent_allows_team_viewer_and_forwards_tenancy(mocker
     assert fork_mock.await_args.kwargs["organization_id"] == "source-org"
     assert fork_mock.await_args.kwargs["team_id"] == "team-1"
     assert fork_mock.await_args.kwargs["source_organization_id"] == "source-org"
-    assert fork_mock.await_args.kwargs["source_team_id"] == "source-team"
+    assert fork_mock.await_args.kwargs["source_team_id_restriction"] == "team-1"
     assert source_get_mock.await_args.kwargs == {
         "user_id": "u1",
         "organization_id": "source-org",
-        "team_id": "source-team",
+        "team_id": "team-1",
         "for_export": True,
     }
     assert create_mock.await_args.kwargs["organization_id"] == "source-org"

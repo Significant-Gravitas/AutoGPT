@@ -1,13 +1,16 @@
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { server } from "@/mocks/mock-server";
+import { normalizeOrg } from "@/services/org-team/normalize";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OrgAvatarControl } from "./OrgAvatarControl";
 
 const AVATAR_URL = "http://localhost:3000/api/proxy/api/orgs/org-1/avatar";
@@ -25,11 +28,28 @@ const ORG: OrgResponse = {
 };
 
 describe("OrgAvatarControl", () => {
+  beforeEach(() => useOrgTeamStore.setState({ orgs: [] }));
+
   it("falls back to org initials and offers a Change button to admins", () => {
     render(<OrgAvatarControl org={ORG} isAdmin onSaved={vi.fn()} />);
 
     expect(screen.getByTestId("org-avatar-initials").textContent).toBe("AC");
     expect(screen.getByRole("button", { name: "Change" })).toBeDefined();
+  });
+
+  it.each([
+    ["🚀 Launch", "🚀L"],
+    ["👩🏽‍💻 Studio", "👩🏽‍💻S"],
+    ["🚀🌟Studio", "🚀🌟"],
+    ["e\u0301clair", "E\u0301C"],
+    ["  ", "?"],
+  ])("keeps complete characters in initials for %s", (name, initials) => {
+    render(
+      <OrgAvatarControl org={{ ...ORG, name }} isAdmin onSaved={vi.fn()} />,
+    );
+    expect(screen.getByTestId("org-avatar-initials").textContent).toBe(
+      initials,
+    );
   });
 
   it("hides the Change button for non-admins", () => {
@@ -83,6 +103,51 @@ describe("OrgAvatarControl", () => {
     await waitFor(() => expect(sawFile).toBe(true));
     expect(uploadedFilename).toBe("logo.png");
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("preserves organization changes made while an avatar upload is pending", async () => {
+    const onSaved = vi.fn();
+    let uploadStarted = false;
+    let finishUpload!: () => void;
+    const uploadReady = new Promise<void>((resolve) => {
+      finishUpload = resolve;
+    });
+    useOrgTeamStore.setState({
+      orgs: [normalizeOrg(ORG), normalizeOrg({ ...ORG, id: "removed-org" })],
+    });
+    server.use(
+      http.post(AVATAR_URL, async () => {
+        uploadStarted = true;
+        await uploadReady;
+        return HttpResponse.json({
+          ...ORG,
+          avatar_url: "https://cdn.test/new.png",
+        });
+      }),
+    );
+    render(<OrgAvatarControl org={ORG} isAdmin onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText("Upload organization avatar"), {
+      target: {
+        files: [new File(["binary"], "logo.png", { type: "image/png" })],
+      },
+    });
+    await waitFor(() => expect(uploadStarted).toBe(true));
+    const renamedOrg = normalizeOrg({
+      ...ORG,
+      name: "Renamed while uploading",
+    });
+    const newOrg = normalizeOrg({
+      ...ORG,
+      id: "new-org",
+      name: "New organization",
+    });
+    act(() => useOrgTeamStore.setState({ orgs: [renamedOrg, newOrg] }));
+    finishUpload();
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(useOrgTeamStore.getState().orgs).toEqual([
+      { ...renamedOrg, avatarUrl: "https://cdn.test/new.png" },
+      newOrg,
+    ]);
   });
 
   it("surfaces a 400 from the avatar endpoint without calling onSaved", async () => {

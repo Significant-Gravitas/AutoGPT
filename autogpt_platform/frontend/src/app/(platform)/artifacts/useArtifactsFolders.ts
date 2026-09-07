@@ -17,7 +17,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { ARTIFACTS_LIST_QUERY_KEY } from "./useArtifactsPage";
 
-interface TenantScope {
+export interface TenantScope {
   organizationId: string | null;
   teamId: string | null;
 }

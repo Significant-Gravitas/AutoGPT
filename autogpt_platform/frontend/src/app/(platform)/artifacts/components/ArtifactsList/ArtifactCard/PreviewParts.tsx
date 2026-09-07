@@ -1,7 +1,7 @@
 "use client";
 
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchWorkspaceFileResource } from "../helpers";
 import {
   deriveBadgeLabel,
@@ -11,52 +11,60 @@ import {
 
 export function useFileText(
   file: WorkspaceFileItem,
-  url: string,
+  url: string | null,
   onError: () => void,
 ): string | null {
   const [text, setText] = useState<string | null>(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     let cancelled = false;
     setText(null);
+    if (!url) return;
+    const resourceUrl = url;
     async function load() {
       try {
-        const res = await fetchWorkspaceFileResource(file, url);
+        const res = await fetchWorkspaceFileResource(file, resourceUrl);
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const body = await res.text();
         if (!cancelled) setText(body);
       } catch {
-        if (!cancelled) onError();
+        if (!cancelled) onErrorRef.current();
       }
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [file, url, onError]);
+  }, [file, url]);
 
   return text;
 }
 
 export function useFileBlobUrl(
   file: WorkspaceFileItem,
-  url: string,
+  url: string | null,
   onError: () => void,
 ): string | null {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     let cancelled = false;
     let objectUrl: string | null = null;
     setBlobUrl(null);
+    if (!url) return;
+    const resourceUrl = url;
     async function load() {
       try {
-        const res = await fetchWorkspaceFileResource(file, url);
+        const res = await fetchWorkspaceFileResource(file, resourceUrl);
         if (!res.ok) throw new Error(`Status ${res.status}`);
         objectUrl = URL.createObjectURL(await res.blob());
         if (!cancelled) setBlobUrl(objectUrl);
       } catch {
-        if (!cancelled) onError();
+        if (!cancelled) onErrorRef.current();
       }
     }
     load();
@@ -64,7 +72,7 @@ export function useFileBlobUrl(
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file, url, onError]);
+  }, [file, url]);
 
   return blobUrl;
 }

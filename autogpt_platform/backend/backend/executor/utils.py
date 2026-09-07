@@ -46,7 +46,11 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
+from backend.monitoring.instrumentation import record_graph_execution
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -581,17 +585,17 @@ async def _validate_node_input_credentials(
                     and field_name in owner_references
                     and reference_only
                 ):
-                    credential_errors[node.id][field_name] = (
-                        CRED_ERR_OWNER_REFERENCE_ONLY
-                    )
+                    credential_errors[node.id][
+                        field_name
+                    ] = CRED_ERR_OWNER_REFERENCE_ONLY
                     continue
 
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_INVALID_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
             try:
@@ -610,15 +614,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                 continue
 
             if not credentials:
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
                 continue
 
             if (
@@ -740,32 +744,32 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
                         continue
                     expected_provider = info.get("config", {}).get("provider")
                     if expected_provider and not provider_matches(
                         creds.provider, expected_provider
                     ):
-                        credential_errors[node.id][field_name] = (
-                            CRED_ERR_INVALID_TYPE_MISMATCH
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = CRED_ERR_INVALID_TYPE_MISMATCH
                         continue
                     expected_type = info.get("config", {}).get("type")
                     if expected_type and creds.type != expected_type:
-                        credential_errors[node.id][field_name] = (
-                            CRED_ERR_INVALID_TYPE_MISMATCH
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = CRED_ERR_INVALID_TYPE_MISMATCH
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -1370,6 +1374,41 @@ async def _resolve_persisted_execution_root(
         current = parent
 
 
+async def _enforce_expert_credential_scope(
+    user_id: str,
+    expert_id: str,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]],
+) -> None:
+    """Reject a run that would use credentials this expert was not granted.
+
+    The gate lives here rather than at each caller because every expert-attributed
+    run funnels through ``add_graph_execution`` — schedules, webhook triggers and
+    copilot tool runs alike. Enforcing at creation also means a revoke takes effect
+    on the next run instead of only on newly created schedules.
+
+    System credentials (platform LLM keys) carry no grant and are always allowed;
+    filtering them would stop every expert from running an LLM block.
+    """
+    if not graph_credentials_inputs:
+        return
+    allowed = set(
+        await get_experts_db().expert_allowed_credential_ids(user_id, expert_id)
+    )
+    denied = sorted(
+        {
+            meta.id
+            for meta in graph_credentials_inputs.values()
+            if not is_system_credential(meta.id) and meta.id not in allowed
+        }
+    )
+    if denied:
+        raise ValueError(
+            f"Expert #{expert_id} has not been given access to credentials "
+            f"{', '.join(denied)}. Grant them on the expert's page to let it "
+            f"run this workflow."
+        )
+
+
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
@@ -1385,6 +1424,67 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
+    bypass_paywall: bool = False,
+) -> GraphExecutionWithNodes:
+    """Add a graph execution to the queue, recording the outcome.
+
+    Thin wrapper over :func:`_add_graph_execution` so that every caller of
+    this shared path, not only the legacy v1 route, feeds
+    ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
+    not an execute outcome, and is not counted.
+    """
+    try:
+        result = await _add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            preset_id=preset_id,
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            execution_context=execution_context,
+            graph_exec_id=graph_exec_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
+            bypass_paywall=bypass_paywall,
+        )
+    except GraphValidationError:
+        record_graph_execution(
+            graph_id=graph_id, status="validation_error", user_id=user_id
+        )
+        raise
+    except UserPaywalledError:
+        raise
+    except Exception:
+        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
+        raise
+    record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
+    return result
+
+
+async def _add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: Optional[GraphInput] = None,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    *,
+    expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1431,6 +1531,12 @@ async def add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
@@ -1562,10 +1668,26 @@ async def add_graph_execution(
                 user_id=user_id,
                 graph_id=graph_id,
                 graph_version=graph_exec.graph_version,
+                organization_id=organization_id,
                 team_id_restriction=team_id,
             )
             if owner_info:
                 credentials_owner_id, credentials_grant_id = owner_info
+            if (
+                execution_context
+                and (
+                    execution_context.credentials_owner_id is not None
+                    or execution_context.credentials_grant_id is not None
+                )
+                and (
+                    execution_context.credentials_owner_id,
+                    execution_context.credentials_grant_id,
+                )
+                != (credentials_owner_id, credentials_grant_id)
+            ):
+                raise ValueError(
+                    "Persisted OWNER credential authorization no longer matches this execution"
+                )
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
@@ -1574,6 +1696,9 @@ async def add_graph_execution(
                 user_id, expert_id
             )
             await _enforce_expert_run_budget(user_id, expert_id)
+            await _enforce_expert_credential_scope(
+                user_id, expert_id, graph_credentials_inputs
+            )
 
         if not organization_id and team_id is None:
             if parent_exec_id is not None:
@@ -1582,7 +1707,11 @@ async def add_graph_execution(
                     execution_id=parent_exec_id,
                     include_node_executions=False,
                 )
-                if parent is not None and parent.organization_id:
+                if parent is None:
+                    raise ValueError(
+                        f"New execution references missing parent #{parent_exec_id}"
+                    )
+                if parent.organization_id:
                     organization_id, team_id = (
                         parent.organization_id,
                         parent.team_id,
@@ -1624,6 +1753,7 @@ async def add_graph_execution(
                 user_id=user_id,
                 graph_id=graph_id,
                 graph_version=graph_version,
+                organization_id=organization_id,
                 team_id_restriction=team_id,
             )
             if owner_info:
@@ -1675,6 +1805,8 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         if parent_exec_id is None:

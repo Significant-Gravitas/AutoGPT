@@ -2802,13 +2802,13 @@ class TestConversionSpawnsNewPersonalOrg:
         with pytest.raises(RuntimeError, match="DB connection lost"):
             await convert_personal_org(ORG_ID, USER_ID)
 
-        # Should have rolled back isPersonal
-        rollback_calls = [
-            c
-            for c in self.prisma.organization.update.call_args_list
-            if c[1]["data"].get("isPersonal") is True
-        ]
-        assert len(rollback_calls) == 1
+        self.prisma.tx.assert_called_once()
+        assert self.create_personal_org.await_args.kwargs["client"] is self.prisma
+        exit_args = self.prisma.tx.return_value.__aexit__.await_args.args
+        assert exit_args[0] is RuntimeError
+        self.prisma.organization.update.assert_awaited_once_with(
+            where={"id": ORG_ID}, data={"isPersonal": False}
+        )
 
     @pytest.mark.asyncio
     async def test_convert_already_team_org_fails(self):
@@ -3852,6 +3852,11 @@ class TestPersonalOrgBootstrapOnDemand:
 
         assert org_id == "org-from-winner"
         self.create_org.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECRT-2453: Manage teams by target ws_id, independent of active-team header
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class TestCanonicalPersonalOrgOrdering:

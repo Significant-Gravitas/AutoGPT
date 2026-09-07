@@ -7,6 +7,7 @@ the home card disagree about the same run, so both now come through here.
 """
 
 from datetime import datetime, timezone
+
 from backend.api.features.experts.models import Expert
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.tenancy_urls import library_agent_path
@@ -67,6 +68,8 @@ def compose_run_outcome(
             execution.organization_id,
             execution.team_id,
         ),
+        schedule_id=execution.schedule_id,
+        webhook_id=execution.webhook_id,
     )
 
 

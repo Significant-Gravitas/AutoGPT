@@ -10,6 +10,9 @@ from urllib.parse import urlparse
 from backend.data.model import OAuth2Credentials
 from backend.integrations.credential_lease import CredentialLease
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.mcp_credentials import (
+    is_manual_mcp_credential as is_manual_mcp_credential,
+)
 from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,19 @@ def server_host(server_url: str) -> str:
         return parsed.hostname or server_url
     except Exception:
         return server_url
+
+
+def mcp_authorization_header(credentials: OAuth2Credentials) -> str:
+    """Build the Authorization value for a *stored* MCP credential.
+
+    Reads the scheme from metadata and never re-parses the secret.  Rows with
+    ``mcp_auth_scheme`` hold a canonical ``"<Scheme> <credential>"``; older
+    rows hold a bare token that was always sent as Bearer.
+    """
+    token = credentials.access_token.get_secret_value()
+    if (credentials.metadata or {}).get("mcp_auth_scheme"):
+        return token
+    return f"Bearer {token}"
 
 
 def parse_mcp_content(content: list[dict[str, Any]]) -> Any:
@@ -127,22 +143,22 @@ async def auto_lookup_mcp_credential(
         mcp_creds = await mgr.store.get_creds_by_provider(
             user_id, ProviderName.MCP.value
         )
-        # Collect all matching credentials and pick the best one.
-        # Primary sort: latest access_token_expires_at (tokens with expiry
-        # are preferred over non-expiring ones).  Secondary sort: last in
-        # iteration order, which corresponds to the most recently created
-        # row — this acts as a tiebreaker when multiple bearer tokens have
-        # no expiry (e.g. after a failed old-credential cleanup).
+
+        # Best match: a manually pasted credential outranks an OAuth row, then
+        # the latest expiry, then the last row in iteration order.
+        def rank(cred: OAuth2Credentials) -> tuple[int, float]:
+            return (
+                1 if is_manual_mcp_credential(cred) else 0,
+                cred.access_token_expires_at or 0,
+            )
+
         best: OAuth2Credentials | None = None
         for cred in mcp_creds:
             if (
                 isinstance(cred, OAuth2Credentials)
                 and (cred.metadata or {}).get("mcp_server_url") == server_url
             ):
-                if best is None or (
-                    (cred.access_token_expires_at or 0)
-                    >= (best.access_token_expires_at or 0)
-                ):
+                if best is None or rank(cred) >= rank(best):
                     best = cred
         if not best:
             return None

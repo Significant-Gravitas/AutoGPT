@@ -4,7 +4,8 @@ Uses httpx.AsyncClient with ASGITransport instead of fastapi.testclient.TestClie
 to avoid creating blocking portals that can corrupt pytest-asyncio's session event loop.
 """
 
-from unittest.mock import AsyncMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import httpx
@@ -75,6 +76,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={
                     "protocolVersion": "2025-03-26",
@@ -102,6 +104,7 @@ class TestDiscoverTools:
     async def test_discover_tools_with_auth_token(self, client):
         with patch("backend.api.features.mcp.routes.MCPClient") as MockClient:
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -119,7 +122,7 @@ class TestDiscoverTools:
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            auth_token="my-secret-token",
+            authorization="Bearer my-secret-token",
         )
         instance.close.assert_awaited_once()
 
@@ -146,6 +149,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 return_value={"serverInfo": {}, "protocolVersion": "2025-03-26"}
             )
@@ -160,7 +164,7 @@ class TestDiscoverTools:
         assert response.status_code == 200
         MockClient.assert_called_once_with(
             "https://mcp.example.com/mcp",
-            auth_token="stored-token-123",
+            authorization="Bearer stored-token-123",
         )
         instance.close.assert_awaited_once()
 
@@ -175,6 +179,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
@@ -187,6 +192,7 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Connection refused" in response.json()["detail"]
+        # The session is released on the error path too, not just on success.
         instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -200,6 +206,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(side_effect=Exception("Network timeout"))
             instance.close = AsyncMock()
 
@@ -223,6 +230,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 401 Error: Unauthorized", 401)
             )
@@ -248,6 +256,7 @@ class TestDiscoverTools:
             ),
         ):
             instance = MockClient.return_value
+            instance.close = AsyncMock()
             instance.initialize = AsyncMock(
                 side_effect=HTTPClientError("HTTP 403 Error: Forbidden", 403)
             )
@@ -288,11 +297,14 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "authorization_endpoint": "https://auth.sentry.io/authorize",
-                    "token_endpoint": "https://auth.sentry.io/token",
-                    "registration_endpoint": "https://auth.sentry.io/register",
-                }
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.sentry.io/authorize",
+                        "token_endpoint": "https://auth.sentry.io/token",
+                        "registration_endpoint": "https://auth.sentry.io/register",
+                    },
+                    "https://auth.sentry.io",
+                )
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
@@ -346,11 +358,14 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                    # No registration_endpoint
-                }
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        # No registration_endpoint
+                    },
+                    "https://auth.example.com",
+                )
             )
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-abc", "challenge-xyz")
@@ -365,6 +380,417 @@ class TestOAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "autogpt-platform" in data["login_url"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_binds_issuer_and_iss_requirement(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com/"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://auth.example.com",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        "authorization_response_iss_parameter_supported": True,
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == "https://auth.example.com"
+        assert state_metadata["iss_required"] is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_rejects_issuer_naming_another_server(self, client):
+        """RFC 8414 §3.3: a document naming another issuer is refused outright.
+
+        Dropping just the issuer would leave ``iss_required`` false and make
+        the callback's mismatch check a no-op, so a hostile authorization
+        server could switch off RFC 9207 mix-up protection by claiming a
+        well-known issuer.
+        """
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://evil.example.net",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        "authorization_response_iss_parameter_supported": True,
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "does not match where the metadata was published" in (
+            response.json()["detail"]
+        )
+        mock_cm.store.store_state_token.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_accepts_issuer_differing_only_in_case(self, client):
+        """Scheme and host are case-insensitive (RFC 3986), so this is a match."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://AUTH.Example.COM",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == "https://AUTH.Example.COM"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_rejects_tenant_issuer_naming_bare_origin(self, client):
+        """A tenant's document may not claim the whole origin as its issuer.
+
+        The expected issuer comes from whichever well-known URL answered, so a
+        document fetched for ``/tenantA`` cannot pass by naming the origin
+        that ``/tenantB`` also lives under.
+        """
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com/tenantA"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://auth.example.com",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com/tenantA",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        mock_cm.store.store_state_token.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_allows_metadata_without_an_issuer(self, client):
+        """No issuer claimed means no mix-up protection, not a hostile server."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == ""
+        assert state_metadata["iss_required"] is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_ignores_resource_on_another_origin(self, client):
+        """RFC 9728 §3.3: a hostile server must not pick the token audience."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://as.legit.example"],
+                    "resource": "https://api.legit.example/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://as.legit.example/authorize",
+                        "token_endpoint": "https://as.legit.example/token",
+                    },
+                    "https://as.legit.example",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://evil.example/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["resource_url"] == "https://evil.example/mcp"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_dynamic_client_registration_declares_web_application(self):
+        from backend.api.features.mcp.routes import _register_mcp_client
+
+        with patch("backend.api.features.mcp.routes.Requests") as MockRequests:
+            post = MockRequests.return_value.post = AsyncMock()
+            post.return_value = MagicMock()
+            post.return_value.json.return_value = {"client_id": "cid"}
+
+            result = await _register_mcp_client(
+                "https://auth.example.com/register",
+                "http://localhost:3000/auth/integrations/mcp_callback",
+                "https://mcp.example.com/mcp",
+            )
+
+        assert result == {"client_id": "cid"}
+        payload = post.call_args.kwargs["json"]
+        assert payload["application_type"] == "web"
+        assert payload["redirect_uris"] == [
+            "http://localhost:3000/auth/integrations/mcp_callback"
+        ]
+
+
+def _callback_mocks(mock_cm, mock_settings, MockHandler, state_metadata):
+    """Wire the mocks a successful ``/oauth/callback`` needs."""
+    mock_settings.config.frontend_base_url = "http://localhost:3000"
+    mock_state = AsyncMock()
+    mock_state.state_metadata = {
+        "authorize_url": "https://auth.example.com/authorize",
+        "token_url": "https://auth.example.com/token",
+        "client_id": "cid",
+        "server_url": "https://mcp.example.com/mcp",
+        **state_metadata,
+    }
+    mock_state.scopes = []
+    mock_state.code_verifier = "v"
+    mock_cm.store.verify_state_token = AsyncMock(return_value=mock_state)
+    mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+    mock_cm.create = AsyncMock()
+    creds = OAuth2Credentials(
+        provider="mcp",
+        title=None,
+        access_token=SecretStr("access-token"),
+        refresh_token=None,
+        access_token_expires_at=None,
+        refresh_token_expires_at=None,
+        scopes=[],
+        metadata={},
+    )
+    MockHandler.return_value.exchange_code_for_tokens = AsyncMock(return_value=creds)
+    return creds
+
+
+class TestOAuthCallbackIssuer:
+    """RFC 9207 ``iss`` handling on the callback."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_mismatched_iss_is_rejected(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={
+                    "code": "code",
+                    "state_token": "state",
+                    "iss": "https://evil.example.net",
+                },
+            )
+
+        assert response.status_code == 400
+        assert "issuer does not match" in response.json()["detail"]
+        MockHandler.return_value.exchange_code_for_tokens.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_iss_is_rejected_when_server_advertises_it(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={"code": "code", "state_token": "state"},
+            )
+
+        assert response.status_code == 400
+        assert "missing the issuer" in response.json()["detail"]
+        MockHandler.return_value.exchange_code_for_tokens.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_iss_is_accepted_for_servers_that_do_not_send_it(
+        self, client
+    ):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            creds = _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": False},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={"code": "code", "state_token": "state"},
+            )
+
+        assert response.status_code == 200
+        assert creds.metadata is not None
+        assert creds.metadata["mcp_issuer"] == "https://auth.example.com"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_matching_iss_binds_issuer_to_credential(self, client):
+        with (
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+            patch("backend.api.features.mcp.routes.MCPOAuthHandler") as MockHandler,
+        ):
+            creds = _callback_mocks(
+                mock_cm,
+                mock_settings,
+                MockHandler,
+                {"issuer": "https://auth.example.com", "iss_required": True},
+            )
+            response = await client.post(
+                "/oauth/callback",
+                json={
+                    "code": "code",
+                    "state_token": "state",
+                    "iss": "https://auth.example.com",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.create.assert_awaited_once()
+        assert creds.metadata is not None
+        assert creds.metadata["mcp_issuer"] == "https://auth.example.com"
+        assert creds.metadata["mcp_server_url"] == "https://mcp.example.com/mcp"
 
 
 class TestOAuthCallback:
@@ -498,6 +924,68 @@ class TestStoreToken:
         mock_cm.create.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_stored_manual_token_is_reused_by_discovery(self, client):
+        """A manual token must survive the real auto-lookup path on retry."""
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            store_response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "Basic encoded-value",
+                },
+            )
+
+        assert store_response.status_code == 200
+        create_call = mock_cm.create.await_args
+        assert create_call is not None
+        stored_credential = create_call.args[1]
+        assert isinstance(stored_credential, OAuth2Credentials)
+        assert stored_credential.access_token_expires_at is None
+
+        with (
+            patch(
+                "backend.blocks.mcp.helpers.IntegrationCredentialsManager"
+            ) as manager_cls,
+            patch("backend.api.features.mcp.routes.MCPClient") as client_cls,
+        ):
+            manager = manager_cls.return_value
+            manager.store.get_creds_by_provider = AsyncMock(
+                return_value=[stored_credential]
+            )
+            manager.refresh_if_needed = AsyncMock(
+                side_effect=AssertionError("manual credentials must not refresh")
+            )
+            lease = MagicMock(credentials=stored_credential)
+            lease.release = AsyncMock()
+            lease.validate = AsyncMock()
+            lease.wait_for_failure = AsyncMock(side_effect=_wait_for_lease_failure)
+            manager.acquire_lease = AsyncMock(return_value=lease)
+            mcp_client = client_cls.return_value
+            mcp_client.initialize = AsyncMock(
+                return_value={
+                    "protocolVersion": "2025-03-26",
+                    "serverInfo": {"name": "test-server"},
+                }
+            )
+            mcp_client.list_tools = AsyncMock(return_value=[])
+            mcp_client.close = AsyncMock()
+
+            discover_response = await client.post(
+                "/discover-tools",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert discover_response.status_code == 200
+        client_cls.assert_called_once_with(
+            "https://mcp.example.com/mcp", authorization="Basic encoded-value"
+        )
+        mcp_client.close.assert_awaited_once()
+        manager.refresh_if_needed.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_blank_rejected(self, client):
         """Blank token string (after stripping) should return 422."""
         response = await client.post(
@@ -511,7 +999,7 @@ class TestStoreToken:
         assert response.status_code == 422
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_store_token_replaces_old_credential(self, client):
+    async def test_store_token_updates_existing_credential_in_place(self, client):
         old_cred = OAuth2Credentials(
             provider="mcp",
             title="MCP: mcp.example.com",
@@ -522,7 +1010,8 @@ class TestStoreToken:
         with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
             mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
             mock_cm.create = AsyncMock()
-            mock_cm.store.delete_creds_by_id = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.delete = AsyncMock()
 
             response = await client.post(
                 "/token",
@@ -533,9 +1022,209 @@ class TestStoreToken:
             )
 
         assert response.status_code == 200
-        mock_cm.store.delete_creds_by_id.assert_called_once_with(
-            "test-user-id", old_cred.id
+        assert response.json()["id"] == old_cred.id
+        mock_cm.create.assert_not_awaited()
+        mock_cm.update.assert_awaited_once()
+        update_call = mock_cm.update.await_args
+        assert update_call is not None
+        user_id, updated = update_call.args
+        assert user_id == "test-user-id"
+        assert updated.id == old_cred.id
+        assert updated.access_token.get_secret_value() == "Bearer new-token"
+        assert updated.metadata["mcp_auth_scheme"] == "bearer"
+        mock_cm.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_rotates_one_row_and_prunes_duplicates(self, client):
+        """Rotation touches exactly one row and lets the duplicates go.
+
+        Every ``update`` is a read-modify-write of the user's whole credential
+        set, so updating each duplicate in turn multiplied the writes by the
+        number of stale rows and left the row count growing forever.
+        """
+        old_creds = [
+            OAuth2Credentials(
+                provider="mcp",
+                title=f"MCP credential {index}",
+                access_token=SecretStr(f"old-token-{index}"),
+                scopes=["existing-scope"],
+                metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+            )
+            for index in range(2)
+        ]
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=old_creds)
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.delete = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "Basic encoded-value",
+                },
+            )
+
+        # `get_creds_by_provider` promises no ordering, so the survivor is
+        # picked by an explicit key rather than by position in the response.
+        survivor, superseded = sorted(old_creds, key=lambda cred: cred.id)[::-1]
+
+        assert response.status_code == 200
+        assert response.json()["id"] == survivor.id
+        assert response.json()["mcp_auth_scheme"] == "basic"
+        mock_cm.create.assert_not_awaited()
+        mock_cm.update.assert_awaited_once()
+        assert mock_cm.update.await_args is not None
+        updated = mock_cm.update.await_args.args[1]
+        assert updated.id == survivor.id
+        assert updated.access_token.get_secret_value() == "Basic encoded-value"
+        # A static pasted credential carries no OAuth scopes.
+        assert updated.scopes == []
+        mock_cm.delete.assert_awaited_once_with("test-user-id", superseded.id)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_replaces_an_oauth_credential_instead_of_converting_it(
+        self, client
+    ):
+        """An OAuth row is neither rewritten in place nor deleted.
+
+        Rewriting one would keep its id and ``type="oauth2"`` while discarding
+        the refresh token and the client registration behind it, so a saved
+        graph would silently start running on a pasted static secret.
+
+        Deleting it is no better: neither ``creds_manager.delete`` nor
+        ``delete_acquired`` calls ``handler.revoke_tokens`` -- that lives in
+        ``DELETE /credentials`` -- so the row would go while a live refresh
+        token stayed at the provider with nothing left to revoke it with, and
+        every saved graph node bound to its id would break.  The manual
+        credential wins in ``auto_lookup_mcp_credential`` instead.
+        """
+        oauth_cred = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("oauth-access"),
+            refresh_token=SecretStr("oauth-refresh"),
+            scopes=["read"],
+            metadata={
+                "mcp_server_url": "https://mcp.example.com/mcp",
+                "mcp_token_url": "https://mcp.example.com/token",
+                "mcp_client_id": "client-abc",
+            },
         )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[oauth_cred])
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.delete = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "pasted-token",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.update.assert_not_awaited()
+        mock_cm.create.assert_awaited_once()
+        assert mock_cm.create.await_args is not None
+        created = mock_cm.create.await_args.args[1]
+        assert created.id != oauth_cred.id
+        assert created.refresh_token is None
+        assert created.scopes == []
+        mock_cm.delete.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_clears_stale_expiry_on_rotation(self, client):
+        """Positive guard: a rotated manual credential must not stay expiring.
+
+        Deleting the clearing left every assertion green, because only the
+        negative "refresh is not attempted" case was covered.
+        """
+        old_cred = OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("old-token"),
+            access_token_expires_at=1,
+            username="someone",
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[old_cred])
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+            mock_cm.delete = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "new-token",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_cm.update.await_args is not None
+        updated = mock_cm.update.await_args.args[1]
+        assert updated.access_token_expires_at is None
+        assert updated.username is None
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_does_not_mutate_managed_matching_credential(
+        self, client
+    ):
+        managed = OAuth2Credentials(
+            provider="mcp",
+            title="Managed MCP",
+            access_token=SecretStr("managed-token"),
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+            is_managed=True,
+        )
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[managed])
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "user-token",
+                },
+            )
+
+        assert response.status_code == 200
+        mock_cm.update.assert_not_awaited()
+        mock_cm.create.assert_awaited_once()
+        create_call = mock_cm.create.await_args
+        assert create_call is not None
+        created = create_call.args[1]
+        assert created.id != managed.id
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_fails_closed_when_existing_lookup_fails(self, client):
+        with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
+            mock_cm.store.get_creds_by_provider = AsyncMock(
+                side_effect=RuntimeError("database unavailable")
+            )
+            mock_cm.create = AsyncMock()
+            mock_cm.update = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "token": "new-token",
+                },
+            )
+
+        assert response.status_code == 503
+        mock_cm.create.assert_not_awaited()
+        mock_cm.update.assert_not_awaited()
 
 
 class TestSSRFValidation:
@@ -588,3 +1277,7 @@ class TestSSRFValidation:
 
         assert response.status_code == 400
         assert "blocked loopback" in response.json()["detail"].lower()
+
+
+async def _wait_for_lease_failure():
+    await asyncio.Future()

@@ -10,7 +10,8 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.data.db_accessors import live_resource_lease
+from backend.data.activity_event import ActivityEventDraft
+from backend.data.db_accessors import activity_event_db, live_resource_lease
 from backend.data.tenancy import ResourceAccess
 from backend.util.truncate import truncate
 
@@ -108,6 +109,33 @@ async def _persist_and_summarize(
     )
 
 
+async def _record_activity(
+    tool: "BaseTool",
+    user_id: str,
+    session: ChatSession,
+    result: "ToolResponseBase",
+    kwargs: dict[str, Any],
+) -> None:
+    """Persist the tool call's activity event, if the tool reports one.
+
+    Best-effort by contract: the audit log must never break the tool call
+    that produced it, so every failure is swallowed after a warning.
+    """
+    try:
+        draft = tool.activity_event(session=session, result=result, **kwargs)
+        if draft is None:
+            return
+        draft.session_id = draft.session_id or session.session_id
+        draft.expert_id = draft.expert_id or session.expert_id
+        draft.organization_id = session.organization_id
+        draft.team_id = session.team_id
+        await activity_event_db().create_activity_event(user_id=user_id, draft=draft)
+    except Exception:
+        logger.warning(
+            "Failed to record activity event for tool %s", tool.name, exc_info=True
+        )
+
+
 class BaseTool:
     """Base class for all chat tools."""
 
@@ -148,6 +176,22 @@ class BaseTool:
         """
         return True
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: "ToolResponseBase",
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        """Describe the durable work this call performed.
+
+        Side-effecting tools override this to report what they did (file
+        written, schedule created, integration used) for the activity log.
+        Read-only tools keep the default None. Called only on successful
+        ``_execute`` returns; overrides narrow on their success response
+        type, which skips error responses for free.
+        """
+        return None
+
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
         return ChatCompletionToolParam(
@@ -164,13 +208,16 @@ class BaseTool:
         user_id: str | None,
         session: ChatSession,
         tool_call_id: str,
+        *,
+        propagate_exceptions: tuple[type[Exception], ...] = (),
         **kwargs,
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
         Args:
             user_id: User ID (None for anonymous users)
-            session_id: Chat session ID
+            session: Chat session
+            propagate_exceptions: Exception types handled by the calling transport
             **kwargs: Tool-specific parameters
 
         Returns:
@@ -229,6 +276,8 @@ class BaseTool:
                 user_id, session, tool_call_id, **kwargs
             )
         except Exception as e:
+            if isinstance(e, propagate_exceptions):
+                raise
             logger.warning("Error in %s", self.name, exc_info=True)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
@@ -262,6 +311,8 @@ class BaseTool:
         **kwargs,
     ) -> StreamToolOutputAvailable:
         result = await self._execute(user_id, session, **kwargs)
+        if user_id:
+            await _record_activity(self, user_id, session, result, kwargs)
         raw_output = result.model_dump_json(exclude_none=True)
         if len(raw_output) > _LARGE_OUTPUT_THRESHOLD and user_id and session.session_id:
             raw_output = await _persist_and_summarize(

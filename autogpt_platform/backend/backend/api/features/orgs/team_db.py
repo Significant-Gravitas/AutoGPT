@@ -2,9 +2,12 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import cast
 
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from prisma import Prisma
+from prisma.enums import OrgMemberStatus, TeamJoinPolicy
+from prisma.types import TeamMemberUpdateInput, TeamUpdateInput, TeamWhereInput
 
 from backend.data.db import TRANSACTION_TIMEOUT, execute_raw_with_schema, prisma
 from backend.data.tenancy import (
@@ -63,7 +66,7 @@ async def create_team(
             where={
                 "orgId": org_id,
                 "userId": user_id,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
                 "Org": {"is": {"deletedAt": None}},
             }
         )
@@ -77,7 +80,7 @@ async def create_team(
                 "name": name,
                 "orgId": org_id,
                 "description": description,
-                "joinPolicy": join_policy,
+                "joinPolicy": TeamJoinPolicy(join_policy),
                 "createdByUserId": user_id,
             }
         )
@@ -86,7 +89,7 @@ async def create_team(
                 "teamId": ws.id,
                 "userId": user_id,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -106,17 +109,23 @@ async def _member_facts(
         return set(), {}
 
     caller_rows = await prisma.teammember.find_many(
-        where={"teamId": {"in": team_ids}, "userId": user_id, "status": "ACTIVE"}
+        where={
+            "teamId": {"in": team_ids},
+            "userId": user_id,
+            "status": OrgMemberStatus.ACTIVE,
+        }
     )
     member_of = {row.teamId for row in caller_rows}
 
     count_rows = await prisma.teammember.group_by(
         by=["teamId"],
-        where={"teamId": {"in": team_ids}, "status": "ACTIVE"},
+        where={"teamId": {"in": team_ids}, "status": OrgMemberStatus.ACTIVE},
         count=True,
     )
     count_by_team = {
-        row["teamId"]: (row.get("_count") or {}).get("_all") or 0 for row in count_rows
+        row["teamId"]: (row.get("_count") or {}).get("_all") or 0
+        for row in count_rows
+        if "teamId" in row
     }
     return member_of, count_by_team
 
@@ -131,11 +140,15 @@ async def list_teams(
     are not in — as name + member count only, with the description redacted
     ("governance without surveillance").
     """
-    where: dict = {"orgId": org_id, "archivedAt": None}
+    where: TeamWhereInput = {"orgId": org_id, "archivedAt": None}
     if not can_manage_workspaces:
         where["OR"] = [
             {"joinPolicy": "OPEN"},
-            {"Members": {"some": {"userId": user_id, "status": "ACTIVE"}}},
+            {
+                "Members": {
+                    "some": {"userId": user_id, "status": OrgMemberStatus.ACTIVE}
+                }
+            },
         ]
 
     workspaces = await prisma.team.find_many(where=where, order={"createdAt": "asc"})
@@ -203,13 +216,17 @@ async def get_team_for_viewer(
 
 async def update_team(
     ws_id: str,
-    data: dict,
+    data: dict[str, str | None],
     *,
     org_id: str | None = None,
     actor_user_id: str | None = None,
 ) -> TeamResponse:
     """Update workspace fields. Guards the default workspace join policy."""
-    update_data = {k: v for k, v in data.items() if v is not None}
+    update_data = cast(
+        TeamUpdateInput, {k: v for k, v in data.items() if v is not None}
+    )
+    if data.get("joinPolicy") is not None:
+        update_data["joinPolicy"] = TeamJoinPolicy(data["joinPolicy"])
     async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
         if org_id is not None and actor_user_id is not None:
             await _lock_team_manager(
@@ -308,7 +325,7 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
                 raise ValueError("Workspace membership is being removed")
             return TeamResponse.from_db(ws, is_member=True)
         await tx.teammember.create(
-            data={"teamId": ws_id, "userId": user_id, "status": "ACTIVE"}
+            data={"teamId": ws_id, "userId": user_id, "status": OrgMemberStatus.ACTIVE}
         )
     return TeamResponse.from_db(ws, is_member=True)
 
@@ -371,7 +388,11 @@ async def _start_team_member_removal(
             raise NotFoundError(f"Workspace membership for {user_id} not found")
         if member.isAdmin:
             admin_count = await tx.teammember.count(
-                where={"teamId": ws_id, "isAdmin": True, "status": "ACTIVE"}
+                where={
+                    "teamId": ws_id,
+                    "isAdmin": True,
+                    "status": OrgMemberStatus.ACTIVE,
+                }
             )
             if admin_count <= 1:
                 raise ValueError(
@@ -380,7 +401,7 @@ async def _start_team_member_removal(
                 )
         await tx.teammember.update(
             where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
-            data={"status": "SUSPENDED"},
+            data={"status": OrgMemberStatus.SUSPENDED},
         )
     return team.orgId
 
@@ -476,9 +497,9 @@ async def _remove_team_membership(
                     where={
                         "teamId": ws_id,
                         "userId": user_id,
-                        "status": "SUSPENDED",
+                        "status": OrgMemberStatus.SUSPENDED,
                     },
-                    data={"status": "ACTIVE"},
+                    data={"status": OrgMemberStatus.ACTIVE},
                 )
         raise
 
@@ -497,7 +518,7 @@ async def leave_team(ws_id: str, user_id: str, org_id: str) -> None:
 async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
     """List all active members of a workspace."""
     members = await prisma.teammember.find_many(
-        where={"teamId": ws_id, "status": "ACTIVE"},
+        where={"teamId": ws_id, "status": OrgMemberStatus.ACTIVE},
         include={"User": True},
     )
     return [TeamMemberResponse.from_db(m) for m in members]
@@ -549,7 +570,7 @@ async def add_team_member(
                 "userId": user_id,
                 "isAdmin": is_admin,
                 "isBillingManager": is_billing_manager,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
                 "invitedByUserId": invited_by,
             },
             include={"User": True},
@@ -567,7 +588,7 @@ async def update_team_member(
     requesting_user_id: str | None = None,
 ) -> TeamMemberResponse:
     """Update a workspace member's role flags."""
-    update_data: dict[str, bool] = {}
+    update_data: TeamMemberUpdateInput = {}
     if is_admin is not None:
         update_data["isAdmin"] = is_admin
     if is_billing_manager is not None:
@@ -598,7 +619,8 @@ async def update_team_member(
         ):
             raise NotFoundError(f"Workspace {ws_id} not found")
         member = await tx.teammember.find_unique(
-            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+            where={"teamId_userId": {"teamId": ws_id, "userId": user_id}},
+            include={"User": True},
         )
         if member is None or member.status != "ACTIVE":
             raise NotFoundError(f"Workspace membership for {user_id} not found")
@@ -608,7 +630,7 @@ async def update_team_member(
                     "teamId": ws_id,
                     "userId": {"not": user_id},
                     "isAdmin": True,
-                    "status": "ACTIVE",
+                    "status": OrgMemberStatus.ACTIVE,
                 }
             )
             if other_admins == 0:

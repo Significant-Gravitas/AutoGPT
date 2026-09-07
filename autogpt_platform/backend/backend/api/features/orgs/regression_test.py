@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -100,6 +101,8 @@ def _make_execution_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -161,6 +164,8 @@ def _make_chat_session_row(
     m.organizationId = None
     m.teamId = None
     m.expertId = None
+    m.scheduleId = None
+    m.webhookId = None
     return m
 
 
@@ -1048,6 +1053,8 @@ class TestRegressionLibraryAgents:
         mock_original.settings.sensitive_action_safe_mode = False
         candidate = _make_library_agent_row()
         candidate.agentGraphVersion = GRAPH_VERSION
+        candidate.organizationId = None
+        candidate.teamId = None
         self.mock_library_actions.find_unique = AsyncMock(
             side_effect=[candidate, candidate]
         )
@@ -1064,7 +1071,7 @@ class TestRegressionLibraryAgents:
 
         with (
             patch(
-                "backend.api.features.library.db.get_library_agent",
+                "backend.api.features.library.db.graph_db.get_graph",
                 new_callable=AsyncMock,
                 return_value=mock_original,
             ),
@@ -1091,7 +1098,13 @@ class TestRegressionLibraryAgents:
         # fork_graph must be called with the caller's user_id. With no active
         # org/team passed to fork_library_agent, both tenancy kwargs are None.
         mock_fork.assert_called_once_with(
-            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+            GRAPH_ID,
+            GRAPH_VERSION,
+            USER_ID,
+            organization_id=None,
+            team_id=None,
+            source_organization_id=None,
+            source_team_id_restriction=None,
         )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
@@ -1268,6 +1281,8 @@ class TestRegressionStore:
         mock_submission.changesSummary = "Initial"
         mock_submission.agentGraphId = GRAPH_ID
         mock_submission.agentGraphVersion = GRAPH_VERSION
+        mock_submission.organizationId = None
+        mock_submission.teamId = None
         mock_submission.isDeleted = False
         mock_submission.isAvailable = False
         mock_submission.reviewComments = None
@@ -1305,8 +1320,11 @@ class TestRegressionStore:
                     name="Test Agent",
                 )
 
-        # The initial graph lookup must include userId
-        self.mock_agent_graph_actions.find_first.assert_called_once()
+        assert self.mock_agent_graph_actions.find_first.await_count == 2
+        assert all(
+            call.kwargs["where"]["userId"] == USER_ID
+            for call in self.mock_agent_graph_actions.find_first.await_args_list
+        )
         graph_where = self.mock_agent_graph_actions.find_first.call_args.kwargs.get(
             "where",
             self.mock_agent_graph_actions.find_first.call_args[1].get("where"),
@@ -1607,6 +1625,8 @@ class TestRegressionUserSettings:
         mock_user.notifyOnStoreVerdict = True
         mock_user.maxEmailsPerDay = 3
         mock_user.subscriptionTier = "NO_TIER"
+        mock_user.defaultChatAuthProvider = None
+        mock_user.defaultChatCredentialId = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone
@@ -2157,6 +2177,8 @@ class TestPR15MarketplaceOrg:
         mock_submission.changesSummary = "Initial"
         mock_submission.agentGraphId = GRAPH_ID
         mock_submission.agentGraphVersion = GRAPH_VERSION
+        mock_submission.organizationId = "org-1"
+        mock_submission.teamId = None
         mock_submission.isDeleted = False
         mock_submission.isAvailable = False
         mock_submission.reviewComments = None
@@ -3465,11 +3487,19 @@ class TestReviewFindings:
         return m
 
     def _owner_ctx(self, org_id="org-review-1", team_id="team-review-1"):
-        ctx = MagicMock()
-        ctx.user_id = USER_ID
-        ctx.org_id = org_id
-        ctx.team_id = team_id
-        return ctx
+        # A MagicMock grants every permission: check_org_permission reads
+        # ctx.is_org_owner etc., and an auto-created attribute is truthy.
+        return RequestContext(
+            user_id=USER_ID,
+            org_id=org_id,
+            team_id=team_id,
+            is_org_owner=True,
+            is_org_admin=False,
+            is_org_billing_manager=False,
+            is_team_admin=False,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
 
     def _make_invitation(self, **overrides):
         m = MagicMock()

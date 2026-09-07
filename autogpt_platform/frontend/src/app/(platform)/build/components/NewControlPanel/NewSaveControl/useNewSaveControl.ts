@@ -17,6 +17,7 @@ import {
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useBuilderTenantScope } from "../../../hooks/useBuilderTenantScope";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -69,6 +70,7 @@ export const useNewSaveControl = () => {
           tenantScope.organizationId,
           tenantScope.teamId,
         ),
+        retry: retryUnlessClientError,
       },
       request: getTenantRequestInit(
         tenantScope.organizationId,

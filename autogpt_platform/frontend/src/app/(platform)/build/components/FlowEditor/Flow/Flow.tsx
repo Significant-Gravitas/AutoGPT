@@ -25,6 +25,7 @@ import { CustomControls } from "./components/CustomControl";
 import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { RunningBackground } from "./components/RunningBackground";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
+import { retryUnlessClientError } from "../../../helpers/graphLoadError";
 import { resolveCollisions } from "./helpers/resolve-collision";
 import { useCopyPaste } from "./useCopyPaste";
 import { useFlow } from "./useFlow";
@@ -57,6 +58,7 @@ export const Flow = () => {
           tenantScope.organizationId,
           tenantScope.teamId,
         ),
+        retry: retryUnlessClientError,
       },
       request: getTenantRequestInit(
         tenantScope.organizationId,

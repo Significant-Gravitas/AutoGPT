@@ -31,6 +31,8 @@ def _db_execution(
         teamId=None,
         parentGraphExecutionId=parent_execution_id,
         expertId=None,
+        scheduleId=None,
+        webhookId=None,
     )
 
 

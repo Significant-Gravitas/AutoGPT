@@ -16,7 +16,7 @@ from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.tools.models import ExecutionStartedResponse
+from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -73,7 +73,12 @@ def resource_barriers(monkeypatch: pytest.MonkeyPatch):
     async def allow(*_args, **_kwargs):
         yield True
 
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        yield _PassthroughLeaseGuard()
+
     monkeypatch.setattr(routes_mod, "live_resource_access_barrier", allow)
+    monkeypatch.setattr(routes_mod, "live_resource_lease", lease)
     monkeypatch.setattr(routes_mod, "agent_graph_attachment_barrier", allow)
     monkeypatch.setattr(middleware_mod, "_live_authorization_principal", allow)
 
@@ -551,6 +556,92 @@ def test_external_scheduled_run_holds_execute_and_create_leases(
     assert response.status_code == 200
     assert response.json()["execution_id"] == "schedule-1"
     assert active == []
+
+
+@pytest.mark.parametrize("status_code", [402, 404, 422])
+def test_run_agent_preserves_http_errors_with_resource_leases(
+    monkeypatch: pytest.MonkeyPatch, status_code: int
+):
+    active = []
+
+    @asynccontextmanager
+    async def lease(user_id, organization_id, team_id, access):
+        assert (organization_id, team_id) == ("test-org", "test-team")
+        active.append(access)
+        try:
+            yield _PassthroughLeaseGuard()
+        finally:
+            active.remove(access)
+
+    async def fail(*_args, **kwargs):
+        assert sorted(active) == ["create", "execute"]
+        assert "propagate_exceptions" not in kwargs
+        raise fastapi.HTTPException(
+            status_code, "Agent cannot run", headers={"Retry-After": "10"}
+        )
+
+    monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
+    monkeypatch.setattr(tools_mod.run_agent_tool, "_execute", fail)
+    response = client.post(
+        "/tools/run-agent",
+        json={
+            "username_agent_slug": "test/agent",
+            "schedule_name": "Daily",
+            "cron": "0 9 * * *",
+        },
+    )
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": "Agent cannot run"}
+    assert response.headers["Retry-After"] == "10"
+    assert active == []
+
+
+def test_run_agent_paywall_reaches_external_app_handler(monkeypatch):
+    from backend.api.external.fastapi_app import external_api
+
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        yield _PassthroughLeaseGuard()
+
+    monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
+    monkeypatch.setattr(
+        tools_mod.run_agent_tool,
+        "_execute",
+        AsyncMock(side_effect=UserPaywalledError("subscription required")),
+    )
+    external_api.dependency_overrides[require_auth] = app.dependency_overrides[
+        require_auth
+    ]
+    try:
+        response = fastapi.testclient.TestClient(external_api).post(
+            "/v1/tools/run-agent", json={"username_agent_slug": "test/agent"}
+        )
+    finally:
+        external_api.dependency_overrides.pop(require_auth)
+
+    assert response.status_code == 402
+    assert response.json() == {"detail": "subscription required"}
+
+
+def test_run_agent_preserves_structured_tool_error_response(monkeypatch):
+    @asynccontextmanager
+    async def lease(*_args, **_kwargs):
+        yield _PassthroughLeaseGuard()
+
+    monkeypatch.setattr("backend.copilot.tools.base.live_resource_lease", lease)
+    monkeypatch.setattr(
+        tools_mod.run_agent_tool,
+        "_execute",
+        AsyncMock(return_value=ErrorResponse(message="Choose an agent first")),
+    )
+    response = client.post(
+        "/tools/run-agent", json={"username_agent_slug": "test/agent"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["type"] == "error"
+    assert response.json()["message"] == "Choose an agent first"
 
 
 @pytest.mark.asyncio

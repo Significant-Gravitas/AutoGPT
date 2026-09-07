@@ -27,6 +27,8 @@ import {
   getTeamScopedQueryKey,
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
+import { isKey } from "@/lib/keyboard";
+import { retryUnlessClientError } from "../../helpers/graphLoadError";
 
 interface UseBuilderChatPanelArgs {
   panelRef?: React.RefObject<HTMLElement | null>;
@@ -101,6 +103,7 @@ export function useBuilderChatPanel({
           tenantScope.organizationId,
           tenantScope.teamId,
         ),
+        retry: retryUnlessClientError,
       },
       request: getTenantRequestInit(
         tenantScope.organizationId,
@@ -178,7 +181,6 @@ export function useBuilderChatPanel({
       hydratedMessages,
       hasActiveStream,
       refetchSession: sessionQuery.refetch,
-      copilotMode: "fast",
       copilotModel: undefined,
       sessionTenantScope: {
         organizationId: tenantScope.organizationId,
@@ -453,7 +455,7 @@ export function useBuilderChatPanel({
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (!isKey(e, "Escape")) return;
       if (
         panelRef &&
         panelRef.current &&

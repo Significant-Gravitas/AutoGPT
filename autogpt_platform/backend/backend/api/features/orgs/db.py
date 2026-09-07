@@ -326,6 +326,8 @@ async def _create_personal_org_for_user(
     user_id: str,
     slug_base: str,
     display_name: str,
+    *,
+    client: Prisma | None = None,
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
@@ -334,7 +336,7 @@ async def _create_personal_org_for_user(
     Used here by conversion (spawning a new personal org when the old one
     becomes a team org).
     """
-    org = await create_personal_org(user_id, slug_base, display_name)
+    org = await create_personal_org(user_id, slug_base, display_name, client=client)
     return OrgResponse.from_db(org, member_count=1)
 
 
@@ -578,7 +580,7 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
     Existing resources (agents, credits, store listings) stay in the
     team org — that's the point of converting.
 
-    If new personal org creation fails, the conversion is rolled back.
+    The conversion and complete replacement personal org commit together.
     """
     async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
         await _lock_authorized_org_action(tx, org_id, user_id, OrgAction.DELETE_ORG)
@@ -592,28 +594,16 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
             data={"isPersonal": False},
         )
 
-    try:
         slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
-        user = await prisma.user.find_unique(where={"id": user_id})
+        user = await tx.user.find_unique(where={"id": user_id})
         display_name = user.name if user and user.name else org.name
 
         await _create_personal_org_for_user(
             user_id=user_id,
             slug_base=slug_base,
             display_name=display_name,
+            client=tx,
         )
-    except Exception:
-        logger.exception(
-            f"Failed to create new personal org for user {user_id} during "
-            f"conversion of org {org_id} — rolling back"
-        )
-        async with prisma.tx(timeout=TRANSACTION_TIMEOUT) as tx:
-            await lock_live_org_scope(tx, org_id)
-            await tx.organization.update(
-                where={"id": org_id},
-                data={"isPersonal": True},
-            )
-        raise
 
     return await get_org(org_id)
 

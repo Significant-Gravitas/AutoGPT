@@ -74,6 +74,31 @@ async def test_execution_get_org_visibility(mock_exec_client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "organization_id,team_id", [(None, None), ("org-1", None), ("org-1", "team-a")]
+)
+@pytest.mark.parametrize("include_nodes", [False, True])
+async def test_exact_execution_read_pins_actor_and_nullable_scope(
+    mock_exec_client, organization_id, team_id, include_nodes
+):
+    await get_graph_execution(
+        "u-1",
+        "exec-1",
+        include_node_executions=include_nodes,
+        organization_id=organization_id,
+        team_id_restriction=team_id,
+        exact_scope=True,
+    )
+    assert mock_exec_client.find_first.await_args.kwargs["where"] == {
+        "id": "exec-1",
+        "isDeleted": False,
+        "userId": "u-1",
+        "organizationId": organization_id,
+        "teamId": team_id,
+    }
+
+
+@pytest.mark.asyncio
 async def test_executions_paginated_org_visibility_coexists_with_status_or(
     mock_exec_client,
 ):

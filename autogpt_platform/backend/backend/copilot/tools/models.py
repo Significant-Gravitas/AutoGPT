@@ -437,9 +437,13 @@ class SubSessionStatusResponse(ToolResponseBase):
             "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
     )
-    tool_calls: list[dict[str, Any]] | None = Field(
+    sub_tool_call_count: int | None = Field(
         default=None,
-        description="Tool calls made during the sub-AutoPilot run.",
+        description=(
+            "How many tool calls the sub made. The calls themselves are not "
+            "returned; read the sub's transcript at "
+            "``sub_autopilot_session_link``."
+        ),
     )
     sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
         default=None,
@@ -558,6 +562,7 @@ class ExpertChangePreview(BaseModel):
     kind: ExpertChangeKind
     name: str
     role: str = ""
+    tagline: str = ""
     about: str = ""
     boundaries: str = ""
     voice_preferences: str = ""
@@ -568,11 +573,17 @@ class ExpertChangePreview(BaseModel):
 
 
 class ExpertSummary(BaseModel):
-    """Identity of an expert created by ``confirm_expert_change``."""
+    """The expert ``confirm_expert_change`` created — same charter fields as
+    the preview, so the card can show the whole thing after the fact."""
 
     id: str
     name: str
     role: str
+    tagline: str | None = None
+    about: str = ""
+    boundaries: str = ""
+    voice_preferences: str = ""
+    weekly_budget: int | None = None
     avatar_url: str | None = None
     color: str = ""
 

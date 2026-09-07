@@ -26,6 +26,7 @@ from .model import (
     InvitationResponse,
     UserInvitationResponse,
 )
+from .rollout import require_org_collaboration
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ async def create_invitation(
     ],
 ) -> InvitationCreateResponse:
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     return await _create_invitation_locked(org_id, request, ctx.user_id)
 
 
@@ -277,6 +279,7 @@ async def resend_invitation(
     also acts as a soft revoke of the old email.
     """
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     preliminary = await _get_org_invitation(org_id, invitation_id)
     async with transaction() as tx:
         await _lock_invitation_admin(tx, org_id, ctx.user_id, preliminary.targetUserId)
@@ -352,6 +355,7 @@ async def accept_invitation(
     token: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict:
+    await require_org_collaboration(user_id)
     invitation = await prisma.orginvitation.find_unique(where={"token": token})
     if invitation is None:
         raise NotFoundError("Invitation not found")

@@ -3,9 +3,9 @@
 One definition of "what can this user see in this org" so every list
 and fetch surface applies identical semantics:
 
-- org-home rows (``teamId`` NULL) are visible to every org member
-- team rows are visible to members of that team
-- a user's own rows are always visible to them within the org
+- org-home rows (``teamId`` NULL) require organization read permission
+- team rows require active membership and the applicable team permission
+- resource ownership does not bypass a revoked team membership
 - untagged rows (created before org tagging, not yet backfilled) stay
   visible to their owning user
 
@@ -120,6 +120,8 @@ async def _live_transaction_lease_slot(
 @asynccontextmanager
 async def live_request_transaction(
     client: Prisma | None = None,
+    *,
+    timeout: timedelta = LIVE_ACTION_TRANSACTION_TIMEOUT,
 ) -> AsyncIterator[Prisma]:
     task = asyncio.current_task()
     request_client = client or prisma
@@ -129,7 +131,7 @@ async def live_request_transaction(
         return
 
     async with _get_live_request_transaction_slots():
-        async with request_client.tx(timeout=LIVE_ACTION_TRANSACTION_TIMEOUT) as tx:
+        async with request_client.tx(timeout=timeout) as tx:
             token = _active_live_request_transaction.set((task, request_client, tx))
             try:
                 yield tx

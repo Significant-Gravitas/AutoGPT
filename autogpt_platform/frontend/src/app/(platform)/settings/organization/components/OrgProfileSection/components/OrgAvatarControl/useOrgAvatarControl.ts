@@ -15,7 +15,7 @@ interface Args {
 
 export function useOrgAvatarControl({ org, onSaved }: Args) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const { orgs, setOrgs } = useOrgTeamStore();
+  const { setOrgs } = useOrgTeamStore();
 
   const { mutateAsync: uploadAvatar, isPending } =
     usePostV2UploadOrganizationAvatar({
@@ -46,7 +46,7 @@ export function useOrgAvatarControl({ org, onSaved }: Args) {
       const updated = response.data as OrgResponse;
       // Keep the org switcher's avatars in step with the new upload.
       setOrgs(
-        orgs.map((o) =>
+        useOrgTeamStore.getState().orgs.map((o) =>
           o.id === updated.id
             ? {
                 ...o,

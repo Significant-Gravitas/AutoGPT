@@ -177,6 +177,8 @@ async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease()
     owner_metadata = _credential_metadata("owner-cred")
     node = _node(block, input_default={"credentials": owner_metadata})
     context = ExecutionContext(
+        organization_id="org-1",
+        team_id="team-1",
         credentials_owner_id="owner-1",
         credentials_grant_id="grant-1",
     )
@@ -209,6 +211,8 @@ async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease()
         graph_version=1,
         owner_user_id="owner-1",
         grant_id="grant-1",
+        organization_id="org-1",
+        team_id_restriction="team-1",
     )
     manager.acquire_lease.assert_awaited_once_with("owner-1", "owner-cred")
     assert captured["credential_leases"] == {"credentials": lease}
@@ -216,12 +220,20 @@ async def test_owner_mode_revalidates_exact_grant_and_uses_owner_runtime_lease()
 
 
 @pytest.mark.asyncio
-async def test_revoked_owner_grant_fails_before_credential_access():
+@pytest.mark.parametrize(
+    ("organization_id", "team_id"),
+    [("org-1", "team-1"), ("org-1", None), ("other-org", "team-1"), (None, None)],
+)
+async def test_revoked_or_out_of_scope_owner_grant_fails_before_credential_access(
+    organization_id, team_id
+):
     manager = MagicMock()
     manager.acquire_lease = AsyncMock()
     block = _block_with_credentials({"credentials": CodexCredentialsInput}, {})
     owner_metadata = _credential_metadata("owner-cred")
     context = ExecutionContext(
+        organization_id=organization_id,
+        team_id=team_id,
         credentials_owner_id="owner-1",
         credentials_grant_id="grant-1",
     )
@@ -244,6 +256,19 @@ async def test_revoked_owner_grant_fails_before_credential_access():
         )
 
     manager.acquire_lease.assert_not_awaited()
+    assert (
+        db_client.validate_execution_credentials_owner.await_args.kwargs[
+            "organization_id"
+        ]
+        == organization_id
+    )
+    assert (
+        db_client.validate_execution_credentials_owner.await_args.kwargs[
+            "team_id_restriction"
+        ]
+        == team_id
+    )
+    db_client.release_agent_graph_attachment_lease.assert_awaited_once_with("lease-1")
 
 
 @pytest.mark.asyncio

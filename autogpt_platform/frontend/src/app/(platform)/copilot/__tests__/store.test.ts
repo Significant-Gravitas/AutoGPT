@@ -246,7 +246,6 @@ describe("useCopilotUIStore", () => {
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       showNotificationDialog: false,
-      copilotChatMode: "extended_thinking",
       copilotLlmModel: "standard",
     });
   });
@@ -398,32 +397,6 @@ describe("useCopilotUIStore", () => {
     });
   });
 
-  describe("copilotChatMode", () => {
-    it("defaults to extended_thinking", () => {
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
-        "extended_thinking",
-      );
-    });
-
-    it("sets mode to fast", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe("fast");
-    });
-
-    it("sets mode back to extended_thinking", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      useCopilotUIStore.getState().setCopilotChatMode("extended_thinking");
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
-        "extended_thinking",
-      );
-    });
-
-    it("persists mode to localStorage", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
-      expect(window.localStorage.getItem("copilot-mode")).toBe("fast");
-    });
-  });
-
   describe("copilotLlmModel", () => {
     it("defaults to standard", () => {
       expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
@@ -441,15 +414,11 @@ describe("useCopilotUIStore", () => {
   });
 
   describe("copilotLlmAuth", () => {
-    it("defaults to the platform route", () => {
-      expect(useCopilotUIStore.getState().copilotLlmAuth).toEqual({
-        authProvider: "platform",
-        credentialId: null,
-      });
+    it("starts unset so the saved default can decide", () => {
+      expect(useCopilotUIStore.getState().copilotLlmAuth).toBeNull();
     });
 
-    it("stores a Codex credential without changing the selected mode or model", () => {
-      useCopilotUIStore.getState().setCopilotChatMode("extended_thinking");
+    it("stores a Codex credential without changing the selected model", () => {
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setCopilotLlmAuth({
         authProvider: "codex",
@@ -460,9 +429,6 @@ describe("useCopilotUIStore", () => {
         authProvider: "codex",
         credentialId: "codex-credential-1",
       });
-      expect(useCopilotUIStore.getState().copilotChatMode).toBe(
-        "extended_thinking",
-      );
       expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
     });
   });
@@ -470,7 +436,6 @@ describe("useCopilotUIStore", () => {
   describe("clearCopilotLocalData", () => {
     it("resets state and clears localStorage keys", () => {
       useCopilotUIStore.getState().setSearchOpen(true);
-      useCopilotUIStore.getState().setCopilotChatMode("fast");
       useCopilotUIStore.getState().setCopilotLlmModel("advanced");
       useCopilotUIStore.getState().setCopilotLlmAuth({
         authProvider: "codex",
@@ -484,12 +449,8 @@ describe("useCopilotUIStore", () => {
 
       const state = useCopilotUIStore.getState();
       expect(state.isSearchOpen).toBe(false);
-      expect(state.copilotChatMode).toBe("extended_thinking");
       expect(state.copilotLlmModel).toBe("standard");
-      expect(state.copilotLlmAuth).toEqual({
-        authProvider: "platform",
-        credentialId: null,
-      });
+      expect(state.copilotLlmAuth).toBeNull();
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);
@@ -528,13 +489,6 @@ describe("useCopilotUIStore localStorage initialisation", () => {
   afterEach(() => {
     vi.resetModules();
     window.localStorage.clear();
-  });
-
-  it("reads fast chat mode from localStorage on store creation", async () => {
-    window.localStorage.setItem("copilot-mode", "fast");
-    vi.resetModules();
-    const { useCopilotUIStore: fresh } = await import("../store");
-    expect(fresh.getState().copilotChatMode).toBe("fast");
   });
 
   it("reads advanced model from localStorage on store creation", async () => {

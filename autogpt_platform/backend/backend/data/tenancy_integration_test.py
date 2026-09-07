@@ -8,10 +8,18 @@ from prisma import Json
 
 from backend.api.features.library import db as library_db
 from backend.api.features.orgs.db import create_org
+from backend.api.features.orgs.grant_db import revoke_grant
+from backend.api.features.orgs.team_db import update_team_member
 from backend.api.features.transfers.db import _count_incoming_graph_references
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.github.repo import GithubListTagsBlock
 from backend.data.db import prisma
-from backend.data.graph import Graph, create_graph
+from backend.data.graph import (
+    Graph,
+    Node,
+    create_graph,
+    validate_graph_execution_permissions,
+)
 from backend.data.tenancy import (
     LIVE_TRANSACTION_LEASE_CLASS_LIMIT,
     acquire_live_resource_lease,
@@ -24,12 +32,133 @@ from backend.data.tenancy import (
     release_live_resource_lease,
 )
 from backend.usecases.sample import create_test_graph
-from backend.util.exceptions import GraphNotAccessibleError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    NotFoundError,
+)
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(server):
+@pytest.mark.parametrize(
+    "scope_case",
+    ["visible_team", "exact_team", "revoked_team", "wrong_team", "teammate_only"],
+)
+async def test_owner_prior_version_install_obeys_live_team_scope(server, scope_case):
+    owner_id, teammate_id, graph_id = (str(uuid4()) for _ in range(3))
+    await prisma.user.create(data={"id": owner_id, "email": f"{owner_id}@example.com"})
+    await prisma.user.create(
+        data={"id": teammate_id, "email": f"{teammate_id}@example.com"}
+    )
+    org = await create_org(
+        "Owner version integration", f"owner-version-{uuid4()}", owner_id
+    )
+    try:
+        team = await prisma.team.find_first(where={"orgId": org.id, "isDefault": True})
+        assert team is not None
+        if scope_case == "teammate_only":
+            await prisma.orgmember.create(data={"orgId": org.id, "userId": teammate_id})
+            await prisma.teammember.create(
+                data={"teamId": team.id, "userId": teammate_id}
+            )
+        for version in [1, 2]:
+            await prisma.agentgraph.create(
+                data={
+                    "id": graph_id,
+                    "version": version,
+                    "name": "Owner version",
+                    "userId": owner_id,
+                    "organizationId": org.id,
+                    "teamId": team.id,
+                }
+            )
+        await prisma.libraryagent.create(
+            data={
+                "userId": teammate_id if scope_case == "teammate_only" else owner_id,
+                "agentGraphId": graph_id,
+                "agentGraphVersion": 1,
+                "organizationId": org.id,
+                "teamId": team.id,
+            }
+        )
+        if scope_case == "revoked_team":
+            await prisma.teammember.update(
+                where={"teamId_userId": {"teamId": team.id, "userId": owner_id}},
+                data={"status": "REMOVED"},
+            )
+        restriction = team.id if scope_case == "exact_team" else None
+        if scope_case == "wrong_team":
+            restriction = str(uuid4())
+        action = validate_graph_execution_permissions(
+            owner_id,
+            graph_id,
+            2,
+            organization_id=org.id,
+            team_id_restriction=restriction,
+        )
+        if scope_case in {"revoked_team", "wrong_team", "teammate_only"}:
+            with pytest.raises((GraphNotAccessibleError, GraphNotInLibraryError)):
+                await action
+        else:
+            await action
+    finally:
+        await prisma.libraryagent.delete_many(where={"agentGraphId": graph_id})
+        await prisma.agentgraph.delete_many(where={"id": graph_id})
+        await prisma.organization.delete(where={"id": org.id})
+        await prisma.user.delete_many(where={"id": {"in": [owner_id, teammate_id]}})
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_noop_team_member_update_preserves_identity(server):
+    owner_id = f"team-noop-owner-{uuid4()}"
+    email = f"{owner_id}@example.com"
+    await prisma.user.create(data={"id": owner_id, "email": email})
+    org = await create_org("Team no-op integration", f"team-noop-{uuid4()}", owner_id)
+    try:
+        team = await prisma.team.find_first(where={"orgId": org.id, "isDefault": True})
+        assert team is not None
+        member_before = await prisma.teammember.find_unique(
+            where={"teamId_userId": {"teamId": team.id, "userId": owner_id}}
+        )
+        result = await update_team_member(
+            team.id,
+            owner_id,
+            is_admin=None,
+            is_billing_manager=None,
+            org_id=org.id,
+            requesting_user_id=owner_id,
+        )
+        assert result.email == email
+        member_after = await prisma.teammember.find_unique(
+            where={"teamId_userId": {"teamId": team.id, "userId": owner_id}}
+        )
+        assert member_after == member_before
+    finally:
+        await prisma.organization.delete(where={"id": org.id})
+        await prisma.user.delete(where={"id": owner_id})
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "grant_state",
+    [
+        "consumer",
+        "owner",
+        "absent",
+        "revoked",
+        "wrong_version",
+        "wrong_target",
+        "cross_org",
+        "revoked_membership",
+        "revoke_during_fork",
+    ],
+)
+async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(
+    server, grant_state
+):
     owner_id = f"grant-fork-owner-{uuid4()}"
     member_id = f"grant-fork-member-{uuid4()}"
     await prisma.user.create(data={"id": owner_id, "email": f"{owner_id}@example.com"})
@@ -58,6 +187,20 @@ async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(server):
     source = create_test_graph()
     source.id = str(uuid4())
     source.name = "Cross-team shared agent"
+    credential_block_id = GithubListTagsBlock().id
+    source.nodes.append(
+        Node(
+            block_id=credential_block_id,
+            input_default={
+                "repo_url": "https://github.com/example/source",
+                "credentials": {
+                    "id": str(uuid4()),
+                    "provider": "github",
+                    "type": "api_key",
+                },
+            },
+        )
+    )
     source_graph = await create_graph(
         source,
         owner_id,
@@ -85,36 +228,108 @@ async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(server):
                 team_id=source_team.id,
             )
         )[0]
-        await prisma.agentgraphgrant.create(
-            data={
-                "agentGraphId": source_graph.id,
-                "agentGraphVersion": source_graph.version,
-                "principalType": "TEAM",
-                "principalId": target_team.id,
-                "capability": "EXECUTE",
-                "credentialMode": "CONSUMER",
-                "organizationId": org.id,
-                "createdByUserId": owner_id,
-            }
-        )
+        grant_version = source_graph.version
+        if grant_state == "wrong_version":
+            grant_version += 1
+            await prisma.agentgraph.create(
+                data={
+                    "id": source_graph.id,
+                    "version": grant_version,
+                    "name": "Other version",
+                    "userId": owner_id,
+                    "organizationId": org.id,
+                    "teamId": source_team.id,
+                    "visibility": "TEAM",
+                }
+            )
+        grant = None
+        if grant_state != "absent":
+            grant = await prisma.agentgraphgrant.create(
+                data={
+                    "agentGraphId": source_graph.id,
+                    "agentGraphVersion": grant_version,
+                    "principalType": "TEAM",
+                    "principalId": (
+                        source_team.id
+                        if grant_state == "wrong_target"
+                        else target_team.id
+                    ),
+                    "capability": "EXECUTE",
+                    "credentialMode": "OWNER" if grant_state == "owner" else "CONSUMER",
+                    "organizationId": org.id,
+                    "createdByUserId": owner_id,
+                }
+            )
+        if grant_state == "revoked":
+            assert grant is not None
+            await revoke_grant(
+                org.id,
+                source_graph.id,
+                grant.id,
+                revoked_by_user_id=owner_id,
+                revoker_is_org_admin=True,
+            )
+        if grant_state == "revoked_membership":
+            await prisma.teammember.update(
+                where={
+                    "teamId_userId": {"teamId": target_team.id, "userId": member_id}
+                },
+                data={"status": "SUSPENDED"},
+            )
+        destination_org_id, destination_team_id = org.id, target_team.id
+        if grant_state == "cross_org":
+            other_org = await create_org(
+                "Other fork org", f"other-fork-{uuid4()}", member_id
+            )
+            other_team = await prisma.team.find_first(
+                where={"orgId": other_org.id, "isDefault": True}
+            )
+            assert other_team is not None
+            destination_org_id, destination_team_id = other_org.id, other_team.id
 
         resolved = await library_db.get_library_agent_by_graph_id(
             member_id,
             source_graph.id,
             source_graph.version,
-            organization_id=org.id,
-            team_id_restriction=target_team.id,
+            organization_id=destination_org_id,
+            team_id_restriction=destination_team_id,
             include_granted=True,
         )
-        assert resolved is not None
-        assert resolved.id == source_library.id
+        if grant_state not in {"consumer", "owner", "revoke_during_fork"}:
+            assert resolved is None
+            count_before = await prisma.libraryagent.count(where={"userId": member_id})
+            with pytest.raises(NotFoundError):
+                await library_db.fork_library_agent(
+                    source_library.id,
+                    member_id,
+                    organization_id=destination_org_id,
+                    team_id=destination_team_id,
+                )
+            assert (
+                await prisma.libraryagent.count(where={"userId": member_id})
+                == count_before
+            )
+            return
+        assert resolved is not None and resolved.id == source_library.id
 
-        forked = await library_db.fork_library_agent(
-            source_library.id,
-            member_id,
-            organization_id=org.id,
-            team_id=target_team.id,
-        )
+        if grant_state == "revoke_during_fork":
+            assert grant is not None
+            forked = await _fork_while_revoking_grant(
+                source_library.id,
+                source_graph.id,
+                grant.id,
+                member_id,
+                owner_id,
+                org.id,
+                target_team.id,
+            )
+        else:
+            forked = await library_db.fork_library_agent(
+                source_library.id,
+                member_id,
+                organization_id=org.id,
+                team_id=target_team.id,
+            )
 
     forked_graph = await prisma.agentgraph.find_first(
         where={"id": forked.graph_id, "version": forked.graph_version}
@@ -125,6 +340,82 @@ async def test_cross_team_grant_lookup_and_fork_stay_in_the_same_org(server):
     assert forked_graph.teamId == target_team.id
     assert forked.organization_id == org.id
     assert forked.team_id == target_team.id
+    source_node = await prisma.agentnode.find_first(
+        where={
+            "agentGraphId": source_graph.id,
+            "agentGraphVersion": source_graph.version,
+            "agentBlockId": credential_block_id,
+        }
+    )
+    forked_node = await prisma.agentnode.find_first(
+        where={
+            "agentGraphId": forked.graph_id,
+            "agentGraphVersion": forked.graph_version,
+            "agentBlockId": credential_block_id,
+        }
+    )
+    assert source_node is not None and "credentials" in source_node.constantInput
+    assert forked_node is not None and "credentials" not in forked_node.constantInput
+    assert forked_node.constantInput["repo_url"] == "https://github.com/example/source"
+
+
+async def _fork_while_revoking_grant(
+    library_agent_id,
+    graph_id,
+    grant_id,
+    member_id,
+    owner_id,
+    org_id,
+    target_team_id,
+):
+    entered, release = asyncio.Event(), asyncio.Event()
+    original_fork = library_db.graph_db.fork_graph
+
+    async def pause_fork(*args, **kwargs):
+        entered.set()
+        await release.wait()
+        return await original_fork(*args, **kwargs)
+
+    with patch.object(library_db.graph_db, "fork_graph", side_effect=pause_fork):
+        fork_task = asyncio.create_task(
+            library_db.fork_library_agent(
+                library_agent_id,
+                member_id,
+                organization_id=org_id,
+                team_id=target_team_id,
+            )
+        )
+        revoke_task = None
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            revoke_task = asyncio.create_task(
+                revoke_grant(
+                    org_id,
+                    graph_id,
+                    grant_id,
+                    revoked_by_user_id=owner_id,
+                    revoker_is_org_admin=True,
+                )
+            )
+            await asyncio.sleep(0.1)
+            assert not revoke_task.done()
+            release.set()
+            forked = await asyncio.wait_for(fork_task, 20)
+            await asyncio.wait_for(revoke_task, 20)
+        finally:
+            release.set()
+            tasks = [fork_task, *([revoke_task] if revoke_task else [])]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    with pytest.raises(NotFoundError):
+        await library_db.fork_library_agent(
+            library_agent_id,
+            member_id,
+            organization_id=org_id,
+            team_id=target_team_id,
+        )
+    return forked
 
 
 @pytest.mark.integration

@@ -1,5 +1,6 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
@@ -50,6 +51,8 @@ export function CopilotChatHost({
     turnStats,
     rateLimitMessage,
     dismissRateLimit,
+    providerLimit,
+    dismissProviderLimit,
     sessionDryRun,
     sessionChatStatus,
     expertIdentity,
@@ -116,6 +119,11 @@ export function CopilotChatHost({
       <RateLimitGate
         rateLimitMessage={rateLimitMessage}
         onDismiss={dismissRateLimit}
+      />
+      <ProviderLimitDialog
+        failure={providerLimit}
+        sessionId={sessionId}
+        onDismiss={dismissProviderLimit}
       />
     </>
   );

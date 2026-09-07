@@ -33,6 +33,7 @@ from .model import (
     UpdateOrgData,
     UpdateOrgRequest,
 )
+from .rollout import require_org_collaboration
 
 router = APIRouter()
 
@@ -65,6 +66,7 @@ async def create_org(
     request: CreateOrgRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OrgResponse:
+    await require_org_collaboration(user_id)
     return await org_db.create_org(
         name=request.name,
         slug=request.slug,
@@ -288,6 +290,7 @@ async def convert_org(
     ],
 ) -> OrgResponse:
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
     return await org_db.convert_personal_org(org_id, ctx.user_id)
 
 
@@ -327,6 +330,8 @@ async def add_member(
     if request.user_id == ctx.user_id:
         raise HTTPException(409, detail="You are already a member")
     _verify_org_path(ctx, org_id)
+    await require_org_collaboration(ctx.user_id)
+    await require_org_collaboration(request.user_id)
     return await org_db.add_org_member(
         org_id=org_id,
         user_id=request.user_id,

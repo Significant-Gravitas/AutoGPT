@@ -13,6 +13,8 @@ def _execution(
     status: ExecutionStatus = ExecutionStatus.COMPLETED,
     activity_status: str | None = None,
     error: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
 ) -> GraphExecutionMeta:
     return GraphExecutionMeta(
         id="run-1",
@@ -27,6 +29,8 @@ def _execution(
         started_at=NOW - timedelta(minutes=5),
         ended_at=NOW,
         expert_id="expert-1",
+        schedule_id=schedule_id,
+        webhook_id=webhook_id,
         stats=GraphExecutionMeta.Stats(
             activity_status=activity_status, error=error, duration=30.0, cost=9
         ),
@@ -74,6 +78,21 @@ def test_outcome_splits_the_summary_and_carries_stats() -> None:
         "&activeTab=runs&activeItem=run-1"
     )
     assert (item.expert_name, item.expert_role) == ("Ana", "Researcher")
+
+
+def test_outcome_carries_what_fired_the_run() -> None:
+    def compose(execution: GraphExecutionMeta):
+        return compose_run_outcome(
+            execution, agent_name="Inbox triage", library_agent_id=None, expert=None
+        )
+
+    scheduled = compose(_execution(schedule_id="sched-1"))
+    triggered = compose(_execution(webhook_id="hook-1"))
+    by_hand = compose(_execution())
+
+    assert (scheduled.schedule_id, scheduled.webhook_id) == ("sched-1", None)
+    assert (triggered.schedule_id, triggered.webhook_id) == (None, "hook-1")
+    assert (by_hand.schedule_id, by_hand.webhook_id) == (None, None)
 
 
 def test_a_raw_error_stays_out_of_the_headline() -> None:

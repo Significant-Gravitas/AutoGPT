@@ -131,6 +131,30 @@ class TestBaseToolExecuteLargeOutput:
 
 class TestBaseToolAuthorization:
     @pytest.mark.asyncio
+    async def test_default_execution_packages_exceptions(self):
+        tool = _HugeOutputTool(output_size=100)
+        tool._execute = AsyncMock(side_effect=ValueError("Invalid input"))
+        session = MagicMock(session_id="session-1")
+
+        result = await tool.execute(None, session, "call-1")
+
+        assert result.success is False
+        assert "Invalid input" in result.output
+
+    @pytest.mark.asyncio
+    async def test_exception_propagation_only_applies_to_selected_types(self):
+        tool = _HugeOutputTool(output_size=100)
+        tool._execute = AsyncMock(side_effect=RuntimeError("Unexpected failure"))
+        session = MagicMock(session_id="session-1")
+
+        result = await tool.execute(
+            None, session, "call-1", propagate_exceptions=(ValueError,)
+        )
+
+        assert result.success is False
+        assert "Unexpected failure" in result.output
+
+    @pytest.mark.asyncio
     async def test_anonymous_call_returns_login_without_executing(self):
         tool = _AuthenticatedTool(output_size=100)
         tool._execute = AsyncMock()

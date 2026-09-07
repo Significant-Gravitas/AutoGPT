@@ -38,6 +38,7 @@ from . import exceptions as store_exceptions
 from . import model as store_model
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
+from .store_listing_versions import installable_store_version_where
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -521,27 +522,29 @@ async def get_available_graph(
                     "id": store_listing_version_id,
                     "isDeleted": False,
                     "StoreListing": {"is": {"isDeleted": False}},
-                    "OR": [
-                        {
-                            "isAvailable": True,
-                            "submissionStatus": (
-                                prisma.enums.SubmissionStatus.APPROVED
-                            ),
-                        },
-                        {
-                            "AgentGraph": {"is": {"userId": user_id}},
-                            "StoreListing": {"is": {"owningUserId": user_id}},
-                        },
-                    ]
-                    if user_id is not None
-                    else [
-                        {
-                            "isAvailable": True,
-                            "submissionStatus": (
-                                prisma.enums.SubmissionStatus.APPROVED
-                            ),
-                        }
-                    ],
+                    "OR": (
+                        [
+                            {
+                                "isAvailable": True,
+                                "submissionStatus": (
+                                    prisma.enums.SubmissionStatus.APPROVED
+                                ),
+                            },
+                            {
+                                "AgentGraph": {"is": {"userId": user_id}},
+                                "StoreListing": {"is": {"owningUserId": user_id}},
+                            },
+                        ]
+                        if user_id is not None
+                        else [
+                            {
+                                "isAvailable": True,
+                                "submissionStatus": (
+                                    prisma.enums.SubmissionStatus.APPROVED
+                                ),
+                            }
+                        ]
+                    ),
                 },
                 include={
                     "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
@@ -1932,10 +1935,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
     slv = await prisma.models.StoreListingVersion.prisma().find_first(
         where={
             "id": store_listing_version_id,
-            "isAvailable": True,
-            "isDeleted": False,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-            "StoreListing": {"isDeleted": False},
+            **installable_store_version_where(),
         },
         include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
     )

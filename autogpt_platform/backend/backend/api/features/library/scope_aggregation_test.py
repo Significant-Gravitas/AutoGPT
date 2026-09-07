@@ -78,7 +78,7 @@ async def test_schedule_info_is_keyed_by_exact_agent_scope(mocker) -> None:
 
     result = await _fetch_schedule_info("user-1", exact_scope=True)
 
-    assert result == {("graph-1", 3, "org-1", "team-b"): "2026-08-28T12:00:00+00:00"}
+    assert result == {("graph-1", "org-1", "team-b"): "2026-08-28T12:00:00+00:00"}
 
 
 def test_library_agent_execution_include_is_exact_scope() -> None:

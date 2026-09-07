@@ -28,6 +28,7 @@ import {
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
 import { useBuilderTenantScope } from "./useBuilderTenantScope";
+import { retryUnlessClientError } from "../helpers/graphLoadError";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -71,6 +72,7 @@ export const useSaveGraph = ({
           tenantScope.organizationId,
           tenantScope.teamId,
         ),
+        retry: retryUnlessClientError,
       },
       request: getTenantRequestInit(
         tenantScope.organizationId,

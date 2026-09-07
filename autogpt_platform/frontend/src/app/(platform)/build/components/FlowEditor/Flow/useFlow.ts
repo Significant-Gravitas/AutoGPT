@@ -22,6 +22,8 @@ import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { okData } from "@/app/api/helpers";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useRouter } from "next/navigation";
 import { useIsReadOnlyGraph } from "../../../hooks/useIsReadOnlyGraph";
 import { useBuilderTenantScope } from "../../../hooks/useBuilderTenantScope";
 import {
@@ -29,8 +31,15 @@ import {
   getTenantRequestInit,
 } from "@/components/contextual/TeamPicker/helpers";
 
+import {
+  getGraphLoadErrorToast,
+  retryUnlessClientError,
+} from "../../../helpers/graphLoadError";
+
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
+  const { toast } = useToast();
+  const router = useRouter();
   const tenantScope = useBuilderTenantScope();
   const [isLockedState, setIsLockedState] = useState(false);
   const [hasAutoFramed, setHasAutoFramed] = useState(false);
@@ -118,7 +127,12 @@ export const useFlow = () => {
     ),
   });
 
-  const { data: graph, isLoading: isGraphLoading } = useGetV1GetSpecificGraph(
+  const {
+    data: graph,
+    isLoading: isGraphLoading,
+    isError: isGraphError,
+    error: graphError,
+  } = useGetV1GetSpecificGraph(
     flowID ?? "",
     flowVersion !== null ? { version: flowVersion } : {},
     {
@@ -133,6 +147,7 @@ export const useFlow = () => {
           tenantScope.organizationId,
           tenantScope.teamId,
         ),
+        retry: retryUnlessClientError,
       },
       request: getTenantRequestInit(
         tenantScope.organizationId,
@@ -141,6 +156,16 @@ export const useFlow = () => {
       ),
     },
   );
+
+  // The graph couldn't load — bail out of the builder instead of falling into
+  // the fully-editable "new agent" state, which would look like a wiped agent
+  // and risk an empty save over the real flowID.
+  useEffect(() => {
+    if (!flowID || !isGraphError) return;
+    const { title, description } = getGraphLoadErrorToast(graphError);
+    toast({ title, description, variant: "destructive" });
+    router.push("/library");
+  }, [flowID, isGraphError, graphError, toast, router]);
 
   const nodes = graph?.nodes;
   const blockIds = nodes

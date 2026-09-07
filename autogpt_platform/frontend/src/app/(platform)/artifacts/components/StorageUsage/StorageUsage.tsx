@@ -1,5 +1,7 @@
 "use client";
 
+import type { TenantScope } from "../../useArtifactsFolders";
+
 import {
   getGetWorkspaceStorageUsageQueryKey,
   useGetWorkspaceStorageUsage,
@@ -22,21 +24,27 @@ import { useOrgTeamStore } from "@/services/org-team/store";
 
 const SEGMENT_COUNT = 40;
 
-export function StorageUsage() {
+interface Props {
+  scope?: TenantScope;
+}
+
+export function StorageUsage({ scope }: Props) {
   const activeOrgID = useOrgTeamStore((s) => s.activeOrgID);
   const activeTeamID = useOrgTeamStore((s) => s.activeTeamID);
   const isTenantReady = useOrgTeamStore((s) => s.isLoaded);
+  const organizationId = scope ? scope.organizationId : activeOrgID;
+  const teamId = scope ? scope.teamId : activeTeamID;
   const { data, isLoading, isError } = useGetWorkspaceStorageUsage({
     query: {
       enabled: isTenantReady,
       queryKey: getTeamScopedQueryKey(
         getGetWorkspaceStorageUsageQueryKey(),
-        activeOrgID,
-        activeTeamID,
+        organizationId,
+        teamId,
       ),
       select: (res) => (res.status === 200 ? res.data : null),
     },
-    request: getTenantRequestInit(activeOrgID, activeTeamID, isTenantReady),
+    request: getTenantRequestInit(organizationId, teamId, isTenantReady),
   });
 
   if (isLoading) {
@@ -75,7 +83,7 @@ export function StorageUsage() {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={`${usedLabel}, ${leftLabel}`}
-            className="flex h-8 flex-1 items-center gap-[3px]"
+            className="flex h-8 min-w-0 flex-1 items-center gap-[3px]"
           >
             {Array.from({ length: SEGMENT_COUNT }).map((_, i) => {
               const isFilled = i < filled;

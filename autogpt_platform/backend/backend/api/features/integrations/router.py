@@ -11,7 +11,9 @@ from typing import (
     List,
     Literal,
     LiteralString,
+    TypeGuard,
     cast,
+    get_args,
 )
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
@@ -27,9 +29,9 @@ from fastapi import (
     status,
 )
 from prisma.models import AgentGraph as PrismaAgentGraph
-from prisma.models import LibraryAgent as PrismaLibraryAgent
 from prisma.models import AgentNode as PrismaAgentNode
 from prisma.models import AgentPreset as PrismaAgentPreset
+from prisma.models import LibraryAgent as PrismaLibraryAgent
 from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
@@ -101,6 +103,7 @@ from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import prune_webhook_with_credential_lease
 from backend.util.exceptions import (
     ExpertRunPausedError,
+    GraphNotAccessibleError,
     GraphNotInLibraryError,
     MissingConfigError,
     NeedConfirmation,
@@ -315,6 +318,9 @@ async def _start_codex_login(
     )
 
 
+MCPAuthScheme = Literal["basic", "bearer"]
+
+
 class CredentialsMetaResponse(BaseModel):
     id: str
     provider: str
@@ -325,6 +331,10 @@ class CredentialsMetaResponse(BaseModel):
     host: str | None = Field(
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
+    )
+    mcp_auth_scheme: MCPAuthScheme | None = Field(
+        default=None,
+        description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
 
@@ -347,16 +357,27 @@ class CredentialsMetaResponse(BaseModel):
         """Extract host from credential: HostScoped host or MCP server URL."""
         if isinstance(cred, HostScopedCredentials):
             return cred.host
-        if isinstance(cred, OAuth2Credentials) and cred.provider in (
-            ProviderName.MCP,
-            ProviderName.MCP.value,
-            "ProviderName.MCP",
-        ):
+        if _is_mcp_credential(cred):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
 
 
+def _is_mcp_credential(cred: Credentials) -> TypeGuard[OAuth2Credentials]:
+    """Whether this is an MCP credential, across the provider spellings in use."""
+    return isinstance(cred, OAuth2Credentials) and cred.provider in (
+        ProviderName.MCP,
+        ProviderName.MCP.value,
+        "ProviderName.MCP",
+    )
+
+
 def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    mcp_auth_scheme = None
+    if _is_mcp_credential(cred):
+        stored_scheme = (cred.metadata or {}).get("mcp_auth_scheme")
+        if stored_scheme in get_args(MCPAuthScheme):
+            mcp_auth_scheme = stored_scheme
+
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -365,6 +386,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
     )
 
@@ -1472,6 +1494,7 @@ async def _execute_webhook_node_trigger(
                 nodes_input_masks={node.id: {"payload": payload}},
                 organization_id=org_id,
                 team_id=ws_id,
+                webhook_id=webhook_id,
             )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1524,14 +1547,20 @@ async def _execute_webhook_preset_trigger(
             )
             return
 
+    # Read-authorization must not decide this: `None` would then also mean
+    # "not allowed to read", and the write below would silently kill a live
+    # trigger. add_graph_execution() is the authorization gate for this path.
     graph = await get_graph(
-        preset.graph_id, preset.graph_version, user_id=webhook.user_id
+        preset.graph_id,
+        preset.graph_version,
+        user_id=webhook.user_id,
+        skip_access_check=True,
     )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
             f"#{preset.graph_id} v{preset.graph_version}, "
-            "but no access to the graph itself."
+            "but the graph version does not exist."
         )
         logger.info(f"Automatically deactivating broken preset #{preset.id}")
         await update_preset(preset.user_id, preset.id, is_active=False)
@@ -1619,6 +1648,7 @@ async def _execute_webhook_preset_trigger(
                 organization_id=org_id,
                 team_id=ws_id,
                 expert_id=live_preset.expert_id,
+                webhook_id=webhook.id,
             )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —
@@ -1627,11 +1657,19 @@ async def _execute_webhook_preset_trigger(
     except GraphNotInLibraryError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+            f"deleted graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
             preset.graph_id, webhook.user_id, webhook_id
+        )
+    except GraphNotAccessibleError as e:
+        # Permanent, unlike the transient failures below: every future
+        # delivery fails the same way while the preset still reads as Active.
+        logger.error(
+            f"Webhook #{webhook_id} preset #{preset.id} is permanently blocked: "
+            f"user #{webhook.user_id} may not execute graph "
+            f"#{preset.graph_id} v{preset.graph_version}: {e}"
         )
     except Exception:
         logger.exception(

@@ -935,10 +935,11 @@ class TestAssignResources:
 
         result = await assign_resources_to_teams()
 
-        # 10 tables with workspace + 3 tables org-only = 13 entries
-        assert len(result) == 13
+        assert len(result) == 17
         assert result["AgentGraph"] == 10
+        assert result["StoreListing"] == 10
         assert result["ChatSession"] == 10
+        assert result["ActivityEvent"] == 10
         assert result["Expert"] == 10
         assert result["UserNotificationBatch"] == 10
         assert result["BuilderSearchHistory"] == 10
@@ -981,7 +982,20 @@ class TestAssignResources:
         await assign_resources_to_teams()
 
         batched_tables = {call.args[0] for call in batched.await_args_list}
-        assert batched_tables == {"AgentGraphExecution", "ChatSession"}
+        assert batched_tables == {
+            "AgentGraphExecution",
+            "ChatSession",
+            "ActivityEvent",
+            "UserWorkspaceFolder",
+            "UserWorkspaceFile",
+        }
+        assert [call.args[0] for call in batched.await_args_list] == [
+            "AgentGraphExecution",
+            "ChatSession",
+            "ActivityEvent",
+            "UserWorkspaceFolder",
+            "UserWorkspaceFile",
+        ]
         single_sql = " ".join(call.args[0] for call in single.await_args_list)
         assert '"AgentGraphExecution"' not in single_sql
         assert 'UPDATE "ChatSession"' not in single_sql
@@ -993,9 +1007,9 @@ class TestAssignResources:
 
         result = await assign_resources_to_teams(renew_lock=renew_lock)
 
-        assert len(result) == 13
-        assert mock_prisma.execute_raw.await_count == 13
-        assert renew_lock.await_count == 13
+        assert len(result) == 17
+        assert mock_prisma.execute_raw.await_count == 17
+        assert renew_lock.await_count == 17
 
     @pytest.mark.asyncio
     async def test_expert_backfill_uses_owner_and_skips_templates(
@@ -1037,6 +1051,24 @@ class TestAssignResources:
         assert '"teamId" = graph."teamId"' in version_sql
         assert 'o."id" = graph."organizationId"' in version_sql
         assert 'listing."owningOrgId" = graph."organizationId"' in version_sql
+        assert 'listing."owningUserId" = graph."userId"' in version_sql
+        assert 'slv."organizationId" = graph."organizationId"' in version_sql
+        assert 'slv."teamId" = graph."teamId"' in version_sql
+
+    @pytest.mark.asyncio
+    async def test_listings_follow_graph_assignment(self, mock_prisma):
+        await assign_resources_to_teams()
+
+        statements = [call.args[0] for call in mock_prisma.execute_raw.await_args_list]
+        assert 'UPDATE "AgentGraph"' in statements[0]
+        assert 'UPDATE "StoreListing"' in statements[1]
+        assert 'sl."owningUserId" = graph."userId"' in statements[1]
+        version_index = next(
+            index
+            for index, sql in enumerate(statements)
+            if 'UPDATE "StoreListingVersion"' in sql
+        )
+        assert version_index > 1
 
 
 class TestBatchedTenancy:
@@ -1166,10 +1198,6 @@ class TestRunMigration:
             new=assign_resources,
         )
         mocker.patch(
-            "backend.data.org_migration.migrate_store_listings",
-            new_callable=lambda: lambda: _track(calls, "store_listings", 0),
-        )
-        mocker.patch(
             "backend.data.org_migration.create_store_listing_aliases",
             new_callable=lambda: lambda: _track(calls, "aliases", 0),
         )
@@ -1183,12 +1211,11 @@ class TestRunMigration:
         redis.set.assert_awaited_once_with(
             "org-migration-bootstrap-lock", "lock-token", nx=True, ex=300
         )
-        assert redis.execute_command.await_count == 9
+        assert redis.execute_command.await_count == 8
         assert calls == [
             "create_orgs",
             "balances",
             "credits",
-            "store_listings",
             "assign_resources",
             "aliases",
             "credentials",
@@ -1337,7 +1364,9 @@ class TestSoftDeletedOrgsExcludedFromMigrationSQL:
 
         for call in mock_prisma.execute_raw.call_args_list:
             sql = call[0][0]
-            assert 'o."deletedAt" IS NULL' in sql, sql
+            assert (
+                'o."deletedAt" IS NULL' in sql or 'org."deletedAt" IS NULL' in sql
+            ), sql
 
     def test_every_personal_org_join_in_module_excludes_soft_deleted(self):
         """Tripwire: any raw-SQL JOIN on personal orgs added to this module

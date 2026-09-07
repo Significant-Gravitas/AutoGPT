@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.util.exceptions import UserPaywalledError
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,7 @@ async def run_agent(
         user_id=auth.user_id,
         session=session,
         tool_call_id=f"external:{session.session_id}",
+        propagate_exceptions=(HTTPException, UserPaywalledError),
         username_agent_slug=request.username_agent_slug,
         inputs=request.inputs,
         use_defaults=request.use_defaults,

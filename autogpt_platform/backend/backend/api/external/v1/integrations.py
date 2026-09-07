@@ -19,6 +19,7 @@ from fastapi import APIRouter, Body, HTTPException, Path, status
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.api.external.credential_access import live_credential_management_lease
 from backend.api.external.middleware import require_permission
 from backend.api.features.integrations.models import get_all_provider_names
 from backend.api.features.integrations.router import (
@@ -26,6 +27,7 @@ from backend.api.features.integrations.router import (
     to_meta_response,
 )
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.db_accessors import LiveResourceAccessRevoked
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -477,11 +479,13 @@ async def complete_oauth(
     # Get OAuth handler with the original callback URL
     handler = _get_oauth_handler_for_external(provider, valid_state.callback_url)
 
-    async with _live_credential_action(auth):
+    async with live_credential_management_lease(auth) as lease:
         try:
             scopes = handler.handle_default_scopes(valid_state.scopes)
-            credentials = await handler.exchange_code_for_tokens(
-                request.code, scopes, valid_state.code_verifier
+            credentials = await lease.run(
+                handler.exchange_code_for_tokens(
+                    request.code, scopes, valid_state.code_verifier
+                )
             )
             if len(credentials.scopes) == 1 and " " in credentials.scopes[0]:
                 credentials.scopes = credentials.scopes[0].split(" ")
@@ -490,16 +494,16 @@ async def complete_oauth(
                     f"Granted scopes {credentials.scopes} for provider {provider} "
                     f"do not include all requested scopes {scopes}"
                 )
-        except Exception as e:
-            logger.error(
-                f"OAuth2 Code->Token exchange failed for provider {provider}: {e}"
-            )
+        except LiveResourceAccessRevoked:
+            raise
+        except Exception:
+            logger.error(f"OAuth2 Code->Token exchange failed for provider {provider}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
-            )
+                detail="OAuth2 callback failed to exchange code for tokens",
+            ) from None
 
-        await creds_manager.create(auth.user_id, credentials)
+        await lease.run(creds_manager.create(auth.user_id, credentials))
         logger.info(f"Successfully completed external OAuth for provider {provider}")
         return OAuthCompleteResponse(
             credentials_id=credentials.id,

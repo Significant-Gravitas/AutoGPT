@@ -12,6 +12,17 @@ from backend.util.feature_flag import Flag
 from .service import _get_pending_questions, build_home_dashboard
 
 
+@pytest.mark.asyncio
+async def test_selected_workspace_uses_live_briefing(mocker, home_dependencies):
+    _patch_stored_briefing(mocker, _stored_briefing().model_dump(mode="json"))
+
+    dashboard = await build_home_dashboard(
+        user_id="user-1", organization_id="personal-org", team_id="team-1"
+    )
+
+    assert dashboard.briefing.source == "live"
+
+
 def _execution() -> GraphExecutionMeta:
     # `build_home_dashboard` reads the live clock, so anchor the run to now — a
     # fixed timestamp would drop out of the 24h briefing window over time.
@@ -92,6 +103,24 @@ def home_dependencies(mocker: MockerFixture):
     mocker.patch(
         "backend.api.features.home.service.briefing_db.get_briefing_for_date",
         AsyncMock(return_value=None),
+    )
+    # The flag-gated sources must be mocked even though the gates default to
+    # off: several tests patch `service.is_feature_enabled` module-wide to
+    # True, which opens these gates too. Left unmocked, they then run real
+    # Prisma queries on this test's function-scoped event loop — the closed
+    # loop leaves a dead connection in the shared engine pool that panics the
+    # query engine when a later (session-loop) test starts a transaction.
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.chat_db.get_session_titles",
+        AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[]),
     )
 
 
@@ -393,7 +422,7 @@ async def test_team_organization_never_reads_a_personal_stored_briefing(
         user_id="user-1", organization_id="org-1", team_id="team-1"
     )
 
-    owner.assert_awaited_once_with("org-1")
+    owner.assert_not_awaited()
     briefing.assert_not_awaited()
     assert dashboard.briefing.source == "live"
 
@@ -430,6 +459,7 @@ async def test_home_passes_exact_workspace_scope_to_roster_and_library(
         ["graph-1"],
         organization_id="org-1",
         team_id_restriction="team-1",
+        include_deleted=True,
     )
 
 

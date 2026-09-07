@@ -18,9 +18,6 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.api.features.store.store_listing_versions import (
-    installable_store_version_where,
-)
 from backend.data.db import get_database_schema, transaction
 from backend.data.db_accessors import LiveResourceLeaseGuard, live_resource_lease
 from backend.data.execution import get_graph_execution
@@ -119,7 +116,6 @@ def _sanitize_granted_library_agent(
             "next_scheduled_run": None,
             "settings": GraphSettings(),
             "marketplace_listing": None,
-            "store_listing_version_id": None,
         }
     )
 
@@ -170,51 +166,6 @@ async def _fetch_execution_counts(
         ): int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
     }
-
-
-async def _fetch_matching_store_version_ids(
-    agents: list[prisma.models.LibraryAgent],
-) -> dict[tuple[str, int], str]:
-    """Map (graph_id, graph_version) → approved StoreListingVersion id.
-
-    Only approved, non-deleted versions are returned so the ids are always
-    valid install targets. Matching on the exact graph version keeps installs
-    version-stable: the id refers to the snapshot the library agent holds,
-    not the listing's current active version.
-    """
-    pairs = {(a.agentGraphId, a.agentGraphVersion) for a in agents}
-    if not pairs:
-        return {}
-    pair_filters = [
-        {"agentGraphId": graph_id, "agentGraphVersion": graph_version}
-        for graph_id, graph_version in sorted(pairs)
-    ]
-    try:
-        versions = await prisma.models.StoreListingVersion.prisma().find_many(
-            where={
-                "OR": pair_filters,
-                **installable_store_version_where(),
-            },
-            distinct=["agentGraphId", "agentGraphVersion"],
-            order=[
-                {"agentGraphId": "asc"},
-                {"agentGraphVersion": "asc"},
-                {"createdAt": "desc"},
-                {"id": "desc"},
-            ],
-        )
-    except Exception:
-        logger.warning(
-            "Failed to fetch store listing versions for library agents",
-            exc_info=True,
-        )
-        return {}
-    matches: dict[tuple[str, int], str] = {}
-    for version in versions:
-        pair = (version.agentGraphId, version.agentGraphVersion)
-        if pair in pairs and pair not in matches:
-            matches[pair] = version.id
-    return matches
 
 
 async def _fetch_marketplace_details(
@@ -377,10 +328,9 @@ async def list_library_agents(
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, library_agents),
         _fetch_schedule_info(user_id, exact_scope=True),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -394,9 +344,6 @@ async def list_library_agents(
                     _library_agent_scope_key(agent)
                 ),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -474,10 +421,9 @@ async def list_favorite_library_agents(
         f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
     )
 
-    execution_counts, schedule_info, store_version_ids = await asyncio.gather(
+    execution_counts, schedule_info = await asyncio.gather(
         _fetch_execution_counts(user_id, library_agents),
         _fetch_schedule_info(user_id, exact_scope=True),
-        _fetch_matching_store_version_ids(library_agents),
     )
 
     # Only pass valid agents to the response
@@ -491,9 +437,6 @@ async def list_favorite_library_agents(
                     _library_agent_scope_key(agent)
                 ),
                 schedule_info=schedule_info,
-                store_listing_version_id=store_version_ids.get(
-                    (agent.agentGraphId, agent.agentGraphVersion)
-                ),
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -608,14 +551,12 @@ async def _get_library_agent_locked(
     (
         marketplace_details,
         schedule_info,
-        store_version_ids,
         sub_graphs,
     ) = await asyncio.gather(
         _fetch_marketplace_details(library_agent.AgentGraph.id),
         _fetch_schedule_info(
             user_id, graph_id=library_agent.AgentGraph.id, exact_scope=True
         ),
-        _fetch_matching_store_version_ids([library_agent]),
         graph_db.get_sub_graphs(library_agent.AgentGraph),
     )
     store_listing, profile = marketplace_details
@@ -626,9 +567,6 @@ async def _get_library_agent_locked(
         store_listing=store_listing,
         profile=profile,
         schedule_info=schedule_info,
-        store_listing_version_id=store_version_ids.get(
-            (library_agent.agentGraphId, library_agent.agentGraphVersion)
-        ),
     )
 
 
@@ -731,6 +669,8 @@ async def get_library_agent_refs_by_graph_ids(
     organization_id: str | None = None,
     team_id_restriction: str | None = None,
     personal_only: bool = False,
+    *,
+    include_deleted: bool = False,
 ) -> list[library_model.LibraryAgentRef]:
     """Resolve display name + id for the given graphs in one query.
 
@@ -745,8 +685,9 @@ async def get_library_agent_refs_by_graph_ids(
         return []
     where: prisma.types.LibraryAgentWhereInput = {
         "agentGraphId": {"in": graph_ids},
-        "isDeleted": False,
     }
+    if not include_deleted:
+        where["isDeleted"] = False
     if organization_id is None:
         where["userId"] = user_id
         if personal_only:
@@ -764,7 +705,7 @@ async def get_library_agent_refs_by_graph_ids(
         ]
     agents = await prisma.models.LibraryAgent.prisma().find_many(
         where=where,
-        order=[{"agentGraphVersion": "asc"}],
+        order=[{"isDeleted": "desc"}, {"agentGraphVersion": "asc"}],
     )
     newest_by_scope = {
         (agent.agentGraphId, agent.organizationId, agent.teamId): (
@@ -772,6 +713,8 @@ async def get_library_agent_refs_by_graph_ids(
                 id=agent.id,
                 graph_id=agent.agentGraphId,
                 name=agent.name or "",
+                image_url=agent.imageUrl,
+                is_deleted=agent.isDeleted,
                 organization_id=agent.organizationId,
                 team_id=agent.teamId,
             )
@@ -803,6 +746,7 @@ async def get_library_agent_by_graph_id(
             filter["organizationId"] = None
             filter["teamId"] = None
     elif exact_scope:
+        filter["userId"] = user_id
         filter["organizationId"] = organization_id
         filter["teamId"] = team_id_restriction
     else:
@@ -2025,7 +1969,9 @@ async def is_store_listing_version_available_for_install(
           AND slv."submissionStatus" = 'APPROVED'
           AND sl."isDeleted" = false
         {lock_clause}
-        """.format(schema_prefix=schema_prefix, lock_clause=lock_clause),
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
     )
     client = tx if tx is not None else prisma.get_client()
     rows = await client.query_raw(query, store_listing_version_id)
@@ -3737,9 +3683,9 @@ async def fork_library_agent(
 
     async with live_resource_access_barrier(
         user_id,
-        candidate.organizationId,
-        candidate.teamId,
-        "view",
+        organization_id,
+        team_id,
+        "create",
     ) as allowed:
         if not allowed:
             raise NotFoundError(f"Library agent #{library_agent_id} not found")
@@ -3763,7 +3709,7 @@ async def fork_library_agent(
                 current.agentGraphVersion,
                 user_id=user_id,
                 organization_id=current.organizationId,
-                team_id=current.teamId,
+                team_id=team_id,
                 for_export=True,
             )
             if source_graph is None:
@@ -3779,7 +3725,7 @@ async def fork_library_agent(
                     organization_id=organization_id,
                     team_id=team_id,
                     source_organization_id=current.organizationId,
-                    source_team_id=current.teamId,
+                    source_team_id_restriction=team_id,
                 )
             except ValueError as error:
                 if str(error) == (

@@ -77,14 +77,15 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         ):
             if organization_id is None and team_id is None:
                 return legacy
-            adopted = await integrations.adopt_dangling_legacy_webhook(
-                legacy.id,
-                user_id=user_id,
-                organization_id=organization_id,
-                team_id=team_id,
-            )
-            if adopted is not None:
-                return adopted
+            if organization_id is not None:
+                adopted = await integrations.adopt_dangling_legacy_webhook(
+                    legacy.id,
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+                if adopted is not None:
+                    return adopted
 
         return await self._create_webhook(
             user_id=user_id,

@@ -105,24 +105,29 @@ class WorkspaceManager:
     async def _run_scoped(self, action: Awaitable[T]) -> T:
         if self.user_global_config or self.organization_id is None:
             return await action
-        async with live_resource_lease(
-            self.user_id,
-            self.organization_id,
-            self.team_id,
-            self.access,
-        ) as guard:
-            if not guard:
-                if inspect.iscoroutine(action):
-                    action.close()
-                raise LiveResourceAccessRevoked("workspace_access_revoked")
-            if self.session_id is not None:
-                await require_exact_chat_session_scope(
-                    self.session_id,
-                    self.user_id,
-                    self.organization_id,
-                    self.team_id,
-                )
-            return await guard.run(action)
+        try:
+            async with live_resource_lease(
+                self.user_id,
+                self.organization_id,
+                self.team_id,
+                self.access,
+            ) as guard:
+                if not guard:
+                    raise LiveResourceAccessRevoked("workspace_access_revoked")
+                if self.session_id is not None:
+                    await require_exact_chat_session_scope(
+                        self.session_id,
+                        self.user_id,
+                        self.organization_id,
+                        self.team_id,
+                    )
+                return await guard.run(action)
+        finally:
+            if (
+                inspect.iscoroutine(action)
+                and inspect.getcoroutinestate(action) == inspect.CORO_CREATED
+            ):
+                action.close()
 
     def _resolve_path(self, path: str) -> str:
         """

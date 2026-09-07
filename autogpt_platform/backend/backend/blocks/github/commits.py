@@ -1,5 +1,6 @@
 import asyncio
 from enum import StrEnum
+from typing import Optional
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -16,7 +17,7 @@ from backend.data.model import SchemaField
 from backend.util.file import parse_data_uri, resolve_media_content
 from backend.util.type import MediaFileType
 
-from ._api import get_api
+from ._api import get_api, get_paginated
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -38,16 +39,56 @@ class GithubListCommitsBlock(Block):
             description="Branch name to list commits from",
             default="main",
         )
-        per_page: int = SchemaField(
-            description="Number of commits to return (max 100)",
-            default=30,
+        limit: int = SchemaField(
+            description="Maximum number of commits to fetch",
+            default=100,
+            ge=1,
+            le=1000,
+        )
+        per_page: Optional[int] = SchemaField(
+            description="[Legacy] Number of commits to return per page (max 100). "
+            "If set (or `page` is set), `limit` is ignored.",
+            default=None,
             ge=1,
             le=100,
+            advanced=True,
         )
-        page: int = SchemaField(
-            description="Page number for pagination",
-            default=1,
+        page: Optional[int] = SchemaField(
+            description="[Legacy] Page number for pagination. "
+            "If set (or `per_page` is set), `limit` is ignored.",
+            default=None,
             ge=1,
+            advanced=True,
+        )
+        path: str = SchemaField(
+            description="Only include commits that touch this file or directory path",
+            placeholder="src/main.py",
+            default="",
+            advanced=True,
+        )
+        author: str = SchemaField(
+            description="Only include commits authored by this user "
+            "(GitHub username or email address)",
+            default="",
+            advanced=True,
+        )
+        committer: str = SchemaField(
+            description="Only include commits committed by this user "
+            "(GitHub username or email address)",
+            default="",
+            advanced=True,
+        )
+        since: str = SchemaField(
+            description="Only include commits after the given ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
+        )
+        until: str = SchemaField(
+            description="Only include commits before the given ISO 8601 timestamp",
+            placeholder="2026-01-01T00:00:00Z",
+            default="",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -76,8 +117,6 @@ class GithubListCommitsBlock(Block):
             test_input={
                 "repo_url": "https://github.com/owner/repo",
                 "branch": "main",
-                "per_page": 30,
-                "page": 1,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -120,17 +159,32 @@ class GithubListCommitsBlock(Block):
 
     @staticmethod
     async def list_commits(
-        credentials: GithubCredentials,
-        repo_url: str,
-        branch: str,
-        per_page: int,
-        page: int,
+        credentials: GithubCredentials, input_data: Input
     ) -> list[Output.CommitItem]:
         api = get_api(credentials)
+        repo_url = input_data.repo_url
         commits_url = repo_url + "/commits"
-        params = {"sha": branch, "per_page": str(per_page), "page": str(page)}
-        response = await api.get(commits_url, params=params)
-        data = response.json()
+        params = {"sha": input_data.branch}
+        if input_data.path:
+            params["path"] = input_data.path
+        if input_data.author:
+            params["author"] = input_data.author
+        if input_data.committer:
+            params["committer"] = input_data.committer
+        if input_data.since:
+            params["since"] = input_data.since
+        if input_data.until:
+            params["until"] = input_data.until
+
+        # Legacy page-based fetching takes precedence over `limit` if used
+        if input_data.per_page is not None or input_data.page is not None:
+            limit = input_data.per_page or 30
+            start_page = input_data.page or 1
+        else:
+            limit, start_page = input_data.limit, 1
+        data = await get_paginated(
+            api, commits_url, limit=limit, params=params, start_page=start_page
+        )
         repo_path = github_repo_path(repo_url)
         return [
             GithubListCommitsBlock.Output.CommitItem(
@@ -151,13 +205,7 @@ class GithubListCommitsBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            commits = await self.list_commits(
-                credentials,
-                input_data.repo_url,
-                input_data.branch,
-                input_data.per_page,
-                input_data.page,
-            )
+            commits = await self.list_commits(credentials, input_data)
             yield "commits", commits
             for commit in commits:
                 yield "commit", commit

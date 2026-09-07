@@ -230,7 +230,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-4-8",
+        default="anthropic/claude-opus-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -435,6 +435,17 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="Context window the SDK subprocess is held to, in tokens "
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
+        "raise it on a route that really serves 1M — past the provider's real "
+        "window the compaction trigger never fires (at 1M on Moonshot it lands "
+        "at 967K against Kimi's 262,144).",
+    )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
         ge=0,
@@ -504,13 +515,12 @@ class ChatConfig(BaseSettings):
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
     claude_agent_cross_user_prompt_cache: bool = Field(
-        default=True,
-        description="Enable cross-user prompt caching via SystemPromptPreset. "
-        "The Claude Code default prompt becomes a cacheable prefix shared "
-        "across all users, and our custom prompt is appended after it. "
+        default=False,
+        description="Include the Claude Code default prompt as a cacheable prefix "
+        "shared across all users, with our custom prompt appended after it. "
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
-        "from the prefix. Set to False to fall back to passing the system "
-        "prompt as a raw string.",
+        "from the prefix. Set to True to opt in. When False, our system prompt "
+        "is passed as a raw string and replaces the Claude Code default prompt.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",

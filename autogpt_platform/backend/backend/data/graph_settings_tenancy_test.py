@@ -41,8 +41,26 @@ async def test_graph_settings_use_exact_execution_scope(
             "organizationId": organization_id,
             "teamId": team_id,
             "isDeleted": False,
-            "isArchived": False,
         }
     )
     assert settings.human_in_the_loop_safe_mode is False
     assert settings.sensitive_action_safe_mode is True
+
+
+@pytest.mark.parametrize("team_id", [None, "team-a"])
+@pytest.mark.asyncio
+async def test_graph_settings_fallback_keeps_execution_tenant(mocker, team_id) -> None:
+    async def find_first(*, where, order=None):
+        assert where["organizationId"] == "org-1"
+        assert where["teamId"] == team_id
+        if "agentGraphVersion" in where:
+            return None
+        return MagicMock(settings={"sensitive_action_safe_mode": True})
+
+    client = MagicMock(find_first=AsyncMock(side_effect=find_first))
+    mocker.patch.object(graph.LibraryAgent, "prisma", return_value=client)
+
+    settings = await graph.get_graph_settings("user-1", "graph-1", 4, "org-1", team_id)
+
+    assert settings.sensitive_action_safe_mode is True
+    assert client.find_first.await_count == 2

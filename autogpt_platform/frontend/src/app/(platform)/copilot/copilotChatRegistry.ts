@@ -7,12 +7,11 @@ import {
   createCopilotTransport,
   type MutableValue,
 } from "./copilotStreamTransport";
-import type { CopilotLlmModel, CopilotMode } from "./store";
+import type { CopilotLlmModel } from "./store";
 import type { CopilotTenantScope } from "./helpers";
 
 interface CopilotChatRuntime {
   chat: Chat<UIMessage>;
-  copilotModeRef: MutableValue<CopilotMode | undefined>;
   copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
   tenantScopeRef: MutableValue<CopilotTenantScope | undefined>;
   onFinish?: (args: {
@@ -75,9 +74,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   const existing = copilotChatRuntimes.get(sessionId);
   if (existing) return existing;
 
-  const copilotModeRef: MutableValue<CopilotMode | undefined> = {
-    current: undefined,
-  };
   const copilotModelRef: MutableValue<CopilotLlmModel | undefined> = {
     current: undefined,
   };
@@ -90,7 +86,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
     id: sessionId,
     transport: createCopilotTransport({
       sessionId,
-      copilotModeRef,
       copilotModelRef,
       tenantScopeRef,
     }),
@@ -112,7 +107,6 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   });
   const runtime = {
     chat,
-    copilotModeRef,
     copilotModelRef,
     tenantScopeRef,
     get onData() {

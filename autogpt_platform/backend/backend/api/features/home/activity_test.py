@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
+from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserDailyCost, UserExecutionCostSummary
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -8,7 +9,43 @@ from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week
 from .helpers import AgentRef
 
 NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-TRIAGE = {"graph": AgentRef(name="Inbox triage", library_agent_id="library-agent")}
+TRIAGE = {
+    "graph": AgentRef(
+        name="Inbox triage",
+        library_agent_id="library-agent",
+        image_url="https://example.com/triage.png",
+    )
+}
+
+
+def _expert(expert_id: str) -> Expert:
+    return Expert(
+        id=expert_id,
+        name=f"Expert {expert_id}",
+        avatar_url=None,
+        role="Assistant",
+        tagline=None,
+        bio=None,
+        skills=[],
+        identity="",
+        voice_preferences="",
+        boundaries="",
+        protected_soul_rules=[],
+        is_template=False,
+        source_template_id=None,
+        is_archived=False,
+        workflows=[
+            ExpertWorkflowRef(
+                id=f"workflow-{expert_id}",
+                store_listing_version_id=None,
+                library_agent_id=None,
+                graph_id="graph",
+                name="Inbox triage",
+                description=None,
+                schedule_id=None,
+            )
+        ],
+    )
 
 
 def _execution(
@@ -105,8 +142,32 @@ def test_active_tasks_map_status_and_cap_the_list() -> None:
     assert tasks[0].title == "Inbox triage"
     assert tasks[0].expert is None
     assert tasks[0].link == (
-        "/library/agents/library-agent?activeTab=runs&activeItem=running"
+        "/library/agents/library-agent?organizationId=__personal__&teamId=__org_home__&activeTab=runs&activeItem=running"
     )
+
+
+def test_active_task_shows_the_workflow_picture() -> None:
+    tasks = compose_active_tasks(
+        [_execution(exec_id="run", status=ExecutionStatus.RUNNING, ended_at=NOW)],
+        {},
+        TRIAGE,
+    )
+
+    assert tasks[0].image_url == "https://example.com/triage.png"
+
+
+def test_active_task_names_the_expert_that_owns_the_workflow() -> None:
+    expert = _expert("alice")
+
+    tasks = compose_active_tasks(
+        [_execution(exec_id="run", status=ExecutionStatus.RUNNING, ended_at=NOW)],
+        {},
+        TRIAGE,
+        {"graph": expert},
+    )
+
+    assert tasks[0].expert is not None
+    assert tasks[0].expert.id == "alice"
 
 
 def test_active_task_falls_back_when_the_graph_is_unknown() -> None:
@@ -151,11 +212,11 @@ def test_active_tasks_resolve_same_graph_by_exact_tenant() -> None:
     assert [(task.title, task.link) for task in tasks] == [
         (
             "Team A agent",
-            "/library/agents/library-a?activeTab=runs&activeItem=run-a",
+            "/library/agents/library-a?organizationId=org-1&teamId=team-a&activeTab=runs&activeItem=run-a",
         ),
         (
             "Team B agent",
-            "/library/agents/library-b?activeTab=runs&activeItem=run-b",
+            "/library/agents/library-b?organizationId=org-1&teamId=team-b&activeTab=runs&activeItem=run-b",
         ),
     ]
 
@@ -202,6 +263,14 @@ def test_upcoming_tasks_sort_by_next_run_and_cap_the_list() -> None:
     assert [task.kind for task in tasks] == ["agent", "agent", "followup", "agent"]
     assert tasks[0].title == "Inbox triage"
     assert tasks[2].title == "Follow up on the invoice"
+
+
+def test_upcoming_tasks_show_the_workflow_picture() -> None:
+    tasks = compose_upcoming_tasks(
+        [_graph_job("early", "2026-08-10T09:00:00Z")], {}, TRIAGE
+    )
+
+    assert tasks[0].image_url == "https://example.com/triage.png"
 
 
 def test_upcoming_tasks_skip_unparseable_next_run_times() -> None:

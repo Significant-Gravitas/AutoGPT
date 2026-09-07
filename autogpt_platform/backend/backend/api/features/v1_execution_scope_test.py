@@ -116,14 +116,14 @@ async def test_team_schedule_accepts_exact_consumer_authorization(
         v1.experts_db, "resolve_expert_for_graph", AsyncMock(return_value=None)
     )
     exact_lookup = AsyncMock(
-        return_value=MagicMock(id="consumer-install")
-        if authorization == "wrapper"
-        else None
+        return_value=(
+            MagicMock(id="consumer-install") if authorization == "wrapper" else None
+        )
     )
     grant = AsyncMock(
-        return_value=MagicMock(principalId="team-a")
-        if authorization == "grant"
-        else None
+        return_value=(
+            MagicMock(principalId="team-a") if authorization == "grant" else None
+        )
     )
     mocker.patch.object(v1.library_db, "get_library_agent_by_graph_id", exact_lookup)
     mocker.patch.object(v1, "resolve_graph_grant", grant)

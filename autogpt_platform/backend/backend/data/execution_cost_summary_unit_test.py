@@ -5,7 +5,6 @@ import pytest
 
 from backend.data.execution_cost_summary import _fetch_by_agent, _fetch_top_runs
 
-
 PARAMS = (
     "user-1",
     datetime(2026, 8, 1, tzinfo=timezone.utc),

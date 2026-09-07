@@ -1,17 +1,15 @@
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from typing import cast
 
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import HTTPException, Security, status
 from fastapi.params import Depends as DependsParameter
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
-from prisma.enums import APIKeyPermission, APIKeyStatus
-from prisma.models import APIKey as PrismaAPIKey
-from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
-from prisma.models import OAuthApplication as PrismaOAuthApplication
+from prisma.enums import APIKeyPermission
 
+from backend.api.external.authorization_principal import (
+    live_authorization_principal as _live_authorization_principal,
+)
 from backend.api.live_auth import live_dependency
 from backend.data.auth.api_key import APIKeyInfo, validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
@@ -22,98 +20,14 @@ from backend.data.auth.oauth import (
     OAuthApplicationInfo,
     validate_access_token,
 )
-from backend.data.db import prisma
 from backend.data.tenancy import (
     ResourceAccess,
     has_live_resource_access,
     has_live_resource_permission,
-    live_request_transaction,
 )
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
-
-
-def _auth_error(detail: str, status_code: int = status.HTTP_401_UNAUTHORIZED):
-    return HTTPException(status_code=status_code, detail=detail)
-
-
-@asynccontextmanager
-async def _live_authorization_principal(
-    auth: APIAuthorizationInfo,
-    permissions: tuple[APIKeyPermission, ...],
-) -> AsyncIterator[None]:
-    async with live_request_transaction(prisma) as tx:
-        if isinstance(auth, APIKeyInfo):
-            locked = await tx.query_raw(
-                'SELECT "id" FROM "APIKey" WHERE "id" = $1 FOR SHARE',
-                auth.id,
-            )
-            if not locked:
-                raise _auth_error("API key no longer exists")
-            key = await PrismaAPIKey.prisma(tx).find_unique(where={"id": auth.id})
-            if key is None or key.status != APIKeyStatus.ACTIVE:
-                raise _auth_error("API key is no longer active")
-            if key.userId != auth.user_id:
-                raise _auth_error("API key owner changed")
-            live_permissions = {APIKeyPermission(value) for value in key.permissions}
-            missing = [
-                permission
-                for permission in permissions
-                if permission not in live_permissions
-            ]
-            if missing:
-                raise _auth_error(
-                    "API key permissions changed",
-                    status.HTTP_403_FORBIDDEN,
-                )
-        elif isinstance(auth, OAuthAccessTokenInfo):
-            app_locked = await tx.query_raw(
-                'SELECT "id" FROM "OAuthApplication" WHERE "id" = $1 FOR SHARE',
-                auth.application_id,
-            )
-            if not app_locked:
-                raise _auth_error("OAuth application no longer exists")
-            token_locked = await tx.query_raw(
-                'SELECT "id" FROM "OAuthAccessToken" WHERE "id" = $1 FOR SHARE',
-                auth.id,
-            )
-            if not token_locked:
-                raise _auth_error("OAuth access token no longer exists")
-            application = await PrismaOAuthApplication.prisma(tx).find_unique(
-                where={"id": auth.application_id}
-            )
-            token = await PrismaOAuthAccessToken.prisma(tx).find_unique(
-                where={"id": auth.id}
-            )
-            if application is None or not application.isActive:
-                raise _auth_error("OAuth application is no longer active")
-            if (
-                token is None
-                or token.applicationId != auth.application_id
-                or token.userId != auth.user_id
-                or token.revokedAt is not None
-                or token.expiresAt <= datetime.now(timezone.utc)
-            ):
-                raise _auth_error("OAuth access token is no longer active")
-            live_token_permissions = {APIKeyPermission(value) for value in token.scopes}
-            live_app_permissions = {
-                APIKeyPermission(value) for value in application.scopes
-            }
-            missing = [
-                permission
-                for permission in permissions
-                if permission not in live_token_permissions
-                or permission not in live_app_permissions
-            ]
-            if missing:
-                raise _auth_error(
-                    "OAuth permissions changed",
-                    status.HTTP_403_FORBIDDEN,
-                )
-        else:
-            raise _auth_error("Unsupported authorization principal")
-        yield
 
 
 async def _scope_api_key(api_key: APIKeyInfo) -> APIKeyInfo:

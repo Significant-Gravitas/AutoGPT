@@ -1,4 +1,9 @@
 import {
+  getTeamScopedQueryKey,
+  getTenantRequestInit,
+} from "@/components/contextual/TeamPicker/helpers";
+import { useOrgTeamStore } from "@/services/org-team/store";
+import {
   getListExpertPodsQueryKey,
   getListExpertsQueryKey,
   listExperts,
@@ -7,7 +12,10 @@ import {
   useListExpertPods,
   useListExperts,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import {
+  getGetV1ListExecutionSchedulesForAUserQueryKey,
+  useGetV1ListExecutionSchedulesForAUser,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { okData } from "@/app/api/helpers";
@@ -15,8 +23,14 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  AUTOPILOT_CHAT_TARGET,
+  ChatTarget,
+  expertToChatTarget,
+} from "./components/ExpertChatDrawer/helpers";
+import {
   getAssignToastTitle,
   getExpertSchedules,
+  getHiredExperts,
   groupExpertsByPods,
 } from "./helpers";
 
@@ -25,23 +39,53 @@ interface Args {
 }
 
 export function useTeamPage({ enabled }: Args) {
+  const organizationId = useOrgTeamStore((state) => state.activeOrgID);
+  const teamId = useOrgTeamStore((state) => state.activeTeamID);
+  const isLoaded = useOrgTeamStore((state) => state.isLoaded);
+  const request = getTenantRequestInit(organizationId, teamId, isLoaded);
   const queryClient = useQueryClient();
   const [pickerExpertId, setPickerExpertId] = useState<string | null>(null);
   const [soulExpertId, setSoulExpertId] = useState<string | null>(null);
   const [soulDrawerKey, setSoulDrawerKey] = useState(0);
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
+  const [chatDrawerKey, setChatDrawerKey] = useState(0);
   const [isNewPodOpen, setIsNewPodOpen] = useState(false);
 
   const expertsQuery = useListExperts({
-    query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
+    query: {
+      select: (res) => (okData(res) ?? []) as Expert[],
+      enabled: enabled && isLoaded,
+      queryKey: getTeamScopedQueryKey(
+        getListExpertsQueryKey(),
+        organizationId,
+        teamId,
+      ),
+    },
+    request,
   });
   const podsQuery = useListExpertPods({
     query: {
       select: (res) => (okData(res) ?? []) as ExpertPod[],
-      enabled,
+      enabled: enabled && isLoaded,
+      queryKey: getTeamScopedQueryKey(
+        getListExpertPodsQueryKey(),
+        organizationId,
+        teamId,
+      ),
     },
+    request,
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [], enabled },
+    query: {
+      select: (res) => okData(res) ?? [],
+      enabled: enabled && isLoaded,
+      queryKey: getTeamScopedQueryKey(
+        getGetV1ListExecutionSchedulesForAUserQueryKey(),
+        organizationId,
+        teamId,
+      ),
+    },
+    request,
   });
   const pods = podsQuery.data ?? [];
   // Built once per render so each card resolves its pod in O(1) instead of
@@ -65,7 +109,11 @@ export function useTeamPage({ enabled }: Args) {
   }
 
   function writeExpertToCache(updated: Expert) {
-    const key = getListExpertsQueryKey();
+    const key = getTeamScopedQueryKey(
+      getListExpertsQueryKey(),
+      updated.organization_id ?? null,
+      updated.team_id ?? null,
+    );
     const cached =
       queryClient.getQueryData<Awaited<ReturnType<typeof listExperts>>>(key);
     if (cached?.status !== 200) return invalidateExperts();
@@ -79,6 +127,7 @@ export function useTeamPage({ enabled }: Args) {
 
   const { mutate: createPodMutate, isPending: isCreatingPod } =
     useCreateExpertPod({
+      request,
       mutation: {
         onSuccess: () => {
           void invalidatePods();
@@ -127,11 +176,9 @@ export function useTeamPage({ enabled }: Args) {
     },
   });
 
-  const hiredExperts = (expertsQuery.data ?? []).filter(
-    (expert) => !expert.is_template && !expert.is_archived,
-  );
+  const hiredExperts = getHiredExperts(expertsQuery.data ?? []);
   const schedules = schedulesQuery.data ?? [];
-  const { groups, ungrouped } = groupExpertsByPods(hiredExperts, pods);
+  const { groups } = groupExpertsByPods(hiredExperts, pods);
 
   function schedulesForExpert(expert: Expert) {
     return getExpertSchedules(expert, schedules);
@@ -158,8 +205,24 @@ export function useTeamPage({ enabled }: Args) {
   }
 
   function openSoul(expertId: string) {
+    setChatTarget(null);
     setSoulExpertId(expertId);
     setSoulDrawerKey((current) => current + 1);
+  }
+
+  function openChat(expertId: string | null) {
+    const expert = hiredExperts.find((candidate) => candidate.id === expertId);
+    setSoulExpertId(null);
+    setChatTarget(
+      expert
+        ? expertToChatTarget(expert)
+        : { ...AUTOPILOT_CHAT_TARGET, organizationId, teamId },
+    );
+    setChatDrawerKey((current) => current + 1);
+  }
+
+  function closeChat() {
+    setChatTarget(null);
   }
 
   function createPod(name: string) {
@@ -183,7 +246,6 @@ export function useTeamPage({ enabled }: Args) {
     pods,
     podForExpert,
     podGroups: groups,
-    ungroupedExperts: ungrouped,
     schedules,
     schedulesForExpert,
     isLoading:
@@ -202,6 +264,10 @@ export function useTeamPage({ enabled }: Args) {
     soulDrawerKey,
     openSoul,
     closeSoul,
+    chatTarget,
+    chatDrawerKey,
+    openChat,
+    closeChat,
     isNewPodOpen,
     openNewPod,
     closeNewPod,

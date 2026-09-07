@@ -11,6 +11,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
@@ -37,6 +38,7 @@ from .model import (
     cache_chat_session,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +511,40 @@ async def update_chat_session_pinned(
     return result > 0
 
 
+async def update_chat_session_llm_route(
+    session_id: str,
+    user_id: str,
+    llm_auth_provider: str,
+    llm_credential_id: str | None,
+) -> bool:
+    """Point an existing session at a different connection, from now on.
+
+    Atomically merges only the two route keys into stored metadata: everything
+    else in there -- including a pending question written concurrently --
+    belongs to other features and must survive a connection change.
+
+    Always filters by (session_id, user_id) so callers cannot re-route another
+    user's chat even knowing the id. Past turns keep the stamps they were
+    written with; this only decides where the next one runs.
+
+    Returns True if a row was updated, False otherwise (not found, wrong user).
+    """
+    result = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
+        "COALESCE(\"metadata\", '{{}}'::jsonb) || "
+        "jsonb_build_object("
+        "'llm_auth_provider', $3::text, "
+        "'llm_credential_id', $4::text"
+        '), "updatedAt" = NOW() '
+        'WHERE "id" = $1 AND "userId" = $2',
+        session_id,
+        user_id,
+        llm_auth_provider,
+        llm_credential_id,
+    )
+    return result > 0
+
+
 async def add_chat_message(
     session_id: str,
     role: str,
@@ -662,6 +698,17 @@ async def add_chat_messages_batch(
                         data["model"] = msg["model"]
                     if msg.get("routing_source") is not None:
                         data["routingSource"] = msg["routing_source"]
+
+                    if msg.get("llm_auth_provider") is not None:
+                        data["llmAuthProvider"] = msg["llm_auth_provider"]
+                    if msg.get("llm_credential_id") is not None:
+                        data["llmCredentialId"] = msg["llm_credential_id"]
+
+                    # Per-row bag. The single-message path already persisted
+                    # this; the batch path silently dropped it, so anything
+                    # written here by a turn never survived the insert.
+                    if msg.get("metadata") is not None:
+                        data["metadata"] = SafeJson(msg["metadata"])
 
                     messages_data.append(data)
 
@@ -1001,8 +1048,7 @@ async def get_sessions_with_pending_question(
     params.append(limit)
     sessions = await db.query_raw_with_schema(
         f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
-        'FROM {schema_prefix}"ChatSession" WHERE '
-        + " AND ".join(conditions)
+        'FROM {schema_prefix}"ChatSession" WHERE ' + " AND ".join(conditions)
         # Lexicographic text sort — only correct because every writer emits
         # a UTC ``datetime.isoformat()`` timestamp (fixed-width, zero-padded
         # fields, so ISO-8601 string order matches chronological order).
@@ -1012,6 +1058,34 @@ async def get_sessions_with_pending_question(
         model=PrismaChatSession,
     )
     return [ChatSessionInfo.from_db(s) for s in sessions]
+
+
+async def get_session_titles(
+    user_id: str,
+    session_ids: list[str],
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    team_ids: list[str] | None = None,
+) -> dict[str, str | None]:
+    """Titles for the given sessions of *user_id*, keyed by session id.
+
+    Sessions that no longer exist (or belong to someone else) are simply
+    absent — callers render a fallback label instead.
+    """
+    if not session_ids:
+        return {}
+    where: dict[str, Any] = {"id": {"in": session_ids}, "userId": user_id}
+    if organization_id is not None:
+        where["organizationId"] = organization_id
+        if team_id is not None:
+            where["teamId"] = team_id
+        elif team_ids:
+            where["OR"] = [{"teamId": None}, {"teamId": {"in": team_ids}}]
+        else:
+            where["teamId"] = None
+    rows = await PrismaChatSession.prisma().find_many(where=where)
+    return {row.id: row.title for row in rows}
 
 
 def _escape_like(value: str) -> str:
@@ -1198,17 +1272,31 @@ async def update_chat_message_stamps(
     sequence: int,
     model: str | None,
     routing_source: str | None,
+    llm_auth_provider: str | None = None,
+    llm_credential_id: str | None = None,
 ) -> bool:
-    """Back-fill model/routingSource on an already-persisted message row.
+    """Back-fill the execution stamps on an already-persisted message row.
 
     Mid-turn flushes persist assistant rows (assigning sequences) BEFORE
     the end-of-turn stamping runs; this repairs those rows so the
     analytics columns survive in the DB. Same mechanism and authorization
     reasoning as ``update_chat_message_tool_calls``.
+
+    The route is written only when known. Passing None for it would blank a
+    row that a previous stamp already got right, which is precisely the
+    rewriting of history per-turn segments exist to prevent.
     """
+    data: ChatMessageUpdateInput = {
+        "model": model,
+        "routingSource": routing_source,
+    }
+    if llm_auth_provider is not None:
+        data["llmAuthProvider"] = llm_auth_provider
+    if llm_credential_id is not None:
+        data["llmCredentialId"] = llm_credential_id
     result = await PrismaChatMessage.prisma().update(
         where={"sessionId_sequence": {"sessionId": session_id, "sequence": sequence}},
-        data={"model": model, "routingSource": routing_source},
+        data=data,
     )
     if not result:
         logger.warning(
@@ -1374,6 +1462,28 @@ async def update_chat_session_status(
     return updated > 0
 
 
+async def _default_route_metadata(
+    user_id: str, *, origin: str | None = None
+) -> ChatSessionMetadata:
+    """Session metadata carrying the user's default connection.
+
+    These sessions exist to hold an outbound message, but the user replies in
+    them — so they start on the same connection a chat the user opened
+    themselves would, instead of silently falling back to the platform route.
+
+    ``origin`` is passed through for the sessions a user is meant to type into,
+    which have to declare themselves interactive.
+    """
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    fields: dict[str, object] = {
+        "llm_auth_provider": llm_auth_provider,
+        "llm_credential_id": llm_credential_id,
+    }
+    if origin is not None:
+        fields["origin"] = origin
+    return ChatSessionMetadata(**fields)
+
+
 async def append_expert_run_message(
     user_id: str,
     expert_id: str,
@@ -1417,6 +1527,7 @@ async def append_expert_run_message(
             expert_id=expert_id,
             organization_id=organization_id,
             team_id=team_id,
+            metadata=await _default_route_metadata(user_id),
         )
         session_id = created.session_id
 
@@ -1493,7 +1604,7 @@ async def append_plain_session_message(
         created = await create_chat_session(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
-            metadata=ChatSessionMetadata(origin="interactive"),
+            metadata=await _default_route_metadata(user_id, origin="interactive"),
         )
         session_id = created.session_id
 

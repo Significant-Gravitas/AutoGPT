@@ -11,21 +11,31 @@ interface PreviewProps {
   onError: () => void;
 }
 
+interface Props extends PreviewProps {
+  width?: number;
+}
+
+export const DEFAULT_PREVIEW_WIDTH = 400;
+
 // Shared by image / pdf / office kinds — the backend returns a small WebP
 // thumbnail for all three, so the client just paints an <img>.
-export function ImagePreview({ file, onError }: PreviewProps) {
+export function ImagePreview({
+  file,
+  onError,
+  width = DEFAULT_PREVIEW_WIDTH,
+}: Props) {
   const [isLoaded, setIsLoaded] = useState(false);
   const previewUrl = useFileBlobUrl(
     file,
-    getFilePreviewUrl(file.id, { width: 400 }),
+    getFilePreviewUrl(file.id, { width }),
     onError,
   );
 
   return (
     <>
       {!isLoaded ? <LoadingPlaceholder file={file} /> : null}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       {previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={previewUrl}
           alt={file.name}

@@ -25,6 +25,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     is_user_paywalled,
 )
+from backend.copilot.transports import resolve_default_chat_route
 from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
 from backend.data.tenancy import has_live_resource_access, live_resource_access_barrier
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
@@ -376,12 +377,17 @@ async def _resolve_or_create_session(
         ) as allowed:
             if not allowed:
                 raise NotFoundError("The selected workspace is no longer available.")
+            llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
+                owner_user_id
+            )
             session = await create_chat_session(
                 owner_user_id,
                 dry_run=False,
                 organization_id=org_id,
                 team_id=team_id,
                 source_platform=source_platform,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
             )
             if not _session_matches_scope(session, org_id, team_id):
                 raise NotFoundError("The selected workspace is no longer available.")

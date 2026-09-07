@@ -1,3 +1,5 @@
+import { getTenantRequestInit } from "@/components/contextual/TeamPicker/helpers";
+import type { CopilotTenantScope } from "./helpers";
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +22,7 @@ type QueueUpdater = (prev: QueuedMessage[]) => QueuedMessage[];
 
 interface Args {
   sessionId: string | null;
+  scope?: CopilotTenantScope;
   status: ChatStatus;
   messages: UIMessage[];
   setMessages: (
@@ -53,6 +56,7 @@ interface Args {
  */
 export function useCopilotPendingChips({
   sessionId,
+  scope,
   status,
   messages,
   setMessages,
@@ -65,7 +69,7 @@ export function useCopilotPendingChips({
     [queue],
   );
 
-  usePeekOnBoundary({ sessionId, status, setMessages, setQueue });
+  usePeekOnBoundary({ sessionId, scope, status, setMessages, setQueue });
 
   useAutoContinuePromotion({
     sessionId,
@@ -78,6 +82,7 @@ export function useCopilotPendingChips({
 
   useMidTurnDrainPromotion({
     sessionId,
+    scope,
     status,
     messages,
     queue,
@@ -100,15 +105,20 @@ export function useCopilotPendingChips({
 
 function usePeekOnBoundary({
   sessionId,
+  scope,
   status,
   setMessages,
   setQueue,
 }: {
   sessionId: string | null;
+  scope?: CopilotTenantScope;
   status: ChatStatus;
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
 }) {
+  const hasScope = scope !== undefined;
+  const organizationId = scope?.organizationId;
+  const teamId = scope?.teamId;
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
   // Snapshot of chip ids known to be in-flight to the server at the
@@ -158,7 +168,10 @@ function usePeekOnBoundary({
       );
       return current;
     });
-    void getV2GetPendingMessages(sessionId).then((res) => {
+    void getV2GetPendingMessages(
+      sessionId,
+      hasScope ? getTenantRequestInit(organizationId, teamId) : undefined,
+    ).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (res.status !== 200) return;
       const inFlightIds = inFlightSnapshotIdsRef.current;
@@ -203,7 +216,7 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
-  }, [sessionId, status, setQueue]);
+  }, [sessionId, status, setQueue, hasScope, organizationId, teamId]);
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
@@ -225,6 +238,7 @@ function useAutoContinuePromotion({
   setQueue,
 }: {
   sessionId: string | null;
+  scope?: CopilotTenantScope;
   status: ChatStatus;
   messages: UIMessage[];
   queue: QueuedMessage[];
@@ -352,6 +366,7 @@ function promoteBeforeAssistant(
 
 function useMidTurnDrainPromotion({
   sessionId,
+  scope,
   status,
   messages,
   queue,
@@ -359,12 +374,16 @@ function useMidTurnDrainPromotion({
   setQueue,
 }: {
   sessionId: string | null;
+  scope?: CopilotTenantScope;
   status: ChatStatus;
   messages: UIMessage[];
   queue: QueuedMessage[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
 }) {
+  const hasScope = scope !== undefined;
+  const organizationId = scope?.organizationId;
+  const teamId = scope?.teamId;
   // Live ref tracks the latest sessionId so a poll captured at request
   // time can detect a session switch on resolve.  A cancellation flag
   // would also fire on enqueue (this effect re-runs on every queue
@@ -409,8 +428,21 @@ function useMidTurnDrainPromotion({
       setMessages,
       setQueue,
       isCurrentSession,
+      hasScope
+        ? { organizationId: organizationId ?? null, teamId: teamId ?? null }
+        : undefined,
     );
-  }, [drainHintCount, sessionId, status, queue, setMessages, setQueue]);
+  }, [
+    drainHintCount,
+    sessionId,
+    status,
+    queue,
+    setMessages,
+    setQueue,
+    hasScope,
+    organizationId,
+    teamId,
+  ]);
 
   // Backstop: a slow poll that catches a dropped hint.
   useEffect(() => {
@@ -428,10 +460,22 @@ function useMidTurnDrainPromotion({
         setMessages,
         setQueue,
         isCurrentSession,
+        hasScope
+          ? { organizationId: organizationId ?? null, teamId: teamId ?? null }
+          : undefined,
       );
     }, MID_TURN_BACKSTOP_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queue, setMessages, setQueue]);
+  }, [
+    sessionId,
+    status,
+    queue,
+    setMessages,
+    setQueue,
+    hasScope,
+    organizationId,
+    teamId,
+  ]);
 }
 
 // Count ``data-pending-drained`` hint parts the backend emits at each
@@ -453,10 +497,16 @@ async function pollBackendAndPromote(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setQueue: (updater: QueueUpdater) => void,
   isCurrentSession: () => boolean,
+  scope?: CopilotTenantScope,
 ): Promise<void> {
   let backendCount: number;
   try {
-    const res = await getV2GetPendingMessages(sessionId);
+    const res = await getV2GetPendingMessages(
+      sessionId,
+      scope
+        ? getTenantRequestInit(scope.organizationId, scope.teamId)
+        : undefined,
+    );
     if (res.status !== 200) return;
     backendCount = res.data.count;
   } catch {

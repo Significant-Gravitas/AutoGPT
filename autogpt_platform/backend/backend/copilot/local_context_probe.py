@@ -41,9 +41,9 @@ logger = logging.getLogger(__name__)
 _FLOOR_RESERVE = 24_000
 _TARGET_FLOOR = 4_096
 
-# Used when no backend reports a window. Matches the installer's default
-# ``OLLAMA_CONTEXT_LENGTH`` so the common Ollama path is correct even when the
-# model is briefly unloaded and ``/api/ps`` is empty.
+# Used when no backend reports a window. Deliberately remains 32k even though
+# the default Ornith installer uses 262k: assuming a huge window for a backend
+# that cannot report one risks overflowing its actual context limit.
 LOCAL_CONTEXT_FALLBACK = 32_768
 
 # Below this, the ~19k floor leaves almost no room for conversation — the

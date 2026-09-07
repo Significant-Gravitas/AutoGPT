@@ -11,6 +11,11 @@ import pytest
 from autogpt_libs.auth.models import RequestContext
 
 
+@pytest.fixture(autouse=True)
+def enable_org_rollout(monkeypatch):
+    monkeypatch.setenv("FORCE_FLAG_SHOW_ORG_SETTINGS", "true")
+
+
 @pytest.fixture(scope="session")
 def server():
     """No-op — org tests don't need the full backend server."""
