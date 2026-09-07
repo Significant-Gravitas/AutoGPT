@@ -29,13 +29,28 @@ export function RecentWork({ dashboard, className }: Props) {
       title="Recent work"
       meta={
         <>
-          <span className="hidden sm:inline">This week</span>
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="hidden sm:inline"
+          >
+            This week
+          </Text>
           <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
             ·
           </span>
-          <span className="tabular-nums">{completed} completed</span>
+          <Text variant="small" as="span" tone="muted" className="tabular-nums">
+            {completed} completed
+          </Text>
           {failed > 0 ? (
-            <span className="tabular-nums text-rose-600">{failed} failed</span>
+            <Text
+              variant="small"
+              as="span"
+              className="tabular-nums text-rose-600"
+            >
+              {failed} failed
+            </Text>
           ) : null}
         </>
       }
@@ -50,7 +65,8 @@ export function RecentWork({ dashboard, className }: Props) {
           {briefing.narrative ? (
             <Text
               variant="body"
-              className="text-pretty px-4 py-3 text-[13px] leading-5 text-zinc-600"
+              tone="secondary"
+              className="text-pretty px-4 py-3 leading-5"
             >
               {briefing.narrative}
             </Text>
