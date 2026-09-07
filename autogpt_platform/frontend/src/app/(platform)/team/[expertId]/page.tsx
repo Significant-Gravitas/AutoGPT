@@ -18,6 +18,7 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
   Briefcase01Icon,
   Calendar03Icon,
+  ComputerIcon,
   PlugSocketIcon,
   Settings01Icon,
   SparklesIcon,
@@ -31,6 +32,7 @@ import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import { getLastRunLabel } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
+import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
@@ -50,6 +52,7 @@ const TABS = [
   { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
+  { value: "computer", label: "Computer", icon: ComputerIcon },
   { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
   { value: "settings", label: "Settings", icon: Settings01Icon },
@@ -199,6 +202,14 @@ export default function ExpertDetailPage() {
             <ExpertWorkflowsSection
               expert={expert}
               onInstallWorkflow={openPicker}
+            />
+          </TabsLineContent>
+
+          <TabsLineContent value="computer">
+            <ExpertComputerSection
+              expertId={expert.id}
+              expertName={expert.name}
+              enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
 

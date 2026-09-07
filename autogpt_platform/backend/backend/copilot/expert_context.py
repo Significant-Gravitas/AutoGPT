@@ -25,6 +25,8 @@ import asyncio
 import logging
 
 from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
+from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
+from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import experts_db
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -229,7 +231,33 @@ async def _expert_session_context(
         f"{workflow_lines}\n"
         f"</expert_workflows>\n\n"
     )
-    return workflows_block + teammates
+    return workflows_block + _expert_computer_block() + teammates
+
+
+def _expert_computer_block() -> str:
+    """Tell an expert about its own machine — only when E2B actually backs it.
+
+    Lives in the first user message with the other expert blocks so the
+    cacheable system-prompt prefix stays byte-identical.
+    """
+    try:
+        if not ChatConfig().e2b_active:
+            return ""
+    except Exception as e:
+        logger.warning(f"Failed to resolve E2B config for expert context: {e}")
+        return ""
+    return (
+        "<expert_computer>\n"
+        "You have your own persistent cloud computer. It is suspended, not "
+        "destroyed, when idle, so what you install and sign into stays.\n"
+        f"- {WORKSPACE_PATH}: your durable home. Keep your notes, configs, "
+        "scripts and tools here and customise it freely.\n"
+        f"- {SHARED_PATH}: the user's shared workspace. Put deliverables here "
+        "so they show up on the user's desktop and in their other sessions.\n"
+        "- Use start_desktop when a task needs a browser or GUI app; your "
+        "browser profile and logins persist between sessions.\n"
+        "</expert_computer>\n\n"
+    )
 
 
 async def _team_context(

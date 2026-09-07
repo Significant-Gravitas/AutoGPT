@@ -4039,3 +4039,109 @@ def test_standard_tier_is_not_gated(
     # Balanced. The request goes on to fail for unrelated reasons in this
     # harness; what matters is that it was not refused for entitlement.
     allowed.assert_not_called()
+
+
+# --- Computer -----------------------------------------------------------------
+
+
+def _session_like(expert_id: str | None):
+    return MagicMock(session_id="sess-1", user_id="u1", expert_id=expert_id)
+
+
+def test_get_session_computer_uses_the_expert_owner_for_expert_chats(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.copilot.computer import ComputerInfo
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_session_like("exp-9"),
+    )
+    describe = mocker.patch(
+        "backend.api.features.chat.routes.describe_computer",
+        new_callable=AsyncMock,
+        return_value=ComputerInfo(
+            owner_kind="expert", owner_id="exp-9", e2b_active=True
+        ),
+    )
+
+    response = client.get("/sessions/sess-1/computer")
+
+    assert response.status_code == 200
+    assert response.json()["owner_kind"] == "expert"
+    owner, mounts = describe.await_args.args
+    assert owner.kind == "expert" and owner.id == "exp-9"
+    assert "/home/user/shared" in mounts
+
+
+def test_get_session_computer_plain_chat_is_session_owned(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.copilot.computer import ComputerInfo
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    describe = mocker.patch(
+        "backend.api.features.chat.routes.describe_computer",
+        new_callable=AsyncMock,
+        return_value=ComputerInfo(
+            owner_kind="session", owner_id="sess-1", e2b_active=True
+        ),
+    )
+    assert client.get("/sessions/sess-1/computer").status_code == 200
+    owner, _mounts = describe.await_args.args
+    assert owner.kind == "session" and owner.id == "sess-1"
+
+
+def test_get_session_computer_unknown_session_is_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    assert client.get("/sessions/nope/computer").status_code == 404
+
+
+def test_start_session_desktop_returns_the_stream(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    from backend.blocks.desktop._api import DesktopStream
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.chat.routes.open_desktop",
+        new_callable=AsyncMock,
+        return_value=(
+            DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
+            False,
+            True,
+        ),
+    )
+    response = client.post("/sessions/sess-1/desktop")
+    assert response.status_code == 200
+    assert response.json()["sandbox_id"] == "sbx"
+
+
+def test_start_session_desktop_without_e2b_is_503(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = None
+    assert client.post("/sessions/sess-1/desktop").status_code == 503
