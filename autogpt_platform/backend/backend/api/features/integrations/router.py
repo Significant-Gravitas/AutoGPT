@@ -1218,6 +1218,7 @@ async def _execute_webhook_node_trigger(
             nodes_input_masks={node.id: {"payload": payload}},
             organization_id=org_id,
             team_id=ws_id,
+            webhook_id=webhook_id,
         )
     except GraphNotInLibraryError as e:
         logger.warning(
@@ -1326,6 +1327,7 @@ async def _execute_webhook_preset_trigger(
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
+            webhook_id=webhook.id,
         )
     except ExpertRunPausedError as e:
         # Expected steady-state while the expert is paused/over budget —

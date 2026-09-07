@@ -7,6 +7,7 @@ import {
   SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import type { HomeRecentWorkItemCategory } from "@/app/api/__generated__/models/homeRecentWorkItemCategory";
 import type { HomeWorkActorKind } from "@/app/api/__generated__/models/homeWorkActorKind";
@@ -23,6 +24,22 @@ export function getActorIcon(kind: HomeWorkActorKind): IconSvgElement {
   if (kind === "workflow") return FlowIcon;
   if (kind === "autopilot") return SparklesIcon;
   return Robot01Icon;
+}
+
+// The team did the work on someone's behalf; a workflow ran on its own.
+export function splitGroupsBySection(groups: HomeRecentWorkGroup[]) {
+  return {
+    team: groups.filter((group) => group.actor.kind !== "workflow"),
+    workflows: groups.filter((group) => group.actor.kind === "workflow"),
+  };
+}
+
+export function getRunTriggerLabel(
+  trigger: HomeBriefingOutcome["trigger"],
+): string {
+  if (trigger === "schedule") return "Scheduled run";
+  if (trigger === "webhook") return "Triggered run";
+  return "Manual run";
 }
 
 export function getActorKindLabel(kind: HomeWorkActorKind): string {
