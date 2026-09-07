@@ -110,12 +110,9 @@ final class NativeAuthentication: NSObject, ASWebAuthenticationPresentationConte
       guard let name = item.key as? String, let value = item.value as? String else { return }
       output[name] = value
     }
-    let cookies = HTTPCookie.cookies(withResponseHeaderFields: fields, for: origin.url)
-      .filter { origin.acceptsSessionCookie($0) }
     guard
-      cookies.contains(where: {
-        $0.name == "better-auth.session_token" || $0.name == "__Secure-better-auth.session_token"
-      })
+      let cookies = origin.validatedSessionCookies(
+        HTTPCookie.cookies(withResponseHeaderFields: fields, for: origin.url))
     else { throw MobileError.authenticationFailed }
     return cookies
   }

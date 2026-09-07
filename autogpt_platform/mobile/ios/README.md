@@ -33,7 +33,7 @@ xcrun simctl install booted /private/tmp/autogpt-mobile-compile/Debug-iphonesimu
 xcrun simctl launch booted com.agpt.mobile
 ```
 
-Install the matching Xcode platform support before running the included XCUITest target normally. Use a specific simulator UDID instead of `booted` when more than one device is running.
+Install the matching Xcode platform support before running the included XCUITest target normally. Use a specific simulator UDID instead of `booted` when more than one device is running. The UI suite includes a deterministic native status check at accessibility XXXL in landscape, using a DEBUG-only launch flag and public UIKit traits; it checks both actions can be reached by scrolling.
 
 ## Connection and authentication
 
@@ -44,6 +44,8 @@ The same deployment must include this PR's `/api/auth/mobile/start`, `/api/auth/
 Sign-in uses `ASWebAuthenticationSession` and an S256 proof bound to a random pending state. The browser callback contains only a short-lived one-use code. The app exchanges the code with redirects disabled, clears previous website identity/cache data, and installs the returned HttpOnly cookies into WKWebView. It neither stores provider credentials nor moves cookies through a callback URL. Canceling the browser returns to the sign-in screen.
 
 External user links open in the system browser. Programmatic external navigation asks before opening. Unsupported schemes are blocked. Same-origin web navigation stays in the app. App and system browser sessions remain independent.
+
+WebKit handles the keyboard viewport. Rotating or resizing the app dismisses the keyboard to avoid stale focus scrolling; the page remains loaded, and tapping the input resumes editing. Native sign-in and recovery screens scroll when landscape or larger text leaves less room.
 
 ## Local checks
 
@@ -74,6 +76,8 @@ swift-format lint --strict --recursive \
 - Swift origin and PKCE contract tests pass on the host.
 - Simulator Debug and unsigned iPhone Release builds pass with the iOS 26.5 SDK.
 - It launches on the installed iPhone 16 Pro / iOS 18.3 simulator and intercepts the real hosted site's login redirect.
-- The local fixture's system-browser sign-in returns to the app with both token and cache cookies installed.
+- The local fixture's system-browser sign-in returns to the app with both token and cache cookies installed. Switching servers and returning to the fixture clears that prior session.
 - A generated Markdown file exports through the native share sheet into Files and can be selected again as an attachment; external navigation and HTTP-error recovery were also checked in the simulator.
+- Rotation dismisses the software keyboard, preserves the typed fixture draft, and allows visible landscape refocus on iOS 18.3.
+- Large-text status layout has a scrollable content range, but manual scrolling remains unverified: simulator automation produced no observed pan events. The new XCUITest is not runtime-verified on this host because the installed runtime is not eligible for the current Xcode test destination.
 - Exact iPhone 17 Pro / iOS 26 runtime testing, real-provider sign-in, and release signing remain separate checks.

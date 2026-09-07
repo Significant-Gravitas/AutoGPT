@@ -9,4 +9,6 @@ Further fixture checks on the same simulator:
 
 - `ios-fixture-streaming.png`: five server-sent chunks reached the native WebView incrementally, about 600 ms apart. This is transport test text; no model response is involved.
 - `ios-fixture-stream-interrupted.png`: a deliberate disconnect after two chunks retains partial text and offers retry.
-- `ios-fixture-keyboard.png`: text entered using the simulator's onscreen keyboard stays visible in portrait. Landscape rotation is being checked separately.
+- `ios-fixture-keyboard.png`: text entered using the simulator's onscreen keyboard stays visible in portrait. The subsequent native fix dismisses the keyboard on rotation while preserving the draft; tapping the field again in landscape was verified to reveal it above the keyboard.
+
+- `ios-fixture-file-roundtrip.png`: a generated Markdown file saved through the native share sheet into Files is selected again through the web attachment picker, retaining its filename and 69-byte size.

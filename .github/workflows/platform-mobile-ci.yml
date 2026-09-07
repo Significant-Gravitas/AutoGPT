@@ -43,6 +43,11 @@ jobs:
           xcodebuild -project AutoGPT.xcodeproj -target AutoGPT
           -sdk iphonesimulator -arch arm64 -configuration Debug
           SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: Compile native UI regression tests
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPTUITests
+          -sdk iphonesimulator -arch arm64 -configuration Debug
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
       - name: Build unsigned iPhone app
         run: >-
           xcodebuild -project AutoGPT.xcodeproj -target AutoGPT

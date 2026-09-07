@@ -110,3 +110,34 @@ import Testing
   #expect(items?.count == 2)
   #expect(items?.first(where: { $0.name == "code_challenge" })?.value == pending.challenge)
 }
+
+@Test func rejectsAmbiguousSessionTokenCookies() throws {
+  let origin = try AppOrigin("https://platform.agpt.co")
+  let suffix = "; Path=/; Secure; HttpOnly"
+  for names in [
+    ["better-auth.session_token", "better-auth.session_token"],
+    ["__Secure-better-auth.session_token", "__Secure-better-auth.session_token"],
+    ["better-auth.session_token", "__Secure-better-auth.session_token"],
+  ] {
+    let header = "\(names[0])=first\(suffix), \(names[1])=second\(suffix)"
+    let cookies = HTTPCookie.cookies(
+      withResponseHeaderFields: ["Set-Cookie": header], for: origin.url)
+    #expect(cookies.count == 2)
+    #expect(origin.validatedSessionCookies(cookies) == nil)
+  }
+}
+
+@Test func preservesCacheCookiesOnlyWithOneUsableSessionToken() throws {
+  let origin = try AppOrigin("https://platform.agpt.co")
+  let token = "__Secure-better-auth.session_token=fixture; Path=/; Secure; HttpOnly"
+  let cache = "__Secure-better-auth.session_data=cache; Path=/; Secure; HttpOnly"
+  let cookies = HTTPCookie.cookies(
+    withResponseHeaderFields: ["Set-Cookie": "\(token), \(cache)"], for: origin.url)
+  let accepted = try #require(origin.validatedSessionCookies(cookies))
+  #expect(accepted.map(\.name) == cookies.map(\.name))
+  for invalid in [cache, "\(token); Max-Age=0, \(cache)", "\(token); Max-Age=0, \(token)"] {
+    let parsed = HTTPCookie.cookies(
+      withResponseHeaderFields: ["Set-Cookie": invalid], for: origin.url)
+    #expect(origin.validatedSessionCookies(parsed) == nil)
+  }
+}

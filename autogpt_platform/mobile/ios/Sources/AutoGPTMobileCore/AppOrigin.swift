@@ -47,6 +47,15 @@ public struct AppOrigin: Equatable, Sendable {
       && cookie.isHTTPOnly && cookie.path == "/"
       && !cookie.value.isEmpty && (cookie.expiresDate == nil || cookie.expiresDate! > now)
   }
+
+  public func validatedSessionCookies(_ cookies: [HTTPCookie], now: Date = Date()) -> [HTTPCookie]?
+  {
+    let tokens = cookies.filter {
+      $0.name == "better-auth.session_token" || $0.name == "__Secure-better-auth.session_token"
+    }
+    guard tokens.count == 1, acceptsSessionCookie(tokens[0], now: now) else { return nil }
+    return cookies.filter { acceptsSessionCookie($0, now: now) }
+  }
 }
 
 public enum MobileError: Error, LocalizedError {

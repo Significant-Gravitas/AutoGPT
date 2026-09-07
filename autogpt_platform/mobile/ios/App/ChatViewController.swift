@@ -8,6 +8,7 @@ final class ChatViewController: UIViewController {
   private var origin: AppOrigin
   private var webView: WKWebView!
   private let progress = UIProgressView(progressViewStyle: .bar)
+  private let statusScroll = UIScrollView()
   private let status = UIStackView()
   private let statusTitle = UILabel()
   private let statusMessage = UILabel()
@@ -18,6 +19,7 @@ final class ChatViewController: UIViewController {
   private var historyObservation: NSKeyValueObservation?
   private var primaryAction: (() -> Void)?
   private var isSigningIn = false
+  private var isChangingServer = false
   private var lastCommittedURL: URL?
   private var downloads: [ObjectIdentifier: DownloadExport] = [:]
 
@@ -43,7 +45,27 @@ final class ChatViewController: UIViewController {
     navigationController?.navigationBar.prefersLargeTitles = false
     configureStatus()
     installWebView()
+    #if DEBUG
+      if ProcessInfo.processInfo.environment["AUTOGPT_UI_TEST_SCREEN"] == "large-status" {
+        let category = UIContentSizeCategory.accessibilityExtraExtraExtraLarge
+        if #available(iOS 17, *) {
+          traitOverrides.preferredContentSizeCategory = category
+        } else {
+          parent?.setOverrideTraitCollection(
+            UITraitCollection(preferredContentSizeCategory: category), forChild: self)
+        }
+        showSignIn()
+        return
+      }
+    #endif
     loadChat()
+  }
+
+  override func viewWillTransition(
+    to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator
+  ) {
+    view.endEditing(true)
+    super.viewWillTransition(to: size, with: coordinator)
   }
 
   private func configureStatus() {
@@ -71,36 +93,75 @@ final class ChatViewController: UIViewController {
     statusTitle.adjustsFontForContentSizeCategory = true
     statusTitle.textAlignment = .center
     statusTitle.numberOfLines = 0
+    statusTitle.accessibilityTraits.insert(.header)
+    statusTitle.accessibilityIdentifier = "Native status title"
     statusMessage.font = .preferredFont(forTextStyle: .body)
     statusMessage.adjustsFontForContentSizeCategory = true
     statusMessage.textAlignment = .center
     statusMessage.textColor = .secondaryLabel
     statusMessage.numberOfLines = 0
+    statusMessage.accessibilityIdentifier = "Native status message"
     primaryButton.configuration = .filled()
     primaryButton.configuration?.cornerStyle = .large
+    primaryButton.configuration?.titleAlignment = .center
+    primaryButton.configuration?.titleLineBreakMode = .byWordWrapping
     primaryButton.configuration?.contentInsets = NSDirectionalEdgeInsets(
       top: 16, leading: 20, bottom: 16, trailing: 20)
     primaryButton.addAction(
       UIAction { [weak self] _ in self?.primaryAction?() }, for: .touchUpInside)
     secondaryButton.setTitle("Open in browser", for: .normal)
+    secondaryButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
+    secondaryButton.titleLabel?.adjustsFontForContentSizeCategory = true
+    secondaryButton.titleLabel?.numberOfLines = 0
+    secondaryButton.titleLabel?.textAlignment = .center
     secondaryButton.addAction(
       UIAction { [weak self] _ in self?.openInBrowser() }, for: .touchUpInside)
     [statusTitle, statusMessage, primaryButton, secondaryButton].forEach(status.addArrangedSubview)
-    view.addSubview(status)
+    statusScroll.translatesAutoresizingMaskIntoConstraints = false
+    statusScroll.contentInsetAdjustmentBehavior = .never
+    statusScroll.alwaysBounceVertical = false
+    statusScroll.accessibilityIdentifier = "Native status"
+    let content = UIView()
+    content.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(statusScroll)
+    statusScroll.addSubview(content)
+    content.addSubview(status)
+    let preferredHeight = content.heightAnchor.constraint(
+      equalTo: statusScroll.frameLayoutGuide.heightAnchor)
+    preferredHeight.priority = .defaultLow
+    let preferredWidth = status.widthAnchor.constraint(
+      equalTo: statusScroll.frameLayoutGuide.widthAnchor, constant: -56)
+    preferredWidth.priority = .defaultHigh
     NSLayoutConstraint.activate([
-      status.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
-      status.leadingAnchor.constraint(
-        greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 28),
-      status.trailingAnchor.constraint(
-        lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -28),
-      status.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      statusScroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+      statusScroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+      statusScroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+      statusScroll.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+      content.topAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.topAnchor),
+      content.bottomAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.bottomAnchor),
+      content.leadingAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.leadingAnchor),
+      content.trailingAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.trailingAnchor),
+      content.widthAnchor.constraint(equalTo: statusScroll.frameLayoutGuide.widthAnchor),
+      content.heightAnchor.constraint(
+        greaterThanOrEqualTo: statusScroll.frameLayoutGuide.heightAnchor),
+      preferredHeight,
+      preferredWidth,
+      status.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+      status.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 24),
+      status.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -24),
+      status.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: 28),
+      status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -28),
+      status.centerXAnchor.constraint(equalTo: content.centerXAnchor),
       status.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
+      secondaryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
     ])
   }
 
   private func installWebView() {
     cancelExports()
     webView?.stopLoading()
+    webView?.navigationDelegate = nil
+    webView?.uiDelegate = nil
     webView?.removeFromSuperview()
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = .default()
@@ -112,7 +173,7 @@ final class ChatViewController: UIViewController {
     browser.navigationDelegate = self
     browser.uiDelegate = self
     browser.allowsBackForwardNavigationGestures = true
-    browser.scrollView.contentInsetAdjustmentBehavior = .never
+    browser.scrollView.contentInsetAdjustmentBehavior = .automatic
     browser.isOpaque = false
     browser.backgroundColor = .systemBackground
     #if DEBUG
@@ -124,7 +185,7 @@ final class ChatViewController: UIViewController {
       browser.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
       browser.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
       browser.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-      browser.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+      browser.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
     ])
     if progress.superview == nil {
       progress.translatesAutoresizingMaskIntoConstraints = false
@@ -197,20 +258,23 @@ final class ChatViewController: UIViewController {
     navigationItem.rightBarButtonItem = UIBarButtonItem(
       image: UIImage(systemName: "ellipsis.circle"), menu: UIMenu(children: actions))
     navigationItem.rightBarButtonItem?.accessibilityLabel = "App menu"
-    navigationItem.rightBarButtonItem?.isEnabled = !isSigningIn
-    navigationItem.leftBarButtonItem?.isEnabled = !isSigningIn && downloads.isEmpty
+    navigationItem.rightBarButtonItem?.isEnabled = !isSigningIn && !isChangingServer
+    navigationItem.leftBarButtonItem?.isEnabled =
+      !isSigningIn && !isChangingServer && downloads.isEmpty
   }
 
   private func loadChat() {
+    guard !isSigningIn, !isChangingServer else { return }
     cancelExports()
-    status.isHidden = true
+    statusScroll.isHidden = true
     webView.isHidden = false
     webView.load(URLRequest(url: origin.chatURL))
   }
 
   private func retry() {
+    guard !isSigningIn, !isChangingServer else { return }
     cancelExports()
-    status.isHidden = true
+    statusScroll.isHidden = true
     webView.isHidden = false
     let target = lastCommittedURL.flatMap { origin.contains($0) ? $0 : nil } ?? origin.chatURL
     webView.load(URLRequest(url: target))
@@ -226,7 +290,9 @@ final class ChatViewController: UIViewController {
     statusMessage.text = message
     primaryButton.setTitle(button, for: .normal)
     primaryAction = action
-    status.isHidden = false
+    statusScroll.isHidden = false
+    statusScroll.setContentOffset(.zero, animated: false)
+    UIAccessibility.post(notification: .screenChanged, argument: statusTitle)
   }
 
   private func showSignIn() {
@@ -238,7 +304,7 @@ final class ChatViewController: UIViewController {
   }
 
   private func signIn() {
-    guard !isSigningIn, let window = view.window else { return }
+    guard !isSigningIn, !isChangingServer, let window = view.window else { return }
     isSigningIn = true
     installWebView()
     showStatus(
@@ -255,7 +321,9 @@ final class ChatViewController: UIViewController {
       self?.secondaryButton.isEnabled = true
       self?.updateMenu()
       switch result {
-      case .success: self?.loadChat()
+      case .success:
+        self?.lastCommittedURL = nil
+        self?.loadChat()
       case .failure(let error):
         if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
           || (error as? MobileError) == .authenticationCancelled
@@ -298,6 +366,7 @@ final class ChatViewController: UIViewController {
   }
 
   private func settings() {
+    guard !isSigningIn, !isChangingServer else { return }
     let alert = UIAlertController(
       title: "Server settings",
       message:
@@ -323,10 +392,19 @@ final class ChatViewController: UIViewController {
           let next = try AppOrigin(address, allowLocalHTTP: allowLocalHTTP)
           if next == self.origin { return }
           self.authentication.cancel()
-          self.webView.stopLoading()
+          self.isChangingServer = true
+          self.installWebView()
+          self.showStatus(
+            title: "Changing servers", message: "Clearing the previous website session.",
+            button: "Connecting…", action: {})
+          self.primaryButton.isEnabled = false
+          self.secondaryButton.isEnabled = false
           Task { @MainActor in
             await self.webView.configuration.websiteDataStore.removeData(
               ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+            self.isChangingServer = false
+            self.primaryButton.isEnabled = true
+            self.secondaryButton.isEnabled = true
             self.origin = next
             self.lastCommittedURL = nil
             UserDefaults.standard.set(next.url.absoluteString, forKey: "serverOrigin")
@@ -404,7 +482,7 @@ extension ChatViewController: WKNavigationDelegate {
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     guard webView === self.webView else { return }
     if let url = webView.url, origin.contains(url) { lastCommittedURL = url }
-    status.isHidden = true
+    statusScroll.isHidden = true
     webView.isHidden = false
     updateMenu()
   }
@@ -414,7 +492,7 @@ extension ChatViewController: WKNavigationDelegate {
     withError error: Error
   ) {
     guard webView === self.webView else { return }
-    if !status.isHidden && webView.isHidden { return }
+    if !statusScroll.isHidden && webView.isHidden { return }
     let nativeError = error as NSError
     if nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102 { return }
     if nativeError.code != NSURLErrorCancelled {
@@ -424,7 +502,7 @@ extension ChatViewController: WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
     guard webView === self.webView else { return }
-    if !status.isHidden && webView.isHidden { return }
+    if !statusScroll.isHidden && webView.isHidden { return }
     let nativeError = error as NSError
     if nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102 { return }
     if nativeError.code != NSURLErrorCancelled {
@@ -536,7 +614,10 @@ extension ChatViewController: WKUIDelegate {
     initiatedByFrame frame: WKFrameInfo,
     completionHandler: @escaping @MainActor @Sendable () -> Void
   ) {
-    guard webView === self.webView else {
+    guard webView === self.webView, !isSigningIn, !isChangingServer,
+      viewIfLoaded?.window != nil, presentedViewController == nil,
+      navigationController?.presentedViewController == nil
+    else {
       completionHandler()
       return
     }
@@ -550,7 +631,10 @@ extension ChatViewController: WKUIDelegate {
     initiatedByFrame frame: WKFrameInfo,
     completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
   ) {
-    guard webView === self.webView else {
+    guard webView === self.webView, !isSigningIn, !isChangingServer,
+      viewIfLoaded?.window != nil, presentedViewController == nil,
+      navigationController?.presentedViewController == nil
+    else {
       completionHandler(false)
       return
     }
