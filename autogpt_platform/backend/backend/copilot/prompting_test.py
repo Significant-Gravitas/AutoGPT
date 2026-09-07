@@ -91,3 +91,32 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
+
+
+class TestExpertOversightSupplement:
+    """The chat-reading tools are in the ``expert_admin`` group, so only an
+    Autopilot session with the team flag on can call them — a turn that
+    cannot must not be told about them."""
+
+    def test_an_autopilot_turn_with_the_flag_on_names_both_tools(self):
+        result = prompting.get_expert_oversight_supplement(
+            experts_enabled=True, expert_id=None
+        )
+        assert "list_expert_chats" in result
+        assert "read_expert_chat" in result
+
+    def test_an_expert_session_is_told_nothing(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=True, expert_id="expert-a"
+            )
+            == ""
+        )
+
+    def test_the_flag_off_tells_nobody(self):
+        assert (
+            prompting.get_expert_oversight_supplement(
+                experts_enabled=False, expert_id=None
+            )
+            == ""
+        )

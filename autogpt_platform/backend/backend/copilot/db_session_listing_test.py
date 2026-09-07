@@ -143,6 +143,25 @@ async def test_autopilot_only_count_query_requires_null_expert_id():
 
 
 @pytest.mark.asyncio
+async def test_experts_only_list_query_requires_a_non_null_expert_id():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1", experts_only=True)
+
+    query = raw.call_args.args[0]
+    assert '"expertId" IS NOT NULL' in query
+    assert raw.call_args.args[1:] == ("u1", 50, 0)
+
+
+@pytest.mark.asyncio
+async def test_experts_only_is_exclusive_with_both_other_scope_filters():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await get_user_chat_sessions("u1", expert_id="expert-1", experts_only=True)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await get_user_chat_sessions("u1", autopilot_only=True, experts_only=True)
+
+
+@pytest.mark.asyncio
 async def test_autopilot_only_and_expert_filter_are_mutually_exclusive():
     with pytest.raises(ValueError, match="mutually exclusive"):
         await get_user_chat_sessions("u1", expert_id="expert-1", autopilot_only=True)

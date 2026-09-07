@@ -112,7 +112,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 63_000 for list_expert_chats / read_expert_chat, the
+# Autopilot-side read of a hired expert's chats (SECRT-2581). Adds 1,706
+# chars: the paging contract is what the model has to get right, so
+# ``before_sequence`` spends its description on the cursor round-trip.
+_CHAR_BUDGET = 63_000
 
 
 @pytest.fixture(scope="module")
