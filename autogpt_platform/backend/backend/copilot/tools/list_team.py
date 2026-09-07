@@ -56,7 +56,7 @@ class ListTeamTool(BaseTool):
                 message="Authentication required", session_id=session.session_id
             )
         try:
-            experts = await experts_db().list_experts(user_id, with_metrics=False)
+            experts = await experts_db().list_experts(user_id)
         except Exception as e:
             logger.warning(f"list_team roster lookup failed: {e}")
             return ErrorResponse(
