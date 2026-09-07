@@ -97,6 +97,7 @@ export function toConnectorRows(
       schema: CredentialField[1];
       selected?: CredentialsMetaInput;
       targets: { request: ConnectorRequest; key: string }[];
+      expertGrant?: ExpertGrant;
     }
   >();
 
@@ -110,9 +111,16 @@ export function toConnectorRows(
           schema,
           targets: [{ request, key }],
           selected: request.selected[key],
+          expertGrant: schema.expert_grant as ExpertGrant | undefined,
         });
         continue;
       }
+      // A granted credential answers every merged requirement at once, so
+      // only accounts eligible for all of them may be offered.
+      row.expertGrant = intersectGrants(
+        row.expertGrant,
+        schema.expert_grant as ExpertGrant | undefined,
+      );
       // One row answers every card that asked for this provider, so it must
       // request the union of their scopes — keeping only the first card's
       // leaves the others permanently unsatisfiable. Scopes only: merging
@@ -131,12 +139,26 @@ export function toConnectorRows(
       byName.get(provider)?.description ?? row.schema.description ?? null,
     schema: row.schema,
     selected: row.selected,
-    expertGrant: row.schema.expert_grant as ExpertGrant | undefined,
+    expertGrant: row.expertGrant,
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
     onConnected: () =>
       row.targets.forEach(({ request }) => request.onConnected()),
   }));
+}
+
+/** Grant candidates eligible for both requirements. A requirement without
+ *  grant info contributes nothing to narrow by. */
+export function intersectGrants(
+  kept: ExpertGrant | undefined,
+  incoming: ExpertGrant | undefined,
+): ExpertGrant | undefined {
+  if (!kept || !incoming) return kept ?? incoming;
+  const eligible = new Set(incoming.credentials.map((c) => c.id));
+  return {
+    expertId: kept.expertId,
+    credentials: kept.credentials.filter((c) => eligible.has(c.id)),
+  };
 }
 
 /** Merges `incoming`'s scopes into `kept`, leaving every other schema field

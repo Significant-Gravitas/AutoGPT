@@ -21,8 +21,18 @@ vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",
   () => ({
-    ConnectCredentialDialog: ({ open }: { open: boolean }) =>
-      open ? <div data-testid="connect-dialog" /> : null,
+    ConnectCredentialDialog: ({
+      open,
+      onConnected,
+    }: {
+      open: boolean;
+      onConnected?: () => void;
+    }) =>
+      open ? (
+        <div data-testid="connect-dialog">
+          <button onClick={() => onConnected?.()}>finish sign-in</button>
+        </div>
+      ) : null,
   }),
 );
 
@@ -39,12 +49,12 @@ const savedGithub = {
   scopes: [],
 };
 
-function providersWithGithub() {
+function providersWithGithub(saved: (typeof savedGithub)[] = [savedGithub]) {
   return {
     github: {
       provider: "github",
       providerName: "GitHub",
-      savedCredentials: [savedGithub],
+      savedCredentials: saved,
       oAuthCallback: vi.fn(),
       createAPIKeyCredentials: vi.fn(),
       createUserPasswordCredentials: vi.fn(),
@@ -79,7 +89,7 @@ describe("ConnectorRow in an expert chat", () => {
     );
     expect(current.select).not.toHaveBeenCalled();
     expect(screen.queryByText("Connected")).toBeNull();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Add new" })).toBeDefined();
   });
 
   it("offers Grant access for a credential the account already has", async () => {
@@ -95,8 +105,8 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    expect(screen.getByText(/this expert needs access to it/)).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
+    expect(screen.getByText("Needs this expert's access")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use existing" }));
     await waitFor(() =>
       expect(mockGrant).toHaveBeenCalledWith({
         expertId: "expert-a",
@@ -125,8 +135,8 @@ describe("ConnectorRow in an expert chat", () => {
       </CredentialsProvidersContext.Provider>,
     );
     expect(screen.getByText("Work GitHub")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Grant access" })).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Connect another" }));
+    expect(screen.getByRole("button", { name: "Use existing" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
     expect(screen.getByTestId("connect-dialog")).toBeDefined();
   });
 
@@ -143,11 +153,73 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use existing" }));
     expect(
       await screen.findByText("Couldn't grant access. Try again."),
     ).toBeDefined();
     expect(current.onConnected).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConnectorRow after a sign-in in an expert chat", () => {
+  const existing = { ...savedGithub, id: "old-cred", title: "Old GitHub" };
+  const added = { ...savedGithub, id: "new-cred", title: "New GitHub" };
+
+  it("grants the account that appeared after Add new, not a pre-existing one", async () => {
+    mockGrant.mockResolvedValue([]);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    rerender(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing, added])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith({
+        expertId: "expert-a",
+        data: { credential_ids: ["new-cred"] },
+      }),
+    );
+    expect(mockGrant).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the new account available for a retry when the grant fails", async () => {
+    mockGrant.mockRejectedValueOnce(new Error("nope")).mockResolvedValue([]);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub([])}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add new" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    rerender(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([added])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(
+      await screen.findByText("Couldn't grant access. Try again."),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use existing" }));
+    await waitFor(() => expect(mockGrant).toHaveBeenCalledTimes(2));
+    expect(current.onConnected).toHaveBeenCalledTimes(1);
   });
 });
 

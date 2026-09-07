@@ -9,16 +9,18 @@ expert's resources.
 
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.data.model import Credentials
+from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
+from .utils import find_matching_credential
 
 logger = logging.getLogger(__name__)
 
@@ -225,12 +227,30 @@ async def annotate_expert_grants(
                         "type": str(c.type),
                     }
                     for c in candidates
-                    if str(c.provider) == str(entry.get("provider", ""))
+                    if _satisfies_requirement(c, entry)
                 ],
             },
         }
         for key, entry in missing.items()
     }
+
+
+def _satisfies_requirement(credential: Credentials, entry: dict[str, Any]) -> bool:
+    """The same provider/type/scope/host predicate a run applies when matching,
+    so an offered grant is one the next run will accept."""
+    provider = str(entry.get("provider", ""))
+    types = entry.get("types") or ([entry["type"]] if entry.get("type") else [])
+    if not provider or not types:
+        return False
+    scopes = entry.get("scopes") or None
+    field_info = CredentialsFieldInfo[ProviderName, CredentialsType](
+        credentials_provider=frozenset([cast(ProviderName, provider)]),
+        credentials_types=frozenset(cast(CredentialsType, t) for t in types),
+        credentials_scopes=frozenset(scopes) if scopes else None,
+        discriminator=entry.get("discriminator"),
+        discriminator_values=set(entry.get("discriminator_values") or []),
+    )
+    return find_matching_credential([credential], field_info) is not None
 
 
 async def ungranted_credential_hint(

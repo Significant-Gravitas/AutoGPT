@@ -184,18 +184,25 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
 async def test_missing_credentials_are_annotated_with_expert_grants(experts):
     from backend.copilot.tools.expert_scope import annotate_expert_grants
 
+    def cred(id: str, type: str, scopes: list[str]):
+        return MagicMock(id=id, provider="github", title=id, type=type, scopes=scopes)
+
     store = MagicMock()
     store.get_all_creds = AsyncMock(
         return_value=[
-            MagicMock(
-                id="granted-cred", provider="github", title="GH granted", type="oauth2"
-            ),
-            MagicMock(
-                id="spare-cred", provider="github", title="GH spare", type="oauth2"
-            ),
+            cred("granted-cred", "oauth2", ["repo"]),
+            cred("spare-cred", "oauth2", ["repo"]),
+            cred("wrong-type", "api_key", []),
+            cred("narrow-scope", "oauth2", ["read:user"]),
         ]
     )
-    missing = {"github_credentials": {"provider": "github", "types": ["oauth2"]}}
+    missing = {
+        "github_credentials": {
+            "provider": "github",
+            "types": ["oauth2"],
+            "scopes": ["repo"],
+        }
+    }
     with patch(
         "backend.integrations.creds_manager.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
