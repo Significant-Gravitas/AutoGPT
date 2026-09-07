@@ -247,12 +247,19 @@ async def test_ipv4_mapped_ipv6_bypass(
 
 
 @pytest.mark.asyncio
-async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
+@pytest.mark.parametrize("header_name", ["Authorization", "authorization"])
+async def test_authorization_is_not_replayed_across_a_cross_origin_redirect(
+    header_name: str,
+):
     """A redirect to a different origin must not carry the caller's bearer token.
 
     ``_remove_insecure_headers`` strips it for the next hop, but the recursive
     call re-merged ``extra_headers`` afterwards and put it straight back — so
     a hostile MCP server could harvest a token just by answering 302.
+
+    Header names are case-insensitive over the wire, so the lower-cased spelling
+    has to be stripped too: matching on the exact key would let a caller passing
+    ``{"authorization": ...}`` leak.
     """
     from aiohttp import web as aiohttp_web
 
@@ -261,6 +268,7 @@ async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
     seen: dict[str, str | None] = {}
 
     async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # aiohttp matches header names case-insensitively.
         seen["authorization"] = request.headers.get("Authorization")
         return aiohttp_web.json_response({"ok": True})
 
@@ -291,7 +299,7 @@ async def test_authorization_is_not_replayed_across_a_cross_origin_redirect():
     try:
         requests = Requests(
             trusted_origins=["127.0.0.1"],
-            extra_headers={"Authorization": "Bearer dft_secret_token"},
+            extra_headers={header_name: "Bearer dft_secret_token"},
         )
         await requests.get(f"http://127.0.0.1:{origin_port}/mcp")
     finally:

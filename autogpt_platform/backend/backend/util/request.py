@@ -88,7 +88,18 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
-SENSITIVE_HEADERS = ("Authorization", "Proxy-Authorization", "Cookie")
+# Lower-cased: HTTP header names are case-insensitive, so a caller passing
+# ``{"authorization": ...}`` must be stripped just like ``{"Authorization": ...}``.
+SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
+def _drop_headers(headers: dict, names: frozenset[str]) -> None:
+    """Remove every key in *names* from *headers*, matching case-insensitively.
+
+    *names* must already be lower-cased.
+    """
+    for key in [k for k in headers if k.lower() in names]:
+        headers.pop(key, None)
 
 
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
@@ -101,8 +112,7 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
         or (old_url.hostname != new_url.hostname)
         or (old_url.port != new_url.port)
     ):
-        for name in SENSITIVE_HEADERS:
-            headers.pop(name, None)
+        _drop_headers(headers, SENSITIVE_HEADERS)
     return headers
 
 
@@ -529,8 +539,7 @@ class Requests:
         # A cross-origin redirect already stripped these; the merge above would
         # put them straight back, so a 302 to an attacker-controlled host would
         # replay the caller's bearer token. Drop them again, for every hop.
-        for name in drop_headers:
-            req_headers.pop(name, None)
+        _drop_headers(req_headers, drop_headers)
 
         # Set default User-Agent if not provided
         if "User-Agent" not in req_headers and "user-agent" not in req_headers:
@@ -603,7 +612,7 @@ class Requests:
                         data=data,
                         json=json,
                         drop_headers=drop_headers
-                        | (req_headers.keys() - new_headers.keys()),
+                        | {k.lower() for k in req_headers.keys() - new_headers.keys()},
                         **kwargs,
                     )
 
