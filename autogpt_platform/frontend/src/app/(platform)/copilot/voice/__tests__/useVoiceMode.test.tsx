@@ -101,7 +101,12 @@ describe("useVoiceMode", () => {
     global.URL.revokeObjectURL = vi.fn();
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    // Timers first: a fake-timer test that fails before its own cleanup
+    // would otherwise leak them into every test after it.
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("runs a whole turn and gives the mic back", async () => {
     const onSend = vi.fn();
