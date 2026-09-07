@@ -26,6 +26,12 @@ AVATAR_ACCESSORIES = [
     "star",
     "bow",
     "badge",
+    "crown",
+    "propeller",
+    "ears",
+    "flower",
+    "bowtie",
+    "headband",
 ]
 
 # Accent colour token family -> avatar colour, tuned so the accent and the

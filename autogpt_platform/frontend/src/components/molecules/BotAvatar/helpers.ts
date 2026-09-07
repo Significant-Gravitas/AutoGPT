@@ -16,8 +16,21 @@ export type AccessoryId =
   | "pen"
   | "star"
   | "bow"
-  | "badge";
-export type AvatarStatus = "idle" | "working" | "waiting" | "done";
+  | "badge"
+  | "crown"
+  | "propeller"
+  | "ears"
+  | "flower"
+  | "bowtie"
+  | "headband";
+export type AvatarStatus =
+  | "idle"
+  | "thinking"
+  | "working"
+  | "waiting"
+  | "done"
+  | "failed"
+  | "sleeping";
 
 export interface AvatarConfig {
   shape: ShapeId;
@@ -196,13 +209,22 @@ export const ACCESSORIES: AccessoryOption[] = [
   { id: "star", label: "Star pin", hint: "a raised favourite" },
   { id: "bow", label: "Bow", hint: "marketing, events" },
   { id: "badge", label: "Badge", hint: "finance, admin" },
+  { id: "crown", label: "Crown", hint: "the lead of a pod" },
+  { id: "propeller", label: "Propeller", hint: "playful, experiments" },
+  { id: "ears", label: "Cat ears", hint: "curious, alert" },
+  { id: "flower", label: "Flower", hint: "people, community" },
+  { id: "bowtie", label: "Bow tie", hint: "formal, legal" },
+  { id: "headband", label: "Headband", hint: "focus, sprints" },
 ];
 
 export const STATUSES: StatusOption[] = [
   { id: "idle", label: "Idle", hint: "calm, slightly curious" },
+  { id: "thinking", label: "Thinking", hint: "brows wave, eyes up" },
   { id: "working", label: "Working", hint: "kicks into gear" },
   { id: "waiting", label: "Needs you", hint: "blocked, asking" },
   { id: "done", label: "Done", hint: "settles, satisfied" },
+  { id: "failed", label: "Failed", hint: "falls apart for a beat" },
+  { id: "sleeping", label: "Paused", hint: "schedules off, dozing" },
 ];
 
 export const AUTOPILOT_AVATAR: AvatarConfig = {

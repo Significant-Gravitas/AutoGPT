@@ -40,7 +40,7 @@ export function Accessory({
   outline,
   layer,
 }: Props) {
-  const { cx, eyeY, eyeGap, top } = anchors;
+  const { cx, eyeY, eyeGap, top, bottom } = anchors;
   const body = ellipsoidFor(anchors);
   const edge = outline ? { stroke: INK, strokeWidth: 2 } : {};
   const eyeLat = surfacePointAt(cx, eyeY, body).lat;
@@ -296,6 +296,174 @@ export function Accessory({
             strokeLinecap="round"
           />
         </Disc>
+      );
+    }
+    case "crown": {
+      const crownLat = surfacePointAt(cx, top + 8, body).lat;
+      const base: Vec3[] = Array.from({ length: 25 }, (_, index) =>
+        fromSurface(-Math.PI + (2 * Math.PI * index) / 24, crownLat, 1.04),
+      );
+      const spikes = [-0.9, -0.3, 0.3, 0.9].map((lon) => [
+        fromSurface(lon - 0.22, crownLat, 1.04),
+        fromSurface(lon, crownLat + 0.3, 1.18),
+        fromSurface(lon + 0.22, crownLat, 1.04),
+      ]);
+      return (
+        <g>
+          <Strand points={base} width={4} />
+          {spikes.map((spike, index) => (
+            <Slab key={index} points={spike} />
+          ))}
+        </g>
+      );
+    }
+    case "propeller": {
+      const capLat = surfacePointAt(cx, top + 14, body).lat;
+      const capRadius = 1.08;
+      const ring: Vec3[] = Array.from({ length: 41 }, (_, index) =>
+        fromSurface(-Math.PI + (2 * Math.PI * index) / 40, capLat, capRadius),
+      );
+      const front = ring
+        .map((point) => rotate(point, pose))
+        .filter((point) => point[2] >= 0.02)
+        .map((point) => toScreen(point, body));
+      const crownScreen = toScreen(
+        rotate([0, capRadius + 0.02, 0], pose),
+        body,
+      );
+      const spin = ((pose.bob + 10) * 0.9 + pose.yaw * 6) % (Math.PI * 2);
+      const blades: Vec3[] = [
+        [Math.cos(spin) * 0.4, capRadius + 0.16, Math.sin(spin) * 0.4],
+        [0, capRadius + 0.16, 0],
+        [-Math.cos(spin) * 0.4, capRadius + 0.16, -Math.sin(spin) * 0.4],
+      ];
+      const dome =
+        front.length > 2 && layer === "front"
+          ? `M${front[0].x},${front[0].y} ${front
+              .slice(1)
+              .map((point) => `L${point.x},${point.y}`)
+              .join(
+                " ",
+              )} A${body.rx * capRadius},${body.ry * capRadius} 0 0 0 ${front[0].x},${front[0].y} Z`
+          : null;
+      return (
+        <g>
+          {dome ? (
+            <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
+          ) : null}
+          <Strand
+            points={[
+              [0, capRadius, 0],
+              [0, capRadius + 0.16, 0],
+            ]}
+            width={2.4}
+          />
+          <Strand points={blades} width={4} />
+          {layer === "front" ? (
+            <circle
+              cx={crownScreen.x}
+              cy={crownScreen.y - body.ry * 0.16}
+              r={2.2}
+              fill={deep}
+              {...edge}
+            />
+          ) : null}
+        </g>
+      );
+    }
+    case "ears": {
+      const ear = (side: number): Vec3[] => [
+        fromSurface(side * 0.95, 0.55, 1.0),
+        fromSurface(side * 0.75, 1.05, 1.42),
+        fromSurface(side * 0.45, 0.85, 1.0),
+      ];
+      const inner = (side: number): Vec3[] => [
+        fromSurface(side * 0.88, 0.62, 1.01),
+        fromSurface(side * 0.74, 0.96, 1.3),
+        fromSurface(side * 0.55, 0.83, 1.01),
+      ];
+      return (
+        <g>
+          {[-1, 1].map((side) => (
+            <g key={side}>
+              <Slab points={ear(side)} />
+              <Slab points={inner(side)} fill="#fff" />
+            </g>
+          ))}
+        </g>
+      );
+    }
+    case "flower": {
+      const center = fromSurface(-0.95, 0.8, 1.03);
+      return (
+        <Disc center={center} normal={center} minDepth={0.5}>
+          {[0, 72, 144, 216, 288].map((angle) => (
+            <ellipse
+              key={angle}
+              cx={0}
+              cy={-6}
+              rx={3.6}
+              ry={5.2}
+              fill="#fff"
+              {...edge}
+              transform={`rotate(${angle})`}
+            />
+          ))}
+          <circle r={3.4} fill={deep} {...edge} />
+        </Disc>
+      );
+    }
+    case "bowtie": {
+      const chin = fromSurface(
+        0,
+        surfacePointAt(cx, bottom - 10, body).lat,
+        1.02,
+      );
+      return (
+        <Disc center={chin} normal={chin} minDepth={0.35}>
+          <path
+            d="M0,0 L-11,-6 L-11,6 Z"
+            fill={deep}
+            {...edge}
+            strokeLinejoin="round"
+          />
+          <path
+            d="M0,0 L11,-6 L11,6 Z"
+            fill={deep}
+            {...edge}
+            strokeLinejoin="round"
+          />
+          <rect
+            x={-2.6}
+            y={-3}
+            width={5.2}
+            height={6}
+            rx={1.5}
+            fill={deep}
+            {...edge}
+          />
+        </Disc>
+      );
+    }
+    case "headband": {
+      const bandLat = surfacePointAt(cx, eyeY - 16, body).lat;
+      const band: Vec3[] = Array.from({ length: 49 }, (_, index) =>
+        fromSurface(-Math.PI + (2 * Math.PI * index) / 48, bandLat, 1.03),
+      );
+      const knot = fromSurface(-1.35, bandLat, 1.05);
+      return (
+        <g>
+          <Strand points={band} width={5} />
+          <Strand points={band} width={1.6} color="#fff" />
+          <Disc center={knot} normal={knot} minDepth={0.4}>
+            <path
+              d="M0,0 L-9,4 L-6,10 Z M0,0 L-2,10 L-7,14 Z"
+              fill={deep}
+              {...edge}
+              strokeLinejoin="round"
+            />
+          </Disc>
+        </g>
       );
     }
     default:

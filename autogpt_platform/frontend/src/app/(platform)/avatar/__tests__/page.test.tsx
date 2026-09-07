@@ -81,7 +81,7 @@ describe("AvatarPage", () => {
     render(<AvatarPage />);
 
     await user.click(screen.getByRole("button", { name: "Shuffle" }));
-    expect(stageAvatar().getAttribute("data-avatar")).toBe("bean.butter.badge");
+    expect(stageAvatar().getAttribute("data-avatar")).toBe("bean.butter.headband");
 
     await user.click(pickerRadio("Status", "Working"));
     await user.click(screen.getByRole("button", { name: "Reset" }));

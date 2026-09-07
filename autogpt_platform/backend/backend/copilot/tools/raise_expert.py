@@ -153,7 +153,10 @@ class RaiseExpertTool(BaseTool):
                         "for research and review, headset for support and ops, "
                         "cap for sales and field work, pen for writing, badge "
                         "for finance and admin, bow for marketing and events, "
-                        "star for a favourite, none for a plain look."
+                        "star for a favourite, crown for a pod lead, propeller "
+                        "for experiments, ears for a curious scout, flower for "
+                        "people and community, bowtie for formal or legal work, "
+                        "headband for focused sprints, none for a plain look."
                     ),
                 },
                 "about": {

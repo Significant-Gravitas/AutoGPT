@@ -21,9 +21,12 @@ interface Args {
 
 const LOOK_WEIGHT: Record<AvatarStatus, number> = {
   idle: 1,
+  thinking: 0.2,
   working: 0.25,
   waiting: 0.6,
   done: 0.9,
+  failed: 0.3,
+  sleeping: 0,
 };
 
 function statusPose(
@@ -32,6 +35,32 @@ function statusPose(
   sinceChange: number,
 ): Pose {
   switch (status) {
+    case "thinking":
+      return {
+        yaw: 0.35 + 0.12 * Math.sin(t * 0.9),
+        pitch: -0.28 + 0.05 * Math.sin(t * 1.3),
+        roll: -0.08 + 0.03 * Math.sin(t * 0.7),
+        bob: 0.6 * Math.sin(t * 1.4),
+      };
+    case "failed": {
+      const shake =
+        sinceChange < 0.7
+          ? Math.sin(sinceChange * 40) * (1 - sinceChange / 0.7)
+          : 0;
+      return {
+        yaw: 0.35 * shake,
+        pitch: 0.18 + 0.03 * Math.sin(t * 2),
+        roll: 0.12 * shake,
+        bob: -2 * (1 - Math.min(1, sinceChange / 0.7)),
+      };
+    }
+    case "sleeping":
+      return {
+        yaw: 0.05 * Math.sin(t * 0.3),
+        pitch: 0.3 + 0.04 * Math.sin(t * 0.7),
+        roll: 0.16,
+        bob: 1.2 * Math.sin(t * 0.7),
+      };
     case "working":
       return {
         yaw: -0.45 + 0.06 * Math.sin(t * 7),

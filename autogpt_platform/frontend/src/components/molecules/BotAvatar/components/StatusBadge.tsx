@@ -8,9 +8,12 @@ interface Props {
 }
 
 const FILL: Record<Exclude<AvatarStatus, "idle">, string> = {
+  thinking: "#7C3AED",
   working: "#3B6FD1",
   waiting: "#E8A317",
   done: "#22A05B",
+  failed: "#DC2626",
+  sleeping: "#71717A",
 };
 
 export function StatusBadge({ status, anchors, isLive }: Props) {
@@ -43,6 +46,44 @@ export function StatusBadge({ status, anchors, isLive }: Props) {
             fill="none"
             stroke="#fff"
             strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {status === "thinking" ? (
+          <g fill="#fff">
+            {[-3.2, 0, 3.2].map((x, index) => (
+              <motion.circle
+                key={x}
+                cx={x}
+                r={1.4}
+                initial={false}
+                animate={isLive ? { opacity: [0.35, 1, 0.35] } : undefined}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  delay: index * 0.2,
+                  ease: "easeInOut",
+                }}
+              />
+            ))}
+          </g>
+        ) : null}
+        {status === "failed" ? (
+          <path
+            d="M-3,-3 L3,3 M3,-3 L-3,3"
+            fill="none"
+            stroke="#fff"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+          />
+        ) : null}
+        {status === "sleeping" ? (
+          <path
+            d="M-3,-3 L3,-3 L-3,3 L3,3"
+            fill="none"
+            stroke="#fff"
+            strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
           />

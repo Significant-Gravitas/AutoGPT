@@ -32,8 +32,8 @@ export const ROSTER_SAMPLE: {
   { name: "Maya", role: "Marketing", status: "working" },
   { name: "Finn", role: "Finance", status: "waiting" },
   { name: "Sol", role: "Sales", status: "done" },
-  { name: "Remy", role: "Research", status: "idle" },
-  { name: "Cleo", role: "Content", status: "working" },
+  { name: "Remy", role: "Research", status: "thinking" },
+  { name: "Cleo", role: "Content", status: "sleeping" },
 ];
 
 export function rosterConfigs() {
