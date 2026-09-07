@@ -124,6 +124,19 @@ class FindLibraryAgentTool(BaseTool):
         scope = await session_workflow_scope(user_id, session)
         if scope is None:
             return result
+        if for_creation:
+            # The pre-create similarity check exists to avoid duplicates, so it
+            # must see the whole library; an expert installs a match instead
+            # of building it again.
+            return result.model_copy(
+                update={
+                    "message": (
+                        f"{result.message} You are an expert: to reuse a match, "
+                        "install it with install_expert_workflow rather than "
+                        "building a new agent."
+                    )
+                }
+            )
         agents = [
             a
             for a in result.agents

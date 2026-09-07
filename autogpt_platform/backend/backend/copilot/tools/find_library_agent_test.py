@@ -478,3 +478,41 @@ async def test_expert_cannot_export_an_uninstalled_agent_by_id(tool):
     assert isinstance(result, ErrorResponse)
     assert result.error == "workflow_not_installed"
     search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_similarity_check_sees_the_whole_library(tool):
+    from backend.copilot.model import ChatSession
+    from backend.copilot.tools.expert_scope import ExpertWorkflowScope
+    from backend.copilot.tools.models import AgentInfo
+
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-in"])
+    found = AgentsFoundResponse(
+        message="Similar agents",
+        agents=[
+            AgentInfo(
+                id="lib-out",
+                name="x",
+                description="",
+                source="library",
+                graph_id="graph-out",
+            )
+        ],
+        count=1,
+    )
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            new=AsyncMock(return_value=scope),
+        ),
+        patch.object(
+            FindLibraryAgentTool, "_search", new=AsyncMock(return_value=found)
+        ),
+    ):
+        result = await tool._execute(
+            "user-1", session, for_creation=True, goal_summary="do x"
+        )
+    assert isinstance(result, AgentsFoundResponse)
+    assert result.count == 1
+    assert "install_expert_workflow" in result.message
