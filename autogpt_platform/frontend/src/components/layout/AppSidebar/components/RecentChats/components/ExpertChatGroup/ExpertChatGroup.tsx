@@ -6,6 +6,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Collapsible,
@@ -31,9 +32,6 @@ export function ExpertChatGroup({
   sessions,
   renderItem,
 }: Props) {
-  // Open on mount: the sidebar's job is to show the chats, so a group that
-  // hides them behind a click on every render is a step backwards. Controlled
-  // rather than `defaultOpen` because the collapsed branch below reads it.
   const [isOpen, setIsOpen] = useState(true);
   const [visibleCount, setVisibleCount] = useState(EXPERT_GROUP_PREVIEW_COUNT);
   const visibleSessions = sessions.slice(0, visibleCount);
@@ -48,23 +46,23 @@ export function ExpertChatGroup({
     >
       <CollapsibleTrigger
         aria-label={`${label} chats`}
-        className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-0.5 text-left text-[13px] font-medium text-zinc-900 hover:bg-zinc-100"
+        className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-0.5 text-left text-sm font-medium text-zinc-900 hover:bg-zinc-100"
       >
-        <Avatar className="h-5 w-5">
-          {avatarUrl ? <AvatarImage src={avatarUrl} alt={label} /> : null}
-          <AvatarFallback className="text-[9px]">
-            {label.charAt(0).toUpperCase()}
+        <Avatar className="h-6 w-6">
+          {avatarUrl ? (
+            <AvatarImage src={avatarUrl} alt={label} width={48} height={48} />
+          ) : null}
+          <AvatarFallback>
+            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-4" />
           </AvatarFallback>
         </Avatar>
         <span className="truncate">{label}</span>
         <Icon
           icon={ArrowDown01Icon}
-          className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none"
+          className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-5 shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
 
-      {/* Running chats stay visible while the group is collapsed so an
-          in-flight session is never hidden behind a closed toggle. */}
       {!isOpen && runningSessions.length > 0 && (
         <GroupBody>
           <SidebarMenu>{runningSessions.map(renderItem)}</SidebarMenu>
@@ -93,8 +91,6 @@ export function ExpertChatGroup({
 }
 
 function GroupBody({ children }: { children: ReactNode }) {
-  // A hard border reads heavier than the rail deserves — a 1px gradient
-  // strip fades out toward the bottom instead.
   return (
     <div className="relative ml-[17px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-zinc-200/70 before:to-transparent">
       {children}

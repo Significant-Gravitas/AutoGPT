@@ -21,6 +21,7 @@ export enum Key {
   COPILOT_CONTEXT_PANEL_WIDTH = "copilot-context-panel-width",
   COPILOT_CONTEXT_PANEL_OPEN = "copilot-context-panel-open",
   COPILOT_CONTEXT_PANEL_TAB = "copilot-context-panel-tab",
+  TEAM_WORKFLOWS_VIEW = "team-workflows-view",
   COPILOT_MODE = "copilot-mode",
   COPILOT_MODEL = "copilot-model",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { ChoiceRow } from "./ChoiceRow";
 import { ConnectAccountRow } from "./ConnectAccountRow";
+import { MaxUpgradeCard } from "./MaxUpgradeCard";
 import { Swap } from "./Swap";
 import {
   isLinkedAccount,
@@ -80,6 +81,9 @@ export function ConnectionPicker({
     isLoading,
     isError,
   } = useConnectionPicker();
+  const advancedLock = tierLock(active, "advanced");
+  const showMaxUpgrade =
+    active?.auth_method === "deployment" && Boolean(advancedLock);
 
   if (isLoading && offers.length === 0) return null;
 
@@ -219,7 +223,10 @@ export function ConnectionPicker({
 
       <PopoverContent
         align="end"
-        className="w-[24rem] max-w-[calc(100vw-2rem)] rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg"
+        className={cn(
+          "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
+          showMaxUpgrade && "bg-white",
+        )}
       >
         {showsConnections && (
           <>
@@ -288,10 +295,26 @@ export function ConnectionPicker({
         {showTiers && (
           <>
             <SectionLabel>Model tier</SectionLabel>
-            <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+            <div
+              className={cn(
+                "overflow-hidden rounded-xl border border-neutral-200 bg-white",
+                showMaxUpgrade && "border-0",
+              )}
+            >
               <TierToggle
                 value={tier}
                 onSelect={setTier}
+                advancedUpgrade={
+                  showMaxUpgrade && advancedLock?.href ? (
+                    <MaxUpgradeCard
+                      label={tierLabel(active, "advanced")}
+                      name={tierName(active, "advanced")}
+                      model={tierModel(active, "advanced")}
+                      reason={advancedLock.reason}
+                      href={advancedLock.href}
+                    />
+                  ) : undefined
+                }
                 segments={TIERS.map((candidate) => ({
                   tier: candidate,
                   label: tierLabel(active, candidate),
@@ -305,13 +328,18 @@ export function ConnectionPicker({
         )}
 
         {canConnectChatGPT && (
-          <>
+          <div
+            className={cn(
+              "mt-4",
+              showMaxUpgrade && "border-t border-zinc-200 pt-4",
+            )}
+          >
             <SectionLabel>Add a connection</SectionLabel>
             <ConnectAccountRow
               onConnect={connectChatGPT}
               isConnecting={isConnecting}
             />
-          </>
+          </div>
         )}
       </PopoverContent>
     </Popover>

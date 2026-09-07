@@ -22,6 +22,7 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
@@ -701,6 +702,8 @@ async def prepare_block_for_execution(
             message=f"Block '{block.name}' cannot be run directly.{hint}",
             session_id=session_id,
         )
+
+    emit_tool_display_name(block.name)
 
     # LLMs sometimes pass `"credentials": null` instead of omitting the field.
     # Treat null credential fields as absent so the injection path below can

@@ -166,6 +166,7 @@ class UpdateExpertTool(BaseTool):
             kind="update",
             name=merged.name,
             role=expert.role,
+            tagline=expert.tagline or "",
             about=merged.identity,
             boundaries=merged.boundaries,
             voice_preferences=merged.voice_preferences,

@@ -12,6 +12,7 @@ import { useDialogInternal } from "./useDialogInternal";
 interface Props extends PropsWithChildren {
   title?: React.ReactNode;
   styling?: CSSProperties;
+  className?: string;
 
   forceOpen?: boolean;
   onClose?: (() => void) | undefined;
@@ -29,6 +30,7 @@ function Dialog({
   children,
   title,
   styling,
+  className,
 
   forceOpen = false,
   onClose,
@@ -42,6 +44,7 @@ function Dialog({
       value={{
         title: title || "",
         styling,
+        className,
 
         isOpen,
         isForceOpen: forceOpen,

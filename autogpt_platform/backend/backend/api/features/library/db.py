@@ -451,7 +451,7 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
 
 
 async def get_library_agent_refs_by_graph_ids(
-    user_id: str, graph_ids: list[str]
+    user_id: str, graph_ids: list[str], *, include_deleted: bool = False
 ) -> list[library_model.LibraryAgentRef]:
     """Resolve display name + id for the given graphs in one query.
 
@@ -462,20 +462,29 @@ async def get_library_agent_refs_by_graph_ids(
     ``@@unique([userId, agentGraphId, agentGraphVersion])`` allows several
     rows per graph, so exactly one ref per graph is returned — the newest
     version — instead of whichever row the DB happened to return last.
+
+    With ``include_deleted`` a graph whose every library row was removed
+    still resolves to its last name, marked ``is_deleted``; a live row
+    always wins over a removed one.
     """
     if not graph_ids:
         return []
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": {"in": graph_ids},
+    }
+    if not include_deleted:
+        where["isDeleted"] = False
     agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "userId": user_id,
-            "agentGraphId": {"in": graph_ids},
-            "isDeleted": False,
-        },
-        order=[{"agentGraphVersion": "asc"}],
+        where=where,
+        order=[{"isDeleted": "desc"}, {"agentGraphVersion": "asc"}],
     )
     newest_by_graph = {
         agent.agentGraphId: library_model.LibraryAgentRef(
-            id=agent.id, graph_id=agent.agentGraphId, name=agent.name or ""
+            id=agent.id,
+            graph_id=agent.agentGraphId,
+            name=agent.name or "",
+            is_deleted=agent.isDeleted,
         )
         for agent in agents
     }
@@ -2068,8 +2077,8 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
-    # A preset may only reference a graph the caller can access (own / store /
-    # library); get_graph() enforces that and a foreign/unknown graph is None.
+    # A preset may only reference a graph the caller can access (owned, or in
+    # their library and submitted); get_graph() enforces that, None if not.
     # The preset then inherits the graph's org/team (resource-follows-parent),
     # resolved here so callers can't forget it.
     graph = await graph_db.get_graph(

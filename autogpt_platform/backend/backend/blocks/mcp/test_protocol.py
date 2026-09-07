@@ -471,7 +471,7 @@ class TestEraDetection:
     @pytest.mark.parametrize("status", [401, 403, 407, 429])
     async def test_auth_failures_propagate_without_fallback(self, status: int):
         transport = _Transport({"server/discover": [_FakeResponse(status)]})
-        client = _client(transport, auth_token="bad")
+        client = _client(transport, authorization="Bearer bad")
         with pytest.raises(HTTPClientError) as exc:
             await client.initialize()
         assert exc.value.status_code == status
@@ -596,7 +596,7 @@ class TestEraDetection:
         )
         era_cache.set(SERVER_URL, cached)
         transport = _Transport({"server/discover": [_FakeResponse(status)]})
-        client = _client(transport, auth_token="stale")
+        client = _client(transport, authorization="Bearer stale")
         with pytest.raises(HTTPClientError) as exc:
             await client.initialize()
         assert exc.value.status_code == status
@@ -629,7 +629,7 @@ class TestEraDetection:
         )
         era_cache.set(SERVER_URL, cached)
         transport = _Transport({"initialize": [_FakeResponse(status)]})
-        client = _client(transport, auth_token="stale")
+        client = _client(transport, authorization="Bearer stale")
         with pytest.raises(HTTPClientError) as exc:
             await client.initialize()
         assert exc.value.status_code == status
@@ -1048,7 +1048,7 @@ class TestModernRequests:
         transport = _Transport(
             {"server/discover": [_FakeResponse(401, _rpc_error(-32001, "expired"))]}
         )
-        client = _client(transport, auth_token="expired")
+        client = _client(transport, authorization="Bearer expired")
         with pytest.raises(HTTPClientError) as exc:
             await client.initialize()
         assert exc.value.status_code == 401

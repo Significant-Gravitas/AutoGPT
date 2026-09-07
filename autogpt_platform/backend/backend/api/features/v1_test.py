@@ -580,6 +580,29 @@ def test_configure_auto_top_up(
     assert response.json() == "Auto top-up settings updated"
 
 
+def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    set_auto_top_up = mocker.patch("backend.api.features.v1.set_auto_top_up")
+
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50
+    mock_credit_model.top_up_credits.side_effect = NotImplementedError(
+        "Org-level Stripe top-up not yet implemented"
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 500, "amount": 500}
+    )
+
+    assert response.status_code == 501
+    set_auto_top_up.assert_not_called()
+
+
 def test_configure_auto_top_up_validation_errors(
     mocker: pytest_mock.MockFixture,
 ) -> None:

@@ -28,6 +28,7 @@ from autogpt_libs.auth import get_user_id
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.data.redis_client import get_redis_async
+from backend.monitoring.instrumentation import record_rate_limit_hit
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,7 @@ async def enforce_subscription_status_rate_limit(
             user_id,
             count,
         )
+        record_rate_limit_hit("/api/credits/subscription", user_id)
         raise fastapi.HTTPException(
             status_code=429,
             detail=(

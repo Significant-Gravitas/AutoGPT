@@ -112,8 +112,16 @@ export function Button(props: ButtonProps) {
       );
     }
 
+    // Spread first so `className` and `disabled` below still win. Without this
+    // the loading branch silently drops every extra prop the caller passed —
+    // aria-label, data-testid, analytics data-* — the moment a click flips it
+    // into loading, which is exactly when a click listener needs to read them.
     const loadingButton = (
-      <button className={loadingClassName} disabled>
+      <button
+        {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        className={loadingClassName}
+        disabled
+      >
         <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
         {children}
       </button>
