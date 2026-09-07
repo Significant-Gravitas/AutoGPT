@@ -1,16 +1,19 @@
 import { INK, type AccessoryId, type ShapeAnchors } from "../helpers";
 import {
-  arcPath,
-  ellipsoidFor,
-  foreshortenTransform,
-  coronalArc,
-  isVisible,
-  latitudeRing,
-  project,
-  surfacePointAt,
-  type Pose,
-  type Projected,
-} from "../projection";
+  centroidLayer,
+  discProjection,
+  discTransform,
+  fromSurface,
+  isInFront,
+  polygonPath,
+  rotate,
+  samplePolyline,
+  splitPolyline,
+  toScreen,
+  type Layer,
+  type Vec3,
+} from "../parts";
+import { ellipsoidFor, surfacePointAt, type Pose } from "../projection";
 
 interface Props {
   accessory: AccessoryId;
@@ -18,192 +21,241 @@ interface Props {
   pose: Pose;
   deep: string;
   outline: boolean;
+  layer: Layer;
 }
 
 const STAR =
   "M0,-5.5 L1.6,-1.7 L5.6,-1.6 L2.4,0.9 L3.5,4.8 L0,2.5 L-3.5,4.8 L-2.4,0.9 L-5.6,-1.6 L-1.6,-1.7 Z";
 const HALF_PI = Math.PI / 2;
 
-function Attached({
-  at,
-  minDepth = 0.1,
-  children,
-}: {
-  at: Projected;
-  minDepth?: number;
-  children: React.ReactNode;
-}) {
-  if (!isVisible(at)) return null;
-  return <g transform={foreshortenTransform(at, minDepth)}>{children}</g>;
+function scale([x, y, z]: Vec3, factor: number): Vec3 {
+  return [x * factor, y * factor, z * factor];
 }
 
-export function Accessory({ accessory, anchors, pose, deep, outline }: Props) {
-  const { cx, eyeY, eyeGap, top, bottom, width } = anchors;
+export function Accessory({
+  accessory,
+  anchors,
+  pose,
+  deep,
+  outline,
+  layer,
+}: Props) {
+  const { cx, eyeY, eyeGap, top } = anchors;
   const body = ellipsoidFor(anchors);
-  const left = cx - width / 2;
-  const right = cx + width / 2;
   const edge = outline ? { stroke: INK, strokeWidth: 2 } : {};
+  const eyeLat = surfacePointAt(cx, eyeY, body).lat;
+  const eyeLon = surfacePointAt(cx + eyeGap / 2, eyeY, body).lon;
 
-  function at(x: number, y: number) {
-    return project(surfacePointAt(x, y, body), pose, body);
+  function Disc({
+    center,
+    normal,
+    minDepth = 0.12,
+    hideBelow = -1,
+    children,
+  }: {
+    center: Vec3;
+    normal: Vec3;
+    minDepth?: number;
+    hideBelow?: number;
+    children: React.ReactNode;
+  }) {
+    const rotated = rotate(center, pose);
+    if (rotated[2] < hideBelow) return null;
+    if ((isInFront(rotated) ? "front" : "back") !== layer) return null;
+    const projected = discProjection(center, normal, pose, body);
+    return <g transform={discTransform(projected, minDepth)}>{children}</g>;
+  }
+
+  function Strand({
+    points,
+    width,
+    color = deep,
+  }: {
+    points: Vec3[];
+    width: number;
+    color?: string;
+  }) {
+    const path = splitPolyline(samplePolyline(points), pose, body)[layer];
+    if (!path) return null;
+    return (
+      <path
+        d={path}
+        fill="none"
+        stroke={color}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    );
+  }
+
+  function Slab({ points, fill = deep }: { points: Vec3[]; fill?: string }) {
+    if (centroidLayer(points, pose) !== layer) return null;
+    return (
+      <path
+        d={polygonPath(points, pose, body)}
+        fill={fill}
+        {...edge}
+        strokeLinejoin="round"
+      />
+    );
   }
 
   switch (accessory) {
     case "glasses": {
-      const eyeLat = surfacePointAt(cx, eyeY, body).lat;
-      const lenses = [-1, 1].map((side) => at(cx + side * (eyeGap / 2), eyeY));
-      const ears = [-1, 1].map((side) =>
-        project({ lon: side * HALF_PI, lat: eyeLat }, pose, body),
+      const lenses = [-1, 1].map((side) =>
+        fromSurface(side * eyeLon, eyeLat, 1.02),
+      );
+      const bridgeVisible = lenses.every((lens) =>
+        isInFront(rotate(lens, pose)),
       );
       return (
         <g fill="none" stroke={deep} strokeWidth={2.4} strokeLinecap="round">
-          {lenses.every((lens) => lens.depth > 0.25) ? (
-            <path
-              d={`M${lenses[0].x + 9},${lenses[0].y} L${lenses[1].x - 9},${lenses[1].y}`}
+          {layer === "front" && bridgeVisible ? (
+            <Strand
+              points={[
+                fromSurface(-eyeLon * 0.45, eyeLat, 1.03),
+                fromSurface(eyeLon * 0.45, eyeLat, 1.03),
+              ]}
+              width={2.4}
             />
           ) : null}
-          {lenses.map((lens, index) => {
-            const ear = ears[index];
-            if (lens.depth < 0.3 || ear.depth < 0.05) return null;
-            const dx = ear.x - lens.x;
-            const dy = ear.y - lens.y;
-            const length = Math.hypot(dx, dy) || 1;
-            const reach = Math.min(length, 9.5 * lens.depth + 8);
-            const startX = lens.x + (dx / length) * 9.5 * lens.depth;
-            const startY = lens.y + (dy / length) * 9.5;
-            return (
-              <path
-                key={index}
-                d={`M${startX},${startY} L${lens.x + (dx / length) * reach},${lens.y + (dy / length) * reach}`}
-              />
-            );
-          })}
+          {[-1, 1].map((side) => (
+            <Strand
+              key={side}
+              points={[
+                fromSurface(side * (eyeLon + 0.32), eyeLat, 1.03),
+                fromSurface(side * HALF_PI, eyeLat + 0.03, 1.02),
+              ]}
+              width={2.4}
+            />
+          ))}
           {lenses.map((lens, index) => (
-            <Attached key={index} at={lens} minDepth={0.15}>
+            <Disc
+              key={index}
+              center={lens}
+              normal={scale(lens, 1)}
+              minDepth={0.15}
+            >
               <circle r={9.5} />
-            </Attached>
+            </Disc>
           ))}
         </g>
       );
     }
     case "headset": {
-      const earLat = surfacePointAt(cx, eyeY - 2, body).lat;
-      const ears = [-1, 1].map((side) => ({
-        lon: side * (HALF_PI - 0.12),
-        lat: earLat,
-      }));
-      const band = coronalArc(earLat + 0.2, 40, 0.16);
-      const pads = ears.map((ear) => project(ear, pose, body));
-      const mouthSide = at(cx + 9, eyeY + 16);
-      const nearPad = pads[1].depth >= pads[0].depth ? 1 : 0;
+      const bandLat = eyeLat + 0.12;
+      const band: Vec3[] = Array.from({ length: 25 }, (_, index) => {
+        const theta =
+          Math.PI - bandLat - ((Math.PI - 2 * bandLat) * index) / 24;
+        return [Math.cos(theta) * 1.05, Math.sin(theta) * 1.05, 0.1];
+      });
+      const pads = [-1, 1].map((side) =>
+        fromSurface(side * HALF_PI, bandLat - 0.02, 1.03),
+      );
+      const mic: Vec3[] = [
+        [1.0, Math.sin(bandLat) - 0.15, 0.25],
+        [0.85, -0.25, 0.75],
+        [0.3, -0.42, 1.05],
+      ];
       return (
         <g>
-          <path
-            d={arcPath(band, pose, body, -0.02)}
-            fill="none"
-            stroke={deep}
-            strokeWidth={3.4}
-            strokeLinecap="round"
-          />
-          {pads[nearPad].depth > 0.05 && isVisible(mouthSide) ? (
-            <path
-              d={`M${pads[nearPad].x},${pads[nearPad].y + 7} Q${pads[nearPad].x + (mouthSide.x - pads[nearPad].x) * 0.15},${mouthSide.y + 6} ${mouthSide.x},${mouthSide.y}`}
-              fill="none"
-              stroke={deep}
-              strokeWidth={2.4}
-              strokeLinecap="round"
-            />
-          ) : null}
-          {isVisible(mouthSide) ? (
-            <circle cx={mouthSide.x} cy={mouthSide.y} r={2.4} fill={deep} />
-          ) : null}
-          {pads.map((pad, index) =>
-            pad.depth > -0.02 ? (
-              <g key={index} transform={foreshortenTransform(pad, 0.45)}>
-                <ellipse rx={6} ry={9} fill={deep} {...edge} />
-                <ellipse rx={3} ry={5.5} fill="#fff" opacity={0.28} />
-              </g>
-            ) : null,
-          )}
+          <Strand points={band} width={3.4} />
+          <Strand points={mic} width={2.4} />
+          <Disc center={mic[2]} normal={[0, 0, 1]}>
+            <circle r={2.6} fill={deep} />
+          </Disc>
+          {pads.map((pad, index) => (
+            <Disc
+              key={index}
+              center={pad}
+              normal={[index === 0 ? -1 : 1, 0, 0]}
+              minDepth={0.45}
+              hideBelow={-0.2}
+            >
+              <ellipse rx={6} ry={9} fill={deep} {...edge} />
+              <ellipse rx={3} ry={5.5} fill="#fff" opacity={0.28} />
+            </Disc>
+          ))}
         </g>
       );
     }
     case "cap": {
-      const capLat = surfacePointAt(cx, top + 11, body).lat;
-      const crown = project({ lon: 0, lat: HALF_PI }, pose, body);
-      const ring = latitudeRing(capLat, 40, -HALF_PI - 0.4, HALF_PI + 0.4)
-        .map((point) => project(point, pose, body))
-        .filter((point) => point.depth > 0);
-      const brim = project({ lon: 0.95, lat: capLat + 0.02 }, pose, body);
-      if (ring.length < 2) return null;
-      const first = ring[0];
-      const last = ring[ring.length - 1];
-      const capTopY = Math.min(top - 2, crown.y - 4);
-      const dome = `M${first.x},${first.y} ${ring
-        .slice(1)
-        .map((point) => `L${point.x},${point.y}`)
-        .join(
-          " ",
-        )} C${last.x},${capTopY} ${first.x},${capTopY} ${first.x},${first.y} Z`;
+      const capLat = surfacePointAt(cx, top + 19, body).lat;
+      const capRadius = 1.12;
+      const ring: Vec3[] = Array.from({ length: 49 }, (_, index) =>
+        fromSurface(-Math.PI + (2 * Math.PI * index) / 48, capLat, capRadius),
+      );
+      const front = ring
+        .map((point) => rotate(point, pose))
+        .filter((point) => point[2] >= 0.02)
+        .map((point) => toScreen(point, body));
+      const brim: Vec3[] = [
+        fromSurface(0.4, capLat - 0.04, 1.06),
+        ...[0.4, 0.62, 0.84, 1.06, 1.28, 1.5].map((lon) =>
+          fromSurface(lon, capLat - 0.2, 1.62),
+        ),
+        fromSurface(1.5, capLat - 0.04, 1.06),
+      ];
+      const dome =
+        front.length > 2 && layer === "front"
+          ? `M${front[0].x},${front[0].y} ${front
+              .slice(1)
+              .map((point) => `L${point.x},${point.y}`)
+              .join(
+                " ",
+              )} A${body.rx * capRadius},${body.ry * capRadius} 0 0 0 ${front[0].x},${front[0].y} Z`
+          : null;
       return (
         <g>
-          <Attached at={brim} minDepth={0.15}>
-            <rect
-              x={-6}
-              y={-3.5}
-              width={40}
-              height={7}
-              rx={3.5}
-              fill={deep}
-              {...edge}
-            />
-          </Attached>
-          <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
-          <circle cx={crown.x} cy={capTopY + 1} r={2.6} fill={deep} {...edge} />
+          <Slab points={brim} />
+          {dome ? (
+            <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
+          ) : null}
+          <Disc
+            center={[0, capRadius + 0.02, 0]}
+            normal={[0, 1, 0]}
+            minDepth={0.5}
+          >
+            <circle r={2.6} fill={deep} {...edge} />
+          </Disc>
         </g>
       );
     }
-    case "pen":
+    case "pen": {
+      const root = fromSurface(1.35, -0.12, 0.96);
+      const tip = fromSurface(0.92, 1.0, 1.72);
+      const along = (t: number): Vec3 => [
+        root[0] + (tip[0] - root[0]) * t,
+        root[1] + (tip[1] - root[1]) * t,
+        root[2] + (tip[2] - root[2]) * t,
+      ];
       return (
-        <Attached at={at(right - 18, top + 14)} minDepth={0.55}>
-          <g transform="rotate(28)">
-            <rect
-              x={-3}
-              y={-30}
-              width={6}
-              height={30}
-              rx={1.5}
-              fill={deep}
-              {...edge}
-            />
-            <path
-              d="M-3,0 L0,7 L3,0 Z"
-              fill="#F4E3B4"
-              {...edge}
-              strokeLinejoin="round"
-            />
-            <rect
-              x={-3}
-              y={-30}
-              width={6}
-              height={5}
-              rx={1}
-              fill="#fff"
-              {...edge}
-            />
-          </g>
-        </Attached>
+        <g>
+          <Strand points={[root, along(0.84)]} width={7} />
+          <Strand points={[along(0.7), along(0.78)]} width={7} color="#fff" />
+          <Strand
+            points={[along(0.84), along(0.95)]}
+            width={5}
+            color="#F4E3B4"
+          />
+          <Strand points={[along(0.95), tip]} width={2.6} color={INK} />
+        </g>
       );
-    case "star":
+    }
+    case "star": {
+      const center = fromSurface(0.85, -0.7, 1.01);
       return (
-        <Attached at={at(right - 15, bottom - 17)} minDepth={0.55}>
+        <Disc center={center} normal={center} minDepth={0.5}>
           <circle r={9} fill={deep} {...edge} />
           <path d={STAR} fill="#fff" />
-        </Attached>
+        </Disc>
       );
-    case "bow":
+    }
+    case "bow": {
+      const center = fromSurface(-0.95, 0.85, 1.02);
       return (
-        <Attached at={at(left + 17, top + 13)} minDepth={0.55}>
+        <Disc center={center} normal={center} minDepth={0.5}>
           <g transform="rotate(-18)">
             <path
               d="M0,0 L-11,-6 L-11,6 Z"
@@ -219,11 +271,13 @@ export function Accessory({ accessory, anchors, pose, deep, outline }: Props) {
             />
             <circle r={2.6} fill={deep} {...edge} />
           </g>
-        </Attached>
+        </Disc>
       );
-    case "badge":
+    }
+    case "badge": {
+      const center = fromSurface(-0.55, -0.5, 1.01);
       return (
-        <Attached at={at(left + 19, bottom - 24)} minDepth={0.3}>
+        <Disc center={center} normal={center} minDepth={0.3}>
           <rect
             x={-9}
             y={-6}
@@ -241,8 +295,9 @@ export function Accessory({ accessory, anchors, pose, deep, outline }: Props) {
             strokeWidth={1.6}
             strokeLinecap="round"
           />
-        </Attached>
+        </Disc>
       );
+    }
     default:
       return null;
   }

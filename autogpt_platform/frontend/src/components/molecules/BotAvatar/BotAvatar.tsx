@@ -14,14 +14,7 @@ import {
   type AvatarConfig,
   type AvatarStatus,
 } from "./helpers";
-import {
-  ellipsoidFor,
-  foreshortenTransform,
-  isVisible,
-  project,
-  surfacePointAt,
-  type Pose,
-} from "./projection";
+import type { Pose } from "./projection";
 import { usePose } from "./usePose";
 
 interface Props {
@@ -37,12 +30,6 @@ interface Props {
   className?: string;
 }
 
-const SPOTS = [
-  { dx: -0.28, dy: 14, r: 2.4 },
-  { dx: -0.2, dy: 9, r: 1.5 },
-  { dx: -0.33, dy: 22, r: 1.3 },
-];
-
 export function BotAvatar({
   config,
   status = "idle",
@@ -56,7 +43,9 @@ export function BotAvatar({
   className,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const clipId = useId();
+  const ids = useId().replace(/:/g, "");
+  const clipId = `${ids}-clip-${config.shape}`;
+  const gradientId = `${ids}-body-${config.color}`;
   const shape = findShape(config.shape);
   const color = findColor(config.color);
   const { isLive, isBlinking, pose } = usePose({
@@ -66,11 +55,9 @@ export function BotAvatar({
     poseOffset,
     svgRef,
   });
-  const { cx, top, bottom, width } = shape.anchors;
-  const body = ellipsoidFor(shape.anchors);
+  const { cx, bottom } = shape.anchors;
   const rollDeg = (pose.roll * 180) / Math.PI;
-  const bodyFill = color.body;
-  const shadeFill = color.mid;
+  const bodyFill = outline ? color.body : `url(#${gradientId})`;
 
   return (
     <svg
@@ -92,10 +79,22 @@ export function BotAvatar({
         <clipPath id={clipId}>
           <path d={shape.path} />
         </clipPath>
+        <radialGradient id={gradientId} cx="50%" cy="45%" r="62%">
+          <stop offset="0%" stopColor={color.body} />
+          <stop offset="100%" stopColor={color.light} />
+        </radialGradient>
       </defs>
       <g
         transform={`translate(0 ${-pose.bob}) rotate(${rollDeg} ${cx} ${bottom})`}
       >
+        <Accessory
+          accessory={config.accessory}
+          anchors={shape.anchors}
+          pose={pose}
+          deep={color.deep}
+          outline={outline}
+          layer="back"
+        />
         <path
           d={shape.path}
           fill={bodyFill}
@@ -103,36 +102,11 @@ export function BotAvatar({
           strokeWidth={3}
           strokeLinejoin="round"
         />
-        <g clipPath={`url(#${clipId})`}>
-          <ellipse
-            cx={cx}
-            cy={bottom + 8 + pose.pitch * 6}
-            rx={width * 0.6}
-            ry={22}
-            fill={shadeFill}
-            opacity={0.75}
-          />
-          {SPOTS.map((spot, index) => {
-            const point = project(
-              surfacePointAt(cx + width * spot.dx, top + spot.dy, body),
-              pose,
-              body,
-            );
-            return isVisible(point) ? (
-              <circle
-                key={index}
-                transform={foreshortenTransform(point)}
-                r={spot.r}
-                fill={shadeFill}
-              />
-            ) : null;
-          })}
-        </g>
         <Face
           anchors={shape.anchors}
           pose={pose}
           status={status}
-          blush={shadeFill}
+          blush={color.mid}
           isLive={isLive}
           isBlinking={isBlinking}
         />
@@ -142,6 +116,7 @@ export function BotAvatar({
           pose={pose}
           deep={color.deep}
           outline={outline}
+          layer="front"
         />
       </g>
       {showBadge ? (

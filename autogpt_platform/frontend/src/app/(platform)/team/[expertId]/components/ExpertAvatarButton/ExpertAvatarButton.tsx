@@ -7,6 +7,11 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 import {
   Camera01Icon,
   Loading03Icon,
@@ -43,17 +48,28 @@ export function ExpertAvatarButton({ expert }: Props) {
         aria-label={`Change ${expert.name}'s photo`}
         className="group relative size-24 shrink-0 cursor-pointer rounded-full outline-none transition-transform duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97] disabled:cursor-wait"
       >
-        <Avatar className="size-24 bg-background ring-4 ring-background">
-          {expert.avatar_url ? (
+        {isUploadedAvatar(expert.avatar_url) ? (
+          <Avatar className="size-24 bg-background ring-4 ring-background">
             <AvatarImage
-              src={expert.avatar_url}
+              src={expert.avatar_url ?? undefined}
               alt={expert.name}
               width={192}
               height={192}
             />
-          ) : null}
-          <AvatarFallback>{expert.name}</AvatarFallback>
-        </Avatar>
+            <AvatarFallback>{expert.name}</AvatarFallback>
+          </Avatar>
+        ) : (
+          <BotAvatar
+            config={expertAvatarConfig({
+              name: expert.name,
+              avatarUrl: expert.avatar_url,
+              color: expert.color,
+            })}
+            size={96}
+            showBadge={false}
+            title={expert.name}
+          />
+        )}
 
         <span
           aria-hidden

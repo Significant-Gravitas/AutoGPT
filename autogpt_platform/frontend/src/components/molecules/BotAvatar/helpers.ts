@@ -46,6 +46,7 @@ export interface ColorOption {
   id: ColorId;
   label: string;
   role: string;
+  light: string;
   body: string;
   mid: string;
   deep: string;
@@ -116,65 +117,73 @@ export const COLORS: ColorOption[] = [
     id: "lavender",
     label: "Lavender",
     role: "AutoPilot",
-    body: "#8b5cf6",
-    mid: "#7c3aed",
-    deep: "#5b21b6",
+    light: "#c4b5fd",
+    body: "#a78bfa",
+    mid: "#8b5cf6",
+    deep: "#6d28d9",
   },
   {
     id: "plum",
     label: "Plum",
     role: "Marketing",
-    body: "#ec4899",
-    mid: "#db2777",
-    deep: "#9d174d",
+    light: "#f9a8d4",
+    body: "#f472b6",
+    mid: "#ec4899",
+    deep: "#be185d",
   },
   {
     id: "amber",
     label: "Amber",
     role: "Sales",
-    body: "#f59e0b",
-    mid: "#d97706",
-    deep: "#92400e",
+    light: "#fcd34d",
+    body: "#fbbf24",
+    mid: "#f59e0b",
+    deep: "#b45309",
   },
   {
     id: "sky",
     label: "Sky",
     role: "Ops",
-    body: "#0ea5e9",
-    mid: "#0284c7",
-    deep: "#075985",
+    light: "#7dd3fc",
+    body: "#38bdf8",
+    mid: "#0ea5e9",
+    deep: "#0369a1",
   },
   {
     id: "mint",
     label: "Mint",
     role: "Finance",
-    body: "#10b981",
-    mid: "#059669",
-    deep: "#065f46",
+    light: "#6ee7b7",
+    body: "#34d399",
+    mid: "#10b981",
+    deep: "#047857",
   },
   {
     id: "coral",
     label: "Coral",
     role: "Support",
-    body: "#f97316",
-    mid: "#ea580c",
-    deep: "#9a3412",
+    light: "#fdba74",
+    body: "#fb923c",
+    mid: "#f97316",
+    deep: "#c2410c",
   },
   {
     id: "indigo",
     label: "Indigo",
     role: "Research",
-    body: "#6366f1",
-    mid: "#4f46e5",
-    deep: "#3730a3",
+    light: "#a5b4fc",
+    body: "#818cf8",
+    mid: "#6366f1",
+    deep: "#4338ca",
   },
   {
     id: "butter",
     label: "Butter",
     role: "Content",
-    body: "#eab308",
-    mid: "#ca8a04",
-    deep: "#854d0e",
+    light: "#fde047",
+    body: "#facc15",
+    mid: "#eab308",
+    deep: "#a16207",
   },
 ];
 
@@ -195,6 +204,12 @@ export const STATUSES: StatusOption[] = [
   { id: "waiting", label: "Needs you", hint: "blocked, asking" },
   { id: "done", label: "Done", hint: "settles, satisfied" },
 ];
+
+export const AUTOPILOT_AVATAR: AvatarConfig = {
+  shape: "dome",
+  color: "lavender",
+  accessory: "none",
+};
 
 export const DEFAULT_CONFIG: AvatarConfig = {
   shape: "round",
@@ -271,4 +286,64 @@ export function seededRandom(seed: number) {
 
 export function configForName(name: string): AvatarConfig {
   return randomConfig(seededRandom(hashSeed(name.toLowerCase())));
+}
+
+const AVATAR_URL_PATTERN = /^\/avatars\/([a-z]+)\.([a-z]+)\.([a-z]+)\.svg$/;
+
+export function avatarUrlFor(config: AvatarConfig) {
+  return `/avatars/${encodeConfig(config)}.svg`;
+}
+
+export function parseAvatarUrl(
+  url: string | null | undefined,
+): AvatarConfig | null {
+  const match = url?.match(AVATAR_URL_PATTERN);
+  if (!match) return null;
+  const [, shape, color, accessory] = match;
+  if (!isShapeId(shape) || !isColorId(color) || !isAccessoryId(accessory))
+    return null;
+  return { shape, color, accessory };
+}
+
+const TOKEN_COLORS: Record<string, ColorId> = {
+  rose: "plum",
+  red: "coral",
+  orange: "coral",
+  amber: "amber",
+  yellow: "butter",
+  lime: "mint",
+  green: "mint",
+  emerald: "mint",
+  teal: "sky",
+  cyan: "sky",
+  sky: "sky",
+  blue: "sky",
+  indigo: "indigo",
+  violet: "lavender",
+  fuchsia: "plum",
+};
+
+export function colorForToken(
+  token: string | null | undefined,
+): ColorId | null {
+  const family = token?.split("-")[0];
+  return family ? (TOKEN_COLORS[family] ?? null) : null;
+}
+
+export interface ExpertLike {
+  name: string | null | undefined;
+  avatarUrl?: string | null;
+  color?: string | null;
+}
+
+export function expertAvatarConfig(expert: ExpertLike): AvatarConfig {
+  const parsed = parseAvatarUrl(expert.avatarUrl);
+  if (parsed) return parsed;
+  const seeded = configForName(expert.name ?? "");
+  const color = colorForToken(expert.color);
+  return color ? { ...seeded, color } : seeded;
+}
+
+export function isUploadedAvatar(url: string | null | undefined) {
+  return Boolean(url) && !parseAvatarUrl(url);
 }

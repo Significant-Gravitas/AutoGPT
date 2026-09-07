@@ -1,6 +1,11 @@
 import {
+  avatarUrlFor,
+  colorForToken,
   configForName,
   decodeConfig,
+  expertAvatarConfig,
+  isUploadedAvatar,
+  parseAvatarUrl,
   DEFAULT_CONFIG,
   encodeConfig,
   randomConfig,
@@ -61,5 +66,31 @@ describe("export helpers", () => {
     expect(markup).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(markup).toContain('width="512"');
     expect(markup).not.toContain("class=");
+  });
+});
+
+describe("expert avatar resolution", () => {
+  test("a generated avatar url round-trips and an upload does not parse", () => {
+    const config = { shape: "wide", color: "coral", accessory: "cap" } as const;
+    expect(parseAvatarUrl(avatarUrlFor(config))).toEqual(config);
+    expect(parseAvatarUrl("https://cdn.example/otto.png")).toBeNull();
+    expect(parseAvatarUrl("/avatars/cube.neon.hat.svg")).toBeNull();
+    expect(isUploadedAvatar("https://cdn.example/otto.png")).toBe(true);
+    expect(isUploadedAvatar(avatarUrlFor(config))).toBe(false);
+    expect(isUploadedAvatar(null)).toBe(false);
+  });
+
+  test("an expert without an upload is seeded from its name and accent", () => {
+    const seeded = expertAvatarConfig({
+      name: "Otto",
+      avatarUrl: null,
+      color: "sky-300",
+    });
+    expect(seeded).toEqual({ ...configForName("Otto"), color: "sky" });
+    expect(
+      expertAvatarConfig({ name: "Otto", avatarUrl: null, color: "" }),
+    ).toEqual(configForName("Otto"));
+    expect(colorForToken("fuchsia-300")).toBe("plum");
+    expect(colorForToken("neon-300")).toBeNull();
   });
 });
