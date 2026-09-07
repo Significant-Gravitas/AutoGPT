@@ -10,6 +10,9 @@ import {
 import { getConnectableCredentialTypes } from "@/hooks/useCredentials";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
+import { useState } from "react";
+import { ExistingCredentialsView } from "./components/ExistingCredentialsView/ExistingCredentialsView";
+import type { ExistingCredentialsOffer } from "./helpers";
 import { useConnectCredentialDialog } from "./useConnectCredentialDialog";
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -22,9 +25,13 @@ interface Props {
   displayName: string;
   /** Existing account to upgrade in place rather than signing in afresh. */
   credentialID?: string;
+  /** Accounts to offer before the connect methods. With none, or once the
+   *  user picks Add new, the dialog is the plain connect flow. */
+  existing?: ExistingCredentialsOffer;
   open: boolean;
   onClose: () => void;
-  /** Fires only on a completed sign-in, unlike onClose. */
+  /** Fires only on a completed sign-in, unlike onClose. Using an existing
+   *  account goes through `existing.onUse` instead. */
   onConnected?: () => void;
 }
 
@@ -37,10 +44,13 @@ export function ConnectCredentialDialog({
   provider,
   displayName,
   credentialID,
+  existing,
   open,
   onClose,
   onConnected,
 }: Props) {
+  const [addingNew, setAddingNew] = useState(false);
+  const [chosenId, setChosenId] = useState<string | null>(null);
   const {
     selectedMethod,
     setSelectedMethod,
@@ -58,13 +68,25 @@ export function ConnectCredentialDialog({
     credentialID,
   });
 
-  function handleClose() {
+  const offered = existing?.credentials ?? [];
+  const showExisting = offered.length > 0 && !addingNew;
+  const chosen = offered.find((c) => c.id === chosenId) ?? offered[0];
+
+  function resetAll() {
     reset();
+    setAddingNew(false);
+    setChosenId(null);
+  }
+
+  function handleClose() {
+    resetAll();
     onClose();
   }
 
   // The hook has already reset by the time it calls this.
   function handleConnected() {
+    setAddingNew(false);
+    setChosenId(null);
     onConnected?.();
     onClose();
   }
@@ -74,6 +96,11 @@ export function ConnectCredentialDialog({
   function handleDeviceAuthSuccess() {
     reset();
     handleConnected();
+  }
+
+  async function handleUseExisting() {
+    if (!existing || !chosen) return;
+    if (await existing.onUse(chosen)) handleClose();
   }
 
   const connectable: ConnectableProvider = {
@@ -97,28 +124,64 @@ export function ConnectCredentialDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-5 pb-2">
-          <ConnectMethodView
-            provider={connectable}
-            selectedMethod={selectedMethod}
-            onSelectMethod={setSelectedMethod}
-            apiKeyForm={apiKeyForm}
-            onApiKeySubmit={handleApiKeySubmit}
-            onDeviceAuthSuccess={handleDeviceAuthSuccess}
-          />
+          {showExisting && chosen ? (
+            <ExistingCredentialsView
+              provider={provider}
+              displayName={displayName}
+              credentials={offered}
+              selectedId={chosen.id}
+              onSelect={setChosenId}
+            />
+          ) : (
+            <ConnectMethodView
+              provider={connectable}
+              selectedMethod={selectedMethod}
+              onSelectMethod={setSelectedMethod}
+              apiKeyForm={apiKeyForm}
+              onApiKeySubmit={handleApiKeySubmit}
+              onDeviceAuthSuccess={handleDeviceAuthSuccess}
+            />
+          )}
+          {showExisting && existing?.error && (
+            <span role="alert" className="text-center text-xs text-red-600">
+              {existing.error}
+            </span>
+          )}
           <div className="flex items-center justify-end gap-3">
             <Button variant="secondary" size="small" onClick={handleClose}>
               Cancel
             </Button>
-            {showContinue && (
-              <Button
-                variant="primary"
-                size="small"
-                disabled={isContinueDisabled}
-                loading={isConnecting}
-                onClick={handleContinue}
-              >
-                {isConnecting ? "Connecting…" : "Continue"}
-              </Button>
+            {showExisting ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="small"
+                  disabled={existing?.isPending}
+                  onClick={() => setAddingNew(true)}
+                >
+                  Add new
+                </Button>
+                <Button
+                  variant="primary"
+                  size="small"
+                  loading={existing?.isPending}
+                  onClick={handleUseExisting}
+                >
+                  {existing?.isPending ? "Granting…" : "Use existing"}
+                </Button>
+              </>
+            ) : (
+              showContinue && (
+                <Button
+                  variant="primary"
+                  size="small"
+                  disabled={isContinueDisabled}
+                  loading={isConnecting}
+                  onClick={handleContinue}
+                >
+                  {isConnecting ? "Connecting…" : "Continue"}
+                </Button>
+              )
             )}
           </div>
         </div>

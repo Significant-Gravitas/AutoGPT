@@ -3,7 +3,6 @@
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Select } from "@/components/atoms/Select/Select";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -28,14 +27,11 @@ export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [awaitingGrant, setAwaitingGrant] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
-  const [chosenCredentialId, setChosenCredentialId] = useState<string | null>(
-    null,
-  );
   // A credential connected from this row while an expert is asking. It stays
-  // here until its grant succeeds, so a failed grant is retried with Use
-  // existing instead of forcing another sign-in.
+  // here until its grant succeeds, so a failed grant is retried from the
+  // dialog's existing accounts instead of forcing another sign-in.
   const [connected, setConnected] = useState<Grantable | null>(null);
-  // Credential ids that existed when Add new was clicked, so the grant goes
+  // Credential ids that existed when Connect was clicked, so the grant goes
   // to the account the user just added rather than one they already had.
   const knownIds = useRef<Set<string>>(new Set());
   const allProviders = useContext(CredentialsProvidersContext);
@@ -54,8 +50,8 @@ export function ConnectorRow({ row }: Props) {
     row.schema.discriminator_values,
   );
 
-  async function grant(credential: Grantable) {
-    if (!expertGrant) return;
+  async function grant(credential: Grantable): Promise<boolean> {
+    if (!expertGrant) return false;
     setGrantError(null);
     try {
       await grantCredentials({
@@ -64,7 +60,7 @@ export function ConnectorRow({ row }: Props) {
       });
     } catch {
       setGrantError("Couldn't grant access. Try again.");
-      return;
+      return false;
     }
     setConnected(null);
     row.select({
@@ -74,13 +70,14 @@ export function ConnectorRow({ row }: Props) {
       title: credential.title,
     });
     row.onConnected();
+    return true;
   }
 
   useEffect(() => {
     if (expertGrant) {
       // The expert must be granted the credential; the account merely having
       // one is not enough. After a sign-in from this row, grant the account
-      // that appeared since Add new was clicked — never a pre-existing one.
+      // that appeared since Connect was clicked — never a pre-existing one.
       if (!awaitingGrant || row.selected) return;
       const fresh = newlyConnectedCredential(
         row,
@@ -117,11 +114,8 @@ export function ConnectorRow({ row }: Props) {
     ...(connected ? [connected] : []),
     ...(expertGrant?.credentials ?? []).filter((c) => c.id !== connected?.id),
   ];
-  const grantable =
-    grantableOptions.find((c) => c.id === chosenCredentialId) ??
-    grantableOptions[0];
 
-  function openAddNew() {
+  function openDialog() {
     knownIds.current = new Set(
       (allProviders?.[row.provider]?.savedCredentials ?? []).map((c) => c.id),
     );
@@ -138,11 +132,11 @@ export function ConnectorRow({ row }: Props) {
         <span className="truncate text-sm font-medium text-zinc-900">
           {row.displayName}
         </span>
-        {grantError ? (
+        {grantError && !isDialogOpen ? (
           <span className="truncate text-xs text-red-600">{grantError}</span>
         ) : expertGrant && !row.selected ? (
           <span className="truncate text-xs text-zinc-500">
-            {grantable
+            {grantableOptions.length > 0
               ? "Needs this expert's access"
               : "This expert needs its own access"}
           </span>
@@ -160,48 +154,13 @@ export function ConnectorRow({ row }: Props) {
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
         </span>
-      ) : expertGrant ? (
-        <div className="flex shrink-0 items-center gap-1.5">
-          {grantableOptions.length > 1 && grantable && (
-            <Select
-              id={`grant-${row.provider}`}
-              label="Account"
-              hideLabel
-              size="small"
-              wrapperClassName="mb-0"
-              value={grantable.id}
-              onValueChange={setChosenCredentialId}
-              options={grantableOptions.map((c) => ({
-                value: c.id,
-                label: c.title,
-              }))}
-            />
-          )}
-          {grantable && (
-            <Button
-              variant="primary"
-              size="small"
-              disabled={isGranting}
-              onClick={() => grant(grantable)}
-            >
-              Use existing
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="small"
-            disabled={isGranting}
-            onClick={openAddNew}
-          >
-            Add new
-          </Button>
-        </div>
       ) : (
         <Button
           variant="primary"
           size="small"
           className="shrink-0"
-          onClick={() => setDialogOpen(true)}
+          disabled={isGranting}
+          onClick={openDialog}
         >
           Connect
         </Button>
@@ -212,6 +171,16 @@ export function ConnectorRow({ row }: Props) {
         provider={row.provider}
         displayName={row.displayName}
         credentialID={upgradableCredentialID(row.provider, allProviders)}
+        existing={
+          expertGrant
+            ? {
+                credentials: grantableOptions,
+                onUse: grant,
+                isPending: isGranting,
+                error: grantError,
+              }
+            : undefined
+        }
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
         onConnected={() => {
@@ -226,7 +195,7 @@ export function ConnectorRow({ row }: Props) {
   );
 }
 
-/** The credential that satisfies `row` and did not exist before Add new was
+/** The credential that satisfies `row` and did not exist before Connect was
  *  clicked, i.e. the account the user just signed in with. */
 function newlyConnectedCredential(
   row: Row,

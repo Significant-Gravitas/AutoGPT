@@ -78,8 +78,8 @@ export interface ConnectorRow {
   select: (value?: CredentialsMetaInput) => void;
   onConnected: () => void;
   /** Set when an expert asked: an account credential only counts once the
-   *  expert has been granted it, so the row offers Grant access or grants a
-   *  freshly connected one itself. */
+   *  expert has been granted it, so the connect dialog offers the account's
+   *  existing credentials first and a freshly connected one is granted. */
   expertGrant?: ExpertGrant;
 }
 
