@@ -1,27 +1,17 @@
-"""On-demand interactive desktop for CoPilot sessions (E2B).
+"""Turn the screen on in the session's computer (E2B) and stream it.
 
-The session's bash sandbox stays on the cheap headless ``base`` template —
-E2B bills actual vCPU+RAM per running second, so putting every session on the
-GUI-capable ``desktop`` template would tax the majority of sessions that never
-need a screen. Instead this tool manages a SEPARATE desktop-template sandbox
-per owner: created on first use, kept running after the turn ends so the
-user can watch and control the live stream, auto-paused when idle (free), and
-resumed in about a second on the next call.
+There is one box per owner — the session, or in an expert session the
+expert itself — and it is the same sandbox ``bash_exec`` runs in.  It runs
+our desktop image with nothing graphical started, so a screen costs nothing
+until this tool starts X, XFCE and the VNC stream *in that box*
+(``backend.copilot.computer.open_desktop``).  The expert page's Computer tab
+and the copilot side panel open the very same screen.
 
-The owner is the session — or, in an expert session, the expert itself, so
-the desktop is the expert's own persistent computer: the same box (browser
-profile, logins, installed apps and all) comes back for every chat,
-delegation and scheduled run that happens as that expert.  The expert page's
-Computer tab and the copilot side panel open the very same box through
-``backend.copilot.computer``.
-
-Both the desktop and the owner's bash sandbox mount the SAME durable volumes
-(see ``workspace_volume_mounts``): ``/home/user/workspace`` is the owner's
-persistent home and, for an expert, ``/home/user/shared`` is the owning
-user's workspace — so files the agent writes appear on the desktop and vice
-versa, and both survive across sessions. The desktop additionally redirects
-Downloads/Desktop/Documents into the home volume, so a person's browser
-downloads and saved files persist too.
+Everything is shared because it is one machine: files, processes, installed
+tools, and the durable volumes (``/home/user/workspace`` is the owner's
+persistent home; for an expert ``/home/user/shared`` is the owning user's
+workspace).  The box pauses at turn end like always and the screen comes
+back exactly as it was on the next resume.
 """
 
 import logging
@@ -39,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class StartDesktopTool(BaseTool):
-    """Start (or resume) the owner's on-demand desktop and return its stream."""
+    """Turn on the screen of the session's computer and return its live stream."""
 
     @property
     def name(self) -> str:
@@ -48,12 +38,13 @@ class StartDesktopTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Start or resume an interactive cloud desktop and return a live "
-            "stream the user can watch and control. It shares your persistent "
-            "~/workspace with bash_exec (in an expert session it is the expert's "
-            "own persistent computer; ~/shared is the user's workspace). Stays "
-            "up after your turn, suspends when idle. Use when a task needs a "
-            "browser or GUI app."
+            "Turn on the screen of your computer and return a live stream the "
+            "user can watch and control. It is the same machine bash_exec runs "
+            "in, so files, ~/workspace and running processes are shared (in an "
+            "expert session it is the expert's own persistent computer; "
+            "~/shared is the user's workspace). The machine suspends between "
+            "turns and the screen comes back as you left it. Use when a task "
+            "needs a browser or GUI app."
         )
 
     @property
@@ -69,7 +60,7 @@ class StartDesktopTool(BaseTool):
         session_id = session.session_id if session else None
         if not session_id:
             return ErrorResponse(
-                message="No active session to attach a desktop to.",
+                message="No active session to turn a screen on for.",
                 error="session_unavailable",
             )
         api_key = chat_config.active_e2b_api_key
@@ -83,7 +74,7 @@ class StartDesktopTool(BaseTool):
         expert_id = session.expert_id if session else None
         owner = computer_owner(session_id, expert_id)
         try:
-            stream, created, shared = await open_desktop(
+            stream, first_time, shared = await open_desktop(
                 owner,
                 mounts_for(user_id, expert_id),
                 api_key,
@@ -99,14 +90,14 @@ class StartDesktopTool(BaseTool):
             )
 
         return DesktopStreamToolResponse(
-            message=_build_message(created, shared, expert=owner.is_expert),
+            message=_build_message(first_time, shared, expert=owner.is_expert),
             desktop_stream=stream.model_dump(),
             session_id=session_id,
         )
 
 
-def _build_message(created: bool, shared: bool, *, expert: bool = False) -> str:
-    state = "started" if created else "resumed"
+def _build_message(first_time: bool, shared: bool, *, expert: bool = False) -> str:
+    state = "Screen is on" if first_time else "Screen was already on; stream refreshed"
     if shared and expert:
         files = (
             f"This is your own persistent computer. {WORKSPACE_PATH} is your "
@@ -116,16 +107,17 @@ def _build_message(created: bool, shared: bool, *, expert: bool = False) -> str:
         )
     elif shared:
         files = (
-            f"It shares your persistent {WORKSPACE_PATH} with bash_exec live, "
-            "so put anything the user should see (or that should persist) there."
+            f"Your persistent {WORKSPACE_PATH} is on it, so put anything the "
+            "user should see (or that should persist) there."
         )
     else:
         files = (
-            "No per-user volume is attached (no user context), so this desktop "
-            "is ephemeral and not shared with bash_exec."
+            "No per-user volume is attached (no user context), so nothing on "
+            "this machine persists beyond the sandbox."
         )
     return (
-        f"Desktop {state}. The user can watch and control it via the live "
-        f"stream. It stays up after this turn and suspends itself when idle; "
-        f"calling start_desktop again resumes it with state intact. {files}"
+        f"{state}. This is the same machine bash_exec runs in, so files, "
+        "processes and installed tools are shared. The user can watch and "
+        "control it via the live stream. The machine suspends between turns "
+        f"and the screen comes back as you left it. {files}"
     )
