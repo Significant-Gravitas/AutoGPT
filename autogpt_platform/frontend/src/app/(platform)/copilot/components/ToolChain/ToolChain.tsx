@@ -30,6 +30,7 @@ import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { ACCORDION_PANEL, accordionState, PANEL_REVEAL } from "./accordion";
 import { ChainActionsContext, type ChainActionEntry } from "./chainActions";
+import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { ChainRowView } from "./ChainRowView";
 import {
   type ChainRow,
@@ -171,6 +172,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pendingActions is rebuilt every render; the ref makes this once-per-chain
     [canAutoSend],
   );
+
+  useCredentialFailureCounters({
+    entries: actionEntries,
+    isStreaming,
+    offerProceed,
+    justConnectedHere,
+  });
 
   const rows = useMemo(
     () =>
