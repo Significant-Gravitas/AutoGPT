@@ -1056,11 +1056,7 @@ async def build_skills_context(
 
 _EXPERT_ID_PARAM = {
     "type": "string",
-    "description": (
-        "Personal AutoPilot only: operate on this expert's own skills instead "
-        "of your own. Experts always use their own skills and cannot name "
-        "another owner."
-    ),
+    "description": "Manage this expert's skills (AutoPilot only).",
 }
 
 
