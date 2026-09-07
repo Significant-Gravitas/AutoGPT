@@ -76,6 +76,32 @@ const approvalItem: HomeAttentionItem = {
   },
 };
 
+const cameraResearch: HomeBriefingOutcome = {
+  id: "outcome-1",
+  status: "completed",
+  title: "Your camera research is ready",
+  summary: "Compared 18 cameras and shortlisted the best three.",
+  expert: maria,
+  agent_name: "Product Researcher",
+  occurred_at: NOW,
+  duration_seconds: 812,
+  cost_cents: 42,
+  link: "/library",
+};
+
+const schedulingFailure: HomeBriefingOutcome = {
+  id: "outcome-2",
+  status: "failed",
+  title: "Learning sessions could not be scheduled",
+  summary: "Nova needs Calendar access before the plan can continue.",
+  expert: maria,
+  agent_name: "Weekly Learning Coach",
+  occurred_at: NOW,
+  duration_seconds: 44,
+  cost_cents: 3,
+  link: "/team/maria",
+};
+
 const dashboard: HomeDashboardResponse = {
   generated_at: NOW,
   timezone: "UTC",
@@ -98,32 +124,7 @@ const dashboard: HomeDashboardResponse = {
     completed_count: 14,
     failed_count: 1,
     routine_count: 13,
-    outcomes: [
-      {
-        id: "outcome-1",
-        status: "completed",
-        title: "Your camera research is ready",
-        summary: "Compared 18 cameras and shortlisted the best three.",
-        expert: maria,
-        agent_name: "Product Researcher",
-        occurred_at: NOW,
-        duration_seconds: 812,
-        cost_cents: 42,
-        link: "/library",
-      },
-      {
-        id: "outcome-2",
-        status: "failed",
-        title: "Learning sessions could not be scheduled",
-        summary: "Nova needs Calendar access before the plan can continue.",
-        expert: maria,
-        agent_name: "Weekly Learning Coach",
-        occurred_at: NOW,
-        duration_seconds: 44,
-        cost_cents: 3,
-        link: "/team/maria",
-      },
-    ],
+    outcomes: [cameraResearch, schedulingFailure],
   },
   active_tasks: [
     {
@@ -170,6 +171,26 @@ const dashboard: HomeDashboardResponse = {
       },
     ],
   },
+  recent_work: {
+    window_started_at: new Date("2026-08-02T12:00:00Z"),
+    completed_count: 14,
+    failed_count: 1,
+    total_count: 0,
+    groups: [
+      {
+        actor: {
+          kind: "expert",
+          name: "Maria",
+          expert: maria,
+          link: "/copilot?expertId=maria",
+        },
+        latest_at: NOW,
+        runs: [cameraResearch, schedulingFailure],
+        items: [],
+        run_count: 14,
+      },
+    ],
+  },
 };
 
 afterEach(() => {
@@ -195,7 +216,7 @@ test("renders every Home tile from the aggregate API", async () => {
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
   expect(screen.getByText("Your camera research is ready")).toBeDefined();
-  expect(screen.getByText(/13 routine tasks completed quietly/)).toBeDefined();
+  expect(screen.getByText("14 runs")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
   expect(
     screen.getByRole("link", { name: /View all 10 experts/ }),
@@ -311,6 +332,7 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
     upcoming_tasks: [],
     team: { total: 0, ready: 0, working: 0, needs_attention: 0 },
     agents: [],
+    recent_work: { groups: [], total_count: 0 },
   });
 
   render(<HomePage />);
@@ -322,54 +344,6 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
   expect(screen.queryByText("You are all caught up")).toBeNull();
   expect(screen.getByText(/Nothing is scheduled/)).toBeDefined();
   expect(screen.getByRole("link", { name: "Browse experts" })).toBeDefined();
-});
-
-test("filters briefing outcomes by their real status", async () => {
-  const user = userEvent.setup();
-  mockDashboard(dashboard);
-
-  render(<HomePage />);
-
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-  await user.click(screen.getByRole("menuitemradio", { name: "Failed" }));
-
-  expect(
-    screen.getByText("Learning sessions could not be scheduled"),
-  ).toBeDefined();
-  expect(screen.queryByText("Your camera research is ready")).toBeNull();
-});
-
-test("labels a filter option for an unrecognised briefing status", async () => {
-  const user = userEvent.setup();
-  mockDashboard({
-    ...dashboard,
-    briefing: {
-      ...dashboard.briefing,
-      outcomes: [
-        dashboard.briefing.outcomes[0],
-        {
-          ...dashboard.briefing.outcomes[1],
-          status: "cancelled" as HomeBriefingOutcome["status"],
-        },
-      ],
-    },
-  });
-
-  render(<HomePage />);
-
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Filter briefing outcomes: All",
-    }),
-  );
-
-  expect(
-    screen.getByRole("menuitemradio", { name: "cancelled" }),
-  ).toBeDefined();
 });
 
 test("shows a retryable page error when the aggregate cannot load", async () => {

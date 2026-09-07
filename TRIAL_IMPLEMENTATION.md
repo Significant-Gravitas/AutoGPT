@@ -688,3 +688,37 @@ References: [SDK budget behavior](https://platform.claude.com/cookbook/claude-ag
   phase-one soft-cap acceptance does not make these hard guarantees.
 - No real provider request, email, Stripe mutation, production configuration, or
   deployment occurred in this checkpoint. Trial enrollment remains off.
+
+## Dev conflict-resolution checkpoint — 2026-09-06
+
+- Merged `dev` at `40eef54403a0bdcf830fb9f6df41b81e8af891fa` into the existing
+  trial branch without rebasing. The only textual conflict was adjacent imports
+  in `copilot/sdk/service.py`: preserved both `resolve_trial_sdk_budget` and
+  upstream's `tool_calls_for_provider`, then applied whole-backend formatting.
+- Preserved dev's SDK upgrade to locked `claude-agent-sdk` **0.2.152**, canonical
+  tool-name handling, other upstream changes, and this PR's trial budget behavior.
+  The merged FastAPI router and OpenAPI schema retain the trial endpoints;
+  regenerated the frontend client from the actual merged application schema.
+- Retained formatter cleanup and removed three upstream trailing-whitespace
+  findings in the getting-started guide, in accordance with the Boy Scout rule.
+- **No changes to the setup plan:** the LaunchDarkly flag keys/offer fields,
+  Stripe event list, card-required Checkout, onboarding-grant reuse, soft-cap
+  policy, and deployment instructions are unchanged. Use rebuilt images or
+  install the updated lockfiles when testing this merged branch. No Stripe or
+  LaunchDarkly configuration was changed by the conflict resolution.
+- Local backend validation passed: **456 SDK/tool-display/budget/executor/
+  accounting tests** plus **116 trial-offer/Checkout/card/fulfillment/resume
+  tests**. Whole-backend formatting and pyright passed. Existing warnings remain.
+- The first SDK run was interrupted because the prior local Redis service was
+  unavailable. Docker Desktop was started and a task-owned localhost-only Redis
+  container supplied the complete passing rerun; this was not a code regression.
+  The container was stopped afterward with exit 0 and retained; no data was deleted.
+  API/client generation initially needed sandbox-approved access to download
+  public tokenizer data and npm tooling. Frontend validation pins Node 24 for
+  every step; an initial attempt selected Node 26 for lint and was rerun.
+- Full frontend validation passed in the required order: format, lint, types,
+  then **6,379 tests across 599 files** with coverage and two workers. Generated
+  OpenAPI output matched the clean automatic merge after formatting. Both staged
+  and working-tree diff checks passed, with no unresolved conflict markers.
+- New-head CI and independent review remain separate checks. This merge is not
+  a deployment and does not complete the remaining launch gates.

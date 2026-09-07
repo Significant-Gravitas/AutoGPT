@@ -87,6 +87,11 @@ def compose_home_dashboard(
         agents=agents,
         week=compose_week_summary(cost_summary, credits_balance),
         recent_work=compose_recent_work(
-            work_events or [], expert_by_id, session_titles or {}
+            now=now,
+            executions=executions,
+            events=work_events or [],
+            expert_by_id=expert_by_id,
+            agent_by_graph=agent_by_graph,
+            session_titles=session_titles or {},
         ),
     )

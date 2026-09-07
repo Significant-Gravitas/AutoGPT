@@ -143,6 +143,8 @@ class LibraryAgentRef(pydantic.BaseModel):
     id: str
     graph_id: str
     name: str
+    # A removed agent still names its past runs; it just cannot be linked.
+    is_deleted: bool = False
 
 
 class RecentExecution(pydantic.BaseModel):

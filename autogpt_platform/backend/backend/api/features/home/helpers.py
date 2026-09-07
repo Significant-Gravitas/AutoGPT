@@ -74,7 +74,8 @@ def agent_refs_by_graph(
 ) -> dict[str, AgentRef]:
     agents = {
         ref.graph_id: AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name, library_agent_id=ref.id
+            name=ref.name or UNKNOWN_AGENT.name,
+            library_agent_id=None if ref.is_deleted else ref.id,
         )
         for ref in refs
     }

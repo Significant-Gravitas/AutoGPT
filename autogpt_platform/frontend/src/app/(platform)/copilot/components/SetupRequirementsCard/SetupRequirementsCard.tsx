@@ -101,6 +101,7 @@ export function SetupRequirementsCard({
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -147,19 +148,25 @@ export function SetupRequirementsCard({
   const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
   const hasUserActionableInputs = isEditMode && needsInputs;
+  // Neither auto path may send these; the chain gives them a Proceed instead.
+  // A trigger card's message carries the account its webhook registers under,
+  // which the backend requires the user to have picked. A card with editable
+  // inputs reports ready on the first typed character, so sending on readiness
+  // would fire mid-word with a half-typed value.
+  const needsManualPick = isTriggerMode;
   const canAutoDismiss =
-    needsCredentials && alreadyConnected && !hasUserActionableInputs;
+    needsCredentials &&
+    alreadyConnected &&
+    !hasUserActionableInputs &&
+    !needsManualPick;
   // Inside a chain this card renders no Proceed of its own — the chain only
   // renders one for inputs/questions — so a completed sign-in is the sole "go"
   // signal; without this the chain stalls after the user connects. It must be
   // the sign-in and not merely a satisfied credential: every card in the chat
   // history re-mounts on load with its credential already in place.
-  const canAutoProceed =
-    Boolean(chainActions) &&
-    justConnected &&
-    isAllCredsComplete &&
-    !hasUserActionableInputs;
-
+  // Standalone only: inside a chain the chain owns sending, so it can wait for
+  // every card's rows before the single follow-up turn goes out.
+  //
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
   // provide (the Proceed button is hidden behind the early return below).
@@ -174,7 +181,7 @@ export function SetupRequirementsCard({
   // (cleanup cancels the first microtask, but the claim is still held, so
   // the second effect run can't re-claim and the send never fires).
   useEffect(() => {
-    if ((!canAutoDismiss && !canAutoProceed) || hasSent) return;
+    if (chainActions || !canAutoDismiss || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
     const claimed = useConnectedProvidersStore
       .getState()
@@ -185,7 +192,7 @@ export function SetupRequirementsCard({
     }
     handleRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
-  }, [canAutoDismiss, canAutoProceed, hasSent]);
+  }, [chainActions, canAutoDismiss, hasSent]);
 
   const canRun = checkCanRun(
     needsCredentials,
@@ -196,11 +203,13 @@ export function SetupRequirementsCard({
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   useEffect(() => {
-    if (!chainActions || hasSent || canAutoDismiss || canAutoProceed) return;
+    if (!chainActions || hasSent) return;
     if (!needsCredentials && !needsInputs) return;
     chainActions.register({
       id: actionId,
       ready: canRun,
+      manualProceed: needsManualPick || hasUserActionableInputs,
+      justConnected,
       buildMessage: () => buildProceedMessage(),
       onSent: markSent,
       connectors: needsCredentials
@@ -232,8 +241,7 @@ export function SetupRequirementsCard({
   }, [
     chainActions,
     hasSent,
-    canAutoDismiss,
-    canAutoProceed,
+    justConnected,
     canRun,
     actionId,
     needsCredentials,
@@ -244,12 +252,12 @@ export function SetupRequirementsCard({
     showAdvanced,
   ]);
 
-  if (hasSent || canAutoDismiss || canAutoProceed) {
+  if (hasSent || (!chainActions && canAutoDismiss)) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(

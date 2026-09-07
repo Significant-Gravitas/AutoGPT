@@ -27,6 +27,7 @@ from . import exceptions as store_exceptions
 from . import model as store_model
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
+from .store_listing_versions import installable_store_version_where
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -1401,9 +1402,16 @@ async def get_my_agents(
 
 
 async def get_agent(store_listing_version_id: str) -> GraphModel:
-    """Get agent using the version ID and store listing version ID."""
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    """Get the graph behind a store listing version, for public download.
+
+    Unauthenticated endpoint: the installable-listing check below *is* the
+    authorization, so `get_graph()` is told to skip its own (it would deny).
+    """
+    slv = await prisma.models.StoreListingVersion.prisma().find_first(
+        where={
+            "id": store_listing_version_id,
+            **installable_store_version_where(),
+        }
     )
 
     if not slv:
@@ -1416,6 +1424,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
         version=slv.agentGraphVersion,
         user_id=None,
         for_export=True,
+        skip_access_check=True,
     )
     if not graph:
         raise NotFoundError(
