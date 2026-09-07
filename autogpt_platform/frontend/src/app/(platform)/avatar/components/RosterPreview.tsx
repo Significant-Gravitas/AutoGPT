@@ -31,14 +31,11 @@ export function RosterPreview({ config, status, outline }: Props) {
             (option) => option.id === member.status,
           )?.label;
           return (
-            <li
-              key={member.name}
-              className="flex items-center gap-3 px-4 py-2.5"
-            >
+            <li key={member.name} className="flex items-center gap-3 px-4 py-3">
               <BotAvatar
                 config={member.config}
                 status={member.status}
-                size={36}
+                size={52}
                 outline={outline}
               />
               <div className="flex min-w-0 flex-1 flex-col">

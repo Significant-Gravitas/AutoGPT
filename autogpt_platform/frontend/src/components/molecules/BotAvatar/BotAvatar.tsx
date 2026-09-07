@@ -70,8 +70,8 @@ export function BotAvatar({
   const { cx, top, bottom, width } = shape.anchors;
   const body = ellipsoidFor(shape.anchors);
   const rollDeg = (pose.roll * 180) / Math.PI;
-  const bodyFill = outline ? color.body : mixHex(color.body, color.mid, 0.35);
-  const shadeFill = outline ? color.mid : mixHex(color.mid, color.deep, 0.18);
+  const bodyFill = outline ? color.body : mixHex(color.body, color.mid, 0.65);
+  const shadeFill = outline ? color.mid : mixHex(color.mid, color.deep, 0.4);
 
   return (
     <svg
