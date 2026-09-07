@@ -34,6 +34,13 @@ export function useCredentialFailureCounters({
     function reportCardsStuckAfterConnecting() {
       const timers = stuckTimers.current;
       const reported = stuckReported.current;
+      // An unregistered card left the chain; its pending timer would count a
+      // user who is no longer looking at it.
+      timers.forEach((timer, id) => {
+        if (entries.has(id)) return;
+        clearTimeout(timer);
+        timers.delete(id);
+      });
       entries.forEach((entry) => {
         if (entry.justConnected && !entry.ready) {
           if (timers.has(entry.id) || reported.has(entry.id)) return;

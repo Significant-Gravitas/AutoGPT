@@ -193,13 +193,13 @@ function useReportProviderUnknown(
   providerName: string | null,
   allProviders: CredentialsProvidersContextType | null,
 ) {
-  const reportedFor = useRef<string | null>(null);
+  const reportedFor = useRef(new Set<string>());
 
   useEffect(() => {
     if (!providerName || !allProviders) return;
     if (providerName in allProviders) return;
-    if (reportedFor.current === providerName) return;
-    reportedFor.current = providerName;
+    if (reportedFor.current.has(providerName)) return;
+    reportedFor.current.add(providerName);
     trackCredentialConnectionFailure("credential_card_never_rendered", {
       provider: providerName,
     });

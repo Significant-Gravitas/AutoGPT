@@ -44,6 +44,35 @@ function renderWithProviders(
   });
 }
 
+// A field whose provider follows a sibling input, so one mounted hook can see
+// several providers.
+const discriminatedSchema: BlockIOCredentialsSubSchema = {
+  type: "object",
+  properties: {},
+  credentials_provider: ["github", "google"],
+  credentials_types: ["oauth2"],
+  discriminator: "model",
+  discriminator_mapping: { gpt: "github", gemini: "google" },
+};
+
+function renderDiscriminated(
+  providers: CredentialsProvidersContextType,
+  model: string,
+) {
+  return renderHook(
+    ({ model }: { model: string }) =>
+      useCredentials(discriminatedSchema, { model }),
+    {
+      initialProps: { model },
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <CredentialsProvidersContext.Provider value={providers}>
+          {children}
+        </CredentialsProvidersContext.Provider>
+      ),
+    },
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -78,5 +107,21 @@ describe("a provider the frontend has never heard of", () => {
 
     expect(result.current).not.toBeNull();
     await waitFor(() => expect(capture).not.toHaveBeenCalled());
+  });
+
+  it("counts a provider once however often the field returns to it", async () => {
+    const { rerender } = renderDiscriminated(makeProviders("slack"), "gpt");
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    rerender({ model: "gemini" });
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
+    rerender({ model: "gpt" });
+
+    await waitFor(() =>
+      expect(capture.mock.calls.map(([, props]) => props.provider)).toEqual([
+        "github",
+        "google",
+      ]),
+    );
   });
 });

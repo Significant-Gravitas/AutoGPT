@@ -131,6 +131,25 @@ describe("a card that signed in and never became ready", () => {
 
     expect(capturedFailures()).toHaveLength(0);
   });
+
+  it("counts nothing when the card leaves the chain before the settle window", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    card.current = { ready: false, justConnected: true };
+
+    const { rerender } = render(
+      <ToolChain parts={[setupPart()]} isStreaming={false} />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    rerender(<ToolChain parts={[]} isStreaming={false} />);
+    await act(async () => {
+      vi.advanceTimersByTime(10000);
+    });
+
+    expect(capturedFailures()).toHaveLength(0);
+  });
 });
 
 describe("a Proceed restored from chat history", () => {
