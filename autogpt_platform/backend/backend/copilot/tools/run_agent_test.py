@@ -1631,3 +1631,42 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_refuses_uninstalled_workflow_for_expert():
+    from backend.copilot.tools.run_agent import RunAgentInput
+
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(
+        expert_id="expert-a", graph_id="graph-out", graph_version=1, inputs={}
+    )
+    lib_db = MagicMock()
+    lib_db.get_preset = AsyncMock(return_value=preset)
+    graph_db_mock = MagicMock()
+    graph_db_mock.get_graph = AsyncMock(
+        return_value=MagicMock(id="graph-out", name="Outside", version=1)
+    )
+    experts = MagicMock()
+    experts.get_expert = AsyncMock(
+        return_value=MagicMock(
+            workflows=[MagicMock(library_agent_id="lib-in", graph_id="graph-in")]
+        )
+    )
+    add_exec = AsyncMock()
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=graph_db_mock),
+        patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "workflow_not_installed"
+    add_exec.assert_not_awaited()

@@ -205,6 +205,12 @@ class RemoveExpertWorkflowTool(BaseTool):
                 error="expert_not_found",
                 session_id=session_id,
             )
+        selectors = [v.strip() for v in (workflow_id, library_agent_id) if v.strip()]
+        if len(selectors) != 1:
+            return ErrorResponse(
+                message="Provide exactly one of workflow_id or library_agent_id.",
+                session_id=session_id,
+            )
         row = next(
             (
                 w
@@ -598,19 +604,26 @@ class RequestCredentialGrantTool(BaseTool):
             f"to run grant_expert_credential for expert {session.expert_id}."
         )
         asked_at = datetime.now(timezone.utc)
-        session.metadata.pending_question = PendingQuestion(
-            text=text, asked_at=asked_at
-        )
         try:
             await chat_db().set_session_pending_question(
                 session_id, session.user_id, text, asked_at
             )
         except Exception:
-            logger.warning(
+            logger.exception(
                 "Could not record credential grant request for session %s",
                 session_id,
-                exc_info=True,
             )
+            return ErrorResponse(
+                message=(
+                    "Couldn't record the request for the owner right now. "
+                    "Try again in a moment."
+                ),
+                error="request_not_recorded",
+                session_id=session_id,
+            )
+        session.metadata.pending_question = PendingQuestion(
+            text=text, asked_at=asked_at
+        )
         return CredentialGrantRequestedResponse(
             expert_id=session.expert_id,
             credential_id=credential_id,

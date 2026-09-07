@@ -456,3 +456,25 @@ async def test_write_graph_to_write_failure_notes_fallback(tool, session):
     assert isinstance(result, AgentsFoundResponse)
     assert "could not write" in result.message
     assert "include_graph=true" in result.message
+
+
+@pytest.mark.asyncio
+async def test_expert_cannot_export_an_uninstalled_agent_by_id(tool):
+    from backend.copilot.model import ChatSession
+    from backend.copilot.tools.expert_scope import ExpertWorkflowScope
+
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-a")
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-in"])
+    with (
+        patch(
+            "backend.copilot.tools.expert_scope.session_workflow_scope",
+            new=AsyncMock(return_value=scope),
+        ),
+        patch.object(FindLibraryAgentTool, "_search", new=AsyncMock()) as search,
+    ):
+        result = await tool._execute(
+            "user-1", session, agent_id="graph-out", write_graph_to="graph.json"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "workflow_not_installed"
+    search.assert_not_awaited()

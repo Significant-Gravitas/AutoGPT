@@ -77,11 +77,22 @@ async def session_workflow_scope(
 
 
 async def require_installed_workflow(
-    user_id: str, session: ChatSession, *, graph_id: str, name: str
+    user_id: str,
+    session: ChatSession,
+    *,
+    graph_id: str | None = None,
+    library_agent_id: str | None = None,
+    name: str,
 ) -> ErrorResponse | None:
-    """Refuse a workflow an expert session has not installed."""
+    """Refuse a workflow an expert session has not installed.
+
+    Either identifier form satisfies the check, so callers that accept a
+    library agent id or a graph id can pass the value as both.
+    """
     scope = await session_workflow_scope(user_id, session)
-    if scope is None or scope.allows_graph(graph_id):
+    if scope is None or scope.allows_agent(
+        library_agent_id=library_agent_id, graph_id=graph_id
+    ):
         return None
     return ErrorResponse(
         message=WORKFLOW_NOT_INSTALLED.format(name=name),

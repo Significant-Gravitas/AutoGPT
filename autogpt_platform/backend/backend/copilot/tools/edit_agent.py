@@ -111,7 +111,11 @@ class EditAgentTool(BaseTool):
             )
         if user_id:
             scope_error = await require_installed_workflow(
-                user_id, session, graph_id=agent_id, name=agent_id
+                user_id,
+                session,
+                graph_id=agent_id,
+                library_agent_id=agent_id,
+                name=agent_id,
             )
             if scope_error is not None:
                 return scope_error

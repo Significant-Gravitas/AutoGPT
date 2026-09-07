@@ -12,7 +12,7 @@ from .agent_search import (
     search_library_for_creation,
 )
 from .base import BaseTool
-from .expert_scope import session_workflow_scope
+from .expert_scope import require_installed_workflow, session_workflow_scope
 from .models import AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
@@ -99,6 +99,16 @@ class FindLibraryAgentTool(BaseTool):
         goal_summary: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        if user_id and (direct_id := agent_id.strip()):
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=direct_id,
+                library_agent_id=direct_id,
+                name=direct_id,
+            )
+            if scope_error is not None:
+                return scope_error
         result = await self._search(
             user_id,
             session,

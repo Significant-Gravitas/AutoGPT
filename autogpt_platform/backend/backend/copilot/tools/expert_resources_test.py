@@ -219,3 +219,26 @@ async def test_personal_autopilot_cannot_request_a_grant(experts):
     )
     assert isinstance(result, ErrorResponse)
     assert result.error == "not_an_expert_session"
+
+
+async def test_remove_rejects_conflicting_selectors(experts):
+    result = await RemoveExpertWorkflowTool()._execute(
+        "user-1", _session("expert-a"), workflow_id="wf-1", library_agent_id="lib-1"
+    )
+    assert isinstance(result, ErrorResponse)
+    experts.remove_workflow.assert_not_awaited()
+
+
+async def test_grant_request_fails_when_it_cannot_be_recorded(experts):
+    from backend.copilot.tools.expert_resources import RequestCredentialGrantTool
+
+    chat = MagicMock()
+    chat.set_session_pending_question = AsyncMock(side_effect=RuntimeError("db"))
+    session = _session("expert-a")
+    with patch(f"{_PATH}.chat_db", return_value=chat):
+        result = await RequestCredentialGrantTool()._execute(
+            "user-1", session, credential_id="cred-9"
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "request_not_recorded"
+    assert session.metadata.pending_question is None

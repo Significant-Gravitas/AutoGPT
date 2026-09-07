@@ -799,6 +799,11 @@ class RunAgentTool(BaseTool):
                 ),
                 session_id=session_id,
             )
+        scope_error = await require_installed_workflow(
+            user_id, session, graph_id=graph.id, name=graph.name
+        )
+        if scope_error is not None:
+            return scope_error
 
         # Builder-bound sessions can only run their bound agent — enforce the
         # same guard as the regular run path so a preset for a different graph

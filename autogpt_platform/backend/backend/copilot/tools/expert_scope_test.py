@@ -69,6 +69,16 @@ async def test_expert_may_use_installed_workflow(experts):
         )
         is None
     )
+    assert (
+        await require_installed_workflow(
+            "user-1",
+            _expert_session(),
+            graph_id="lib-installed",
+            library_agent_id="lib-installed",
+            name="x",
+        )
+        is None
+    )
 
 
 async def test_personal_autopilot_may_use_any_workflow(experts):
