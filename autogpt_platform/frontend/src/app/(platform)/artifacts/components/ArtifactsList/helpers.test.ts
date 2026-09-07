@@ -395,20 +395,42 @@ describe("formatDayLabel", () => {
 
 describe("getEmptyMessage", () => {
   test("prefers the search message", () => {
-    expect(getEmptyMessage({ hasSearchTerm: true, isInFolder: true })).toBe(
-      "No files match your search",
-    );
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: true,
+        isInFolder: true,
+        hasFolders: true,
+      }),
+    ).toBe("No files match your search");
   });
 
   test("describes an empty folder", () => {
-    expect(getEmptyMessage({ hasSearchTerm: false, isInFolder: true })).toBe(
-      "This folder is empty",
-    );
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: true,
+        hasFolders: false,
+      }),
+    ).toBe("This folder is empty");
+  });
+
+  test("describes a root that only holds folders", () => {
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: true,
+      }),
+    ).toBe("No files at the root yet");
   });
 
   test("describes an empty workspace", () => {
-    expect(getEmptyMessage({ hasSearchTerm: false, isInFolder: false })).toBe(
-      "No files yet",
-    );
+    expect(
+      getEmptyMessage({
+        hasSearchTerm: false,
+        isInFolder: false,
+        hasFolders: false,
+      }),
+    ).toBe("No files yet");
   });
 });

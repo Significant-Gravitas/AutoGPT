@@ -11,6 +11,7 @@ interface Props {
   files: WorkspaceFileItem[];
   isLoading: boolean;
   emptyMessage: string;
+  compactEmpty: boolean;
   listKey: string;
   onOpen: (file: WorkspaceFileItem) => void;
 }
@@ -26,6 +27,7 @@ export function ArtifactsGrid({
   files,
   isLoading,
   emptyMessage,
+  compactEmpty,
   listKey,
   onOpen,
 }: Props) {
@@ -44,7 +46,9 @@ export function ArtifactsGrid({
     );
   }
 
-  if (files.length === 0) return <EmptyState message={emptyMessage} />;
+  if (files.length === 0) {
+    return <EmptyState message={emptyMessage} compact={compactEmpty} />;
+  }
 
   return (
     <motion.ul

@@ -16,6 +16,7 @@ interface Props {
   files: WorkspaceFileItem[];
   isLoading: boolean;
   emptyMessage: string;
+  compactEmpty: boolean;
   listKey: string;
   showFolders: boolean;
   onSelectFolder: (folderId: string) => void;
@@ -33,6 +34,7 @@ export function ArtifactsTable({
   files,
   isLoading,
   emptyMessage,
+  compactEmpty,
   listKey,
   showFolders,
   onSelectFolder,
@@ -89,7 +91,7 @@ export function ArtifactsTable({
         </motion.ul>
       </TooltipProvider>
       {!isLoading && files.length === 0 ? (
-        <EmptyState message={emptyMessage} />
+        <EmptyState message={emptyMessage} compact={compactEmpty} />
       ) : null}
     </div>
   );

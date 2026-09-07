@@ -336,8 +336,10 @@ export function hasImageThumbnail(kind: PreviewKind): boolean {
 export function getEmptyMessage(opts: {
   hasSearchTerm: boolean;
   isInFolder: boolean;
+  hasFolders: boolean;
 }): string {
   if (opts.hasSearchTerm) return "No files match your search";
   if (opts.isInFolder) return "This folder is empty";
+  if (opts.hasFolders) return "No files at the root yet";
   return "No files yet";
 }

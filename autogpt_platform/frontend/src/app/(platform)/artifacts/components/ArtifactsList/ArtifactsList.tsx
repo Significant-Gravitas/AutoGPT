@@ -16,6 +16,7 @@ interface Props {
   isError: boolean;
   error: unknown;
   emptyMessage: string;
+  compactEmpty: boolean;
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
@@ -31,6 +32,7 @@ export function ArtifactsList({
   isError,
   error,
   emptyMessage,
+  compactEmpty,
   hasMore,
   isLoadingMore,
   onLoadMore,
@@ -63,6 +65,7 @@ export function ArtifactsList({
             files={files}
             isLoading={isLoading}
             emptyMessage={emptyMessage}
+            compactEmpty={compactEmpty}
             listKey={listKey}
             onOpen={setOpenFile}
           />
@@ -72,6 +75,7 @@ export function ArtifactsList({
           files={files}
           isLoading={isLoading}
           emptyMessage={emptyMessage}
+          compactEmpty={compactEmpty}
           listKey={listKey}
           showFolders={showFolders}
           onSelectFolder={onSelectFolder}

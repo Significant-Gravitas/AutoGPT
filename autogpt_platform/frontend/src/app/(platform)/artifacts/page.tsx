@@ -72,6 +72,8 @@ export default function ArtifactsPage() {
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+  const showFolders = !isInFolder && !isSearching;
+  const hasFolders = showFolders && folders.length > 0;
 
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
@@ -164,13 +166,15 @@ export default function ArtifactsPage() {
           emptyMessage={getEmptyMessage({
             hasSearchTerm: isSearching,
             isInFolder,
+            hasFolders,
           })}
+          compactEmpty={hasFolders}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
           listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
           view={view}
-          showFolders={!isInFolder && !isSearching}
+          showFolders={showFolders}
           onSelectFolder={setSelectedFolderId}
         />
       </motion.div>

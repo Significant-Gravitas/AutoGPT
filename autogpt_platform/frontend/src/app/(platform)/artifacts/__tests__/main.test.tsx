@@ -12,6 +12,7 @@ import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
   getListWorkspaceFilesMockHandler401,
+  getListWorkspaceFoldersMockHandler,
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
@@ -133,11 +134,37 @@ describe("ArtifactsPage - basic rendering", () => {
   test("shows the empty state when the workspace has no files", async () => {
     useStorageHandler();
     useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
 
     render(<ArtifactsPage />);
 
     expect(await screen.findByTestId("artifacts-empty")).toBeDefined();
     expect(screen.getByText(/no files yet/i)).toBeDefined();
+  });
+
+  test("shows a quiet hint instead of the empty state when only folders exist", async () => {
+    useStorageHandler();
+    useFilesHandler([]);
+    server.use(
+      getListWorkspaceFoldersMockHandler({
+        folders: [
+          {
+            id: "fld-1",
+            workspace_id: "ws-1",
+            name: "Reports",
+            file_count: 2,
+            created_at: "2026-05-01T00:00:00Z" as unknown as Date,
+            updated_at: "2026-05-01T00:00:00Z" as unknown as Date,
+          },
+        ],
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByTestId("workspace-folder")).toBeDefined();
+    expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
+    expect(screen.queryByText(/^no files yet$/i)).toBeNull();
   });
 
   test("renders one row per file with name, date and size columns", async () => {
