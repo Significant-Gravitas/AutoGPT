@@ -40,9 +40,8 @@ CATEGORY_DESCRIPTIONS: dict[StoreCategory, str] = {
     StoreCategory.DEVELOPMENT: "Software engineering, DevOps, testing and integrations",
 }
 
-# Only mappings with one defensible target live here; anything ambiguous is left
-# for the classifier. "business" spanned Finance, Sales and Support in the
-# existing data, so folding it by rule would have mislabelled most of it.
+# Only mappings with one defensible target belong here; ambiguous ones go to the
+# classifier. "business" spanned Finance, Sales and Support in the real data.
 CATEGORY_ALIASES: dict[str, StoreCategory] = {
     "writing": StoreCategory.CONTENT,
     "creative": StoreCategory.CONTENT,

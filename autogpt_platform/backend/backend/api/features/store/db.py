@@ -190,8 +190,8 @@ async def _fallback_store_agent_search(
         if category_values := category_filter_values(category):
             where_clause["categories"] = {"has_some": category_values}
 
-        # Verified listings lead every browse ordering, including the unsorted
-        # default, which had no ORDER BY at all.
+        # Verified leads every browse ordering, the otherwise-unordered
+        # default included.
         order_by: list[Any] = [{"verified": "desc"}]
         if sorted_by == StoreAgentsSortOptions.RATING:
             order_by.append({"rating": "desc"})
