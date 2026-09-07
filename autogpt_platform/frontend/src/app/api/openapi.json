@@ -13590,6 +13590,81 @@
         }
       }
     },
+    "/api/store/admin/skills/submissions": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin List Pending Skill Submissions",
+        "description": "Skill submissions awaiting review, oldest first.",
+        "operationId": "getV2Admin list pending skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2Admin List Pending Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Review Skill Submission",
+        "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
+        "operationId": "postV2Review skill submission",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/download/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
@@ -14503,6 +14578,124 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/store/skills/submissions": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "List my skill submissions",
+        "description": "Every version the caller has submitted, newest first per listing.",
+        "operationId": "getV2List my skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2List My Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Publish skill to marketplace",
+        "description": "Submit one of the caller's own library skills for marketplace review.",
+        "operationId": "postV2Publish skill to marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not in the caller's library" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": {
+            "description": "Marketplace profile required, or slug taken"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/skills/submissions/{skill_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit skill submission",
+        "description": "Update a pending submission and re-snapshot the library skill.",
+        "operationId": "putV2Edit skill submission",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": { "description": "Only a pending submission can be edited" }
         }
       }
     },
@@ -26961,6 +27154,79 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkillSubmission": {
+        "properties": {
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "version": { "type": "integer", "title": "Version" },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "is_live": {
+            "type": "boolean",
+            "title": "Is Live",
+            "description": "Whether this version is the one the marketplace serves."
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_listing_version_id",
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "version",
+          "status",
+          "is_live"
+        ],
+        "title": "SkillSubmission"
+      },
+      "SkillSubmissionRequest": {
+        "properties": {
+          "skill_name": {
+            "type": "string",
+            "title": "Skill Name",
+            "description": "Slug of the caller's library skill to publish."
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume are connected."
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["skill_name", "categories"],
+        "title": "SkillSubmissionRequest",
+        "description": "Publish one of the caller's own library skills as a marketplace listing."
       },
       "SkippedWebhookPreset": {
         "properties": {

@@ -6,7 +6,7 @@ from fastapi import Path, Query, Security
 
 from backend.copilot.tools.skills import SkillLimitError
 
-from . import skill_db, skill_model
+from . import skill_db, skill_model, skill_submission_db
 
 router = fastapi.APIRouter()
 
@@ -28,6 +28,59 @@ async def list_marketplace_skills(
         search_query=search_query,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.post(
+    "/submissions",
+    summary="Publish skill to marketplace",
+    tags=["store", "private"],
+    status_code=201,
+    responses={
+        404: {"description": "Skill not in the caller's library"},
+        428: {"description": "Marketplace profile required, or slug taken"},
+    },
+    dependencies=[Security(autogpt_libs.auth.requires_user)],
+)
+async def submit_skill(
+    request: skill_model.SkillSubmissionRequest,
+    user_id: str = Security(autogpt_libs.auth.get_user_id),
+) -> skill_model.SkillSubmission:
+    """Submit one of the caller's own library skills for marketplace review."""
+    return await skill_submission_db.submit_skill(user_id, request)
+
+
+@router.get(
+    "/submissions",
+    summary="List my skill submissions",
+    tags=["store", "private"],
+    dependencies=[Security(autogpt_libs.auth.requires_user)],
+)
+async def list_my_skill_submissions(
+    user_id: str = Security(autogpt_libs.auth.get_user_id),
+) -> list[skill_model.SkillSubmission]:
+    """Every version the caller has submitted, newest first per listing."""
+    return await skill_submission_db.list_my_skill_submissions(user_id)
+
+
+@router.put(
+    "/submissions/{skill_listing_version_id}",
+    summary="Edit skill submission",
+    tags=["store", "private"],
+    responses={
+        404: {"description": "Submission not found"},
+        428: {"description": "Only a pending submission can be edited"},
+    },
+    dependencies=[Security(autogpt_libs.auth.requires_user)],
+)
+async def edit_skill_submission(
+    request: skill_model.SkillSubmissionRequest,
+    skill_listing_version_id: str = Path(...),
+    user_id: str = Security(autogpt_libs.auth.get_user_id),
+) -> skill_model.SkillSubmission:
+    """Update a pending submission and re-snapshot the library skill."""
+    return await skill_submission_db.edit_skill_submission(
+        user_id, skill_listing_version_id, request
     )
 
 
