@@ -345,9 +345,7 @@ class ExpertBudgetUpdate(BaseModel):
     ``None`` falls back to the platform default; ``0`` disables the cap.
     """
 
-    weekly_budget: int | None = Field(
-        default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS
-    )
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
 
 
 class ExpertAvatarUpdate(BaseModel):
