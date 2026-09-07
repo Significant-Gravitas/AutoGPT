@@ -1,6 +1,7 @@
 import {
   getGetV2GetMarketplaceSkillMockHandler200,
   getPostV2InstallMarketplaceSkillMockHandler200,
+  getGetV2GetMarketplaceSkillMockHandler404,
   getPostV2InstallMarketplaceSkillMockHandler401,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
 import { getGetV1ListCredentialsMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
@@ -41,7 +42,15 @@ const outreach: MarketplaceSkillDetails = {
   creator: null,
   creator_avatar: null,
   skill_listing_version_id: "version-1",
-  body: "# Outreach playbook\nFour sentences, no more.\n",
+  body: [
+    "# Outreach playbook",
+    "Four sentences, no more.",
+    "## Before writing anything",
+    "### Research",
+    "Look for a **trigger** and record it as `trigger_note`.",
+    "- No greeting beyond their first name",
+    "1. The trigger, stated as a fact",
+  ].join("\n\n"),
   triggers: ["cold email"],
   updated_at: new Date("2026-09-07T00:00:00Z"),
 };
@@ -114,6 +123,28 @@ describe("Marketplace skill page", () => {
     const cta = await screen.findByRole("link", { name: "Add to AutoPilot" });
     expect(cta.getAttribute("href")).toBe("/login");
     expect(screen.queryByTestId("skill-install-button")).toBeNull();
+  });
+
+  test("renders every part of the SKILL.md, not just its paragraphs", async () => {
+    renderPage([]);
+
+    expect(await screen.findByText("Before writing anything")).toBeDefined();
+    expect(await screen.findByText("Research")).toBeDefined();
+    expect(await screen.findByText("trigger")).toBeDefined();
+    expect(await screen.findByText("trigger_note")).toBeDefined();
+    expect(
+      await screen.findByText("No greeting beyond their first name"),
+    ).toBeDefined();
+    expect(
+      await screen.findByText("The trigger, stated as a fact"),
+    ).toBeDefined();
+  });
+
+  test("says so when the listing is gone rather than rendering an empty page", async () => {
+    server.use(getGetV2GetMarketplaceSkillMockHandler404());
+    render(<SkillPage slug="outreach-playbook" />);
+
+    expect(await screen.findByText(/no longer available/i)).toBeDefined();
   });
 
   test("keeps the panel usable when the install fails", async () => {

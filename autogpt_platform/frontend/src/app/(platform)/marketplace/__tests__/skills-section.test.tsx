@@ -90,6 +90,62 @@ describe("Marketplace SkillsSection", () => {
     );
   });
 
+  test("shows the compatibility line only for a skill that needs one", async () => {
+    const unverified: MarketplaceSkill = {
+      ...brandVoice,
+      slug: "outreach-playbook",
+      name: "Outreach playbook",
+      required_providers: ["google"],
+      is_verified: false,
+    };
+    server.use(
+      getGetV2ListMarketplaceSkillsMockHandler200({
+        skills: [brandVoice, unverified],
+        pagination: {
+          total_items: 2,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 6,
+        },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    const outreach = await screen.findByRole("link", {
+      name: /Outreach playbook/,
+    });
+    expect(outreach.textContent).toContain("Works with Google");
+    // Brand voice needs nothing connected and is verified: one badge, no line.
+    const brand = await screen.findByRole("link", {
+      name: /Brand voice guide/,
+    });
+    expect(brand.textContent).not.toContain("Works with");
+    expect(brand.textContent).toContain("Verified");
+    expect(outreach.textContent).not.toContain("Verified");
+  });
+
+  test("says nothing at all when the marketplace has no skills yet", async () => {
+    server.use(
+      getGetV2ListMarketplaceSkillsMockHandler200({
+        skills: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 0,
+          current_page: 1,
+          page_size: 6,
+        },
+      }),
+    );
+
+    render(<MainMarkeplacePage />);
+
+    expect(await screen.findByText("All AI Workflows")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("Skills to teach")).toBeNull(),
+    );
+  });
+
   test("stays hidden and fetches nothing outside the beta", async () => {
     flags.skillsHub = false;
     let requested = false;
