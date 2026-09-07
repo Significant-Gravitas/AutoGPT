@@ -199,6 +199,54 @@ describe("MCPSetupCard", () => {
     expect(screen.getByText(/does not support OAuth/)).toBeDefined();
   });
 
+  it("surfaces a rejected authorization response instead of offering a token", async () => {
+    // The callback answers 400 when the RFC 9207 ``iss`` is missing or does
+    // not match the issuer bound at login.  That is a blocked mix-up, not an
+    // unsupported server, so it must not invite the user to paste a
+    // credential in its place.
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({ code: "auth-code", state: "st" }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockRejectedValue({
+      status: 400,
+      detail:
+        "Authorization response issuer does not match the authorization server this login was started with.",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/issuer does not match/i)).toBeDefined();
+    });
+    expect(screen.queryByPlaceholderText(manualTokenPlaceholder)).toBeNull();
+    expect(screen.queryByText(/does not support OAuth/)).toBeNull();
+  });
+
   it("uses a unique manual credential input id for each mounted card", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
@@ -528,6 +576,56 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("forwards the authorization response issuer to the credentials provider", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        login_url: "https://auth.example.com/authorize",
+        state_token: "st",
+      },
+      headers: new Headers(),
+    } as never);
+    const { openOAuthPopup } = await import("@/lib/oauth-popup");
+    vi.mocked(openOAuthPopup).mockReturnValueOnce({
+      promise: Promise.resolve({
+        code: "auth-code",
+        state: "st",
+        iss: "https://auth.example.com",
+      }),
+      cleanup: { abort: vi.fn(), signal: new AbortController().signal },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+    const mcpOAuthCallback = vi.fn().mockResolvedValue({
+      id: "cred-1",
+      provider: "mcp",
+      type: "oauth2",
+    });
+    const providers = {
+      mcp: { mcpOAuthCallback },
+    } as unknown as CredentialsProvidersContextType;
+
+    render(
+      <CredentialsProvidersContext.Provider value={providers}>
+        <MCPSetupCard output={makeSetupOutput()} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    );
+
+    await waitFor(() => {
+      expect(mcpOAuthCallback).toHaveBeenCalledWith(
+        "auth-code",
+        "st",
+        "https://auth.example.com",
+      );
+    });
+  });
+
   it("shows generic error message when OAuth callback fails with a non-400 status", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
@@ -785,6 +883,7 @@ describe("MCPSetupCard", () => {
       expect(latestProviderCallback).toHaveBeenCalledWith(
         "latest-code",
         "latest-state",
+        undefined,
       );
       expect(latestOnSend).toHaveBeenCalledWith("Latest retry instruction");
     });
