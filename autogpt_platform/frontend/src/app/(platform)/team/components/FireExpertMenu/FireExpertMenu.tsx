@@ -1,3 +1,4 @@
+import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
@@ -5,37 +6,27 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { cn } from "@/lib/utils";
 import { Logout03Icon, MoreVerticalIcon } from "@hugeicons/core-free-icons";
 
 interface Props {
   expertName: string;
   onFire: () => void;
   testId: string;
-  triggerClassName?: string;
 }
 
-export function FireExpertMenu({
-  expertName,
-  onFire,
-  testId,
-  triggerClassName,
-}: Props) {
+export function FireExpertMenu({ expertName, onFire, testId }: Props) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="floating"
+          size="icon-sm"
+          leadingIcon={MoreVerticalIcon}
           aria-label={`${expertName} actions`}
           data-testid={testId}
           onClick={(event) => event.stopPropagation()}
-          className={cn(
-            "inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors",
-            triggerClassName,
-          )}
-        >
-          <Icon icon={MoreVerticalIcon} size={18} />
-        </button>
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={6}>
         <DropdownMenuItem

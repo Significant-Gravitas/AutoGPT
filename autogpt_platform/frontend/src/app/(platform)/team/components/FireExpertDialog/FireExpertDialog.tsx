@@ -49,6 +49,7 @@ export function FireExpertDialog({
 
   return (
     <Dialog
+      variant="compact"
       controlled={{ isOpen: open, set: handleOpenChange }}
       styling={{ maxWidth: "30rem" }}
       title={`Fire ${expertName}?`}

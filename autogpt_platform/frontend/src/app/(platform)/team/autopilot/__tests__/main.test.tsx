@@ -1,5 +1,12 @@
 import { getListExpertsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getGetV2GetLibraryAgentMockHandler200,
+  getGetV2ListLibraryAgentsMockHandler200,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getListCopilotSkillsMockHandler200 } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
@@ -131,11 +138,55 @@ const straySchedule: GraphExecutionJobInfo = {
   expert_id: null,
 };
 
-/** Reads the value of one of the summary's stat columns by its label. */
-function getStatValue(container: HTMLElement, label: string) {
-  const column = within(container).getByText(label).closest("div");
-  return column?.querySelector("dd")?.textContent;
+function makeLibraryAgent(over: Partial<LibraryAgent>): LibraryAgent {
+  return {
+    id: "lib-free",
+    graph_id: "graph-free",
+    graph_version: 1,
+    name: "Inbox Triage",
+    description: "Sorts the morning mail",
+    creator_name: "You",
+    image_url: null,
+    marketplace_listing: null,
+    execution_count: 3,
+    ...over,
+  } as unknown as LibraryAgent;
 }
+
+/** Maria owns this one, so it is hers and not Autopilot's. */
+const mariasAgent = makeLibraryAgent({
+  id: "lib-1",
+  graph_id: "graph-1",
+  name: "Content Calendar",
+});
+
+const freeAgent = makeLibraryAgent({});
+
+const strayAgent = makeLibraryAgent({
+  id: "lib-stray",
+  graph_id: "graph-stray",
+  name: "Nobody's Job",
+  description: "",
+});
+
+function libraryResponse(agents: LibraryAgent[]): LibraryAgentResponse {
+  return {
+    agents,
+    pagination: {
+      total_items: agents.length,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 100,
+    },
+  } as LibraryAgentResponse;
+}
+
+const librarySkills = [
+  { name: "SEO", description: "Rank pages", triggers: [] },
+  { name: "Research", description: "Dig up sources", triggers: ["find"] },
+  { name: "Analytics", description: "Read the numbers", triggers: [] },
+  { name: "Bookkeeping", description: "Balance the books", triggers: [] },
+];
 
 beforeEach(() => {
   server.use(
@@ -144,6 +195,11 @@ beforeEach(() => {
       mariaSchedule,
       straySchedule,
     ]),
+    getGetV2ListLibraryAgentsMockHandler200(
+      libraryResponse([mariasAgent, freeAgent, strayAgent]),
+    ),
+    getGetV2GetLibraryAgentMockHandler200(freeAgent),
+    getListCopilotSkillsMockHandler200(librarySkills),
   );
 });
 
@@ -176,29 +232,6 @@ describe("AutopilotPage", () => {
     ).toBe("/team");
   });
 
-  test("sums the hired team in the summary and links each expert", async () => {
-    render(<AutopilotPage />);
-
-    const summary = await screen.findByRole("complementary", {
-      name: "Team at a glance",
-    });
-    // Sam is fired, so the roster is two experts.
-    expect(getStatValue(summary, "Experts")).toBe("2");
-    // Only Maria's schedule belongs to the team; the stray one is ignored.
-    expect(getStatValue(summary, "Schedules")).toBe("1");
-    // Copywriting is shared, so three skills — and Sam's Ghostwriting is out.
-    expect(getStatValue(summary, "Skills")).toBe("3");
-    expect(getStatValue(summary, "Workflows")).toBe("2");
-
-    expect(
-      within(summary).getByRole("link", { name: /Maria/ }).getAttribute("href"),
-    ).toBe("/team/expert-maria");
-    expect(
-      within(summary).getByRole("link", { name: /Lee/ }).getAttribute("href"),
-    ).toBe("/team/expert-lee");
-    expect(within(summary).queryByText("Sam")).toBeNull();
-  });
-
   test("lists the team's schedules", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Autopilot" });
@@ -211,58 +244,65 @@ describe("AutopilotPage", () => {
     expect(within(list).queryByText("Nobody's Job")).toBeNull();
   });
 
-  test("groups workflows by the expert who owns them", async () => {
+  test("lists the library workflows no expert owns as Autopilot's", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Autopilot" });
 
     await openTab("Workflows");
 
-    const group = screen.getByRole("region", { name: "Maria workflows" });
+    expect(screen.getByText("Autopilot's Workflows")).toBeDefined();
+    const rows = await screen.findAllByTestId("expert-workflow-row");
     expect(
-      within(group).getByRole("link", { name: /Maria/ }).getAttribute("href"),
-    ).toBe("/team/expert-maria");
-    const rows = within(group).getAllByTestId("autopilot-workflow-row");
-    expect(rows).toHaveLength(2);
-    expect(within(rows[0]).getByText("Content Calendar")).toBeDefined();
-    expect(within(rows[0]).getByText(/Every day at 07:40/)).toBeDefined();
-    expect(within(rows[1]).getByText("SEO Audit")).toBeDefined();
-    expect(within(rows[1]).getByText("Needs setup")).toBeDefined();
-    // Lee has no workflows, so gets no group.
-    expect(screen.queryByRole("region", { name: "Lee workflows" })).toBeNull();
+      rows.map((row) => within(row).getByText(/Job|Triage/).textContent),
+    ).toEqual(["Inbox Triage", "Nobody's Job"]);
+    // The stray schedule's graph gives its workflow a cadence.
+    expect(within(rows[1]).getByText(/Every day at 07:40/)).toBeDefined();
+    // Maria's Content Calendar is hers, not Autopilot's.
+    expect(screen.queryByText("Content Calendar")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Install workflow" }),
+    ).toBeNull();
+    expect(
+      within(rows[0])
+        .getByRole("link", { name: "Ask about this workflow" })
+        .getAttribute("href"),
+    ).toContain("/copilot?autosubmit=true");
   });
 
-  test("shows the team's skills de-duplicated and sorted", async () => {
+  test("lists the library skills no expert has claimed as Autopilot's", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Autopilot" });
 
     await openTab("Skills");
 
-    const panel = screen.getByRole("tabpanel");
-    const skills = within(panel)
-      .getAllByText(/^(Analytics|Copywriting|SEO|Ghostwriting)$/)
-      .map((node) => node.textContent);
-    expect(skills).toEqual(["Analytics", "Copywriting", "SEO"]);
+    expect(screen.getByText("Autopilot's Skills")).toBeDefined();
+    const list = screen.getByRole("list", { name: "Autopilot skills" });
+    const rows = within(list).getAllByTestId("expert-skill-row");
+    expect(
+      rows.map(
+        (row) => within(row).getByText(/^(Bookkeeping|Research)$/).textContent,
+      ),
+    ).toEqual(["Bookkeeping", "Research"]);
+    expect(within(list).getByText("Dig up sources")).toBeDefined();
+    expect(within(list).queryByRole("button", { name: /Remove/ })).toBeNull();
   });
 
   test("tells you when the team has nothing set up yet", async () => {
     server.use(
       getListExpertsMockHandler([]),
       getGetV1ListExecutionSchedulesForAUserMockHandler([]),
+      getGetV2ListLibraryAgentsMockHandler200(libraryResponse([])),
+      getListCopilotSkillsMockHandler200([]),
     );
 
     render(<AutopilotPage />);
-
-    const summary = await screen.findByRole("complementary", {
-      name: "Team at a glance",
-    });
-    expect(getStatValue(summary, "Experts")).toBe("0");
-    expect(within(summary).getByText(/No experts hired yet/)).toBeDefined();
+    await screen.findByRole("heading", { name: "Autopilot" });
 
     await openTab("Workflows");
     expect(screen.getByText(/No workflows yet/)).toBeDefined();
 
     await openTab("Skills");
-    expect(screen.getByText(/No skills listed yet/)).toBeDefined();
+    expect(screen.getByText(/No skills yet/)).toBeDefined();
 
     await openTab("Schedules");
     expect(screen.getByText(/No schedules yet/)).toBeDefined();

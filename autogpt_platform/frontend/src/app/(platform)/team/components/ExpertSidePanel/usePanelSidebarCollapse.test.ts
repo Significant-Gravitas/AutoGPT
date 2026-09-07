@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useSoulPanelSidebarCollapse } from "./useSoulPanelSidebarCollapse";
+import { usePanelSidebarCollapse } from "./usePanelSidebarCollapse";
 
 const setOpen = vi.fn<(open: boolean) => void>();
 const setOpenMobile = vi.fn<(open: boolean) => void>();
@@ -20,9 +20,9 @@ beforeEach(() => {
   setOpenMobile.mockReset();
 });
 
-describe("useSoulPanelSidebarCollapse", () => {
+describe("usePanelSidebarCollapse", () => {
   it("closes the left sidebar when the Soul panel opens", () => {
-    renderHook(() => useSoulPanelSidebarCollapse(true));
+    renderHook(() => usePanelSidebarCollapse(true));
 
     expect(setOpen).toHaveBeenCalledWith(false);
     expect(setOpenMobile).toHaveBeenCalledWith(false);
@@ -30,7 +30,7 @@ describe("useSoulPanelSidebarCollapse", () => {
 
   it("restores the previous sidebar state when the Soul panel closes", () => {
     const { rerender } = renderHook(
-      ({ isOpen }) => useSoulPanelSidebarCollapse(isOpen),
+      ({ isOpen }) => usePanelSidebarCollapse(isOpen),
       { initialProps: { isOpen: true } },
     );
     sidebarOpen = false;
@@ -42,7 +42,7 @@ describe("useSoulPanelSidebarCollapse", () => {
   });
   it("restores a sidebar it closed when the panel unmounts", () => {
     const { rerender, unmount } = renderHook(() =>
-      useSoulPanelSidebarCollapse(true),
+      usePanelSidebarCollapse(true),
     );
     sidebarOpen = false;
     rerender();
@@ -53,7 +53,7 @@ describe("useSoulPanelSidebarCollapse", () => {
 
   it("does not open a sidebar that was already closed", () => {
     sidebarOpen = false;
-    const { unmount } = renderHook(() => useSoulPanelSidebarCollapse(true));
+    const { unmount } = renderHook(() => usePanelSidebarCollapse(true));
     setOpen.mockClear();
     unmount();
     expect(setOpen).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe("useSoulPanelSidebarCollapse", () => {
 
   it("does not overwrite a sidebar the user reopened", () => {
     const { rerender, unmount } = renderHook(() =>
-      useSoulPanelSidebarCollapse(true),
+      usePanelSidebarCollapse(true),
     );
     sidebarOpen = false;
     rerender();

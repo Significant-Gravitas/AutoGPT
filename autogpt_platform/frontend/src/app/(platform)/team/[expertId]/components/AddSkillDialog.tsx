@@ -67,6 +67,7 @@ export function AddSkillDialog({
 
   return (
     <Dialog
+      variant="compact"
       controlled={{
         isOpen: open,
         set: (next) => {
@@ -78,27 +79,20 @@ export function AddSkillDialog({
     >
       <Dialog.Content>
         <div className="flex flex-col gap-3">
-          <Text variant="small" className="text-sm !text-zinc-500">
+          <Text variant="body" tone="muted">
             Skills are reusable instructions this expert follows for a specific
             job. Pick one from your library or install one from the marketplace.
           </Text>
           <TabsLine
+            variant="compact"
             value={source}
             onValueChange={(next) => onSourceChange(next as Source)}
           >
-            <TabsLineList flush indicatorClassName="bg-zinc-900">
-              <TabsLineTrigger
-                value="library"
-                className="gap-1.5 data-[state=active]:text-zinc-900"
-              >
-                <Icon icon={BookOpen01Icon} size={14} />
+            <TabsLineList>
+              <TabsLineTrigger value="library" icon={BookOpen01Icon}>
                 Library
               </TabsLineTrigger>
-              <TabsLineTrigger
-                value="marketplace"
-                className="gap-1.5 data-[state=active]:text-zinc-900"
-              >
-                <Icon icon={Store01Icon} size={14} />
+              <TabsLineTrigger value="marketplace" icon={Store01Icon}>
                 Marketplace
               </TabsLineTrigger>
             </TabsLineList>
@@ -113,11 +107,11 @@ export function AddSkillDialog({
                 placeholder="Search your library"
               />
               {isLoading ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   Loading your skills…
                 </Text>
               ) : visible.length === 0 ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   {skills.length === 0
                     ? "Every library skill is already on this expert."
                     : "No skills match."}
@@ -140,11 +134,15 @@ export function AddSkillDialog({
                   ))}
                 </ul>
               )}
-              <NextLink
-                href="/library/skills"
-                className="text-sm text-zinc-500 underline underline-offset-2"
-              >
-                Upload a new skill in your library
+              <NextLink href="/library/skills">
+                <Text
+                  variant="body"
+                  as="span"
+                  tone="muted"
+                  className="underline underline-offset-2"
+                >
+                  Upload a new skill in your library
+                </Text>
               </NextLink>
             </>
           ) : (
@@ -156,11 +154,11 @@ export function AddSkillDialog({
                 placeholder="Search the marketplace"
               />
               {isMarketplaceLoading ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   Searching the marketplace…
                 </Text>
               ) : marketplaceSkills.length === 0 ? (
-                <Text variant="small" className="text-zinc-500">
+                <Text variant="small" tone="muted">
                   No marketplace skills match.
                 </Text>
               ) : (
@@ -184,7 +182,7 @@ export function AddSkillDialog({
             </>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="xs" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -210,22 +208,27 @@ function SkillOption({
   onAdd,
 }: OptionProps) {
   return (
-    <li className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3">
+    <li className="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5">
       <Icon icon={icon} size={18} className="shrink-0 text-zinc-500" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="span"
+          tone="primary"
+          className="block truncate"
+        >
           {name}
-        </span>
-        <span className="block truncate text-xs text-zinc-500">
+        </Text>
+        <Text variant="small" as="span" tone="muted" className="block truncate">
           {description}
-        </span>
+        </Text>
       </span>
       <Button
         variant="secondary"
-        size="small"
+        size="xs"
         disabled={disabled}
         onClick={onAdd}
-        leftIcon={<Icon icon={PlusSignIcon} size={14} />}
+        leadingIcon={PlusSignIcon}
       >
         Add
       </Button>
