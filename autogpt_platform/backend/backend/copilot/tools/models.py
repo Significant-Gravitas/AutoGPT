@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
@@ -798,6 +798,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     provider: str | None = None
+    _credential_type: str | None = PrivateAttr(default=None)
     success: bool = True
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs

@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_block_credential_type,
     get_block_provider,
     prepare_block_for_execution,
     require_library_check,
@@ -93,6 +94,37 @@ class TestGetBlockProvider:
 
         assert get_block_provider(block) is None
         assert get_block_provider(block) == "google"
+
+
+class TestGetBlockCredentialType:
+    def test_returns_type_for_matching_provider(self):
+        credential = CredentialsMetaInput[
+            Literal[ProviderName.GOOGLE], Literal["api_key"]
+        ](id="cred-1", provider=ProviderName.GOOGLE, type="api_key")
+
+        assert (
+            get_block_credential_type("google", {"credentials": credential})
+            == "api_key"
+        )
+
+    def test_returns_none_for_mismatched_or_ambiguous_credentials(self):
+        google_api_key = CredentialsMetaInput[
+            Literal[ProviderName.GOOGLE], Literal["api_key"]
+        ](id="cred-1", provider=ProviderName.GOOGLE, type="api_key")
+        google_oauth = CredentialsMetaInput[
+            Literal[ProviderName.GOOGLE], Literal["oauth2"]
+        ](id="cred-2", provider=ProviderName.GOOGLE, type="oauth2")
+
+        assert (
+            get_block_credential_type("github", {"credentials": google_api_key}) is None
+        )
+        assert (
+            get_block_credential_type(
+                "google",
+                {"api_key": google_api_key, "oauth": google_oauth},
+            )
+            is None
+        )
 
 
 def _make_block(
@@ -1546,6 +1578,47 @@ class TestExecuteBlockAutoCredentials:
 
 @pytest.mark.asyncio
 class TestExecuteBlockCredentialLeases:
+    async def test_response_preserves_resolved_credential_type(self):
+        block = _make_block()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        credentials = MagicMock(id="cred-1", provider="google", type="api_key")
+        manager = MagicMock()
+        manager.get = AsyncMock(return_value=credentials)
+        credit_patch, _ = _patch_credit_db()
+        credential_meta = CredentialsMetaInput[
+            Literal[ProviderName.GOOGLE], Literal["api_key"]
+        ](id="cred-1", provider=ProviderName.GOOGLE, type="api_key")
+
+        with (
+            _patch_workspace(),
+            _patch_user_db(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=manager,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-google-api-key",
+                matched_credentials={"credentials": credential_meta},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert result.provider == "google"
+        assert result._credential_type == "api_key"
+
     async def test_regular_credentials_are_leased_and_released(self):
         block = _make_block()
         captured: dict[str, Any] = {}

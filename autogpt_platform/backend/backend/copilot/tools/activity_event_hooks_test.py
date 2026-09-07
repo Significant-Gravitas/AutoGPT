@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from backend.blocks.llm import is_llm_credentials
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -88,6 +89,7 @@ def test_run_block_reports_integration_action_only_with_provider() -> None:
         provider="google",
         session_id="test-session",
     )
+    with_provider._credential_type = "oauth2"
     without_provider = with_provider.model_copy(update={"provider": None})
     dry_run = with_provider.model_copy(update={"is_dry_run": True})
 
@@ -114,6 +116,47 @@ def test_run_block_does_not_report_llm_credential_use() -> None:
     )
 
     assert tool.activity_event(session=session, result=model_call) is None
+
+
+def test_run_block_distinguishes_google_api_key_from_oauth() -> None:
+    tool = RunBlockTool()
+    session = _make_session()
+    google_oauth_call = BlockOutputResponse(
+        message="Block executed",
+        block_id="block-1",
+        block_name="Google Drive",
+        outputs={},
+        provider="google",
+        session_id="test-session",
+    )
+    google_oauth_call._credential_type = "oauth2"
+    google_llm_call = google_oauth_call.model_copy(
+        update={"block_name": "AITextGeneratorBlock"}
+    )
+    google_llm_call._credential_type = "api_key"
+
+    assert tool.activity_event(session=session, result=google_oauth_call) is not None
+    assert tool.activity_event(session=session, result=google_llm_call) is None
+
+
+def test_block_output_credential_type_is_internal() -> None:
+    result = BlockOutputResponse(
+        message="Block executed",
+        block_id="block-1",
+        block_name="AITextGeneratorBlock",
+        outputs={},
+        provider="google",
+        session_id="test-session",
+    )
+    result._credential_type = "api_key"
+
+    assert "credential_type" not in result.model_dump()
+    assert "credential_type" not in result.model_json_schema()["properties"]
+
+
+def test_google_api_key_is_llm_but_google_oauth_is_integration() -> None:
+    assert is_llm_credentials("google", "api_key") is True
+    assert is_llm_credentials("google", "oauth2") is False
 
 
 def test_schedule_followup_reports_schedule_event() -> None:

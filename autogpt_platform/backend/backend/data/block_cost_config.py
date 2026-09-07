@@ -148,6 +148,15 @@ class TokenRate(BaseModel):
     cache_creation: float = 0.0
 
 
+class HighContextTokenRate(BaseModel):
+    """Replacement token rates above a prompt-token threshold."""
+
+    threshold: int
+    input: float
+    output: float
+    cache_read: float
+
+
 # TOKEN_COST populates gradually as we migrate LLM blocks to the TOKENS
 # cost type: only catalog models carrying per-1M rates get an entry; the
 # rest fall back to the flat MODEL_COST tier via the RUN-based LLM_COST
@@ -176,6 +185,35 @@ def _token_cost_from_catalog() -> dict[LLMModel, TokenRate]:
 TOKEN_COST: dict[LLMModel, TokenRate] = _token_cost_from_catalog()
 
 
+def _high_context_token_cost_from_catalog() -> dict[LLMModel, HighContextTokenRate]:
+    members = _enum_members_by_value()
+    rates: dict[LLMModel, HighContextTokenRate] = {}
+    for model in get_catalog().models:
+        member = members.get(model.slug)
+        cost = model.cost
+        if member is None or cost is None:
+            continue
+        if (
+            cost.high_context_threshold_tokens is None
+            or cost.high_context_input_credits_per_1m is None
+            or cost.high_context_output_credits_per_1m is None
+            or cost.high_context_cache_read_credits_per_1m is None
+        ):
+            continue
+        rates[member] = HighContextTokenRate(
+            threshold=cost.high_context_threshold_tokens,
+            input=cost.high_context_input_credits_per_1m,
+            output=cost.high_context_output_credits_per_1m,
+            cache_read=cost.high_context_cache_read_credits_per_1m,
+        )
+    return rates
+
+
+HIGH_CONTEXT_TOKEN_COST: dict[LLMModel, HighContextTokenRate] = (
+    _high_context_token_cost_from_catalog()
+)
+
+
 def compute_token_credits(
     input_data: BlockInput, stats: "NodeExecutionStats | None"
 ) -> int:
@@ -198,10 +236,24 @@ def compute_token_credits(
         # Unmapped model — charge the per-call flat tier so we don't under-bill.
         return MODEL_COST.get(model, 0) if model else 0
 
+    high_context_rate = HIGH_CONTEXT_TOKEN_COST.get(model) if model else None
+    input_rate = rate.input
+    output_rate = rate.output
+    cache_read_rate = rate.cache_read
+    if (
+        high_context_rate is not None
+        and stats.input_token_count > high_context_rate.threshold
+    ):
+        # Gemini applies the high-context tier to the entire request, not
+        # only to tokens above the threshold.
+        input_rate = high_context_rate.input
+        output_rate = high_context_rate.output
+        cache_read_rate = high_context_rate.cache_read
+
     total = (
-        stats.input_token_count * rate.input
-        + stats.output_token_count * rate.output
-        + stats.cache_read_token_count * rate.cache_read
+        stats.input_token_count * input_rate
+        + stats.output_token_count * output_rate
+        + stats.cache_read_token_count * cache_read_rate
         + stats.cache_creation_token_count * rate.cache_creation
     )
     return max(0, math.ceil(total / 1_000_000))

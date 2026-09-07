@@ -197,6 +197,23 @@ def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | No
     return next(iter(providers))
 
 
+def get_block_credential_type(
+    provider: str | None,
+    matched_credentials: dict[str, CredentialsMetaInput],
+) -> str | None:
+    """Resolved credential type when a single type serves the block provider."""
+    if provider is None:
+        return None
+    credential_types = {
+        credential.type
+        for credential in matched_credentials.values()
+        if provider_matches(credential.provider, provider)
+    }
+    if len(credential_types) != 1:
+        return None
+    return next(iter(credential_types))
+
+
 async def execute_block(
     *,
     block: AnyBlockSchema,
@@ -245,16 +262,21 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-            return BlockOutputResponse(
+            provider = get_block_provider(block)
+            result = BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
-                provider=get_block_provider(block),
+                provider=provider,
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
             )
+            result._credential_type = get_block_credential_type(
+                provider, matched_credentials
+            )
+            return result
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
@@ -468,15 +490,20 @@ async def execute_block(
                         )
                     )
 
-                return BlockOutputResponse(
+                provider = get_block_provider(block)
+                result = BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
                     outputs=dict(outputs),
-                    provider=get_block_provider(block),
+                    provider=provider,
                     success=True,
                     session_id=session_id,
                 )
+                result._credential_type = get_block_credential_type(
+                    provider, matched_credentials
+                )
+                return result
             except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that
