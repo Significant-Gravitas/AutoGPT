@@ -639,7 +639,7 @@ async def _call_anthropic_messages(
             reasoning = content_block.thinking
             break
 
-    first_block = resp.content[0]
+    first_block = next(iter(_anthropic_answer_blocks(resp)), None)
     content_text = (
         first_block.name
         if isinstance(first_block, anthropic.types.ToolUseBlock)
@@ -1399,7 +1399,19 @@ async def download_batch_results(
     return rows
 
 
-def _anthropic_content_to_text(message: Any) -> str:
+def _anthropic_answer_blocks(
+    message: anthropic.types.Message | None,
+) -> list[anthropic.types.ContentBlock]:
+    if message is None:
+        return []
+    return [
+        block
+        for block in message.content
+        if block.type not in ("thinking", "redacted_thinking")
+    ]
+
+
+def _anthropic_content_to_text(message: anthropic.types.Message | None) -> str:
     """Flatten an Anthropic ``message.content`` blob into a string.
 
     Three shapes the BatchExecutor's downstream parser handles:
@@ -1412,13 +1424,11 @@ def _anthropic_content_to_text(message: Any) -> str:
 
     Returns ``""`` when the message is missing or empty.
     """
-    if message is None:
-        return ""
-    content = getattr(message, "content", None) or []
+    content = _anthropic_answer_blocks(message)
     if not content:
         return ""
     first = content[0]
-    first_type = getattr(first, "type", None)
+    first_type = first.type
     if first_type == "tool_use" and len(content) == 1:
         return json_module.dumps(getattr(first, "input", {}) or {})
     if first_type == "text" and len(content) == 1:

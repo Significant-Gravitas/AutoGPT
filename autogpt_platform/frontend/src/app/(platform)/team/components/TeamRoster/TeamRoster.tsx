@@ -4,7 +4,6 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 import {
   SECTION_INSET_CLASS,
   TEAM_GRID_CLASS,
@@ -20,6 +19,7 @@ interface Props {
   experts: Expert[];
   schedulesForExpert: (expert: Expert) => GraphExecutionJobInfo[];
   renderCard: (expert: Expert) => ReactNode;
+  onAutopilotChat: () => void;
 }
 
 export function TeamRoster({
@@ -27,6 +27,7 @@ export function TeamRoster({
   experts,
   schedulesForExpert,
   renderCard,
+  onAutopilotChat,
 }: Props) {
   const { query, setQuery, filter, setFilter, isNarrowed, visibleExperts } =
     useTeamRosterView({ experts, schedulesForExpert });
@@ -38,13 +39,16 @@ export function TeamRoster({
       skillCount={summary.skillCount}
       scheduleCount={summary.scheduleCount}
       workflowCount={summary.workflowCount}
+      onChat={onAutopilotChat}
     />
   );
 
   return (
     <section aria-label="Experts" className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Text variant="h5">Experts</Text>
+        <Text variant="large-medium" as="h5" tone="primary">
+          Experts
+        </Text>
         <TeamRosterToolbar
           query={query}
           onQueryChange={setQuery}
@@ -70,10 +74,7 @@ export function TeamRoster({
       )}
 
       {!isLoading && isNarrowed && visibleExperts.length === 0 ? (
-        <Text
-          variant="body"
-          className={cn("text-zinc-500", SECTION_INSET_CLASS)}
-        >
+        <Text variant="body" tone="muted" className={SECTION_INSET_CLASS}>
           No experts match that search or filter.
         </Text>
       ) : null}
