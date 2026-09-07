@@ -20,9 +20,11 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.server import Context
 from mcp.server.fastmcp.tools.base import Tool as MCPTool
 from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
+from mcp.shared.auth import ProtectedResourceMetadata
 from prisma.enums import APIKeyPermission
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
@@ -114,10 +116,20 @@ UNSCOPED_EXTERNAL_TOOLS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
+# The path `/mcp` ends up on, counting from the origin: the external API is
+# mounted at /external-api, v2 inside it, the MCP app inside that.
+MCP_RESOURCE_PATH = "/external-api/v2/mcp"
+
+# RFC 9728 §3.1: the well-known segment is inserted between host and resource
+# path, so this is the URL a client derives — and it is on the origin root.
+WELL_KNOWN_PROTECTED_RESOURCE_PATH = (
+    f"/.well-known/oauth-protected-resource{MCP_RESOURCE_PATH}"
+)
+
+
 def create_mcp_server() -> FastMCP:
     """Create the MCP server with all eligible Copilot tools registered."""
-    settings = Settings()
-    base_url = settings.config.platform_base_url or "https://platform.agpt.co"
+    base_url = _platform_base_url()
 
     tools = []
     for tool in TOOL_REGISTRY.values():
@@ -140,7 +152,7 @@ def create_mcp_server() -> FastMCP:
         token_verifier=ExternalAPITokenVerifier(),
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(base_url),
-            resource_server_url=AnyHttpUrl(f"{base_url}/external-api/v2/mcp"),
+            resource_server_url=AnyHttpUrl(f"{base_url}{MCP_RESOURCE_PATH}"),
         ),
         tools=tools,
         stateless_http=True,
@@ -152,6 +164,27 @@ def create_mcp_app() -> Starlette:
     """Create the Starlette ASGI app for the MCP server."""
     server = create_mcp_server()
     return server.streamable_http_app()
+
+
+def protected_resource_metadata() -> ProtectedResourceMetadata:
+    """RFC 9728 metadata for the MCP server, to be served at the ORIGIN root.
+
+    FastMCP registers this document inside the `/mcp` sub-app, so it lands at
+    `/external-api/v2/mcp/.well-known/oauth-protected-resource/external-api/v2/mcp`
+    while a client — following the `resource_metadata` FastMCP itself puts in
+    `WWW-Authenticate` — asks the origin root for it and gets a 404. The root
+    app serves this instead; see `WELL_KNOWN_PROTECTED_RESOURCE_PATH`.
+    """
+    base_url = _platform_base_url()
+    return ProtectedResourceMetadata(
+        resource=AnyHttpUrl(f"{base_url}{MCP_RESOURCE_PATH}"),
+        authorization_servers=[AnyHttpUrl(base_url)],
+        resource_name="AutoGPT Platform MCP Server",
+    )
+
+
+def _platform_base_url() -> str:
+    return Settings().config.platform_base_url or "https://platform.agpt.co"
 
 
 # ---------------------------------------------------------------------------
@@ -242,14 +275,16 @@ def _create_tool_handler(
     """
 
     async def handler(ctx: Context, **kwargs: Any) -> str:
+        # Raised, not returned: a rejection returned as content is reported to
+        # the client as a successful call whose text happens to say "denied".
         access_token = get_access_token()
         if not access_token:
-            return "Authentication required"
+            raise ToolError("Authentication required")
 
         if required_scopes:
             missing = [s for s in required_scopes if s not in access_token.scopes]
             if missing:
-                return f"Missing required permission(s): {', '.join(missing)}"
+                raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
 
         user_id = access_token.client_id
         organization_id, team_id = (

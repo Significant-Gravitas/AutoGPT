@@ -1,12 +1,22 @@
 """Keep the MCP tool surface deliberate: every Copilot tool is classified."""
 
+from unittest import mock
+from urllib.parse import urlparse
+
+import pytest
+import pytest_mock
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+from starlette.routing import Match
 
 from backend.api.external.v2.mcp_server import (
     EXTERNAL_USE_EXCLUSIONS,
     META_KEY_REQUIRED_SCOPES,
     UNSCOPED_EXTERNAL_TOOLS,
+    WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    _create_tool_handler,
     create_mcp_server,
+    protected_resource_metadata,
 )
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -27,6 +37,47 @@ async def test_the_server_carries_every_opted_in_tool_with_its_scopes():
     for name, tool in registered.items():
         expected = [p.value for p in (TOOL_REGISTRY[name].allow_external_use[1] or [])]
         assert (tool.meta or {}).get(META_KEY_REQUIRED_SCOPES) == expected
+
+
+def test_the_protected_resource_document_answers_where_clients_look():
+    """RFC 9728 discovery, at the URL the `WWW-Authenticate` header names.
+
+    FastMCP registers its own copy inside the `/mcp` mount, so the derived URL
+    — well-known segment first, resource path after — 404s unless the root app
+    serves it. This asserts against the real app, not a stand-in.
+    """
+    from mcp.server.auth.routes import build_resource_metadata_url
+
+    from backend.api.rest_api import app
+
+    metadata = protected_resource_metadata()
+    derived = urlparse(str(build_resource_metadata_url(metadata.resource)))
+    assert derived.path == WELL_KNOWN_PROTECTED_RESOURCE_PATH
+
+    scope = {"type": "http", "method": "GET", "path": derived.path, "headers": []}
+    assert any(
+        route.matches(scope)[0] == Match.FULL for route in app.routes
+    ), f"nothing on the root app answers {derived.path}"
+
+
+async def test_a_rejected_tool_call_is_an_error_not_a_successful_denial(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Returned text is reported to the client as a call that succeeded."""
+    handler = _create_tool_handler(next(iter(TOOL_REGISTRY.values())), ["READ_GRAPH"])
+
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token", return_value=None
+    )
+    with pytest.raises(ToolError, match="Authentication required"):
+        await handler(ctx=mock.Mock())
+
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.get_access_token",
+        return_value=mock.Mock(scopes=["READ_RUN"]),
+    )
+    with pytest.raises(ToolError, match="READ_GRAPH"):
+        await handler(ctx=mock.Mock())
 
 
 def test_every_tool_is_either_exposed_or_explicitly_excluded():
