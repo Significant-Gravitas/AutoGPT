@@ -1245,6 +1245,8 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
@@ -1269,6 +1271,8 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
             bypass_paywall=bypass_paywall,
         )
     except GraphValidationError:
@@ -1300,6 +1304,8 @@ async def _add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1500,6 +1506,8 @@ async def _add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         logger.info(

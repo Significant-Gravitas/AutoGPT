@@ -59,15 +59,12 @@ export function WorkGroup({ group, timezone }: Props) {
       </div>
       {runs.length > 0 ? (
         <div className="divide-y divide-zinc-100 px-4">
-          {/* One run tells the story; the rest are a line each, unless they
-              failed and need a look. */}
-          {runs.map((run, index) => (
+          {runs.map((run) => (
             <OutcomeRow
               key={run.id}
               outcome={run}
               timezone={timezone}
               showAgentName={actor.kind === "expert"}
-              compact={index > 0 && run.status !== "failed"}
             />
           ))}
         </div>

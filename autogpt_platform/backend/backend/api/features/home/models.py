@@ -45,6 +45,9 @@ class HomeBriefingOutcome(BaseModel):
     duration_seconds: float = 0
     cost_cents: int = 0
     link: str | None = None
+    # How the run started: a scheduler job fired it, a webhook fired it, or
+    # someone started it by hand (library, chat, API).
+    trigger: Literal["schedule", "webhook", "manual"] = "manual"
 
 
 class HomeBriefing(BaseModel):
