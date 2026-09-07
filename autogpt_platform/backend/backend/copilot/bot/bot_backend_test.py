@@ -1,6 +1,7 @@
 """Tests for the bot's thin facade over PlatformLinkingManagerClient."""
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,6 +33,7 @@ from .bot_backend import (
     BotBackend,
     BotStreamError,
     ChatTurnDeniedError,
+    _extract_clarification_needed,
     _extract_setup_requirements,
     _is_corrupted_setup_requirements,
 )
@@ -349,6 +351,68 @@ class TestStreamChat:
         assert dropped_calls == [("sess", "connect_integration")]
 
     @pytest.mark.asyncio
+    async def test_notifies_clarification_needed_tool_output(self, api: BotBackend):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+
+        questions = [
+            {
+                "question": "Which region?",
+                "keyword": "region",
+                "options": ["US", "EU"],
+            }
+        ]
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            StreamToolOutputAvailable(
+                toolCallId="tool-1",
+                toolName="ask_question",
+                output=json.dumps(
+                    {
+                        "type": "agent_builder_clarification_needed",
+                        "message": "Which region?",
+                        "questions": questions,
+                    }
+                ),
+            )
+        )
+        await queue.put(StreamTextDelta(id="1", delta="After question"))
+        await queue.put(StreamFinish())
+
+        clarification_calls: list[tuple[str, dict, str | None]] = []
+
+        async def on_clarification(
+            session_id: str, output: dict, tool_name: str | None
+        ):
+            clarification_calls.append((session_id, output, tool_name))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            chunks: list[str] = []
+            async for chunk in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="hi",
+                on_clarification_needed=on_clarification,
+            ):
+                chunks.append(chunk)
+
+        assert chunks == ["After question"]
+        assert len(clarification_calls) == 1
+        session_id, output, tool_name = clarification_calls[0]
+        assert session_id == "sess"
+        assert tool_name == "ask_question"
+        assert output["questions"] == questions
+
+    @pytest.mark.asyncio
     async def test_duplicate_message_propagates(self, api: BotBackend):
         api._client.start_chat_turn = AsyncMock(
             side_effect=DuplicateChatMessageError("in flight")
@@ -422,6 +486,59 @@ class TestExtractSetupRequirements:
     ):
         with caplog.at_level(logging.WARNING):
             assert _extract_setup_requirements("plain text tool result") is None
+        assert not caplog.records
+
+
+class TestExtractClarificationNeeded:
+    def test_extracts_from_json_string(self):
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [{"question": "Which region?", "keyword": "region"}],
+            }
+        )
+        result = _extract_clarification_needed(payload)
+        assert result is not None
+        assert result["questions"] == [
+            {"question": "Which region?", "keyword": "region"}
+        ]
+
+    def test_extracts_from_dict(self):
+        payload = {
+            "type": "agent_builder_clarification_needed",
+            "message": "Which region?",
+            "questions": [{"question": "Which region?", "keyword": "region"}],
+        }
+        assert _extract_clarification_needed(payload) == payload
+
+    def test_no_questions_returns_none(self):
+        payload = json.dumps(
+            {
+                "type": "agent_builder_clarification_needed",
+                "message": "Which region?",
+                "questions": [],
+            }
+        )
+        assert _extract_clarification_needed(payload) is None
+
+    def test_other_tool_output_returns_none(self):
+        payload = '{"type":"setup_requirements","message":"Connect GitHub"}'
+        assert _extract_clarification_needed(payload) is None
+
+    def test_truncated_clarification_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        truncated = '{"type":"agent_builder_clarification_needed","message":"Which reg'
+        with caplog.at_level(logging.WARNING):
+            assert _extract_clarification_needed(truncated) is None
+        assert any("clarification" in record.message for record in caplog.records)
+
+    def test_non_clarification_unparseable_output_stays_silent(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        with caplog.at_level(logging.WARNING):
+            assert _extract_clarification_needed("plain text tool result") is None
         assert not caplog.records
 
 

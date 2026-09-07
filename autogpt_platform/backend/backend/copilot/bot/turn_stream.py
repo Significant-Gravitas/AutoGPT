@@ -33,7 +33,7 @@ from .adapters.base import (
 from .bot_backend import BotBackend, BotStreamError, ChatTurnDeniedError
 from .config import SESSION_TTL
 from .prompt import clamp_thread_name
-from .text import format_batch, split_at_boundary
+from .text import format_batch, iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +165,7 @@ class TurnStreamer:
         buffer = ""
         sent_any_content = False
         setup_prompt_sent = False
+        clarification_prompt_sent = False
 
         async def _on_setup_required(
             session_id: str,
@@ -229,6 +230,35 @@ class TurnStreamer:
                 mentionable_users=ctx.mentionable_users,
             )
 
+        async def _on_clarification_needed(
+            session_id: str,
+            clarification_output: dict[str, Any],
+            _tool_name: str | None,
+        ) -> None:
+            nonlocal active_session_id, buffer, sent_any_content, clarification_prompt_sent
+            if clarification_prompt_sent:
+                return
+            clarification_prompt_sent = True
+            active_session_id = session_id
+            # Drain any pending text first so the question doesn't render
+            # ahead of the message it belongs to.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            sent_any_content = True
+            # ask_question allows up to 10 questions of 25 options each, so
+            # the rendered text can exceed a platform's message cap (Discord
+            # 2000 chars) — split it the same way proactive posts do rather
+            # than risk send_message raising on an oversized single message.
+            message = _clarification_message(clarification_output)
+            for chunk in iter_chunks(message, adapter.chunk_flush_at):
+                await adapter.send_message(
+                    target_id, chunk, mentionable_users=ctx.mentionable_users
+                )
+
         started_at = time.monotonic()
         reply_chars = 0
         draft = DraftStreamer(adapter, target_id)
@@ -244,6 +274,7 @@ class TurnStreamer:
                 on_session_id=_on_session_id,
                 on_setup_required=_on_setup_required,
                 on_setup_dropped=_on_setup_dropped,
+                on_clarification_needed=_on_clarification_needed,
             ):
                 buffer += chunk
                 reply_chars += len(chunk)
@@ -548,3 +579,38 @@ def _setup_required_message(setup_output: dict[str, Any]) -> str:
         "Click the button below to open your AutoGPT chat and finish setup "
         "there. Reply here when you're done."
     )
+
+
+def _clarification_message(clarification_output: dict[str, Any]) -> str:
+    """Render an ask_question payload as plain text with numbered options.
+
+    No platform-specific interactive UI yet — every adapter already supports
+    ``send_message``, and a typed reply (a number or free text) flows into
+    the session exactly like a normal chat message, so this alone fixes the
+    question going unanswered on every bot platform.
+    """
+    blocks: list[str] = []
+    for question in clarification_output.get("questions") or []:
+        if not isinstance(question, dict):
+            continue
+        text = str(question.get("question") or "").strip()
+        if not text:
+            continue
+        options = [
+            str(option).strip()
+            for option in question.get("options") or []
+            if str(option).strip()
+        ]
+        block = f"❓ {text}"
+        if options:
+            numbered = "\n".join(f"{i}. {o}" for i, o in enumerate(options, 1))
+            block = f"{block}\n{numbered}"
+        blocks.append(block)
+
+    if not blocks:
+        fallback = str(clarification_output.get("message") or "").strip()
+        return fallback or "AutoGPT has a question before it can continue."
+
+    body = "\n\n".join(blocks)
+    footer = "Reply with a number, or just type your answer."
+    return f"{body}\n\n{footer}"
