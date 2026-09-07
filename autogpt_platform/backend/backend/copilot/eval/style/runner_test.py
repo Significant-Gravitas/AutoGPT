@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.config import ChatConfig
+
 from .assembly import load_fixtures, load_rubric, roster_experts
+from .generation import Turn
 from .models import (
     DimensionJudgement,
     Judgement,
@@ -16,11 +19,14 @@ from .models import (
     Usage,
 )
 from .runner import (
+    Job,
     RunOptions,
     evaluate_gate,
+    generate,
     plan_jobs,
     run,
     separation,
+    summarize,
     summarize_expert,
     wrong_spec_rows,
 )
@@ -69,19 +75,27 @@ def test_plan_filters_kinds():
 
 
 def _row(
-    expert: str, score: float | None, *, arm="expert", repeat=0, error=None
+    expert: str,
+    score: float | None,
+    *,
+    arm="expert",
+    repeat=0,
+    error=None,
+    prompt_id: str | None = None,
+    generation: Usage | None = None,
 ) -> ScoredResponse:
     return ScoredResponse(
         expert=expert,
         spec_expert=expert,
         arm=arm,
         kind="reply_draft",
-        prompt_id=f"{expert.lower()}-reply-01",
+        prompt_id=prompt_id or f"{expert.lower()}-reply-01",
         repeat=repeat,
         model="m",
         response="hi",
         score=score,
         error=error,
+        generation=generation,
     )
 
 
@@ -134,12 +148,64 @@ def test_wrong_spec_rows_pair_each_response_with_every_other_expert():
     assert all(r.arm == "wrong_spec" and r.response == "hi" for r in crossed)
 
 
+def test_the_generation_cost_is_counted_once_across_the_cross_spec_copies():
+    """A wrong-spec row re-judges an existing response; carrying its
+    generation usage priced the generation leg three times over."""
+    usage = Usage(model="m", input_tokens=100, output_tokens=10, cost_usd=1.0)
+    rows = [_row("Maria", 80.0, generation=usage)]
+    rows += wrong_spec_rows(rows, roster_experts())
+    assert [r.generation for r in rows[1:]] == [None, None]
+    result = summarize(
+        rows,
+        roster_experts(["Maria"]),
+        load_rubric(),
+        fingerprint_value="f",
+        chat_model="m",
+        lede_model="m",
+        judge_model="m",
+        threshold=None,
+    )
+    assert result.cost_usd == pytest.approx(1.0)
+    assert result.input_tokens == 100
+
+
+@pytest.mark.asyncio
+async def test_a_turn_still_calling_tools_at_the_cap_is_an_error_not_a_zero():
+    """Its visible text is a half-written tool narration, so scoring it would
+    measure the harness. Run A scored six such rows 0-15 and dragged an
+    expert's mean down 11 points."""
+    capped = Turn(
+        text="Let me check that run.",
+        truncated=False,
+        usage=Usage(model="m", cost_usd=0.01),
+        tool_calls=["run_agent"] * 10,
+        rounds=10,
+        hit_round_cap=True,
+    )
+    expert = roster_experts(["Max"])[0]
+    prompt = load_fixtures(["Max"])[0].prompts[0]
+    generate_turn = AsyncMock(return_value=capped)
+    with patch(f"{_RUNNER}.generate_turn", generate_turn):
+        row = await generate(
+            Job(expert=expert, arm="expert", prompt=prompt, repeat=0),
+            MagicMock(),
+            ChatConfig(),
+            [expert],
+            chat_model="m",
+            lede_model="m",
+        )
+    assert row.score is None
+    assert row.error is not None and "still calling tools after 10 rounds" in row.error
+    assert generate_turn.await_count == 1, "a capped turn is not worth retrying"
+    assert summarize_expert("Max", [row]).errors == 1
+
+
 def test_separation_compares_own_spec_with_the_controls():
     rows = [
-        _row("Maria", 85.0),
-        _row("Maria", 75.0),
-        _row("Maria", 40.0, arm="wrong_spec"),
-        _row("Maria", 50.0, arm="no_suffix"),
+        _row("Maria", 85.0, prompt_id="p1"),
+        _row("Maria", 75.0, prompt_id="p2"),
+        _row("Maria", 40.0, arm="wrong_spec", prompt_id="p1"),
+        _row("Maria", 50.0, arm="no_suffix", prompt_id="p2"),
     ]
     sep = separation(rows)
     assert sep is not None
@@ -147,15 +213,48 @@ def test_separation_compares_own_spec_with_the_controls():
     assert sep.wrong_spec_mean == 40.0
     assert sep.no_suffix_mean == 50.0
     assert sep.gap == 30.0
-    assert sep.separated
+    assert sep.paired is not None and sep.paired.n == 1
+    assert not sep.separated, "one comparison decides nothing"
     assert separation([_row("Maria", 85.0)]) is None
+
+
+def _paired_rows(own: list[float], wrong: list[float]) -> list[ScoredResponse]:
+    return [
+        row
+        for i, (o, w) in enumerate(zip(own, wrong))
+        for row in (
+            _row("Maria", o, prompt_id=f"p{i}"),
+            _row("Maria", w, arm="wrong_spec", prompt_id=f"p{i}"),
+        )
+    ]
+
+
+def test_pairing_sees_an_advantage_that_the_run_wide_sd_hides():
+    """Run A's verdict: +26 points on 174 pairs, called NOT separated because
+    six unfinished turns scored near zero in both arms and doubled the SD."""
+    own = [85.0] * 20 + [0.0] * 4
+    wrong = [60.0] * 20 + [0.0, 0.0, 0.0, 5.0]
+    sep = separation(_paired_rows(own, wrong))
+    assert sep is not None and sep.paired is not None
+    assert sep.gap is not None and sep.gap < sep.right_spec_sd
+    assert sep.paired.n == 24
+    assert sep.paired.win_rate == pytest.approx(20 / 24, abs=0.001)
+    assert sep.separated
+
+
+def test_a_judge_that_scores_both_specs_alike_is_not_separated():
+    own = [80.0, 60.0, 70.0, 90.0] * 6
+    wrong = [82.0, 58.0, 71.0, 88.0] * 6
+    sep = separation(_paired_rows(own, wrong))
+    assert sep is not None and sep.paired is not None
+    assert sep.paired.n == 24
+    assert not sep.separated
 
 
 @pytest.fixture
 def stubbed_models(tmp_path: Path):
     """Generation and judging without a model, the router pinned to a name."""
     from .assembly import RoutedModel
-    from .generation import Turn
 
     routed = RoutedModel(
         mode="thinking",
@@ -209,6 +308,24 @@ async def test_run_fails_the_gate_below_threshold(stubbed_models, tmp_path: Path
     assert code == 1
     assert result.gate.failing == ["Max"]
     save_gate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_fingerprint_survives_a_change_of_transport(
+    stubbed_models, tmp_path: Path, monkeypatch
+):
+    """CI runs direct-Anthropic and we run through OpenRouter, which spell the
+    same model differently. Fingerprinting the transport name would make CI
+    re-run the paid legs on every PR."""
+    fingerprints = []
+    for openrouter in ("true", "false"):
+        monkeypatch.setenv("CHAT_USE_OPENROUTER", openrouter)
+        result, _ = await run(RunOptions(experts=["Max"], out=tmp_path / "r.json"))
+        assert result is not None
+        fingerprints.append((result.chat_model, result.fingerprint))
+    (or_model, or_fp), (direct_model, direct_fp) = fingerprints
+    assert or_model != direct_model
+    assert or_fp == direct_fp
 
 
 @pytest.mark.asyncio

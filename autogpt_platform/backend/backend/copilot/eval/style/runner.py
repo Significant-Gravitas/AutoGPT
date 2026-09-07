@@ -54,6 +54,7 @@ from .models import (
     ExpertFixture,
     ExpertSummary,
     GateOutcome,
+    PairedAdvantage,
     PromptKind,
     ReferencePrompt,
     Rubric,
@@ -69,6 +70,15 @@ logger = logging.getLogger(__name__)
 LEDE_MAX_OUTPUT_TOKENS = 200
 # An expert with more errored rows than this cannot be scored honestly.
 MAX_ERRORS_PER_EXPERT = 3
+# Paired own-vs-wrong-spec comparisons needed before the separation verdict
+# means anything, and the share of them the own spec must win.
+MIN_PAIRED_COMPARISONS = 20
+MIN_PAIRED_WIN_RATE = 0.6
+
+
+class RoundCapReached(Exception):
+    """The turn was still calling tools at the round cap, so it has no
+    finished answer to judge."""
 
 
 class RunOptions(BaseModel):
@@ -105,18 +115,23 @@ async def run(options: RunOptions) -> tuple[StyleEvalResult | None, int]:
     ]
     rubric, gate = load_rubric(), load_gate()
     routed = await resolve_chat_model(config)
-    chat_model = normalize_model_for_transport(options.model or routed.slug, config)
+    # The fingerprint reads the ROUTED names, not the transport ones: the
+    # OpenRouter and direct-Anthropic spellings of one model differ, so
+    # fingerprinting the transport name would never match between a local
+    # run and CI, and the skip that pays for the broad path list would never
+    # fire where it matters.
+    chat_route = options.model or routed.slug
+    judge_route = options.judge or gate.judge_model
+    chat_model = normalize_model_for_transport(chat_route, config)
     lede_model = normalize_model_for_transport(config.title_model, config)
-    judge_model = normalize_model_for_transport(
-        options.judge or gate.judge_model, config
-    )
+    judge_model = normalize_model_for_transport(judge_route, config)
     current = fingerprint(
         experts,
         fixtures,
         rubric,
-        chat_model=chat_model,
-        lede_model=lede_model,
-        judge_model=judge_model,
+        chat_model=chat_route,
+        lede_model=config.title_model,
+        judge_model=judge_route,
     )
     print(
         f"chat model {chat_model} ({routed.mode}/standard via {routed.source}"
@@ -253,12 +268,21 @@ async def generate(
                     config,
                     model=chat_model,
                     expert=expert,
+                    roster=roster,
                     user_message=user_prefix(expert, roster) + job.prompt.prompt,
                 )
             )
             row.response, row.truncated = turn.text, turn.truncated
             row.generation, row.tool_calls = turn.usage, turn.tool_calls
             row.rounds, row.hit_round_cap = turn.rounds, turn.hit_round_cap
+            if turn.hit_round_cap:
+                raise RoundCapReached(
+                    f"still calling tools after {turn.rounds} rounds "
+                    f"({', '.join(turn.tool_calls)})"
+                )
+    except RoundCapReached as exc:
+        row.error = f"generation: {exc}"
+        logger.warning(f"[style-eval] {job.prompt.id} {row.error}")
     except Exception as exc:
         row.error = f"generation: {type(exc).__name__}: {exc}"
         logger.warning(f"[style-eval] {job.prompt.id} {row.error}")
@@ -298,7 +322,14 @@ def wrong_spec_rows(
     """Each expert-arm response, queued to be judged against every other
     expert's spec. Same text, different spec: the judge must score it lower."""
     return [
-        row.model_copy(update={"arm": "wrong_spec", "spec_expert": other.name})
+        row.model_copy(
+            update={
+                "arm": "wrong_spec",
+                "spec_expert": other.name,
+                # The response is generated once; only the judging is new.
+                "generation": None,
+            }
+        )
         for row in rows
         if row.arm == "expert" and row.error is None
         for other in experts
@@ -431,16 +462,58 @@ def separation(rows: list[ScoredResponse]) -> Separation | None:
     none = [r.score for r in rows if r.arm == "no_suffix" and r.score is not None]
     if not right or not (wrong or none):
         return None
-    right_sd = statistics.stdev(right) if len(right) > 1 else 0.0
     controls = [mean(c) for c in (wrong, none) if c]
-    gap = mean(right) - max(controls)
+    paired = paired_advantage(rows)
     return Separation(
         right_spec_mean=round(mean(right), 2),
-        right_spec_sd=round(right_sd, 2),
+        right_spec_sd=round(statistics.stdev(right), 2) if len(right) > 1 else 0.0,
         wrong_spec_mean=round(mean(wrong), 2) if wrong else None,
         no_suffix_mean=round(mean(none), 2) if none else None,
-        gap=round(gap, 2),
-        separated=gap >= right_sd,
+        gap=round(mean(right) - max(controls), 2),
+        paired=paired,
+        separated=None if paired is None else is_separated(paired),
+    )
+
+
+def paired_advantage(rows: list[ScoredResponse]) -> PairedAdvantage | None:
+    """Own-spec minus the mean wrong-spec score of the SAME response. An
+    unpaired mean-against-SD test called run A unseparated on a +26-point
+    advantage, because a handful of unfinished turns scored near zero in
+    both arms and inflated the SD."""
+    own = {
+        (r.expert, r.prompt_id, r.repeat): r.score
+        for r in rows
+        if r.arm == "expert" and r.score is not None
+    }
+    wrong: dict[tuple[str, str, int], list[float]] = {}
+    for row in rows:
+        if row.arm == "wrong_spec" and row.score is not None:
+            key = (row.expert, row.prompt_id, row.repeat)
+            if key in own:
+                wrong.setdefault(key, []).append(row.score)
+    deltas = [own[key] - mean(scores) for key, scores in wrong.items()]
+    if not deltas:
+        return None
+    sd = statistics.stdev(deltas) if len(deltas) > 1 else 0.0
+    wins = sum(1 for d in deltas if d > 0)
+    ties = sum(1 for d in deltas if d == 0)
+    return PairedAdvantage(
+        n=len(deltas),
+        mean=round(mean(deltas), 2),
+        sem=round(sd / len(deltas) ** 0.5, 2),
+        wins=wins,
+        ties=ties,
+        win_rate=round(wins / len(deltas), 3),
+    )
+
+
+def is_separated(paired: PairedAdvantage) -> bool:
+    """Enough comparisons, an advantage whose 95% interval clears zero, and
+    a majority of responses won on their own spec."""
+    return (
+        paired.n >= MIN_PAIRED_COMPARISONS
+        and paired.mean - 2 * paired.sem > 0
+        and paired.win_rate >= MIN_PAIRED_WIN_RATE
     )
 
 
@@ -473,10 +546,18 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
         )
     if result.separation:
         sep = result.separation
+        paired = (
+            f"paired +{sep.paired.mean} ± {sep.paired.sem} over {sep.paired.n}, "
+            f"own wins {sep.paired.wins} ({sep.paired.win_rate:.0%}, "
+            f"{sep.paired.ties} ties), "
+            if sep.paired
+            else "unpaired, "
+        )
         print(
             f"separation: own-spec {sep.right_spec_mean} (sd {sep.right_spec_sd}), "
             f"wrong-spec {sep.wrong_spec_mean}, no-suffix {sep.no_suffix_mean}, "
-            f"gap {sep.gap} -> {'separated' if sep.separated else 'NOT separated'}"
+            f"gap {sep.gap}, {paired}"
+            f"-> {'separated' if sep.separated else 'NOT separated'}"
         )
     known = "" if result.cost_known else " (some rows unpriced)"
     print(
@@ -506,6 +587,8 @@ def _print_dry_run(experts: list[Expert], fixtures: list[ExpertFixture]) -> None
 async def _with_retry(call):
     try:
         return await call()
+    except RoundCapReached:
+        raise
     except Exception as exc:
         logger.warning(f"[style-eval] retrying after {type(exc).__name__}: {exc}")
         await asyncio.sleep(2)

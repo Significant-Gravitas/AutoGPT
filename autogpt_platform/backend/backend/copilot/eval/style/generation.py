@@ -27,6 +27,23 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.tools import expert_tool_disabled_groups, get_available_tools
+from backend.copilot.tools.list_agent_triggers import AgentTriggerListResponse
+from backend.copilot.tools.manage_presets import PresetListResponse
+from backend.copilot.tools.manage_schedules import ScheduleListResponse
+from backend.copilot.tools.models import (
+    AgentInfo,
+    AgentOutputResponse,
+    AgentsFoundResponse,
+    ErrorResponse,
+    ExecutionStartedResponse,
+    MemorySearchResponse,
+    NoResultsResponse,
+    SubSessionStatusResponse,
+    TeamExpertInfo,
+    TeamRosterResponse,
+    ToolResponseBase,
+)
+from backend.copilot.tools.workspace_files import WorkspaceFileListResponse
 from backend.util.llm.conversions import extract_openrouter_cost
 
 from .assembly import chat_system_prompt
@@ -35,15 +52,28 @@ from .scorer import to_usage
 
 GENERATION_MAX_TOKENS = 2000
 GENERATION_TIMEOUT_SECONDS = 180.0
-# Production's loop is unbounded. A turn still calling tools at the cap is
-# reported as such and judged on whatever text it produced. Forcing text
-# with tool_choice=none is not an option: it invalidates the prompt cache
-# and Claude answers it with an empty message.
-MAX_TOOL_ROUNDS = 8
+# Production's loop is unbounded. A turn still calling tools at the cap has
+# no finished answer to judge, so the runner records it as an error rather
+# than scoring the narration it left behind. Forcing text with
+# tool_choice=none is not an option: it invalidates the prompt cache and
+# Claude answers it with an empty message.
+MAX_TOOL_ROUNDS = 10
 # Ends the turn in production (the user answers on a card), so it ends the
 # loop here with the questions rendered as the turn's visible text.
 TERMINAL_TOOL = "ask_question"
 LIBRARY_SEARCH_TOOLS = ("find_library_agent", "find_agent")
+DELEGATION_TOOLS = ("delegate_to_expert", "run_sub_session")
+HANDOFF_TOOL = "handoff_to_expert"
+WEB_TOOLS = ("web_search", "web_fetch")
+STUB_EXECUTION_ID = "style-eval-execution"
+STUB_GRAPH_ID = "style-eval-graph"
+STUB_SUB_SESSION_ID = "style-eval-sub-session"
+
+
+class StubWorkflow(BaseModel):
+    name: str
+    graph_id: str
+    library_agent_id: str | None
 
 
 class Turn(BaseModel):
@@ -78,6 +108,7 @@ async def generate_turn(
     *,
     model: str,
     expert: Expert | None,
+    roster: list[Expert],
     user_message: str,
 ) -> Turn:
     system: dict[str, Any] = {"role": "system", "content": chat_system_prompt(expert)}
@@ -135,7 +166,9 @@ async def generate_turn(
             {
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": stub_tool_result(tc.function.name, expert),
+                "content": stub_tool_result(
+                    tc.function.name, tc.function.arguments, expert, roster
+                ),
             }
             for tc in tool_calls
         ]
@@ -145,40 +178,162 @@ async def generate_turn(
     return turn
 
 
-def stub_tool_result(name: str, expert: Expert | None) -> str:
-    """What a fresh hire's session gets back: its installed workflows from a
-    library search, nothing from memory, no runs or schedules elsewhere. An
-    "unavailable" stub made the model narrate the harness; an empty library
-    made it doubt the user's own run report."""
-    if name in LIBRARY_SEARCH_TOOLS and expert and expert.workflows:
-        agents = [
-            {
-                "id": w.library_agent_id,
-                "name": w.name,
-                "description": w.description,
-                "source": "library",
-                "in_library": True,
-                "graph_id": w.graph_id,
-            }
-            for w in expert.workflows
-        ]
-        return json.dumps(
-            {
-                "type": "agents_found",
-                "message": f"Found {len(agents)} agents in your library.",
-                "agents": agents,
-                "count": len(agents),
-            }
+def stub_tool_result(
+    name: str, arguments: str, expert: Expert | None, roster: list[Expert]
+) -> str:
+    """Production's own response model for every tool, filled the way a fresh
+    hire's account answers: its preloads in the library, no memories, nothing
+    run or scheduled yet, a manual run that queues, a teammate still working.
+    An ad-hoc "no results" blob instead kept the model retrying the same tools
+    until the round cap, on 6 of 90 prompts."""
+    args = _arguments(arguments)
+    workflow = _workflow(expert, args)
+    if name in LIBRARY_SEARCH_TOOLS:
+        return _dump(_library_result(expert))
+    if name == "run_agent":
+        return _dump(
+            ExecutionStartedResponse(
+                message=f"Started {workflow.name}. The run is queued.",
+                execution_id=STUB_EXECUTION_ID,
+                graph_id=workflow.graph_id,
+                graph_name=workflow.name,
+                library_agent_id=workflow.library_agent_id,
+            )
+        )
+    if name == "view_agent_output":
+        return _dump(
+            AgentOutputResponse(
+                message=f"No finished runs of {workflow.name} to show.",
+                agent_name=workflow.name,
+                agent_id=workflow.graph_id,
+                library_agent_id=workflow.library_agent_id,
+                execution=None,
+                total_executions=0,
+            )
         )
     if name == "memory_search":
-        return json.dumps(
-            {
-                "type": "memory_search",
-                "message": "No memories found for this query.",
-                "results": [],
-            }
+        return _dump(
+            MemorySearchResponse(
+                message="No memories found matching your query.",
+                facts=[],
+                recent_episodes=[],
+            )
         )
-    return json.dumps({"success": True, "message": "No results.", "results": []})
+    if name in DELEGATION_TOOLS:
+        return _dump(
+            SubSessionStatusResponse(
+                message="Delegated. The teammate is working on it.",
+                status="running",
+                sub_session_id=STUB_SUB_SESSION_ID,
+            )
+        )
+    if name == HANDOFF_TOOL:
+        return _dump(
+            SubSessionStatusResponse(
+                message="Handed off. The receiving expert reports to the user.",
+                status="transferred",
+                sub_session_id=STUB_SUB_SESSION_ID,
+            )
+        )
+    if name == "list_team":
+        return _dump(
+            TeamRosterResponse(
+                message="; ".join(
+                    f"{e.name} — {e.role} (expert_id: {e.id})" for e in roster
+                ),
+                experts=[
+                    TeamExpertInfo(id=e.id, name=e.name, role=e.role) for e in roster
+                ],
+            )
+        )
+    if name == "list_schedules":
+        return _dump(ScheduleListResponse(message="No schedules yet.", schedules=[]))
+    if name == "list_presets":
+        return _dump(
+            PresetListResponse(
+                message="No presets yet.",
+                presets=[],
+                total_count=0,
+                page=1,
+                page_size=20,
+            )
+        )
+    if name == "list_agent_triggers":
+        return _dump(
+            AgentTriggerListResponse(message="No triggers configured.", triggers=[])
+        )
+    if name == "list_workspace_files":
+        return _dump(
+            WorkspaceFileListResponse(
+                message="The workspace is empty.", files=[], total_count=0
+            )
+        )
+    if name in WEB_TOOLS:
+        return _dump(
+            ErrorResponse(
+                message="Web access is off in this session.", error="unavailable"
+            )
+        )
+    return _dump(NoResultsResponse(message=f"Nothing to return from {name}."))
+
+
+def _library_result(expert: Expert | None) -> ToolResponseBase:
+    """A library search from a fresh hire: exactly its installed workflows.
+    An empty library made the model doubt the user's own run report."""
+    workflows = expert.workflows if expert else []
+    if not workflows:
+        return NoResultsResponse(message="No agents in your library match that.")
+    return AgentsFoundResponse(
+        message=f"Found {len(workflows)} agents in your library.",
+        agents=[
+            AgentInfo(
+                id=w.library_agent_id or w.id,
+                name=w.name or "",
+                description=w.description or "",
+                source="library",
+                in_library=True,
+                graph_id=w.graph_id,
+            )
+            for w in workflows
+        ],
+        count=len(workflows),
+    )
+
+
+def _workflow(expert: Expert | None, args: dict[str, Any]) -> StubWorkflow:
+    """The workflow the call names, so the stub echoes back what was asked
+    for; the expert's first preload otherwise."""
+    workflows = list(expert.workflows) if expert else []
+    wanted = {
+        str(args.get(key)) for key in ("library_agent_id", "graph_id", "agent_id")
+    }
+    named = [
+        w for w in workflows if w.library_agent_id in wanted or w.graph_id in wanted
+    ]
+    for workflow in named + workflows:
+        return StubWorkflow(
+            name=workflow.name or "the agent",
+            graph_id=workflow.graph_id or STUB_GRAPH_ID,
+            library_agent_id=workflow.library_agent_id,
+        )
+    return StubWorkflow(
+        name=str(args.get("agent_name") or "the agent"),
+        graph_id=STUB_GRAPH_ID,
+        library_agent_id=None,
+    )
+
+
+def _arguments(arguments: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(arguments)
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _dump(response: ToolResponseBase) -> str:
+    """What ``execute_tool`` hands the loop: the response model as JSON."""
+    return response.model_dump_json()
 
 
 def question_text(arguments: str) -> str:

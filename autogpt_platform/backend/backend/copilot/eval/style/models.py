@@ -153,12 +153,26 @@ class ExpertSummary(BaseModel):
     round_cap_hits: int = 0
 
 
+class PairedAdvantage(BaseModel):
+    """Own-spec minus wrong-spec on the SAME response. Pairing removes the
+    between-response variance that a raw mean-vs-SD comparison mistakes for
+    noise: one turn that never finished drags both arms equally."""
+
+    n: int
+    mean: float
+    sem: float
+    wins: int
+    ties: int
+    win_rate: float
+
+
 class Separation(BaseModel):
     right_spec_mean: float
     right_spec_sd: float
     wrong_spec_mean: float | None
     no_suffix_mean: float | None
     gap: float | None
+    paired: PairedAdvantage | None = None
     separated: bool | None
 
 

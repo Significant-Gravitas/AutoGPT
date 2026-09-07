@@ -8,6 +8,7 @@ import pytest
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.tools.models import ResponseType
 
 from .assembly import attach_workflows, load_fixtures, roster_experts
 from .generation import (
@@ -20,6 +21,8 @@ from .generation import (
     usage_of,
 )
 from .models import Usage
+
+ROSTER = roster_experts()
 
 
 def _completion(
@@ -82,6 +85,7 @@ async def test_tool_calls_get_a_stub_result_and_the_loop_continues():
         ChatConfig(),
         model="anthropic/claude-x",
         expert=roster_experts(["Max"])[0],
+        roster=ROSTER,
         user_message="hi",
     )
     assert turn.text == "Checking.\n\nHere is the answer."
@@ -90,7 +94,7 @@ async def test_tool_calls_get_a_stub_result_and_the_loop_continues():
     assert second_call["messages"][-1] == {
         "role": "tool",
         "tool_call_id": "t1",
-        "content": stub_tool_result("memory_search", None),
+        "content": stub_tool_result("memory_search", "{}", None, ROSTER),
     }
     assert turn.rounds == 2
     assert turn.finish_reasons == ["tool_calls", "stop"]
@@ -115,7 +119,7 @@ async def test_ask_question_ends_the_turn_with_the_question_as_text():
         ),
     )
     turn = await generate_turn(
-        client, ChatConfig(), model="m", expert=None, user_message="hi"
+        client, ChatConfig(), model="m", expert=None, roster=ROSTER, user_message="hi"
     )
     assert turn.text == "One thing first.\n\nWhich list? (A / B)"
     assert turn.tool_calls == ["ask_question"]
@@ -127,7 +131,7 @@ async def test_round_cap_stops_a_turn_that_never_answers():
     looping = [_completion(None, [("t", "memory_search", {})])] * (MAX_TOOL_ROUNDS + 2)
     client = _client(*looping)
     turn = await generate_turn(
-        client, ChatConfig(), model="m", expert=None, user_message="hi"
+        client, ChatConfig(), model="m", expert=None, roster=ROSTER, user_message="hi"
     )
     assert turn.text == ""
     assert turn.hit_round_cap
@@ -135,16 +139,64 @@ async def test_round_cap_stops_a_turn_that_never_answers():
     assert client.chat.completions.create.await_count == MAX_TOOL_ROUNDS
 
 
-def test_library_search_stub_lists_the_experts_installed_workflows():
+def _stub(name: str, args: dict | None = None) -> dict:
     (fixture,) = load_fixtures(["Max"])
     expert = attach_workflows(roster_experts(["Max"])[0], fixture)
-    found = json.loads(stub_tool_result("find_library_agent", expert))
+    return json.loads(stub_tool_result(name, json.dumps(args or {}), expert, ROSTER))
+
+
+def test_library_search_stub_lists_the_experts_installed_workflows():
+    (fixture,) = load_fixtures(["Max"])
+    found = _stub("find_library_agent")
     assert [a["name"] for a in found["agents"]] == [w.name for w in fixture.workflows]
     assert found["count"] == 3
-    assert json.loads(stub_tool_result("find_library_agent", None))["results"] == []
     assert (
-        "memories" in json.loads(stub_tool_result("memory_search", expert))["message"]
+        json.loads(stub_tool_result("find_library_agent", "{}", None, ROSTER))["type"]
+        == ResponseType.NO_RESULTS
     )
+
+
+def test_run_agent_stub_queues_the_run_the_call_named():
+    (fixture,) = load_fixtures(["Max"])
+    expert = attach_workflows(roster_experts(["Max"])[0], fixture)
+    wanted = expert.workflows[1]
+    started = _stub("run_agent", {"library_agent_id": wanted.library_agent_id})
+    assert started["type"] == ResponseType.EXECUTION_STARTED
+    assert started["graph_name"] == wanted.name
+    assert started["status"] == "QUEUED"
+    assert _stub("run_agent")["graph_name"] == expert.workflows[0].name
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "run_agent",
+        "view_agent_output",
+        "memory_search",
+        "delegate_to_expert",
+        "handoff_to_expert",
+        "list_team",
+        "list_schedules",
+        "list_presets",
+        "list_agent_triggers",
+        "list_workspace_files",
+        "web_search",
+        "read_workspace_file",
+    ],
+)
+def test_every_stub_answers_in_a_production_response_shape(name: str):
+    """A hand-rolled ``{"success": true, "message": "No results."}`` matched no
+    tool's real output and kept the model retrying until the round cap."""
+    stub = _stub(name)
+    assert stub["type"] in {t.value for t in ResponseType}
+    assert stub["message"]
+    assert "success" not in stub
+
+
+def test_list_team_stub_names_the_roster():
+    assert [e["name"] for e in _stub("list_team")["experts"]] == [
+        e.name for e in ROSTER
+    ]
 
 
 def test_usage_of_prices_openrouter_cost_and_splits_cached_tokens():
@@ -170,6 +222,28 @@ def test_add_usage_keeps_cost_unknown_once_any_row_is_unpriced():
 def test_question_text_renders_questions_and_tolerates_bad_json():
     assert question_text('{"questions": [{"question": "Why?"}]}') == "Why?"
     assert question_text("not json") == "not json"
+
+
+def test_stubbed_tools_stay_within_the_sessions_tool_surface():
+    """Every tool the stub table answers by name is one the model is given;
+    a stub for a tool that is not offered would never fire."""
+    from .generation import DELEGATION_TOOLS, HANDOFF_TOOL, LIBRARY_SEARCH_TOOLS
+
+    offered = {t["function"]["name"] for t in expert_tools(roster_experts(["Max"])[0])}
+    named = {
+        *LIBRARY_SEARCH_TOOLS,
+        *DELEGATION_TOOLS,
+        HANDOFF_TOOL,
+        "run_agent",
+        "view_agent_output",
+        "memory_search",
+        "list_team",
+        "list_schedules",
+        "list_presets",
+        "list_agent_triggers",
+        "list_workspace_files",
+    }
+    assert named <= offered
 
 
 def test_expert_session_loses_staffing_tools_and_keeps_memory():
