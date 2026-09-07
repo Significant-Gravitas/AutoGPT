@@ -243,7 +243,7 @@ class RunBlockTool(BaseTool):
                 prep.input_schema, prep.credentials_fields
             )
             if await is_feature_enabled(
-                Flag.AUTOPILOT_DELEGATION, user_id, default=False
+                Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
             ):
                 llm_input_schema = _strip_presentation_annotations(llm_input_schema)
                 output_schema = _strip_presentation_annotations(output_schema)

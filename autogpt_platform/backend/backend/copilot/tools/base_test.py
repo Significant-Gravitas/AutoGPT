@@ -225,7 +225,7 @@ class TestSummarizeBinaryFields:
 
 
 # ---------------------------------------------------------------------------
-# AUTOPILOT_DELEGATION digest
+# AUTOPILOT_CONTEXT_TRIMMING digest
 # ---------------------------------------------------------------------------
 
 

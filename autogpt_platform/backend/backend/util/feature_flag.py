@@ -176,10 +176,9 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
-    # Keeps AutoPilot's transcript small: strips builder-UI annotations from
-    # the block schemas it reads, and digests any oversized tool result to the
-    # workspace. Off by default; off is byte-identical to unflagged behaviour.
-    AUTOPILOT_DELEGATION = "autopilot-delegation"
+    # Shrinks what AutoPilot reads: strips builder-UI annotations from the
+    # block schemas, and digests oversized tool results to the workspace.
+    AUTOPILOT_CONTEXT_TRIMMING = "autopilot-context-trimming"
 
 
 def is_configured() -> bool:
