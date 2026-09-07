@@ -1,0 +1,113 @@
+name: AutoGPT Platform - Expert Style Gate
+
+# Scores what each seeded expert writes against its own style spec and fails
+# below the threshold in backend/copilot/eval/style/gate.json. Paid model
+# calls run only when the fingerprint of the assembled prompts, resolved
+# models, fixtures and rubric differs from the last gated one; the broad
+# path list below is affordable because of that skip. If the skip is ever
+# removed, narrow the list to the prompt-bearing files:
+#   expert_context.py, prompting.py, experts/seed.py, briefing/narrative.py,
+#   model_router.py, model_normalize.py, and backend/copilot/eval/style/**.
+# The list must equal TRIGGER_PATHS in backend/copilot/eval/style/assembly.py
+# (pinned by assembly_test.py).
+on:
+  pull_request:
+    branches: [master, dev, release-*]
+    paths:
+      - ".github/workflows/platform-expert-style-gate.yml"
+      - "autogpt_platform/backend/backend/copilot/eval/style/**"
+      - "autogpt_platform/backend/backend/copilot/service.py"
+      - "autogpt_platform/backend/backend/copilot/prompting.py"
+      - "autogpt_platform/backend/backend/copilot/expert_context.py"
+      - "autogpt_platform/backend/backend/api/features/experts/seed.py"
+      - "autogpt_platform/backend/backend/api/features/experts/models.py"
+      - "autogpt_platform/backend/backend/copilot/briefing/narrative.py"
+      - "autogpt_platform/backend/backend/copilot/model_router.py"
+      - "autogpt_platform/backend/backend/copilot/model_normalize.py"
+      - "autogpt_platform/backend/backend/copilot/config.py"
+      - "autogpt_platform/backend/backend/copilot/engine.py"
+      - "autogpt_platform/backend/backend/data/llm_registry/catalog.py"
+      - "autogpt_platform/backend/backend/copilot/sdk/service.py"
+      - "autogpt_platform/backend/backend/copilot/baseline/service.py"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the paid legs even if the fingerprint is unchanged"
+        type: boolean
+        default: false
+      model:
+        description: "Override the routed chat model (e.g. a proposed LaunchDarkly value)"
+        type: string
+        default: ""
+
+concurrency:
+  group: expert-style-gate-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/backend
+
+jobs:
+  style-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # Fork PRs carry no secrets; the gate cannot run there and says so.
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - name: Explain a skipped run
+        if: env.HAS_KEY != 'true'
+        run: echo "::warning::ANTHROPIC_API_KEY is not available on this event (fork PR); the expert style gate did not run."
+
+      - name: Run the expert style gate
+        if: env.HAS_KEY == 'true'
+        run: |
+          ARGS=()
+          [ "$FORCE" = "true" ] && ARGS+=(--force)
+          [ -n "$MODEL" ] && ARGS+=(--model "$MODEL")
+          poetry run expert-style-eval --gate --out expert_style_results.json "${ARGS[@]}"
+        env:
+          FORCE: ${{ inputs.force }}
+          MODEL: ${{ inputs.model }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CHAT_USE_OPENROUTER: "false"
+          DATABASE_URL: "postgresql://stub:stub@localhost:5432/stub"
+          DIRECT_URL: "postgresql://stub:stub@localhost:5432/stub"
+
+      - name: Upload results
+        if: ${{ !cancelled() && env.HAS_KEY == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: expert-style-results
+          path: autogpt_platform/backend/expert_style_results.json
+          if-no-files-found: ignore
