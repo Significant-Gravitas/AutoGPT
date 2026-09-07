@@ -48,13 +48,19 @@ export function OutcomeRow({
       {mark}
       <Text
         variant="body"
-        className="min-w-0 flex-1 truncate text-[13px] leading-5 text-zinc-700"
+        tone="secondary"
+        className="min-w-0 flex-1 truncate leading-5"
       >
         {outcome.title}
       </Text>
-      <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
+      <Text
+        variant="small"
+        as="span"
+        tone="muted"
+        className="shrink-0 tabular-nums"
+      >
         {formatWorkTime(outcome.occurred_at, timezone)}
-      </span>
+      </Text>
     </>
   ) : (
     <>
@@ -62,13 +68,15 @@ export function OutcomeRow({
       <div className="min-w-0 flex-1">
         <Text
           variant="body-medium"
-          className="text-pretty text-[13px] leading-5 text-zinc-900"
+          tone="primary"
+          className="text-pretty leading-5"
         >
           {outcome.title}
         </Text>
         <Text
-          variant="small"
-          className="mt-0.5 line-clamp-2 text-pretty text-[13px] leading-5 text-zinc-500"
+          variant="body"
+          tone="muted"
+          className="mt-0.5 line-clamp-2 text-pretty leading-5"
         >
           {outcome.summary}
         </Text>
@@ -125,13 +133,18 @@ function RunMeta({ outcome, timezone, showAgentName }: Omit<Props, "compact">) {
   ].filter(Boolean);
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-zinc-400">
+    <Text
+      variant="small"
+      as="div"
+      tone="muted"
+      className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1"
+    >
       {parts.map((part, index) => (
         <span key={index} className="flex items-center gap-x-1.5">
           {index > 0 ? <span aria-hidden="true">·</span> : null}
           {part}
         </span>
       ))}
-    </div>
+    </Text>
   );
 }

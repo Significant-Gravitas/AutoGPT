@@ -53,12 +53,12 @@ export function HomeTileEmpty({
       </motion.div>
       <div className="flex max-w-xs flex-col items-center gap-1">
         <motion.div {...fadeUp(0.22)}>
-          <Text variant="large-medium" className="text-zinc-800">
+          <Text variant="large-medium" tone="primary">
             {title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.3)}>
-          <Text variant="body" className="text-pretty text-zinc-500">
+          <Text variant="body" tone="muted" className="text-pretty">
             {description}
           </Text>
         </motion.div>
@@ -69,8 +69,7 @@ export function HomeTileEmpty({
             as="NextLink"
             href={action.href}
             variant="secondary"
-            size="small"
-            className="h-8 min-w-0 rounded-md px-3 text-xs"
+            size="xs"
           >
             {action.label}
           </Button>

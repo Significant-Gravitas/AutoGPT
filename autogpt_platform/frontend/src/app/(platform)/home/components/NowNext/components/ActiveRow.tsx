@@ -28,11 +28,12 @@ export function ActiveRow({ item }: Props) {
       <div className="min-w-0 flex-1">
         <Text
           variant="body-medium"
-          className="truncate text-[13px] leading-5 text-zinc-900"
+          tone="primary"
+          className="truncate leading-5"
         >
           {item.title}
         </Text>
-        <Text variant="small" className="truncate text-[11px] text-zinc-500">
+        <Text variant="small" tone="muted" className="truncate">
           {item.status === "queued"
             ? "Queued"
             : (formatRunningFor(item.started_at) ?? "Running now")}

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
-import { drawerStyles, modalStyles } from "./styles";
+import { compactStyles, drawerStyles, modalStyles } from "./styles";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -19,6 +19,7 @@ interface Props extends BaseProps {
 export function DrawerWrap({
   children,
   title,
+  variant,
   testId,
   handleClose,
   isForceOpen,
@@ -53,7 +54,11 @@ export function DrawerWrap({
           }`}
         >
           {hasVisibleTitle ? (
-            <Drawer.Title className={drawerStyles.title}>
+            <Drawer.Title
+              className={
+                variant === "compact" ? compactStyles.title : drawerStyles.title
+              }
+            >
               {accessibleTitle}
             </Drawer.Title>
           ) : (
