@@ -18,6 +18,13 @@ from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
+# Without this, tenacity installs no ``stop`` and retries the throttle statuses
+# ({429, 500, 502, 503, 504, 408}) forever, at up to 300s a wait — and
+# ``Requests`` sets no ``ClientTimeout`` either. A server answering 503 could
+# pin a caller indefinitely: discovery, the copilot's connect-card probe, the
+# executor block and credential verification all inherit it from here.
+_MCP_MAX_ATTEMPTS = 3
+
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
     "bearer": "Bearer",
@@ -202,6 +209,7 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=True,
+            retry_max_attempts=_MCP_MAX_ATTEMPTS,
             extra_headers=headers,
         )
         response = await requests.post(
@@ -247,6 +255,7 @@ class MCPClient:
         notification = {"jsonrpc": "2.0", "method": method}
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_MCP_MAX_ATTEMPTS,
             extra_headers=headers,
         )
         await requests.post(
@@ -279,6 +288,7 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_MCP_MAX_ATTEMPTS,
         )
         for url in candidates:
             try:
@@ -320,6 +330,7 @@ class MCPClient:
 
         requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=_MCP_MAX_ATTEMPTS,
         )
         for url in candidates:
             try:
@@ -367,7 +378,11 @@ class MCPClient:
             return
         try:
             headers = self._build_headers()
-            requests = Requests(raise_for_status=False, extra_headers=headers)
+            requests = Requests(
+                raise_for_status=False,
+                retry_max_attempts=_MCP_MAX_ATTEMPTS,
+                extra_headers=headers,
+            )
             await requests.delete(self.server_url)
         except Exception:
             pass

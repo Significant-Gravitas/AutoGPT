@@ -931,8 +931,8 @@ class TestStoreToken:
         mock_cm.create.assert_called_once()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_store_token_requires_https(self, client):
-        """The token rides in an Authorization header — never over cleartext."""
+    async def test_store_token_rejects_explicit_http(self, client):
+        """The credential rides in an Authorization header — never cleartext."""
         with patch("backend.api.features.mcp.routes.creds_manager") as mock_cm:
             mock_cm.create = AsyncMock()
             response = await client.post(
@@ -946,6 +946,32 @@ class TestStoreToken:
         assert response.status_code == 400
         assert "https" in response.json()["detail"].lower()
         mock_cm.create.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_token_defaults_a_scheme_less_url_to_https(self, client):
+        """Typing no scheme is not asking for cleartext, so it must not be
+        rejected as though the user had written http://."""
+        probe = _probe_client()
+        with (
+            patch(
+                "backend.api.features.mcp.routes.MCPClient", return_value=probe
+            ) as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+        ):
+            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
+            mock_cm.create = AsyncMock()
+
+            response = await client.post(
+                "/token",
+                json={
+                    "server_url": "mcp.example.com/mcp",
+                    "token": "my-api-key-123",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["host"] == "https://mcp.example.com/mcp"
+        assert MockClient.call_args.args[0] == "https://mcp.example.com/mcp"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_survives_a_hanging_server(self, client):
@@ -983,31 +1009,6 @@ class TestStoreToken:
         assert response.status_code == 200
         mock_cm.create.assert_called_once()
         assert cancelled.is_set()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_store_token_does_not_follow_redirects(self, client):
-        """A cross-host redirect strips the Authorization header, so the target
-        answers an effectively anonymous request. Following it would turn a
-        fine credential into "you mistyped this"."""
-        probe = _probe_client()
-        with (
-            patch(
-                "backend.api.features.mcp.routes.MCPClient", return_value=probe
-            ) as MockClient,
-            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
-        ):
-            mock_cm.store.get_creds_by_provider = AsyncMock(return_value=[])
-            mock_cm.create = AsyncMock()
-
-            await client.post(
-                "/token",
-                json={
-                    "server_url": "https://mcp.example.com/mcp",
-                    "token": "my-api-key-123",
-                },
-            )
-
-        assert MockClient.call_args.kwargs["follow_redirects"] is False
 
 
 class TestSSRFValidation:

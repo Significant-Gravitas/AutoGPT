@@ -476,6 +476,13 @@ async def mcp_store_token(
 
     # Normalize URL so trailing-slash variants match existing credentials.
     server_url = normalize_mcp_url(request.server_url)
+
+    # A URL with no scheme is the user not typing one, not the user asking for
+    # cleartext. Default it rather than accusing them of something they didn't
+    # write. Before ``server_host``, which needs a scheme to find a hostname.
+    if "://" not in server_url:
+        server_url = f"https://{server_url}"
+
     hostname = server_host(server_url)
 
     # ``validate_url_host`` permits http:// for MCP servers generally, but a
@@ -483,8 +490,8 @@ async def mcp_store_token(
     if not server_url.lower().startswith("https://"):
         raise fastapi.HTTPException(
             status_code=400,
-            detail="MCP server URL must use https:// — an API token cannot be "
-            "sent over an unencrypted connection.",
+            detail=f"{hostname} must be reached over https:// — a credential "
+            "cannot be sent over an unencrypted connection.",
         )
 
     # A 2xx from this endpoint is what turns the setup card's pill green, so
