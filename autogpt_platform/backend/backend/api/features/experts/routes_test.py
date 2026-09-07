@@ -984,6 +984,7 @@ def test_update_expert_budget_null_restores_default(
     response = client.patch("/experts/expert-1/budget", json={"weekly_budget": None})
 
     assert response.status_code == 200
+    assert response.json()["weekly_budget"] is None
     mock_update.assert_awaited_once_with(test_user_id, "expert-1", None)
 
 
