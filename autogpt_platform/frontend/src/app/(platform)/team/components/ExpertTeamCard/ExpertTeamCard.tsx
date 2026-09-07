@@ -160,7 +160,7 @@ export function ExpertTeamCard({
         <ExpertCover color={expert.color} status={rosterStatus} />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <span className="-mt-11 ml-1 block shrink-0">
+          <span className="relative z-10 -mt-11 ml-1 block shrink-0">
             {isUploadedAvatar(expert.avatar_url) ? (
               <Avatar className="size-[5.25rem] rounded-full ring-4 ring-white">
                 <AvatarImage
