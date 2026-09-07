@@ -365,7 +365,7 @@ async def _change_grant(
 
 
 class ExpertWorkflowsResponse(ToolResponseBase):
-    type: ResponseType = ResponseType.EXPERT_WORKFLOW
+    type: ResponseType = ResponseType.EXPERT_WORKFLOWS
     expert_id: str
     workflows: list[ExpertWorkflowRef]
 

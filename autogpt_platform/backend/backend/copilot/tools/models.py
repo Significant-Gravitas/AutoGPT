@@ -51,6 +51,7 @@ class ResponseType(str, Enum):
     SCHEDULE_DELETED = "schedule_deleted"
     # Expert resources (installed workflows, credential grants)
     EXPERT_WORKFLOW = "expert_workflow"
+    EXPERT_WORKFLOWS = "expert_workflows"
     EXPERT_CREDENTIALS = "expert_credentials"
     SCHEDULE_CREATED = "schedule_created"
 
