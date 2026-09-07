@@ -16,6 +16,11 @@ from prisma.errors import UniqueViolationError
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.db_accessors import workspace_db
 from backend.data.workspace import WorkspaceFile
+from backend.data.workspace_scope import (
+    EXPERT_FILE_ACCESS_DENIED,
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+)
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import compute_file_checksum, get_workspace_storage
@@ -48,7 +53,11 @@ class WorkspaceManager:
     """
 
     def __init__(
-        self, user_id: str, workspace_id: str, session_id: Optional[str] = None
+        self,
+        user_id: str,
+        workspace_id: str,
+        session_id: Optional[str] = None,
+        scope: Optional[WorkspaceScope] = None,
     ):
         """
         Initialize WorkspaceManager.
@@ -57,12 +66,33 @@ class WorkspaceManager:
             user_id: The user's ID
             workspace_id: The workspace ID
             session_id: Optional session ID for session-scoped file access
+            scope: Resolved grants for an expert session. ``None`` means the
+                account owner is acting and every file in the workspace is
+                reachable. When set, every operation — by path or by file ID,
+                including listings and counts — is confined to the scope.
         """
         self.user_id = user_id
         self.workspace_id = workspace_id
         self.session_id = session_id
+        self.scope = scope
         # Session path prefix for file isolation
         self.session_path = f"/sessions/{session_id}" if session_id else ""
+
+    def _authorize_path(self, path: str, *, write: bool = False) -> None:
+        if self.scope is not None and not self.scope.allows_path(path, write=write):
+            logger.warning(
+                "Workspace access denied for expert %s (write=%s): %s",
+                self.scope.expert_id,
+                write,
+                path,
+            )
+            raise WorkspaceAccessDeniedError(EXPERT_FILE_ACCESS_DENIED)
+
+    def _authorize_file(self, file: WorkspaceFile, *, write: bool = False) -> None:
+        self._authorize_path(file.path, write=write)
+
+    def _allowed_prefixes(self) -> Optional[list[str]]:
+        return None if self.scope is None else self.scope.read_prefixes
 
     def _resolve_path(self, path: str) -> str:
         """
@@ -137,6 +167,7 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         file = await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
         if file is None:
             raise FileNotFoundError(f"File not found at path: {resolved_path}")
@@ -161,6 +192,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
@@ -218,6 +250,7 @@ class WorkspaceManager:
 
         # Resolve path with session prefix
         path = self._resolve_path(path)
+        self._authorize_path(path, write=True)
 
         # Enforce per-user workspace storage quota (tier-based).
         # For overwrites, subtract the existing file's size so replacing a file
@@ -397,6 +430,7 @@ class WorkspaceManager:
             metadata_not_equals=metadata_not_equals,
             folder_id=folder_id,
             root_only=root_only,
+            allowed_path_prefixes=self._allowed_prefixes(),
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -413,6 +447,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             return False
+        self._authorize_file(file, write=True)
 
         # Delete from storage
         storage = await get_workspace_storage()
@@ -459,6 +494,7 @@ class WorkspaceManager:
         file = await db.get_workspace_file(file_id, self.workspace_id)
         if file is None:
             raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
 
         storage = await get_workspace_storage()
         return await storage.get_download_url(file.storage_path, expires_in)
@@ -474,7 +510,10 @@ class WorkspaceManager:
             WorkspaceFile instance or None
         """
         db = workspace_db()
-        return await db.get_workspace_file(file_id, self.workspace_id)
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is not None:
+            self._authorize_file(file)
+        return file
 
     async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
@@ -491,6 +530,7 @@ class WorkspaceManager:
         """
         db = workspace_db()
         resolved_path = self._resolve_path(path)
+        self._authorize_path(resolved_path)
         return await db.get_workspace_file_by_path(self.workspace_id, resolved_path)
 
     async def get_file_count(
@@ -516,5 +556,7 @@ class WorkspaceManager:
         db = workspace_db()
 
         return await db.count_workspace_files(
-            self.workspace_id, path_prefix=effective_path
+            self.workspace_id,
+            path_prefix=effective_path,
+            allowed_path_prefixes=self._allowed_prefixes(),
         )

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import workspace_db
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
 if TYPE_CHECKING:
@@ -269,15 +270,40 @@ def resolve_sandbox_path(path: str) -> str:
     return normalized
 
 
+async def current_workspace_scope(user_id: str) -> WorkspaceScope | None:
+    """Resolve the file/skill grants for the turn currently executing.
+
+    The scope derives from the server-resolved session the executor placed
+    in the execution context — never from a session or expert ID a tool
+    argument names. Outside a copilot turn (REST endpoints, cleanup jobs,
+    tests) there is no expert acting, so the owner's full workspace applies.
+    """
+    _, session = get_execution_context()
+    if session is None:
+        return None
+    if session.user_id != user_id:
+        raise WorkspaceAccessDeniedError(
+            "Workspace access denied: the executing session belongs to another user."
+        )
+    if session.expert_id is None:
+        return None
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        user_id, session.expert_id
+    )
+    return scope.with_session(session.session_id)
+
+
 async def get_workspace_manager(user_id: str, session_id: str) -> WorkspaceManager:
     """Create a session-scoped :class:`WorkspaceManager`.
 
     Placed here (rather than in ``tools/workspace_files``) so that modules
     like ``sdk/file_ref`` can import it without triggering the heavy
-    ``tools/__init__`` import chain.
+    ``tools/__init__`` import chain. Expert turns get a manager confined to
+    the expert's resolved scope (see :func:`current_workspace_scope`).
     """
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
+    scope = await current_workspace_scope(user_id)
+    return WorkspaceManager(user_id, workspace.id, session_id, scope=scope)
 
 
 def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
