@@ -15,6 +15,17 @@ import {
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useEffect, useState } from "react";
 
+export type ServiceFilter = "all" | "connected" | "available";
+
+export const SERVICE_FILTERS: readonly {
+  value: ServiceFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "connected", label: "Connected" },
+  { value: "available", label: "Not connected" },
+];
+
 interface Args {
   open: boolean;
   onConnected: (credential: CredentialsMetaResponse) => void;
@@ -23,6 +34,7 @@ interface Args {
 export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
+  const [filter, setFilter] = useState<ServiceFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<AuthMethod | null>(null);
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -43,6 +55,7 @@ export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
   useEffect(() => {
     if (!open) {
       setQuery("");
+      setFilter("all");
       setSelectedId(null);
       setSelectedMethod(null);
     }
@@ -53,7 +66,14 @@ export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
   const connectedProviders = new Set(
     credentials.map((credential) => credential.provider),
   );
-  const providers = filterConnectableProviders(allProviders, debouncedQuery);
+  const providers = filterConnectableProviders(
+    allProviders,
+    debouncedQuery,
+  ).filter((provider) => {
+    if (filter === "all") return true;
+    const isConnected = connectedProviders.has(provider.id);
+    return filter === "connected" ? isConnected : !isConnected;
+  });
   const selectedProvider: ConnectableProvider | null = selectedId
     ? (allProviders.find((provider) => provider.id === selectedId) ?? null)
     : null;
@@ -99,6 +119,8 @@ export function useExpertConnectServiceDialog({ open, onConnected }: Args) {
   return {
     query,
     setQuery,
+    filter,
+    setFilter,
     providers,
     isLoading: providersQuery.isLoading,
     isError: providersQuery.isError,

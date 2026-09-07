@@ -187,7 +187,11 @@ afterEach(() => {
 
 function ExpertSessionHarness() {
   const [expertId] = useQueryState("expertId", parseAsString);
-  const { createSession, sessionId } = useChatSession({ expertId });
+  const [newThread] = useQueryState("new", parseAsString);
+  const { createSession, sessionId } = useChatSession({
+    expertId,
+    adoptLatestExpertThread: !newThread,
+  });
   return (
     <div>
       <div data-testid="session-id">{sessionId ?? "none"}</div>
@@ -311,6 +315,36 @@ describe("useChatSession — expert sessions", () => {
       );
     });
     expect(seenExpertFilters).toContain("expert-maria");
+  });
+
+  it("keeps a fresh thread addressed to the expert when the link carries new=1", async () => {
+    let listedSessions = 0;
+    server.use(
+      http.get("*/api/chat/sessions", () => {
+        listedSessions += 1;
+        return HttpResponse.json({
+          sessions: [
+            makeSession({ id: "s-maria-latest", expert_id: "expert-maria" }),
+          ],
+          total: 1,
+        });
+      }),
+    );
+    const NewThreadWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria&new=1",
+      hasMemory: true,
+    });
+
+    render(
+      <NewThreadWrapper>
+        <ExpertSessionHarness />
+      </NewThreadWrapper>,
+    );
+
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(listedSessions).toBe(0);
   });
 
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {

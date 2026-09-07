@@ -2,7 +2,6 @@
 
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -26,6 +25,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { BackToTeamLink } from "../components/BackToTeamLink";
+import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
+import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import { getLastRunLabel } from "../helpers";
@@ -33,6 +34,7 @@ import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
+import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/ExpertNeedsYouSection";
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
@@ -40,7 +42,6 @@ import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
-import { ACTION_BUTTON_CLASS } from "@/app/(platform)/team/helpers";
 
 const MAIN_CLASS =
   "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
@@ -80,6 +81,12 @@ export default function ExpertDetailPage() {
     soulDrawerKey,
     toggleSoul,
     closeSoul,
+    isChatOpen,
+    chatDrawerKey,
+    chatSeed,
+    toggleChat,
+    openChatWithPrompt,
+    closeChat,
   } = useExpertDetailPage({
     expertId,
     enabled: Boolean(enabled) && ready,
@@ -118,7 +125,11 @@ export default function ExpertDetailPage() {
     <div className="flex w-full">
       <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
         <BackToTeamLink />
-        <ExpertDetailHeader expert={expert} onEditSoul={toggleSoul} />
+        <ExpertDetailHeader
+          expert={expert}
+          onEditSoul={toggleSoul}
+          onChat={toggleChat}
+        />
 
         {isPaused ? (
           <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-4 py-2.5 ring-1 ring-inset ring-amber-200">
@@ -127,8 +138,7 @@ export default function ExpertDetailPage() {
             </Text>
             <Button
               variant="secondary"
-              size="small"
-              className={ACTION_BUTTON_CLASS}
+              size="xs"
               loading={isResuming}
               onClick={resumeSchedules}
             >
@@ -139,19 +149,25 @@ export default function ExpertDetailPage() {
 
         <ExpertBudgetSection expert={expert} />
 
-        <TabsLine defaultValue="basics">
-          <TabsLineList
-            flush
-            className="overflow-x-auto"
-            indicatorClassName="bg-zinc-900"
-          >
+        {expert.tagline ? (
+          <Text variant="body" tone="muted">
+            {expert.tagline}
+          </Text>
+        ) : null}
+
+        <ExpertNeedsYouSection
+          expertId={expert.id}
+          enabled={Boolean(enabled) && ready}
+        />
+
+        <TabsLine variant="compact" defaultValue="basics">
+          <TabsLineList className="overflow-x-auto">
             {TABS.map((tab) => (
               <TabsLineTrigger
                 key={tab.value}
                 value={tab.value}
-                className="gap-1.5 px-2.5 py-2 text-sm leading-5 data-[state=active]:text-zinc-900"
+                icon={tab.icon}
               >
-                <Icon icon={tab.icon} size={14} />
                 {tab.label}
               </TabsLineTrigger>
             ))}
@@ -177,6 +193,7 @@ export default function ExpertDetailPage() {
           <TabsLineContent value="work">
             <ExpertWorkSection
               expertId={expert.id}
+              expertName={expert.name}
               enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
@@ -197,8 +214,15 @@ export default function ExpertDetailPage() {
 
           <TabsLineContent value="workflows">
             <ExpertWorkflowsSection
-              expert={expert}
+              expertName={expert.name}
+              expertId={expert.id}
+              workflows={expert.workflows}
+              accentClassName={
+                getRaisedExpertAccent(expert.role, expert.color).pill
+              }
+              coverColor={expert.color}
               onInstallWorkflow={openPicker}
+              onAskWorkflow={openChatWithPrompt}
             />
           </TabsLineContent>
 
@@ -243,6 +267,13 @@ export default function ExpertDetailPage() {
         key={soulDrawerKey}
         expert={isSoulOpen ? expert : null}
         onClose={closeSoul}
+      />
+      <ExpertChatDrawer
+        target={isChatOpen ? expertToChatTarget(expert) : null}
+        threadKey={chatDrawerKey}
+        seedPrompt={chatSeed}
+        onClose={closeChat}
+        resumeLatest={false}
       />
     </div>
   );

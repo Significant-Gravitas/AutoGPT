@@ -16,11 +16,17 @@ import { WorkflowCredentialStack } from "./WorkflowCredentialStack";
 
 interface Props {
   workflow: ExpertWorkflowRef;
-  expertId: string;
+  expertId?: string;
   coverColor: string | undefined;
+  onAsk?: (prompt: string) => void;
 }
 
-export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
+export function ExpertWorkflowCard({
+  workflow,
+  expertId,
+  coverColor,
+  onAsk,
+}: Props) {
   const {
     name,
     libraryAgent,
@@ -31,6 +37,7 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
     libraryHref,
     builderHref,
     chatHref,
+    chatPrompt,
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
@@ -63,23 +70,30 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
             name={name}
             builderHref={builderHref}
             chatHref={chatHref}
+            chatPrompt={chatPrompt}
+            onAsk={onAsk}
           />
         </div>
       </div>
 
       <div className="pointer-events-none relative flex flex-1 flex-col px-3 pb-3 pt-2.5">
-        <Text variant="h5" className="line-clamp-2 hyphens-auto break-words">
+        <Text
+          variant="large-medium"
+          tone="primary"
+          className="line-clamp-2 hyphens-auto break-words"
+        >
           {name}
         </Text>
         {workflow.schedule_cron ? (
-          <Text variant="small" className="mt-0.5 text-zinc-400">
+          <Text variant="small" tone="muted" className="mt-0.5">
             {safeHumanizeCronExpression(workflow.schedule_cron)}
           </Text>
         ) : null}
         {workflow.description ? (
           <Text
-            variant="small"
-            className="mt-1.5 line-clamp-2 text-sm leading-5 text-zinc-500"
+            variant="body"
+            tone="muted"
+            className="mt-1.5 line-clamp-2 leading-5"
           >
             {workflow.description}
           </Text>
@@ -87,21 +101,24 @@ export function ExpertWorkflowCard({ workflow, expertId, coverColor }: Props) {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {runCount !== undefined ? (
             <Text
-              variant="small"
-              className="flex items-center gap-1.5 text-sm leading-5 text-zinc-500"
+              variant="body"
+              tone="muted"
+              className="flex items-center gap-1.5 leading-5"
             >
               <Icon icon={Activity01Icon} size={14} className="shrink-0" />
               {runCount} {runCount === 1 ? "run" : "runs"}
             </Text>
           ) : null}
-          <span
+          <Text
+            variant="small-medium"
+            as="span"
             className={cn(
-              "rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ring-zinc-200/80",
+              "rounded-md px-2 py-0.5 ring-1 ring-inset ring-zinc-200/80",
               status.className,
             )}
           >
             {status.label}
-          </span>
+          </Text>
         </div>
         {libraryAgent ? (
           <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">

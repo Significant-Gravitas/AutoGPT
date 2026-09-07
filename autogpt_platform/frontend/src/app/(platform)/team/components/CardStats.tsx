@@ -29,20 +29,23 @@ interface StatProps {
 export function CardStat({ label, children }: StatProps) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5 text-center">
-      <dt className="order-2 w-full">
-        <Text variant="small" className="truncate text-zinc-500">
-          {label}
-        </Text>
-      </dt>
-      <dd className="order-1">
-        <Text
-          variant="large-semibold"
-          unmask={false}
-          className="tabular-nums text-zinc-900"
-        >
-          {children}
-        </Text>
-      </dd>
+      <Text
+        variant="small"
+        as="dt"
+        tone="muted"
+        className="order-2 w-full truncate"
+      >
+        {label}
+      </Text>
+      <Text
+        variant="large-semibold"
+        as="dd"
+        tone="primary"
+        unmask={false}
+        className="order-1 tabular-nums"
+      >
+        {children}
+      </Text>
     </div>
   );
 }

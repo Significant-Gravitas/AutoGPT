@@ -411,6 +411,62 @@ describe("managing an expert's integrations", () => {
     expect(within(dialog).queryByText(/Let Maria use/)).toBeNull();
   });
 
+  it("filters the connect dialog's services by connection state", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+          {
+            name: "slack",
+            description: "Team chat",
+            supported_auth_types: ["oauth2"],
+          },
+        ]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-slack",
+            provider: "slack",
+            type: "oauth2",
+            title: "Team Slack",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const list = await within(dialog).findByRole("list", { name: "Services" });
+    expect(within(list).getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(within(list).getByRole("button", { name: /Slack/ })).toBeDefined();
+
+    const filters = within(dialog).getByRole("group", {
+      name: "Filter services",
+    });
+    await userEvent.click(
+      within(filters).getByRole("button", { name: "Connected" }),
+    );
+    expect(within(list).queryByRole("button", { name: /Notion/ })).toBeNull();
+    expect(within(list).getByRole("button", { name: /Slack/ })).toBeDefined();
+
+    await userEvent.click(
+      within(filters).getByRole("button", { name: "Not connected" }),
+    );
+    expect(within(list).getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(within(list).queryByRole("button", { name: /Slack/ })).toBeNull();
+  });
+
   it("grants only the credential the dialog created", async () => {
     const workLinkedin = {
       id: "cred-linkedin",

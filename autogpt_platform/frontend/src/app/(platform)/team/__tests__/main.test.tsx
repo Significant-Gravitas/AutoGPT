@@ -22,6 +22,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -218,13 +219,16 @@ describe("TeamPage", () => {
     ).toBeTruthy();
   });
 
-  test("header exposes New Expert and New Pod actions", async () => {
+  test("header exposes Raise expert, Hire expert and New Pod actions", async () => {
     server.use(getListExpertsMockHandler([hiredMaria]));
 
     render(<TeamPage />);
 
-    const newExpert = await screen.findByRole("link", { name: "New Expert" });
-    expect(newExpert.getAttribute("href")).toBe("/raise");
+    const raise = await screen.findByRole("link", { name: "Raise expert" });
+    expect(raise.getAttribute("href")).toBe("/raise");
+    expect(
+      screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
+    ).toBe("/marketplace#experts");
 
     expect(screen.getByRole("button", { name: "New Pod" })).toBeDefined();
   });
@@ -254,16 +258,43 @@ describe("TeamPage", () => {
     expect(link.getAttribute("href")).toBe("/team/expert-maria");
   });
 
-  test("links Chat to the expert's copilot thread", async () => {
-    server.use(getListExpertsMockHandler([hiredMaria]));
+  test("opens an inline chat from the expert and Autopilot cards", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+    const user = userEvent.setup();
 
     render(<TeamPage />);
 
     await screen.findByText("Maria");
-    const chatLinks = screen.getAllByRole("link", { name: "Chat" });
-    const hrefs = chatLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/copilot");
-    expect(hrefs).toContain(`/copilot?expertId=${hiredMaria.id}`);
+    const [autopilotChat, mariaChat] = screen.getAllByRole("button", {
+      name: "Chat",
+    });
+
+    await user.click(mariaChat);
+    const mariaPanel = screen.getByRole("complementary", {
+      name: "Chat with Maria",
+    });
+    expect(
+      await within(mariaPanel).findByText("What can I do for you?"),
+    ).toBeDefined();
+    expect(
+      within(mariaPanel).getByPlaceholderText("Message Maria…"),
+    ).toBeDefined();
+
+    await user.click(autopilotChat);
+    const autopilotPanel = await screen.findByRole("complementary", {
+      name: "Chat with Autopilot",
+    });
+    expect(
+      within(autopilotPanel).getByPlaceholderText("Message Autopilot…"),
+    ).toBeDefined();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("complementary", { name: "Chat with Maria" }),
+      ).toBeNull();
+    });
 
     expect(
       screen.getByRole("button", { name: "Install workflow" }),
@@ -862,7 +893,7 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Something went wrong")).toBeDefined();
   });
 
-  test("groups experts under their pod with ungrouped members below", async () => {
+  test("groups experts under their pod and leaves ungrouped members off the board", async () => {
     const user = userEvent.setup();
     const growthPod: ExpertPod = {
       id: "pod-growth",
@@ -891,25 +922,54 @@ describe("TeamPage", () => {
     render(<TeamPage />);
     await openTab(user, "Pod board");
 
-    const podHeader = await screen.findByRole("heading", { name: "Growth" });
-    const maria = await screen.findByText("Maria");
-    const leeNode = await screen.findByText("Lee");
-    // Maria sits under the pod header; Lee is ungrouped below.
-    const noPodHeader = screen.getByRole("heading", { name: "Ungrouped" });
+    const board = await screen.findByRole("region", { name: "Pods" });
+    const podHeader = await within(board).findByRole("heading", {
+      name: "Growth",
+    });
+    const maria = await within(board).findByText("Maria");
     expect(
       podHeader.compareDocumentPosition(maria) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      maria.compareDocumentPosition(noPodHeader) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      noPodHeader.compareDocumentPosition(leeNode) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Lee has no pod, so the board does not list him anywhere.
+    expect(within(board).queryByText("Lee")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Ungrouped" })).toBeNull();
     // Archived experts never render, even with a pod_id.
     expect(screen.queryByText("Sam")).toBeNull();
+  });
+
+  test("opens a pod to show its expert cards and returns to the board", async () => {
+    const user = userEvent.setup();
+    const growthPod: ExpertPod = {
+      id: "pod-growth",
+      name: "Growth",
+      created_at: new Date("2026-08-14T00:00:00Z"),
+    };
+    const poddedMaria: Expert = { ...hiredMaria, pod_id: "pod-growth" };
+    server.use(
+      getListExpertsMockHandler([poddedMaria]),
+      getListExpertPodsMockHandler([growthPod]),
+    );
+
+    render(<TeamPage />);
+    await openTab(user, "Pod board");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Open Growth pod" }),
+    );
+    const pod = screen.getByRole("region", { name: "Growth pod" });
+    expect(
+      within(pod)
+        .getByRole("link", { name: "View Maria" })
+        .getAttribute("href"),
+    ).toBe("/team/expert-maria");
+    expect(within(pod).getByRole("button", { name: "Chat" })).toBeDefined();
+
+    await user.click(within(pod).getByRole("button", { name: "Back to pods" }));
+    expect(screen.getByRole("region", { name: "Pods" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Open Growth pod" }),
+    ).toBeDefined();
   });
 
   test("shows a pod with no members instead of hiding it", async () => {
@@ -933,8 +993,9 @@ describe("TeamPage", () => {
       podHeader.compareDocumentPosition(emptyCopy) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // The unpodded expert still renders under its own section.
-    expect(await screen.findByText("Maria")).toBeDefined();
+    // The unpodded expert is not listed on the board.
+    const board = screen.getByRole("region", { name: "Pods" });
+    expect(within(board).queryByText("Maria")).toBeNull();
   });
 
   test("creates a pod from the New pod dialog", async () => {

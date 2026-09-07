@@ -2,6 +2,8 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { formatDistanceToNow } from "date-fns";
 
@@ -10,13 +12,9 @@ import { formatDistanceToNow } from "date-fns";
  *  up with the text inside them instead of with the card edge. */
 export const SECTION_INSET_CLASS = "px-4";
 
-/** The Button atom is pill-shaped and tall by default; team actions match the
- *  home briefing's compact row buttons. */
+/** The Button atom's `xs` size for components that style a raw trigger instead
+ *  of taking Button props (schedule rows, the edit-schedule modal trigger). */
 export const ACTION_BUTTON_CLASS = "h-7 min-w-0 !rounded-md px-2.5 text-xs";
-
-/** The `outline` variant's zinc-700 border is too heavy at this size, so team
- *  actions soften it while keeping the hover lift. */
-export const OUTLINE_ACTION_BUTTON_CLASS = `${ACTION_BUTTON_CLASS} !border-zinc-200 hover:!border-zinc-300`;
 
 interface PodGroup {
   pod: ExpertPod;
@@ -28,8 +26,63 @@ export const AUTOPILOT_ROLE = "Head of AI";
 export const AUTOPILOT_BLURB =
   "Your built-in generalist. It answers questions, runs workflows, and delegates work across your hired experts.";
 
+export const AUTOPILOT_PILL_CLASS =
+  "border border-zinc-200 bg-zinc-50 text-zinc-700";
+
+/** Autopilot owns whatever no hired expert does: every library workflow that
+ *  is not installed on an expert, shaped like an expert workflow so the expert
+ *  page's cards can render it. A schedule on the same graph gives it its cron. */
+export function getAutopilotWorkflows(
+  experts: Expert[],
+  libraryAgents: LibraryAgent[],
+  schedules: GraphExecutionJobInfo[],
+): ExpertWorkflowRef[] {
+  const owned = new Set(
+    experts.flatMap((expert) =>
+      expert.workflows.flatMap((workflow) =>
+        [workflow.library_agent_id, workflow.graph_id].filter(Boolean),
+      ),
+    ),
+  );
+  return libraryAgents
+    .filter((agent) => !owned.has(agent.id) && !owned.has(agent.graph_id))
+    .map((agent) => {
+      const schedule = schedules.find(
+        (item) => item.graph_id === agent.graph_id,
+      );
+      return {
+        id: agent.id,
+        store_listing_version_id: null,
+        library_agent_id: agent.id,
+        graph_id: agent.graph_id,
+        name: agent.name,
+        description: agent.description || null,
+        schedule_cron:
+          schedule?.cron ?? agent.recommended_schedule_cron ?? null,
+        schedule_id: schedule?.id ?? null,
+      };
+    });
+}
+
+/** Library skills no hired expert has claimed; Autopilot falls back to these. */
+export function getAutopilotSkills(
+  experts: Expert[],
+  librarySkills: CopilotSkillInfo[],
+) {
+  const claimed = new Set(
+    experts.flatMap((expert) =>
+      expert.skills.map((name) => name.toLowerCase()),
+    ),
+  );
+  return librarySkills
+    .filter((skill) => !claimed.has(skill.name.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Sized by the available width, not the viewport, so the roster reflows
+ *  when a side panel takes space. */
 export const TEAM_GRID_CLASS =
-  "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3";
+  "grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4";
 
 /** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
 export const POD_NAME_MAX_LENGTH = 100;
@@ -274,10 +327,10 @@ export function getAutopilotSummary({
 }
 
 /** Covers live at `public/experts/covers/<color token>.jpg`, one per raise-flow
- *  accent, plus `default.jpg` for experts without a colour (marketplace
- *  templates). */
+ *  accent. Experts without a colour (marketplace templates) and Autopilot
+ *  share `autopilot.jpg`. */
 export function getExpertCoverSrc(color: string | null | undefined) {
-  const token = findColorOption(color ?? null)?.id ?? "default";
+  const token = findColorOption(color ?? null)?.id ?? "autopilot";
   return `/experts/covers/${token}.jpg`;
 }
 

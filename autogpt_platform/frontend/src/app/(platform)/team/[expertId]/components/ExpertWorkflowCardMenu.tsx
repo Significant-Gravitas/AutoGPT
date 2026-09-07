@@ -31,16 +31,18 @@ import { workflowNeedsSetup } from "../../helpers";
 
 interface Props {
   workflow: ExpertWorkflowRef;
-  expertId: string;
+  expertId?: string;
   name: string;
-  triggerClassName?: string;
+  variant?: "floating" | "ghost";
+  size?: "icon-xs" | "icon-sm";
 }
 
 export function ExpertWorkflowCardMenu({
   workflow,
   expertId,
   name,
-  triggerClassName,
+  variant = "floating",
+  size = "icon-xs",
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -51,7 +53,10 @@ export function ExpertWorkflowCardMenu({
     ? `/library/agents/${workflow.library_agent_id}`
     : null;
 
+  if (!libraryHref && !expertId) return null;
+
   async function handleRemove() {
+    if (!expertId) return;
     try {
       await removeWorkflow({ expertId, workflowId: workflow.id });
       await Promise.all([
@@ -73,13 +78,11 @@ export function ExpertWorkflowCardMenu({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="icon"
-            size="icon"
+            variant={variant}
+            size={size}
             aria-label="More actions"
-            className={triggerClassName}
-          >
-            <Icon icon={MoreHorizontalIcon} size={16} />
-          </Button>
+            leadingIcon={MoreHorizontalIcon}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[11rem]">
           {libraryHref ? (
@@ -95,18 +98,22 @@ export function ExpertWorkflowCardMenu({
               </NextLink>
             </DropdownMenuItem>
           ) : null}
-          {libraryHref ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuItem
-            className="flex items-center gap-2 text-red-600 focus:text-red-600"
-            onSelect={() => setIsRemoveOpen(true)}
-          >
-            <Icon icon={Delete02Icon} size={16} />
-            Remove from expert
-          </DropdownMenuItem>
+          {libraryHref && expertId ? <DropdownMenuSeparator /> : null}
+          {expertId ? (
+            <DropdownMenuItem
+              className="flex items-center gap-2 text-red-600 focus:text-red-600"
+              onSelect={() => setIsRemoveOpen(true)}
+            >
+              <Icon icon={Delete02Icon} size={16} />
+              Remove from expert
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
       <Dialog
+        variant="compact"
+        styling={{ maxWidth: "30rem" }}
         controlled={{
           isOpen: isRemoveOpen,
           set: (open) => {
@@ -118,7 +125,7 @@ export function ExpertWorkflowCardMenu({
       >
         <Dialog.Content>
           <div className="flex flex-col gap-4">
-            <Text variant="body" className="text-zinc-600">
+            <Text variant="body" tone="secondary">
               This expert will stop running it and its schedule will be removed.
               The workflow stays in your library.
             </Text>
@@ -126,7 +133,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="ghost"
-                size="small"
+                size="xs"
                 disabled={isRemoving}
                 onClick={() => setIsRemoveOpen(false)}
               >
@@ -135,7 +142,7 @@ export function ExpertWorkflowCardMenu({
               <Button
                 type="button"
                 variant="destructive"
-                size="small"
+                size="xs"
                 loading={isRemoving}
                 onClick={handleRemove}
               >
