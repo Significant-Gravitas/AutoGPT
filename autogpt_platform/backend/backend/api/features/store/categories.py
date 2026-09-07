@@ -2,6 +2,10 @@
 
 from enum import Enum
 
+from backend.util.settings import Settings
+
+settings = Settings()
+
 
 class StoreCategory(str, Enum):
     MARKETING = "marketing"
@@ -81,6 +85,19 @@ def normalize_categories(values: list[str]) -> list[StoreCategory]:
         if category and category not in seen:
             seen.append(category)
     return seen
+
+
+def category_filter_values(category: str | None) -> list[str] | None:
+    """Stored category strings a listing query should match, or None for no filter.
+
+    With no category asked for, the default view still narrows to the canonical
+    set once the backfill has run and the setting is turned on.
+    """
+    if category:
+        return category_match_values(category)
+    if settings.config.marketplace_require_canonical_category:
+        return all_category_match_values()
+    return None
 
 
 def category_match_values(category: str) -> list[str]:

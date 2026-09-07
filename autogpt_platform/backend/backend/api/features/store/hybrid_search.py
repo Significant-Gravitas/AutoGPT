@@ -25,12 +25,10 @@ from backend.api.features.search.hybrid_search import (
     bm25_rerank,
 )
 from backend.data.db import query_raw_with_schema
-from backend.util.settings import Settings
 
-from .categories import all_category_match_values, category_match_values
+from .categories import category_filter_values
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 
 @dataclass
@@ -160,12 +158,8 @@ async def hybrid_search(
         where_parts.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
 
-    if category:
-        params.append(category_match_values(category))
-        where_parts.append(f"sa.categories && ${param_idx}")
-        param_idx += 1
-    elif settings.config.marketplace_require_canonical_category:
-        params.append(all_category_match_values())
+    if category_values := category_filter_values(category):
+        params.append(category_values)
         where_parts.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 

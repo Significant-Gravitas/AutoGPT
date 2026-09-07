@@ -1255,7 +1255,9 @@ async def test_category_filter_matches_the_canonical_value_and_its_aliases(
 async def test_uncategorised_listings_are_shown_while_the_setting_is_off(
     store_agent_query,
 ):
-    assert db.settings.config.marketplace_require_canonical_category is False
+    assert (
+        store_categories.settings.config.marketplace_require_canonical_category is False
+    )
 
     await db.get_store_agents()
 
@@ -1267,7 +1269,9 @@ async def test_uncategorised_listings_are_hidden_when_the_setting_is_on(
     store_agent_query, monkeypatch
 ):
     monkeypatch.setattr(
-        db.settings.config, "marketplace_require_canonical_category", True
+        store_categories.settings.config,
+        "marketplace_require_canonical_category",
+        True,
     )
 
     await db.get_store_agents()

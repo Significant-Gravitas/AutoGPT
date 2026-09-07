@@ -25,7 +25,7 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
-from .categories import all_category_match_values, category_match_values
+from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
@@ -187,10 +187,8 @@ async def _fallback_store_agent_search(
             where_clause["verified"] = True
         if creators:
             where_clause["creator_username"] = {"in": creators}
-        if category:
-            where_clause["categories"] = {"has_some": category_match_values(category)}
-        elif settings.config.marketplace_require_canonical_category:
-            where_clause["categories"] = {"has_some": all_category_match_values()}
+        if category_values := category_filter_values(category):
+            where_clause["categories"] = {"has_some": category_values}
 
         # Verified listings lead every browse ordering, including the unsorted
         # default, which had no ORDER BY at all.
@@ -224,12 +222,8 @@ async def _fallback_store_agent_search(
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
-    if category:
-        params.append(category_match_values(category))
-        filters.append(f"sa.categories && ${param_idx}")
-        param_idx += 1
-    elif settings.config.marketplace_require_canonical_category:
-        params.append(all_category_match_values())
+    if category_values := category_filter_values(category):
+        params.append(category_values)
         filters.append(f"sa.categories && ${param_idx}")
         param_idx += 1
 
