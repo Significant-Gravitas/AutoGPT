@@ -177,7 +177,6 @@ class TestDiscoverTools:
             instance.initialize = AsyncMock(
                 side_effect=MCPClientError("Connection refused")
             )
-            instance.close = AsyncMock()
 
             response = await client.post(
                 "/discover-tools",
@@ -186,6 +185,8 @@ class TestDiscoverTools:
 
         assert response.status_code == 502
         assert "Connection refused" in response.json()["detail"]
+        # The session is released on the error path too, not just on success.
+        instance.close.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_generic_error(self, client):
@@ -283,11 +284,14 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "authorization_endpoint": "https://auth.sentry.io/authorize",
-                    "token_endpoint": "https://auth.sentry.io/token",
-                    "registration_endpoint": "https://auth.sentry.io/register",
-                }
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.sentry.io/authorize",
+                        "token_endpoint": "https://auth.sentry.io/token",
+                        "registration_endpoint": "https://auth.sentry.io/register",
+                    },
+                    "https://auth.sentry.io",
+                )
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
@@ -341,11 +345,14 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                    # No registration_endpoint
-                }
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        # No registration_endpoint
+                    },
+                    "https://auth.example.com",
+                )
             )
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-abc", "challenge-xyz")
@@ -376,12 +383,15 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "issuer": "https://auth.example.com",
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                    "authorization_response_iss_parameter_supported": True,
-                }
+                return_value=(
+                    {
+                        "issuer": "https://auth.example.com",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        "authorization_response_iss_parameter_supported": True,
+                    },
+                    "https://auth.example.com",
+                )
             )
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-abc", "challenge-xyz")
@@ -401,8 +411,14 @@ class TestOAuthLogin:
         assert state_metadata["iss_required"] is True
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_oauth_login_ignores_issuer_naming_another_server(self, client):
-        """RFC 8414 §3.3: an issuer that isn't the metadata's own URL is untrusted."""
+    async def test_oauth_login_rejects_issuer_naming_another_server(self, client):
+        """RFC 8414 §3.3: a document naming another issuer is refused outright.
+
+        Dropping just the issuer would leave ``iss_required`` false and make
+        the callback's mismatch check a no-op, so a hostile authorization
+        server could switch off RFC 9207 mix-up protection by claiming a
+        well-known issuer.
+        """
         with (
             patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
             patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
@@ -416,12 +432,139 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://evil.example.net",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                        "authorization_response_iss_parameter_supported": True,
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        assert "does not match where the metadata was published" in (
+            response.json()["detail"]
+        )
+        mock_cm.store.store_state_token.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_accepts_issuer_differing_only_in_case(self, client):
+        """Scheme and host are case-insensitive (RFC 3986), so this is a match."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
                 return_value={
-                    "issuer": "https://evil.example.net",
-                    "authorization_endpoint": "https://auth.example.com/authorize",
-                    "token_endpoint": "https://auth.example.com/token",
-                    "authorization_response_iss_parameter_supported": True,
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
                 }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://AUTH.Example.COM",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 200
+        state_metadata = mock_cm.store.store_state_token.call_args.kwargs[
+            "state_metadata"
+        ]
+        assert state_metadata["issuer"] == "https://AUTH.Example.COM"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_rejects_tenant_issuer_naming_bare_origin(self, client):
+        """A tenant's document may not claim the whole origin as its issuer.
+
+        The expected issuer comes from whichever well-known URL answered, so a
+        document fetched for ``/tenantA`` cannot pass by naming the origin
+        that ``/tenantB`` also lives under.
+        """
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com/tenantA"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "issuer": "https://auth.example.com",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com/tenantA",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp"},
+            )
+
+        assert response.status_code == 400
+        mock_cm.store.store_state_token.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_oauth_login_allows_metadata_without_an_issuer(self, client):
+        """No issuer claimed means no mix-up protection, not a hostile server."""
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(
+                return_value={
+                    "authorization_servers": ["https://auth.example.com"],
+                    "resource": "https://mcp.example.com/mcp",
+                }
+            )
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token",
+                    },
+                    "https://auth.example.com",
+                )
             )
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-abc", "challenge-xyz")
@@ -441,7 +584,6 @@ class TestOAuthLogin:
         assert state_metadata["iss_required"] is False
 
     @pytest.mark.asyncio(loop_scope="session")
-    @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_ignores_resource_on_another_origin(self, client):
         """RFC 9728 §3.3: a hostile server must not pick the token audience."""
         with (
@@ -457,10 +599,13 @@ class TestOAuthLogin:
                 }
             )
             instance.discover_auth_server_metadata = AsyncMock(
-                return_value={
-                    "authorization_endpoint": "https://as.legit.example/authorize",
-                    "token_endpoint": "https://as.legit.example/token",
-                }
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://as.legit.example/authorize",
+                        "token_endpoint": "https://as.legit.example/token",
+                    },
+                    "https://as.legit.example",
+                )
             )
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-abc", "challenge-xyz")
