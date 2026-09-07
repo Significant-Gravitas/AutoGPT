@@ -294,6 +294,11 @@ _VOICE_TURN_PREFIX_RE = re.compile(
     rf"^<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\n\n", re.DOTALL
 )
 
+_VOICE_TURN_ANYWHERE_RE = re.compile(
+    rf"<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\s*", re.DOTALL
+)
+_VOICE_TURN_LONE_TAG_RE = re.compile(rf"</?{VOICE_TURN_TAG}>", re.IGNORECASE)
+
 _BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
 )
@@ -394,8 +399,8 @@ def strip_server_injected_tags(text: str) -> str:
 
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
-    blocks (and their lone tags).  Used both by
+    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>`` and
+    ``<voice_turn>`` blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
     will later land alongside server-injected versions of the same tags in
@@ -432,7 +437,12 @@ def strip_server_injected_tags(text: str) -> str:
     without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
     without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
     without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
-    return _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    # Strip <voice_turn> blocks and lone tags — a forged closing tag would
+    # otherwise end the server's block and put the user's own text where the
+    # per-turn instruction goes.
+    without_voice = _VOICE_TURN_ANYWHERE_RE.sub("", without_expert)
+    return _VOICE_TURN_LONE_TAG_RE.sub("", without_voice)
 
 
 def sanitize_user_supplied_context(message: str) -> str:

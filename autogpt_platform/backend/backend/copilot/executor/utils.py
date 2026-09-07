@@ -517,6 +517,7 @@ async def schedule_chat_turn(
 
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.prompting import VOICE_TURN_PREFIX
+    from backend.copilot.service import strip_server_injected_tags
     from backend.copilot.tracking import track_user_message
 
     # Prefix before persistence, not after: the services dedup the incoming
@@ -524,7 +525,11 @@ async def schedule_chat_turn(
     # that match and saves the turn a second time. Display strips it again.
     raw_message_length = len(message)
     if message and voice and is_user_message and not message_already_persisted:
-        message = VOICE_TURN_PREFIX + message
+        # Sanitise here, not in the engines: they strip inbound tags at their
+        # own entry points, which is after this function has already saved the
+        # row. A forged </voice_turn> would close the server's block, and the
+        # display stripper would take the user's own text with it.
+        message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id) as slot:
         if message_already_persisted and not slot.admitted:
