@@ -927,6 +927,13 @@ class AgentRunReviewDecision(BaseModel):
     message: Optional[str] = Field(
         default=None, description="Optional message from reviewer", max_length=2000
     )
+    auto_approve_future: bool = Field(
+        default=False,
+        description=(
+            "Approve future reviews from this block automatically. Applies only "
+            "when this review is approved, and ignores `edited_payload`."
+        ),
+    )
 
 
 class AgentRunReviewsSubmitRequest(BaseModel):
@@ -1353,16 +1360,6 @@ class CredentialRequirement(BaseModel):
 # ============================================================================
 
 
-class UploadWorkspaceFileResponse(BaseModel):
-    """Response after uploading a file to the user's workspace."""
-
-    file_uri: str = Field(description="URI to reference the uploaded file in agents")
-    file_name: str
-    size: int = Field(description="File size in bytes")
-    content_type: str
-    expires_in_hours: int
-
-
 class WorkspaceFileInfo(BaseModel):
     """Metadata for a file in the user's workspace."""
 
@@ -1373,6 +1370,14 @@ class WorkspaceFileInfo(BaseModel):
     size_bytes: int = Field(description="File size in bytes")
     created_at: datetime
     updated_at: datetime
+
+
+class UploadWorkspaceFileResponse(WorkspaceFileInfo):
+    """Response after uploading a file to the user's workspace."""
+
+    file_uri: str = Field(
+        description="URI to reference the uploaded file in agent file inputs"
+    )
 
 
 # ============================================================================

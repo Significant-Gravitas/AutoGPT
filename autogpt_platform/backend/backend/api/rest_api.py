@@ -12,6 +12,7 @@ from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
+from mcp.shared.auth import ProtectedResourceMetadata
 
 import backend.api.features.admin.block_cost_admin_routes
 import backend.api.features.admin.bot_analytics_routes
@@ -76,6 +77,10 @@ from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v2.mcp_server import (
+    WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    protected_resource_metadata,
+)
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.security import SecurityHeadersMiddleware
@@ -452,6 +457,19 @@ app.include_router(
 register_webhook_adapters(app, _webhook_bot_backend)
 
 app.mount("/external-api", external_api)
+
+
+@app.get(
+    path=WELL_KNOWN_PROTECTED_RESOURCE_PATH,
+    tags=["mcp"],
+    dependencies=[],
+    include_in_schema=False,
+)
+async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
+    """RFC 9728 discovery for the MCP server, which must answer at the origin
+    root — FastMCP serves its copy inside the `/mcp` mount, where no client
+    looks."""
+    return protected_resource_metadata()
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])

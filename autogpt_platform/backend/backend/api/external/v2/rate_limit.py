@@ -8,3 +8,8 @@ media_upload_limiter = RateLimiter(
 search_limiter = RateLimiter("v2:search", max_requests=30, window_seconds=60)
 graph_exec_limiter = RateLimiter("v2:graph_exec", max_requests=60, window_seconds=60)
 file_upload_limiter = RateLimiter("v2:file_upload", max_requests=20, window_seconds=300)
+# Every call fans out to uncached Stripe reads (proration, period end, pending
+# change), so the cap is the internal endpoint's: 60/min/user.
+subscription_limiter = RateLimiter(
+    "v2:subscription", max_requests=60, window_seconds=60
+)

@@ -8,18 +8,18 @@ import logging
 from typing import Optional
 from uuid import uuid4
 
-import prisma.models
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
-from backend.api.features.store.model import StoreAgentDetails
+from backend.api.features.store import db as store_db
 from backend.data import graph as graph_db
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
     on_graph_deactivate,
 )
+from backend.util.exceptions import NotFoundError
 
 from .integrations.helpers import get_credential_requirements
 from .models import (
@@ -448,12 +448,11 @@ async def get_marketplace_listing_for_graph(
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_STORE)),
 ) -> MarketplaceAgentDetails:
     """Get the marketplace listing for a given graph, if one exists."""
-    agent = await prisma.models.StoreAgent.prisma().find_first(
-        where={"graph_id": graph_id}
-    )
-    if not agent:
+    try:
+        agent = await store_db.get_store_agent_by_graph_id(graph_id)
+    except NotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No marketplace listing found for graph {graph_id}",
+            detail=f"No marketplace listing found for graph #{graph_id}",
         )
-    return MarketplaceAgentDetails.from_internal(StoreAgentDetails.from_db(agent))
+    return MarketplaceAgentDetails.from_internal(agent)

@@ -171,7 +171,7 @@ async def get_agents(
     - Agent Details - Similar Agents
     - Creator Details - Agents By Creator
     """
-    agents = await store_cache._get_cached_store_agents(
+    agents = await store_cache.get_cached_store_agents(
         featured=featured,
         creator=creator,
         sorted_by=sorted_by,
@@ -197,7 +197,7 @@ async def get_agent_by_name(
     username = urllib.parse.unquote(username).lower()
     # URL decode the agent name since it comes from the URL path
     agent_name = urllib.parse.unquote(agent_name).lower()
-    agent = await store_cache._get_cached_agent_details(
+    agent = await store_cache.get_cached_agent_details(
         username=username, agent_name=agent_name, include_changelog=include_changelog
     )
     return agent
@@ -298,7 +298,7 @@ async def get_creators(
     page_size: int = Query(ge=1, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
-    creators = await store_cache._get_cached_store_creators(
+    creators = await store_cache.get_cached_store_creators(
         featured=featured,
         search_query=search_query,
         sorted_by=sorted_by,
@@ -316,7 +316,7 @@ async def get_creators(
 async def get_creator(username: str) -> store_model.CreatorDetails:
     """Get details on a marketplace creator"""
     username = urllib.parse.unquote(username).lower()
-    creator = await store_cache._get_cached_creator_details(username=username)
+    creator = await store_cache.get_cached_creator_details(username=username)
     return creator
 
 
@@ -601,10 +601,10 @@ async def get_cache_metrics():
         )
 
     # Add metrics for each cache
-    add_cache_metrics("store_agents", store_cache._get_cached_store_agents)
-    add_cache_metrics("agent_details", store_cache._get_cached_agent_details)
-    add_cache_metrics("store_creators", store_cache._get_cached_store_creators)
-    add_cache_metrics("creator_details", store_cache._get_cached_creator_details)
+    add_cache_metrics("store_agents", store_cache.get_cached_store_agents)
+    add_cache_metrics("agent_details", store_cache.get_cached_agent_details)
+    add_cache_metrics("store_creators", store_cache.get_cached_store_creators)
+    add_cache_metrics("creator_details", store_cache.get_cached_creator_details)
 
     # Add metadata/help text at the beginning
     prometheus_output = [

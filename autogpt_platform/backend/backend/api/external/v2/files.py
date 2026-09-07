@@ -4,7 +4,6 @@ V2 External API - Files Endpoints
 Provides file upload, download, listing, metadata, and deletion functionality.
 """
 
-import base64
 import logging
 import re
 from urllib.parse import quote
@@ -14,6 +13,7 @@ from fastapi.responses import RedirectResponse, Response
 from prisma.enums import APIKeyPermission
 from starlette import status
 
+from backend.api.features.workspace.service import store_workspace_upload
 from backend.data.workspace import (
     count_workspace_files,
     get_workspace,
@@ -21,9 +21,6 @@ from backend.data.workspace import (
     list_workspace_files,
     soft_delete_workspace_file,
 )
-from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.settings import Settings
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace_storage import get_workspace_storage
 
 from .models import UploadWorkspaceFileResponse, WorkspaceFileInfo
@@ -32,7 +29,6 @@ from .rate_limit import file_upload_limiter
 from .tenancy import TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 
 file_workspace_router = APIRouter(tags=["files"])
 
@@ -141,17 +137,6 @@ async def delete_file(
         )
 
 
-def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
-    """Create standardized file size error response."""
-    return HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=(
-            f"File size ({size_bytes} bytes) exceeds "
-            f"the maximum allowed size of {max_size_mb}MB"
-        ),
-    )
-
-
 @file_workspace_router.post(
     path="/upload",
     summary="Upload file to workspace",
@@ -160,73 +145,35 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 )
 async def upload_file(
     file: UploadFile = File(...),
-    expiration_hours: int = Query(
-        default=24, ge=1, le=48, description="Hours until file expires (1-48)"
+    overwrite: bool = Query(
+        default=False, description="Replace an existing file with the same path"
     ),
     auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_FILES)),
 ) -> UploadWorkspaceFileResponse:
     """
-    Upload a file to cloud storage for use with agents.
+    Upload a file to the user's workspace.
 
-    Returns a `file_uri` that can be passed to agent graph/node file inputs.
-    Uploaded files are virus-scanned before storage.
+    The file is listed by `GET /files` and can be passed to agent file inputs
+    as the returned `file_uri`. Uploads are virus-scanned before storage and
+    count against the account's storage quota.
 
     **Rate limit:** 20 requests per 5 minutes per user.
     """
     await file_upload_limiter.check(auth.user_id)
 
-    # Check file size limit
-    max_size_mb = settings.config.upload_file_size_limit_mb
-    max_size_bytes = max_size_mb * 1024 * 1024
-
-    # Try to get file size from headers first
-    if file.size is not None and file.size > max_size_bytes:
-        raise _create_file_size_error(file.size, max_size_mb)
-
-    # Read file content
-    content = await file.read()
-    content_size = len(content)
-
-    # Double-check file size after reading
-    if content_size > max_size_bytes:
-        raise _create_file_size_error(content_size, max_size_mb)
-
-    # Extract file info
-    file_name = file.filename or "uploaded_file"
-    content_type = file.content_type or "application/octet-stream"
-
-    # Virus scan the content
-    await scan_content_safe(content, filename=file_name)
-
-    # Check if cloud storage is configured
-    cloud_storage = await get_cloud_storage_handler()
-    if not cloud_storage.config.gcs_bucket_name:
-        # Fallback to base64 data URI when GCS is not configured
-        base64_content = base64.b64encode(content).decode("utf-8")
-        data_uri = f"data:{content_type};base64,{base64_content}"
-
-        return UploadWorkspaceFileResponse(
-            file_uri=data_uri,
-            file_name=file_name,
-            size=content_size,
-            content_type=content_type,
-            expires_in_hours=expiration_hours,
-        )
-
-    # Store in cloud storage
-    storage_path = await cloud_storage.store_file(
-        content=content,
-        filename=file_name,
-        expiration_hours=expiration_hours,
-        user_id=auth.user_id,
+    workspace_file = await store_workspace_upload(
+        auth.user_id, file, overwrite=overwrite
     )
 
     return UploadWorkspaceFileResponse(
-        file_uri=storage_path,
-        file_name=file_name,
-        size=content_size,
-        content_type=content_type,
-        expires_in_hours=expiration_hours,
+        id=workspace_file.id,
+        name=workspace_file.name,
+        path=workspace_file.path,
+        mime_type=workspace_file.mime_type,
+        size_bytes=workspace_file.size_bytes,
+        created_at=workspace_file.created_at,
+        updated_at=workspace_file.updated_at,
+        file_uri=f"workspace://{workspace_file.id}#{workspace_file.mime_type}",
     )
 
 
