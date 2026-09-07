@@ -15,6 +15,7 @@ from backend.api.features.experts.models import (
     Expert,
     ExpertActivity,
     ExpertAvatarUpdate,
+    ExpertBudgetUpdate,
     ExpertCredentialRef,
     ExpertDetachPreview,
     ExpertIdentity,
@@ -434,6 +435,22 @@ async def update_expert_avatar(
 ) -> Expert:
     try:
         return await experts_db.update_avatar(user_id, expert_id, request.avatar_url)
+    except experts_db.ExpertNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch(
+    "/{expert_id}/budget",
+    operation_id="update_expert_budget",
+    responses={404: {"description": "Expert not found"}},
+)
+async def update_expert_budget(
+    expert_id: str,
+    request: ExpertBudgetUpdate,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> Expert:
+    try:
+        return await experts_db.update_budget(user_id, expert_id, request.weekly_budget)
     except experts_db.ExpertNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 

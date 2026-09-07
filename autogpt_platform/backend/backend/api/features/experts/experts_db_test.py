@@ -3480,6 +3480,29 @@ def test_to_expert_run_uses_workflow_name_and_deep_link():
     )
 
 
+def test_to_expert_run_reports_how_the_run_started():
+    manual = experts_db._to_expert_run(
+        _run_execution(), _run_workflow(), "table", "result", needs_review=False
+    )
+    scheduled = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId=None)),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    triggered = experts_db._to_expert_run(
+        _run_execution(AgentPreset=SimpleNamespace(webhookId="wh-1")),
+        _run_workflow(),
+        "table",
+        "result",
+        needs_review=False,
+    )
+    assert manual.source == "manual"
+    assert scheduled.source == "scheduled"
+    assert triggered.source == "trigger"
+
+
 def test_to_expert_run_names_a_library_only_workflow():
     run = experts_db._to_expert_run(
         _run_execution(),
