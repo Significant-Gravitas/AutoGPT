@@ -1718,11 +1718,8 @@ async def test_update_skills_attaches_library_skills_and_keeps_existing(
 async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
     server: SpinTestServer, test_user, monkeypatch
 ):
-    from backend.copilot.tools.skills import ParsedSkill
-
-    listed = ParsedSkill(name="Deep Research", description="Research anything", body="")
-    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _none_skill)
-    monkeypatch.setattr(experts_db, "list_user_skills", _listing_skills([listed]))
+    monkeypatch.setattr(experts_db, "find_user_skill_slug", _slug("deep-research"))
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
@@ -1730,18 +1727,18 @@ async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
         test_user.id, hired.expert.id, ["deep research"]
     )
 
-    assert updated.skills == ["Deep Research"]
+    assert updated.skills == ["deep-research"]
 
 
-async def _none_skill(*_args, **_kwargs):
-    return None
+def _slug(slug):
+    async def _find(*_args, **_kwargs):
+        return slug
+
+    return _find
 
 
-def _listing_skills(skills):
-    async def _list(*_args, **_kwargs):
-        return skills
-
-    return _list
+async def _copied(user_id, expert_id, name):
+    return name
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -848,6 +848,30 @@ async def list_user_skill_sibling_paths(
         return []
 
 
+async def find_user_skill_slug(user_id: str, name: str) -> str | None:
+    """Folder slug of personal AutoPilot's skill called *name*.
+
+    Matches the folder first, then the frontmatter name — a skill written by
+    hand may be listed under a name that differs from its folder.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id)
+    if await manager.get_file_info_by_path(_skill_md_path(slug)):
+        return slug
+    files = await manager.list_files(
+        path=f"{SKILL_FOLDER}/", limit=MAX_USER_SKILLS * 4, include_all_sessions=True
+    )
+    for f in files:
+        if not f.path.endswith("/SKILL.md"):
+            continue
+        parsed = await _parse_skill_from_workspace(manager, f.path)
+        if parsed is not None and parsed.name.strip().lower() == slug:
+            return f.path.rsplit("/", 2)[-2]
+    return None
+
+
 async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str | None:
     """Give *expert_id* its own copy of one of personal AutoPilot's skills.
 

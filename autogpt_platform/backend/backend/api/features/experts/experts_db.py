@@ -59,8 +59,8 @@ from backend.copilot.tools.skills import (
     SkillNotFoundError,
     copy_skill_to_expert,
     delete_user_skill,
+    find_user_skill_slug,
     get_default_skill_with_body,
-    list_user_skills,
 )
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
@@ -1049,19 +1049,19 @@ async def _attach_library_skill(user_id: str, expert_id: str, name: str) -> str:
     default = get_default_skill_with_body(slug)
     if default is not None:
         return default.name
-    copied = await copy_skill_to_expert(user_id, expert_id, slug)
-    if copied is not None:
-        return copied
     # A skill whose frontmatter name differs from its folder slug (anything
     # not written through store_user_skill) is listed by the library UI under
-    # the frontmatter name, so match on that too before giving up.
-    listed = next(
-        (s for s in await list_user_skills(user_id) if s.name.strip().lower() == slug),
-        None,
+    # the frontmatter name; resolve it to its folder so the expert gets a
+    # real copy, never just a name on its row.
+    folder = await find_user_skill_slug(user_id, slug)
+    copied = (
+        await copy_skill_to_expert(user_id, expert_id, folder)
+        if folder is not None
+        else None
     )
-    if listed is None:
+    if copied is None:
         raise NotFoundError(f"Skill '{name}' is not in your library")
-    return listed.name
+    return copied
 
 
 async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
