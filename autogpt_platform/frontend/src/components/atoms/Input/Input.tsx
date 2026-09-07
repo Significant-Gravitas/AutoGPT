@@ -15,7 +15,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export interface TextFieldProps extends Omit<InputProps, "size"> {
+export interface TextFieldProps extends Omit<InputProps, "size" | "onKeyDown"> {
   label: string;
   id: string;
   hideLabel?: boolean;
@@ -38,6 +38,9 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "textarea"
     | "date"
     | "datetime-local";
+  // Widened over InputProps, which only describes the <input> branch, so the
+  // handler is callable with either element's event and needs no cast.
+  onKeyDown?: React.KeyboardEventHandler<InputElement>;
   // Textarea-specific props
   rows?: number;
   amountPrefix?: string;
@@ -66,11 +69,11 @@ export const Input = forwardRef<InputElement, TextFieldProps>(function Input(
   ref,
 ) {
   // Consumers never see keydowns an IME is still composing; see AGENTS.md
-  // "Keyboard handling". Only wired when a consumer handler exists so inputs
-  // without one keep a stable `undefined` prop.
+  // "Keyboard handling". Left undefined when the consumer passes no handler, so
+  // we don't attach a listener that does nothing.
   function handleKeyDown(e: React.KeyboardEvent<InputElement>) {
     if (isComposingEvent(e)) return;
-    (onKeyDown as React.KeyboardEventHandler<InputElement>)(e);
+    onKeyDown?.(e);
   }
   const guardedOnKeyDown = onKeyDown ? handleKeyDown : undefined;
 

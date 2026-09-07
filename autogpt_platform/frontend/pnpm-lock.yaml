@@ -381,7 +381,7 @@ importers:
         specifier: 1.9.0
         version: 1.9.0
       '@types/eslint':
-        specifier: ^8.56.12
+        specifier: 8.56.12
         version: 8.56.12
       '@types/lodash':
         specifier: 4.17.20

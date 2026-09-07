@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { KEY_NAMES, isComposingEvent, isKey } from "./keyboard";
+import { isComposingEvent, isKey, isKeyIgnoringComposition } from "./keyboard";
 
 function keydown(key: string, extra: Partial<KeyboardEvent> = {}) {
   const event = new KeyboardEvent("keydown", { key });
@@ -53,6 +52,14 @@ describe("isKey", () => {
     expect(isKey(keydown("Escape"), "Enter")).toBe(false);
   });
 
+  it("guards the candidate-window paging keys too", () => {
+    expect(isKey(keydown("PageDown"), "PageDown")).toBe(true);
+    expect(isKey(keydown("PageDown", { isComposing: true }), "PageDown")).toBe(
+      false,
+    );
+    expect(isKey(keydown("Home", { isComposing: true }), "Home")).toBe(false);
+  });
+
   it("never matches while composing, even if the key name matches", () => {
     expect(isKey(keydown("Enter", { isComposing: true }), "Enter")).toBe(false);
     expect(isKey(reactKeydown("Enter", { keyCode: 229 }), "Enter")).toBe(false);
@@ -74,15 +81,20 @@ describe("isKey", () => {
   });
 });
 
-describe("ESLint keyboard selectors", () => {
-  it("cover exactly the KEY_NAMES list", () => {
-    const config = readFileSync(".eslintrc.json", "utf8");
-    const lists = [...config.matchAll(/value=\/\^\(([^)]+)\)\$\//g)].map((m) =>
-      m[1].split("|"),
-    );
-    expect(lists.length).toBeGreaterThan(0);
-    for (const list of lists) {
-      expect(new Set(list)).toEqual(new Set(KEY_NAMES));
-    }
+describe("isKeyIgnoringComposition", () => {
+  it("matches the key name whether or not an IME is composing", () => {
+    expect(isKeyIgnoringComposition(keydown("Tab"), "Tab")).toBe(true);
+    expect(
+      isKeyIgnoringComposition(keydown("Tab", { isComposing: true }), "Tab"),
+    ).toBe(true);
+    expect(
+      isKeyIgnoringComposition(keydown("Tab", { keyCode: 229 }), "Tab"),
+    ).toBe(true);
+  });
+
+  it("still does not match a different key", () => {
+    expect(
+      isKeyIgnoringComposition(keydown("Enter", { isComposing: true }), "Tab"),
+    ).toBe(false);
   });
 });

@@ -29,21 +29,26 @@
     // Scope: direct `.key` comparisons and switches against the IME key names
     // (or KEY_* / *_KEY constants). Modifier chords such as Cmd+K, which read
     // `.key.toLowerCase()` or `.code`, are out of scope by design: an IME never
-    // owns them. Keep the key list in sync with KEY_NAMES in src/lib/keyboard.ts
-    // (src/lib/keyboard.test.ts checks). Selectors are covered by
+    // owns them. Keep the key list in sync with KEY_NAMES in src/lib/keyboard.ts.
+    //
+    // The selectors match any receiver, so a domain object that happens to have
+    // a `.key` field (e.g. `column.key === "Delete"`) trips them too. That is
+    // the one case for `// eslint-disable-next-line no-restricted-syntax`.
+    //
+    // Both the key list and the selectors are covered by
     // scripts/eslint-keyboard-rules.test.ts.
     "no-restricted-syntax": [
       "error",
       {
-        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([right.type='Literal'][right.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], [right.type='Identifier'][right.name=/(^KEY_|_KEY$)/]) > MemberExpression.left[computed=false][property.name='key']",
+        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([right.type='Literal'][right.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], [right.type='Identifier'][right.name=/(^KEY_|_KEY$)/]) > MemberExpression.left[computed=false][property.name='key']",
         "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       },
       {
-        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([left.type='Literal'][left.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], [left.type='Identifier'][left.name=/(^KEY_|_KEY$)/]) > MemberExpression.right[computed=false][property.name='key']",
+        "selector": "BinaryExpression[operator=/^[!=]==?$/]:matches([left.type='Literal'][left.value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], [left.type='Identifier'][left.name=/(^KEY_|_KEY$)/]) > MemberExpression.right[computed=false][property.name='key']",
         "message": "Do not compare e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       },
       {
-        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
+        "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       }
     ]
