@@ -146,8 +146,9 @@ class FindLibraryAgentTool(BaseTool):
             update={
                 "agents": agents,
                 "count": len(agents),
+                "title": f"Found {len(agents)} installed workflows",
                 "message": (
-                    f"{result.message} Only this expert's installed workflows are "
+                    f"Found {len(agents)} installed workflows. Only this expert's workflows are "
                     "listed; install_expert_workflow adds more."
                 ),
             }

@@ -2192,6 +2192,7 @@ class Scheduler(AppService):
         user_id: str | None = None,
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
+        include_paused: bool = False,
     ) -> list[GraphExecutionJobInfo]:
         """Return graph-kind schedules only (typed for legacy callers).
 
@@ -2208,6 +2209,7 @@ class Scheduler(AppService):
                 kind="graph",
                 organization_id=organization_id,
                 team_ids=team_ids,
+                include_paused=include_paused,
             )
             if isinstance(info, GraphExecutionJobInfo)
         ]
