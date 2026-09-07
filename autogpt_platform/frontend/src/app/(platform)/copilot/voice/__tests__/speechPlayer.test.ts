@@ -130,6 +130,45 @@ describe("createSpeechPlayer", () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(global.URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
+
+  it("survives a play() that rejects while a later chunk holds the cut handler", async () => {
+    // The first chunk's play() rejects after stop() already settled it AND a
+    // second chunk has taken over `cutPlayback`. Unguarded, that late settle
+    // clears the second chunk's handler, so the Stop after it leaves that
+    // playback pending and `draining` never clears — silence for the life of
+    // the tab, which is the wedge this player was fixed for once already.
+    const rejects: ((error: Error) => void)[] = [];
+    let call = 0;
+    vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(
+      function (this: HTMLAudioElement) {
+        call += 1;
+        if (call <= 2) return new Promise<void>((_, r) => rejects.push(r));
+        queueMicrotask(() => this.dispatchEvent(new Event("ended")));
+        return Promise.resolve();
+      },
+    );
+
+    const player = createSpeechPlayer({
+      synthesize: async (text) => new Blob([text]),
+      onIdle: () => undefined,
+      onError: () => undefined,
+    });
+
+    player.enqueue("first");
+    await settle();
+    player.stop();
+    await settle();
+
+    player.enqueue("second");
+    await settle();
+    rejects[0](new Error("interrupted"));
+    await settle();
+
+    player.stop();
+    await settle();
+
+    expect(player.isIdle()).toBe(true);
+  });
 });
 
 /** jsdom has no media pipeline: play() resolves and "ended" fires on demand. */

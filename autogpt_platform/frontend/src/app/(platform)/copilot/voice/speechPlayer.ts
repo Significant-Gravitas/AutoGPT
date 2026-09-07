@@ -97,7 +97,15 @@ export function createSpeechPlayer({
     watchSpeech(audio);
     audio.src = url;
     return new Promise((resolve, reject) => {
+      let settled = false;
       function settle(finish: () => void) {
+        // A `play()` promise can reject long after stop() already settled
+        // this playback. Without the guard that late rejection clears the
+        // NEXT chunk's `cutPlayback`, and the Stop after it leaves that one
+        // pending with `draining` stuck true — the same wedge, by a
+        // different route.
+        if (settled) return;
+        settled = true;
         audio.removeEventListener("ended", onEnded);
         audio.removeEventListener("error", onFailed);
         cutPlayback = null;
