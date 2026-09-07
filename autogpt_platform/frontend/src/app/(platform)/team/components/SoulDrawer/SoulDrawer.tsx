@@ -71,7 +71,7 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
           )}
         />
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-t-[#80808017] px-5 py-3">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
         <Button type="button" variant="ghost" size="xs" onClick={onClose}>
           Cancel
         </Button>

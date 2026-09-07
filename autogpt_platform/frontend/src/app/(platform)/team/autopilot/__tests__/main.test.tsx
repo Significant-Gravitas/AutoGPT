@@ -269,6 +269,33 @@ describe("AutopilotPage", () => {
     ).toContain("/copilot?autosubmit=true");
   });
 
+  test("keeps loading library pages so a second-page workflow still counts as Autopilot's", async () => {
+    const pagesRequested: string[] = [];
+    server.use(
+      getGetV2ListLibraryAgentsMockHandler200(({ request }) => {
+        const page = new URL(request.url).searchParams.get("page") ?? "1";
+        pagesRequested.push(page);
+        const agents = page === "2" ? [strayAgent] : [mariasAgent, freeAgent];
+        return {
+          ...libraryResponse(agents),
+          pagination: {
+            total_items: 3,
+            total_pages: 2,
+            current_page: Number(page),
+            page_size: 2,
+          },
+        } as LibraryAgentResponse;
+      }),
+    );
+
+    render(<AutopilotPage />);
+    await screen.findByRole("heading", { name: "Autopilot" });
+    await openTab("Workflows");
+
+    expect(await screen.findByText("Nobody's Job")).toBeDefined();
+    expect(pagesRequested).toEqual(["1", "2"]);
+  });
+
   test("lists the library skills no expert has claimed as Autopilot's", async () => {
     render(<AutopilotPage />);
     await screen.findByRole("heading", { name: "Autopilot" });

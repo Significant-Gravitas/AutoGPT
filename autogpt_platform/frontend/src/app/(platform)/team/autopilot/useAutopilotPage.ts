@@ -14,6 +14,7 @@ import {
   getHiredExperts,
   getTeamSchedules,
 } from "../helpers";
+import { useEffect } from "react";
 
 interface Args {
   enabled: boolean;
@@ -33,6 +34,13 @@ export function useAutopilotPage({ enabled }: Args) {
   const skillsQuery = useListCopilotSkills({
     query: { select: (res) => okData(res) ?? [], enabled },
   });
+
+  // Autopilot owns every library workflow no expert has claimed, so the
+  // whole library has to be in hand before the split is derived.
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = libraryQuery;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const experts = getHiredExperts(expertsQuery.data ?? []);
   const allSchedules = schedulesQuery.data ?? [];
