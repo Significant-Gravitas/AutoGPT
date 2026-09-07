@@ -18,6 +18,10 @@ export default function AvatarPage() {
     config,
     status,
     setStatus,
+    turn,
+    setTurn,
+    outline,
+    setOutline,
     setShape,
     setColor,
     setAccessory,
@@ -41,7 +45,15 @@ export default function AvatarPage() {
           doing.
         </Text>
       </header>
-      <AvatarStage config={config} status={status} onStatusChange={setStatus} />
+      <AvatarStage
+        config={config}
+        status={status}
+        turn={turn}
+        outline={outline}
+        onStatusChange={setStatus}
+        onTurnChange={setTurn}
+        onOutlineChange={setOutline}
+      />
       <ActionBar
         onShuffle={shuffle}
         onReset={reset}
@@ -50,12 +62,21 @@ export default function AvatarPage() {
         onDownloadPng={downloadPng}
         isExporting={isExporting}
       />
-      <ShapePicker config={config} onSelect={setShape} />
+      <ShapePicker config={config} outline={outline} onSelect={setShape} />
       <ColorPicker selected={config.color} onSelect={setColor} />
-      <AccessoryPicker config={config} onSelect={setAccessory} />
-      <RosterPreview config={config} status={status} />
+      <AccessoryPicker
+        config={config}
+        outline={outline}
+        onSelect={setAccessory}
+      />
+      <RosterPreview config={config} status={status} outline={outline} />
       <div ref={exportRef} hidden aria-hidden>
-        <BotAvatar config={config} status={status} animated={false} />
+        <BotAvatar
+          config={config}
+          status={status}
+          animated={false}
+          outline={outline}
+        />
       </div>
     </main>
   );

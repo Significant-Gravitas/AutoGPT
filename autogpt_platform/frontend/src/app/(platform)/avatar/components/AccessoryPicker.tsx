@@ -9,10 +9,11 @@ import { SectionHeading } from "./SectionHeading";
 
 interface Props {
   config: AvatarConfig;
+  outline: boolean;
   onSelect: (accessory: AccessoryId) => void;
 }
 
-export function AccessoryPicker({ config, onSelect }: Props) {
+export function AccessoryPicker({ config, outline, onSelect }: Props) {
   return (
     <section className="space-y-3">
       <SectionHeading title="Accessory" hint="one at most, the what-I-do cue" />
@@ -33,6 +34,7 @@ export function AccessoryPicker({ config, onSelect }: Props) {
               config={{ ...config, accessory: accessory.id }}
               size={56}
               animated={false}
+              outline={outline}
               showBadge={false}
             />
           </OptionTile>

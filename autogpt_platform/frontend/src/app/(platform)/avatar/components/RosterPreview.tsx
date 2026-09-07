@@ -11,9 +11,10 @@ import { SectionHeading } from "./SectionHeading";
 interface Props {
   config: AvatarConfig;
   status: AvatarStatus;
+  outline: boolean;
 }
 
-export function RosterPreview({ config, status }: Props) {
+export function RosterPreview({ config, status, outline }: Props) {
   const roster = [
     { name: "Yours", role: "this expert", status, config },
     ...rosterConfigs(),
@@ -38,6 +39,7 @@ export function RosterPreview({ config, status }: Props) {
                 config={member.config}
                 status={member.status}
                 size={36}
+                outline={outline}
               />
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text

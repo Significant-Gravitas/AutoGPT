@@ -1,4 +1,9 @@
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import AvatarPage from "../page";
@@ -84,6 +89,32 @@ describe("AvatarPage", () => {
       "round.lavender.none",
     );
     expect(stageAvatar().getAttribute("data-status")).toBe("idle");
+  });
+
+  test("turn sliders pose the stage avatar and reset clears them", async () => {
+    const user = userEvent.setup();
+    render(<AvatarPage />);
+
+    const yaw = screen.getByRole("slider", { name: "Turn" });
+    fireEvent.change(yaw, { target: { value: "40" } });
+    expect((yaw as HTMLInputElement).value).toBe("40");
+    expect(screen.getByText("40°")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect((yaw as HTMLInputElement).value).toBe("0");
+  });
+
+  test("outline switch flips every avatar on the page", async () => {
+    const user = userEvent.setup();
+    render(<AvatarPage />);
+
+    expect(stageAvatar().getAttribute("data-outline")).toBe("false");
+    await user.click(screen.getByRole("switch", { name: "Outline" }));
+    expect(stageAvatar().getAttribute("data-outline")).toBe("true");
+    const avatars = screen.getAllByTestId("bot-avatar");
+    expect(
+      avatars.every((svg) => svg.getAttribute("data-outline") === "true"),
+    ).toBe(true);
   });
 
   test("copy link writes the current url and confirms", async () => {

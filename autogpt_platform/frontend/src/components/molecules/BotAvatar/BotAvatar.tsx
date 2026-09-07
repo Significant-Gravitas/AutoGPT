@@ -1,11 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import {
-  motion,
-  type TargetAndTransition,
-  type Transition,
-} from "framer-motion";
 import { useId, useRef } from "react";
 import { Accessory } from "./components/Accessory";
 import { Face } from "./components/Face";
@@ -15,11 +10,20 @@ import {
   findColor,
   findShape,
   INK,
+  mixHex,
   VIEWBOX,
   type AvatarConfig,
   type AvatarStatus,
 } from "./helpers";
-import { useBotAvatar } from "./useBotAvatar";
+import {
+  ellipsoidFor,
+  foreshortenTransform,
+  isVisible,
+  project,
+  surfacePointAt,
+  type Pose,
+} from "./projection";
+import { usePose } from "./usePose";
 
 interface Props {
   config: AvatarConfig;
@@ -27,32 +31,18 @@ interface Props {
   size?: number;
   animated?: boolean;
   trackPointer?: boolean;
+  poseOffset?: Partial<Pose>;
+  outline?: boolean;
   showBadge?: boolean;
   title?: string;
   className?: string;
 }
 
-const BODY_MOTION: Record<
-  AvatarStatus,
-  { animate: TargetAndTransition; transition: Transition }
-> = {
-  idle: {
-    animate: { y: [0, -1.5, 0], scaleY: [1, 1.02, 1] },
-    transition: { duration: 3.4, repeat: Infinity, ease: "easeInOut" },
-  },
-  working: {
-    animate: { y: [0, -3, 0], rotate: [0, -1.5, 0, 1.5, 0] },
-    transition: { duration: 0.75, repeat: Infinity, ease: "easeInOut" },
-  },
-  waiting: {
-    animate: { rotate: [0, -5, 0, 5, 0], y: [0, -1, 0, -1, 0] },
-    transition: { duration: 2.2, repeat: Infinity, ease: "easeInOut" },
-  },
-  done: {
-    animate: { y: [0, -9, 0, -2, 0], scale: [1, 1.08, 0.97, 1.02, 1] },
-    transition: { duration: 0.85, ease: "easeOut" },
-  },
-};
+const SPOTS = [
+  { dx: -0.28, dy: 14, r: 2.4 },
+  { dx: -0.2, dy: 9, r: 1.5 },
+  { dx: -0.33, dy: 22, r: 1.3 },
+];
 
 export function BotAvatar({
   config,
@@ -60,6 +50,8 @@ export function BotAvatar({
   size = 96,
   animated = true,
   trackPointer = false,
+  poseOffset,
+  outline = false,
   showBadge = true,
   title,
   className,
@@ -68,13 +60,18 @@ export function BotAvatar({
   const clipId = useId();
   const shape = findShape(config.shape);
   const color = findColor(config.color);
-  const { isLive, isBlinking, gaze } = useBotAvatar({
+  const { isLive, isBlinking, pose } = usePose({
+    status,
     animated,
     trackPointer,
+    poseOffset,
     svgRef,
   });
   const { cx, top, bottom, width } = shape.anchors;
-  const body = BODY_MOTION[status];
+  const body = ellipsoidFor(shape.anchors);
+  const rollDeg = (pose.roll * 180) / Math.PI;
+  const bodyFill = outline ? color.body : mixHex(color.body, color.mid, 0.35);
+  const shadeFill = outline ? color.mid : mixHex(color.mid, color.deep, 0.18);
 
   return (
     <svg
@@ -89,6 +86,7 @@ export function BotAvatar({
       data-testid="bot-avatar"
       data-avatar={encodeConfig(config)}
       data-status={status}
+      data-outline={outline}
       className={cn("shrink-0 overflow-visible", className)}
     >
       <defs>
@@ -96,48 +94,57 @@ export function BotAvatar({
           <path d={shape.path} />
         </clipPath>
       </defs>
-      <motion.g
-        key={isLive ? status : "static"}
-        style={{ originX: `${cx}px`, originY: `${bottom}px` }}
-        animate={isLive ? body.animate : undefined}
-        transition={body.transition}
+      <g
+        transform={`translate(0 ${-pose.bob}) rotate(${rollDeg} ${cx} ${bottom})`}
       >
         <path
           d={shape.path}
-          fill={color.body}
-          stroke={INK}
+          fill={bodyFill}
+          stroke={outline ? INK : "none"}
           strokeWidth={3}
           strokeLinejoin="round"
         />
         <g clipPath={`url(#${clipId})`}>
           <ellipse
             cx={cx}
-            cy={bottom + 8}
+            cy={bottom + 8 + pose.pitch * 6}
             rx={width * 0.6}
             ry={22}
-            fill={color.mid}
+            fill={shadeFill}
             opacity={0.75}
           />
-        </g>
-        <g fill={color.mid}>
-          <circle cx={cx - width * 0.28} cy={top + 14} r={2.4} />
-          <circle cx={cx - width * 0.2} cy={top + 9} r={1.5} />
-          <circle cx={cx - width * 0.33} cy={top + 22} r={1.3} />
+          {SPOTS.map((spot, index) => {
+            const point = project(
+              surfacePointAt(cx + width * spot.dx, top + spot.dy, body),
+              pose,
+              body,
+            );
+            return isVisible(point) ? (
+              <circle
+                key={index}
+                transform={foreshortenTransform(point)}
+                r={spot.r}
+                fill={shadeFill}
+              />
+            ) : null;
+          })}
         </g>
         <Face
           anchors={shape.anchors}
+          pose={pose}
           status={status}
-          blush={color.mid}
+          blush={shadeFill}
           isLive={isLive}
           isBlinking={isBlinking}
-          gaze={gaze}
         />
         <Accessory
           accessory={config.accessory}
           anchors={shape.anchors}
+          pose={pose}
           deep={color.deep}
+          outline={outline}
         />
-      </motion.g>
+      </g>
       {showBadge ? (
         <StatusBadge status={status} anchors={shape.anchors} isLive={isLive} />
       ) : null}

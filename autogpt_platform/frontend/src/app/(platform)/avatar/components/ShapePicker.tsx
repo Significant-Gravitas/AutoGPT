@@ -9,10 +9,11 @@ import { SectionHeading } from "./SectionHeading";
 
 interface Props {
   config: AvatarConfig;
+  outline: boolean;
   onSelect: (shape: ShapeId) => void;
 }
 
-export function ShapePicker({ config, onSelect }: Props) {
+export function ShapePicker({ config, outline, onSelect }: Props) {
   return (
     <section className="space-y-3">
       <SectionHeading title="Shape" hint="silhouette identity" />
@@ -33,6 +34,7 @@ export function ShapePicker({ config, onSelect }: Props) {
               config={{ ...config, shape: shape.id, accessory: "none" }}
               size={56}
               animated={false}
+              outline={outline}
               showBadge={false}
             />
           </OptionTile>

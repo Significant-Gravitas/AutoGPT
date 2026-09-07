@@ -5,6 +5,20 @@ import {
 } from "@/components/molecules/BotAvatar/helpers";
 
 export const QUERY_KEY = "a";
+
+export interface Turn {
+  yaw: number;
+  pitch: number;
+}
+
+export const FRONT_TURN: Turn = { yaw: 0, pitch: 0 };
+
+export function turnToPose(turn: Turn) {
+  return {
+    yaw: (turn.yaw * Math.PI) / 180,
+    pitch: (turn.pitch * Math.PI) / 180,
+  };
+}
 export const STAGE_SIZE = 220;
 export const EXPORT_SIZE = 512;
 export const SIZE_LADDER = [64, 40, 24] as const;

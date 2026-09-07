@@ -15,6 +15,7 @@ import { useRef, useState } from "react";
 import {
   downloadBlob,
   exportFilename,
+  FRONT_TURN,
   QUERY_KEY,
   serializeSvg,
   svgToPngBlob,
@@ -23,6 +24,8 @@ import {
 export function useAvatarPage() {
   const [encoded, setEncoded] = useQueryState(QUERY_KEY);
   const [status, setStatus] = useState<AvatarStatus>("idle");
+  const [turn, setTurn] = useState(FRONT_TURN);
+  const [outline, setOutline] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const config = decodeConfig(encoded);
@@ -50,6 +53,7 @@ export function useAvatarPage() {
   function reset() {
     setEncoded(encodeConfig(DEFAULT_CONFIG));
     setStatus("idle");
+    setTurn(FRONT_TURN);
   }
 
   async function copyLink() {
@@ -92,6 +96,10 @@ export function useAvatarPage() {
     config,
     status,
     setStatus,
+    turn,
+    setTurn,
+    outline,
+    setOutline,
     setShape,
     setColor,
     setAccessory,

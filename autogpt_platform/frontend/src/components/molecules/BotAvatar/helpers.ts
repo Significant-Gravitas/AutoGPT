@@ -272,3 +272,15 @@ export function seededRandom(seed: number) {
 export function configForName(name: string): AvatarConfig {
   return randomConfig(seededRandom(hashSeed(name.toLowerCase())));
 }
+
+export function mixHex(from: string, to: string, amount: number) {
+  const parse = (hex: string) =>
+    [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+  const [r1, g1, b1] = parse(from);
+  const [r2, g2, b2] = parse(to);
+  const channel = (a: number, b: number) =>
+    Math.round(a + (b - a) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(r1, r2)}${channel(g1, g2)}${channel(b1, b2)}`;
+}
