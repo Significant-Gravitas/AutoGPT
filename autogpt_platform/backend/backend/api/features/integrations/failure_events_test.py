@@ -230,17 +230,15 @@ class TestCallbackFailureEvents:
 
 
 class TestDeviceAuthFailureEvents:
-    def test_an_unavailable_throttle_reports_class_07(self, router_log):
+    async def test_an_unavailable_throttle_reports_class_07(self, router_log):
         from backend.api.features.integrations.router import _throttle_upstream
 
         with patch(
             "backend.data.redis_client.get_redis_async",
             AsyncMock(side_effect=ConnectionError("redis is gone")),
         ):
-            throttled = asyncio.run(
-                _throttle_upstream(
-                    "user-1", ProviderName.GITHUB, seconds=5, scope="initiate"
-                )
+            throttled = await _throttle_upstream(
+                "user-1", ProviderName.GITHUB, seconds=5, scope="initiate"
             )
 
         # Fails open, and says so where someone can see it.
@@ -249,7 +247,7 @@ class TestDeviceAuthFailureEvents:
         assert record.failure_class == "class_07_device_code_race"
         assert record.reason == "throttle_unavailable"
 
-    def test_an_unreadable_stored_credential_reports_class_07(self, router_log):
+    async def test_an_unreadable_stored_credential_reports_class_07(self, router_log):
         from backend.api.features.integrations.router import _credential_for_grant
 
         with patch(
@@ -258,8 +256,8 @@ class TestDeviceAuthFailureEvents:
             mock_mgr.store.get_creds_by_id = AsyncMock(
                 side_effect=RuntimeError("decrypt failed")
             )
-            result = asyncio.run(
-                _credential_for_grant("user-1", ProviderName.GITHUB, "cred-1")
+            result = await _credential_for_grant(
+                "user-1", ProviderName.GITHUB, "cred-1"
             )
 
         assert result is None
@@ -269,7 +267,7 @@ class TestDeviceAuthFailureEvents:
 
 
 class TestProvisioningAndDiscoveryFailureEvents:
-    def test_a_managed_sweep_timeout_reports_class_12(self, router_log):
+    async def test_a_managed_sweep_timeout_reports_class_12(self, router_log):
         from backend.api.features.integrations.router import (
             _ensure_managed_credentials_bounded,
         )
@@ -277,24 +275,25 @@ class TestProvisioningAndDiscoveryFailureEvents:
         async def never_finishes(*_args, **_kwargs):
             await asyncio.sleep(3600)
 
-        async def run() -> None:
-            with (
-                patch(
-                    "backend.api.features.integrations.router.ensure_managed_credentials",
-                    never_finishes,
-                ),
-                patch(
-                    "backend.api.features.integrations.router._MANAGED_PROVISION_TIMEOUT_S",
-                    0.01,
-                ),
-            ):
-                await _ensure_managed_credentials_bounded("user-1")
-                # The fire-and-forget retry the handler schedules is not the
-                # subject here; cancel it so the loop closes cleanly.
-                for task in asyncio.all_tasks() - {asyncio.current_task()}:
-                    task.cancel()
+        before = asyncio.all_tasks()
+        with (
+            patch(
+                "backend.api.features.integrations.router.ensure_managed_credentials",
+                never_finishes,
+            ),
+            patch(
+                "backend.api.features.integrations.router._MANAGED_PROVISION_TIMEOUT_S",
+                0.01,
+            ),
+        ):
+            await _ensure_managed_credentials_bounded("user-1")
 
-        asyncio.run(run())
+        # Cancel only the fire-and-forget retry this call scheduled — the loop
+        # is session-scoped and its other tasks belong to the whole suite.
+        scheduled = asyncio.all_tasks() - before
+        for task in scheduled:
+            task.cancel()
+        await asyncio.gather(*scheduled, return_exceptions=True)
 
         record = router_log.only_failure()
         assert record.failure_class == "class_12_managed_provisioning_late"
