@@ -43,6 +43,21 @@ def experts_by_schedule(
     return {schedule_id: expert for schedule_id, expert in owners.items() if expert}
 
 
+def experts_by_graph(experts: list[Expert]) -> dict[str, Expert]:
+    """Map graph id to the expert that owns a workflow built on it.
+
+    A run started from the library carries no expert stamp, but the workflow
+    it ran is still an expert's, so the surfaces that show who is working can
+    fall back to the owner instead of showing nobody.
+    """
+    return {
+        workflow.graph_id: expert
+        for expert in experts
+        for workflow in expert.workflows
+        if workflow.graph_id
+    }
+
+
 def next_runs_by_expert(
     schedules: list[GraphExecutionJobInfo], expert_by_schedule: dict[str, Expert]
 ) -> dict[str, datetime]:
@@ -64,6 +79,7 @@ class AgentRef(BaseModel):
 
     name: str
     library_agent_id: str | None
+    image_url: str | None = None
 
 
 UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
@@ -76,6 +92,7 @@ def agent_refs_by_graph(
         ref.graph_id: AgentRef(
             name=ref.name or UNKNOWN_AGENT.name,
             library_agent_id=None if ref.is_deleted else ref.id,
+            image_url=ref.image_url,
         )
         for ref in refs
     }
@@ -83,10 +100,13 @@ def agent_refs_by_graph(
         for workflow in expert.workflows:
             if workflow.graph_id:
                 current = agents.get(workflow.graph_id, UNKNOWN_AGENT)
+                # An expert names its own copy of the workflow, but only the
+                # library row carries the picture, so keep the one we found.
                 agents[workflow.graph_id] = AgentRef(
                     name=workflow.name or current.name,
                     library_agent_id=workflow.library_agent_id
                     or current.library_agent_id,
+                    image_url=current.image_url,
                 )
     return agents
 
