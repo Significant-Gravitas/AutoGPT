@@ -910,7 +910,11 @@ async def create_raised_expert(
         expert = (
             await prisma.models.Expert.prisma().update(
                 where={"id": expert.id},
-                data={"skills": [s for s in expert.skills if s not in failed_skills]},
+                data={
+                    "skills": [
+                        s for s in (expert.skills or []) if s not in failed_skills
+                    ]
+                },
                 include=_WORKFLOW_INCLUDE,
             )
             or expert
