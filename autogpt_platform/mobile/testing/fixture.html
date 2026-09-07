@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>AutoGPT native integration fixture</title>
+    <link rel="stylesheet" href="/fixture.css" />
+    <script src="/fixture.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Native integration fixture</p>
+      <h1>Ready for a device check.</h1>
+      <p class="intro">
+        Deterministic native shell probes. This is a local test page, with no
+        live chat or account.
+      </p>
+      <section aria-labelledby="session-heading">
+        <h2 id="session-heading">Browser sign-in & session</h2>
+        <p>
+          Use the app's native Sign in action to complete its PKCE browser
+          handoff, then check the cookie here.
+        </p>
+        <output id="session-result" aria-live="polite"
+          >Checking fixture session…</output
+        >
+        <div class="actions">
+          <button id="refresh-session">Check session</button
+          ><button id="clear-session" class="secondary">
+            Clear fixture session
+          </button>
+        </div>
+        <p id="cookie-result" class="muted"></p>
+      </section>
+      <section aria-labelledby="input-heading">
+        <h2 id="input-heading">Keyboard & attachments</h2>
+        <label for="message">Text input</label>
+        <textarea
+          id="message"
+          rows="3"
+          placeholder="Type a device-test note…"
+        ></textarea>
+        <p class="muted">
+          Check keyboard dismissal, rotation, safe areas, text selection, and
+          long input.
+        </p>
+        <label for="single-file">Choose one attachment</label>
+        <input id="single-file" type="file" accept="image/*,.txt,.pdf" />
+        <label for="multiple-files">Choose multiple attachments</label>
+        <input id="multiple-files" type="file" multiple />
+        <output id="file-result" aria-live="polite"
+          >No attachments selected. Files stay on this device.</output
+        >
+      </section>
+      <section aria-labelledby="navigation-heading">
+        <h2 id="navigation-heading">Navigation boundaries</h2>
+        <div class="links">
+          <a href="/copilot?history=1">Same-origin page →</a>
+          <a href="/redirect">Same-origin redirect →</a>
+          <a href="https://example.com/">External HTTPS →</a>
+          <a href="/redirect/external">Redirect to external HTTPS →</a>
+          <a href="https://example.com/" target="_blank" rel="noopener"
+            >External popup →</a
+          >
+          <a href="/copilot?popup=1" target="_blank">Same-origin popup →</a>
+          <button id="popup" class="secondary">JavaScript popup</button>
+          <a href="mailto:fixture@example.invalid">Email scheme →</a>
+          <a href="file:///native-fixture.txt">Blocked file scheme →</a>
+          <a href="data:text/html,Native%20integration%20fixture"
+            >Blocked data scheme →</a
+          >
+          <a href="intent://native-fixture/#Intent;scheme=fixture;end"
+            >Blocked intent scheme →</a
+          >
+          <a href="https://platform.agpt.co.example.invalid/"
+            >Deceptive host →</a
+          >
+          <a
+            href="autogpt://auth/callback?code=unissued-fixture-code&amp;state=incorrect"
+            >Invalid auth callback →</a
+          >
+        </div>
+        <p id="location-result" class="muted"></p>
+      </section>
+      <section aria-labelledby="download-heading">
+        <h2 id="download-heading">Downloads & recovery</h2>
+        <div class="links">
+          <a href="/attachment.txt" download="native-fixture.txt"
+            >Download fixture attachment →</a
+          >
+          <a href="/attachment.txt">Open attachment response →</a>
+          <button id="blob-download" class="secondary">
+            Download generated blob
+          </button>
+          <a href="/slow">Slow page, 2.5 seconds →</a>
+          <a href="/error">HTTP 503 page →</a>
+          <a href="/offline">Disconnected transport →</a>
+        </div>
+        <p id="transport-result" class="muted"></p>
+        <p class="muted">
+          For a true offline recovery check, stop this fixture server, reload in
+          the native app, restart the server, and retry.
+        </p>
+      </section>
+      <footer>AutoGPT mobile · local integration evidence only</footer>
+    </main>
+  </body>
+</html>
