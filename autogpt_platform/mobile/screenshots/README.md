@@ -4,3 +4,9 @@ These are unmodified screenshots captured from the running iOS app on the instal
 
 - `ios-sign-in.png`: native sign-in screen reached after the real `platform.agpt.co/copilot` login redirect. No user account is signed in.
 - `ios-fixture-session.png`: successful system-browser return with both HttpOnly session and cache cookies transferred. The page explicitly identifies itself as a local integration fixture; it is not a live AutoGPT conversation.
+
+Further fixture checks on the same simulator:
+
+- `ios-fixture-streaming.png`: five server-sent chunks reached the native WebView incrementally, about 600 ms apart. This is transport test text; no model response is involved.
+- `ios-fixture-stream-interrupted.png`: a deliberate disconnect after two chunks retains partial text and offers retry.
+- `ios-fixture-keyboard.png`: text entered using the simulator's onscreen keyboard stays visible in portrait. Landscape rotation is being checked separately.

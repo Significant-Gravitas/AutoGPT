@@ -33,7 +33,7 @@ jobs:
       - name: Install project generator
         run: brew install xcodegen
       - name: Lint all Swift sources
-        run: swift-format lint --strict --recursive App Sources Tests UITests Package.swift
+        run: xcrun swift-format lint --strict --recursive App Sources Tests UITests Package.swift
       - name: Test origin and authentication policies
         run: swift test
       - name: Generate Xcode project
