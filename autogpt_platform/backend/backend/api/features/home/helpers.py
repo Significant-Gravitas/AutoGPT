@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -48,13 +49,19 @@ def experts_by_graph(experts: list[Expert]) -> dict[str, Expert]:
 
     A run started from the library carries no expert stamp, but the workflow
     it ran is still an expert's, so the surfaces that show who is working can
-    fall back to the owner instead of showing nobody.
+    fall back to the owner instead of showing nobody. Two experts can build on
+    the same graph, and picking one of them would put the wrong face on the
+    run, so a shared graph is left unattributed.
     """
+    owners: defaultdict[str, dict[str, Expert]] = defaultdict(dict)
+    for expert in experts:
+        for workflow in expert.workflows:
+            if workflow.graph_id:
+                owners[workflow.graph_id][expert.id] = expert
     return {
-        workflow.graph_id: expert
-        for expert in experts
-        for workflow in expert.workflows
-        if workflow.graph_id
+        graph_id: next(iter(by_expert_id.values()))
+        for graph_id, by_expert_id in owners.items()
+        if len(by_expert_id) == 1
     }
 
 

@@ -126,6 +126,19 @@ def test_expert_workflows_are_found_by_the_graph_they_run() -> None:
     assert owners[SHARED_GRAPH].id == "alice"
 
 
+def test_a_graph_two_experts_build_on_is_left_unattributed() -> None:
+    assert experts_by_graph([_expert("alice"), _expert("bob")]) == {}
+
+
+def test_an_expert_with_two_workflows_on_one_graph_still_owns_it() -> None:
+    alice = _expert("alice")
+    alice.workflows.append(
+        alice.workflows[0].model_copy(update={"id": "workflow-alice-2"})
+    )
+
+    assert experts_by_graph([alice])[SHARED_GRAPH].id == "alice"
+
+
 def test_an_experts_copy_of_a_workflow_keeps_the_library_picture() -> None:
     refs = [
         LibraryAgentRef(
