@@ -33,15 +33,8 @@ import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
 import {
   expertAvatarConfig,
   isUploadedAvatar,
-  type AvatarStatus,
 } from "@/components/molecules/BotAvatar/helpers";
-import type { ExpertRosterStatus } from "../../helpers";
 
-const AVATAR_STATUS: Record<ExpertRosterStatus, AvatarStatus> = {
-  idle: "idle",
-  working: "working",
-  "needs-you": "waiting",
-};
 import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
@@ -182,7 +175,8 @@ export function ExpertTeamCard({
                     avatarUrl: expert.avatar_url,
                     color: expert.color,
                   })}
-                  status={AVATAR_STATUS[rosterStatus]}
+                  status="idle"
+                  trackPointer
                   size={80}
                   title={expert.name}
                 />

@@ -59,16 +59,19 @@ export function ExpertAvatarButton({ expert }: Props) {
             <AvatarFallback>{expert.name}</AvatarFallback>
           </Avatar>
         ) : (
-          <BotAvatar
-            config={expertAvatarConfig({
-              name: expert.name,
-              avatarUrl: expert.avatar_url,
-              color: expert.color,
-            })}
-            size={96}
-            showBadge={false}
-            title={expert.name}
-          />
+          <span className="flex size-24 items-center justify-center rounded-full bg-background ring-4 ring-background">
+            <BotAvatar
+              config={expertAvatarConfig({
+                name: expert.name,
+                avatarUrl: expert.avatar_url,
+                color: expert.color,
+              })}
+              size={84}
+              trackPointer
+              showBadge={false}
+              title={expert.name}
+            />
+          </span>
         )}
 
         <span

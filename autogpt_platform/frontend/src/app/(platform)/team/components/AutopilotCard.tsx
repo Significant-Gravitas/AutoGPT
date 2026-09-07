@@ -38,6 +38,7 @@ export function AutopilotCard({
             <BotAvatar
               config={AUTOPILOT_AVATAR}
               size={80}
+              trackPointer
               title="Autopilot"
               showBadge={false}
             />
