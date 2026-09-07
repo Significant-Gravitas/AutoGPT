@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 
-router = APIRouter(tags=["chat", "speech"])
+router = APIRouter(tags=["speech"])
 
 MAX_SESSION_ID_CHARS = 128
 
@@ -77,8 +77,6 @@ async def synthesize(
             session_id=request.session_id,
             voice=request.voice,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
     except SpeechUnavailable:
         logger.error("Voice mode is enabled but no OpenAI key is configured")
         raise HTTPException(status_code=503, detail="Speech is unavailable")

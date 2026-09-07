@@ -496,7 +496,7 @@ app.include_router(
 )
 app.include_router(
     chat_speech.router,
-    tags=["v2", "chat"],
+    tags=["chat"],
     prefix="/api/chat",
 )
 app.include_router(

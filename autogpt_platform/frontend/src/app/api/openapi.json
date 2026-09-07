@@ -4713,10 +4713,10 @@
     },
     "/api/chat/speech": {
       "post": {
-        "tags": ["v2", "chat", "chat", "speech"],
+        "tags": ["chat", "speech"],
         "summary": "Synthesize",
         "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
-        "operationId": "postV2Synthesize",
+        "operationId": "postChatSynthesize",
         "requestBody": {
           "content": {
             "application/json": {

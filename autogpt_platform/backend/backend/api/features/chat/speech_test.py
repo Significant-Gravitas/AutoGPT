@@ -9,12 +9,16 @@ import pytest
 import pytest_mock
 
 from backend.api.features.chat import speech as speech_routes
+from backend.api.rest_api import handle_internal_http_error
 from backend.copilot import speech as speech_module
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.util.exceptions import UserPaywalledError
 
 app = fastapi.FastAPI()
 app.include_router(speech_routes.router)
+# The route lets ValueError through to the app's global handler; without this
+# the test app would 500 where production 400s.
+app.add_exception_handler(ValueError, handle_internal_http_error(400))
 client = fastapi.testclient.TestClient(app)
 
 AUDIO = b"ID3-fake-mp3-bytes"
