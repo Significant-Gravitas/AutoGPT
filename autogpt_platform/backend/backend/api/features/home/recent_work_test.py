@@ -9,7 +9,11 @@ from .recent_work import _MAX_ITEMS_PER_GROUP, _MAX_RUNS_PER_GROUP, compose_rece
 
 NOW = datetime(2026, 8, 28, 9, 0, tzinfo=timezone.utc)
 AGENTS = {
-    "graph-notes": AgentRef(name="Release Note Generator", library_agent_id="lib-1")
+    "graph-notes": AgentRef(
+        name="Release Note Generator",
+        library_agent_id="lib-1",
+        image_url="https://example.com/release-notes.png",
+    )
 }
 
 
@@ -145,6 +149,7 @@ def test_groups_runs_and_deliverables_under_the_actor_that_did_them() -> None:
     assert maria_group.items[0].link == "/copilot?sessionId=s1"
 
     assert notes_group.actor.kind == "workflow"
+    assert notes_group.actor.image_url == "https://example.com/release-notes.png"
     assert notes_group.actor.link == "/library/agents/lib-1"
     assert [run.id for run in notes_group.runs] == ["run-notes"]
     assert [item.id for item in notes_group.items] == ["e2"]
