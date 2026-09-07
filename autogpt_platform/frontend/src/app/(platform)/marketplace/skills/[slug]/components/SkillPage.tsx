@@ -11,6 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { InstallSkillPanel } from "./InstallSkillPanel/InstallSkillPanel";
+import { SkillBody } from "./SkillBody";
 import { useSkillPage } from "./useSkillPage";
 
 interface Props {
@@ -87,9 +88,7 @@ export function SkillPage({ slug }: Props) {
         <Text variant="large-medium" className="!mb-3">
           What your AutoPilot will follow
         </Text>
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-zinc-700">
-          {skill.body}
-        </pre>
+        <SkillBody body={skill.body} />
       </section>
     </main>
   );

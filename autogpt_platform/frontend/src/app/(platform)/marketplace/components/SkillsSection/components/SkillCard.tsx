@@ -1,5 +1,6 @@
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   BookOpen01Icon,
@@ -44,7 +45,8 @@ export function SkillCard({ skill }: Props) {
         {skill.required_providers.length > 0 ? (
           <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
             <Icon icon={PlugSocketIcon} size={13} />
-            Works with {skill.required_providers.join(", ")}
+            Works with{" "}
+            {skill.required_providers.map(formatProviderName).join(", ")}
           </span>
         ) : null}
         <Text variant="small" className="!ml-auto !text-zinc-400">

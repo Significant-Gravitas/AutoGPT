@@ -8,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -18,12 +19,14 @@ interface Args {
 
 export function useInstallSkillPanel({ slug, requiredProviders }: Args) {
   const queryClient = useQueryClient();
+  const { isLoggedIn } = useAuth();
   const { toast } = useToast();
   const [installedName, setInstalledName] = useState<string | null>(null);
   const [isConnectOpen, setIsConnectOpen] = useState(false);
 
   const credentialsQuery = useGetV1ListCredentials({
     query: {
+      enabled: isLoggedIn,
       select: (response) => (response.status === 200 ? response.data : []),
     },
   });
@@ -60,6 +63,7 @@ export function useInstallSkillPanel({ slug, requiredProviders }: Args) {
   }
 
   return {
+    isLoggedIn,
     providerNames: requiredProviders.map(formatProviderName),
     installedName,
     isInstalling: isPending,

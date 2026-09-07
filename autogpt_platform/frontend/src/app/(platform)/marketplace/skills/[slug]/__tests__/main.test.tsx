@@ -72,8 +72,15 @@ describe("Marketplace skill page", () => {
   test("shows the instructions the AutoPilot will follow", async () => {
     renderPage([]);
 
-    expect(await screen.findByText("Outreach playbook")).toBeDefined();
+    expect(
+      await screen.findByText("Run cold outreach that gets replies."),
+    ).toBeDefined();
+    // The SKILL.md renders as prose, not as a wall of raw markdown: its own
+    // "# Outreach playbook" becomes a heading rather than literal text.
     expect(await screen.findByText(/Four sentences, no more/)).toBeDefined();
+    expect(
+      screen.getAllByRole("heading", { name: "Outreach playbook" }).length,
+    ).toBeGreaterThan(0);
   });
 
   test("installs in one click and offers the connect step afterwards", async () => {
@@ -97,6 +104,15 @@ describe("Marketplace skill page", () => {
 
     expect(await screen.findByTestId("skill-installed")).toBeDefined();
     expect(screen.queryByTestId("skill-connect-step")).toBeNull();
+  });
+
+  test("sends a signed-out visitor to log in rather than a dead button", async () => {
+    mockUseAuth.mockReturnValue({ user: null, isLoggedIn: false });
+    renderPage([]);
+
+    const cta = await screen.findByRole("link", { name: "Add to AutoPilot" });
+    expect(cta.getAttribute("href")).toBe("/login");
+    expect(screen.queryByTestId("skill-install-button")).toBeNull();
   });
 
   test("shows no connect step before the skill is installed", async () => {

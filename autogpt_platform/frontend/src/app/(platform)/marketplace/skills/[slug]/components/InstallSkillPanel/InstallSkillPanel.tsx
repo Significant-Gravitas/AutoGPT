@@ -18,6 +18,7 @@ interface Props {
 
 export function InstallSkillPanel({ slug, requiredProviders }: Props) {
   const {
+    isLoggedIn,
     providerNames,
     installedName,
     isInstalling,
@@ -51,14 +52,20 @@ export function InstallSkillPanel({ slug, requiredProviders }: Props) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="primary"
-            onClick={addToAutoPilot}
-            loading={isInstalling}
-            data-testid="skill-install-button"
-          >
-            Add to AutoPilot
-          </Button>
+          {isLoggedIn ? (
+            <Button
+              variant="primary"
+              onClick={addToAutoPilot}
+              loading={isInstalling}
+              data-testid="skill-install-button"
+            >
+              Add to AutoPilot
+            </Button>
+          ) : (
+            <Button variant="primary" as="NextLink" href="/login">
+              Add to AutoPilot
+            </Button>
+          )}
           {requiredProviders.length > 0 ? (
             <Text variant="small" className="!text-zinc-500">
               Works with {providerNames.join(", ")}
