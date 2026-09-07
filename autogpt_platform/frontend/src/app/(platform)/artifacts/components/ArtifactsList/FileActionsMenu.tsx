@@ -57,10 +57,7 @@ export function FileActionsMenu({ file, className }: Props) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              handleDownload();
-            }}
+            onSelect={handleDownload}
             disabled={isDownloading}
             data-testid="artifacts-download"
           >
@@ -81,6 +78,8 @@ export function FileActionsMenu({ file, className }: Props) {
               {goLabel}
             </Link>
           </DropdownMenuItem>
+          {/* preventDefault keeps the menu mounted while the dialog opens, so
+              the menu's focus return doesn't fight the dialog for focus. */}
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault();
@@ -93,10 +92,7 @@ export function FileActionsMenu({ file, className }: Props) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              handleDelete();
-            }}
+            onSelect={handleDelete}
             disabled={isDeleting}
             className="text-red-600 focus:bg-red-50 focus:text-red-700"
             data-testid="artifacts-delete"
