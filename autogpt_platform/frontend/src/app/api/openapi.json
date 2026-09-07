@@ -25747,6 +25747,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "schedule_toggled",
           "expert_workflow",
           "expert_workflows",
           "expert_credentials",
@@ -26183,6 +26184,11 @@
           "name": { "type": "string", "title": "Name" },
           "timezone": { "type": "string", "title": "Timezone" },
           "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "paused": { "type": "boolean", "title": "Paused", "default": false },
           "cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Cron"
