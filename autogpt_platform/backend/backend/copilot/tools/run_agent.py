@@ -184,7 +184,7 @@ class RunAgentTool(BaseTool):
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Library agent ID.",
+                    "description": "Library agent ID or graph ID from your library.",
                 },
                 "preset_id": {
                     "type": "string",
@@ -321,6 +321,10 @@ class RunAgentTool(BaseTool):
                 library_agent = await library_db().get_library_agent(
                     params.library_agent_id, user_id
                 )
+                if not library_agent:
+                    library_agent = await library_db().get_library_agent_by_graph_id(
+                        user_id, params.library_agent_id
+                    )
                 if not library_agent:
                     return ErrorResponse(
                         message=f"Library agent '{params.library_agent_id}' not found",

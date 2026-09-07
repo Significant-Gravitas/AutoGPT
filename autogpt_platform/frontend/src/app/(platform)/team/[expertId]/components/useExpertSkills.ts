@@ -2,7 +2,10 @@ import {
   getGetExpertQueryKey,
   useUpdateExpertSkills,
 } from "@/app/api/__generated__/endpoints/experts/experts";
-import { useListCopilotSkills } from "@/app/api/__generated__/endpoints/skills/skills";
+import {
+  getListCopilotSkillsQueryKey,
+  useListCopilotSkills,
+} from "@/app/api/__generated__/endpoints/skills/skills";
 import {
   getV2GetSpecificAgent,
   useGetV2ListStoreAgents,
@@ -21,6 +24,7 @@ import { useState } from "react";
 export interface ExpertSkillEntry {
   name: string;
   library: CopilotSkillInfo | null;
+  skill: CopilotSkillInfo | null;
 }
 
 export function useExpertSkills(expert: Expert) {
@@ -43,14 +47,24 @@ export function useExpertSkills(expert: Expert) {
   const librarySkills = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [] },
   });
+  const expertSkills = useListCopilotSkills(
+    { expert_id: expert.id },
+    {
+      query: { select: (res) => okData(res) ?? [] },
+    },
+  );
   const { mutateAsync: updateSkills, isPending } = useUpdateExpertSkills();
 
   const library = librarySkills.data ?? [];
   const byName = new Map(
     library.map((skill) => [skill.name.toLowerCase(), skill]),
   );
+  const ownedByName = new Map(
+    (expertSkills.data ?? []).map((skill) => [skill.name.toLowerCase(), skill]),
+  );
   const attached: ExpertSkillEntry[] = expert.skills.map((name) => ({
     name,
+    skill: ownedByName.get(name.toLowerCase()) ?? null,
     library: byName.get(name.toLowerCase()) ?? null,
   }));
   const attachedNames = new Set(
@@ -64,7 +78,7 @@ export function useExpertSkills(expert: Expert) {
     ? attached.filter(
         (entry) =>
           entry.name.toLowerCase().includes(needle) ||
-          (entry.library?.description ?? "").toLowerCase().includes(needle),
+          (entry.skill?.description ?? "").toLowerCase().includes(needle),
       )
     : attached;
 
@@ -81,6 +95,9 @@ export function useExpertSkills(expert: Expert) {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: getGetExpertQueryKey(expert.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getListCopilotSkillsQueryKey({ expert_id: expert.id }),
         }),
         invalidateExpertRosterQueries(queryClient),
       ]);

@@ -4,8 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.expert_scope import ExpertWorkflowScope
 from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import (
+    AgentInfo,
     AgentsFoundResponse,
     ErrorResponse,
     NoResultsResponse,
@@ -516,3 +519,37 @@ async def test_expert_similarity_check_sees_the_whole_library(tool):
     assert isinstance(result, AgentsFoundResponse)
     assert result.count == 1
     assert "install_expert_workflow" in result.message
+
+
+@pytest.mark.asyncio
+async def test_expert_search_counts_only_installed_workflows(tool):
+    scope = ExpertWorkflowScope(expert_id="expert-a", graph_ids=["graph-0", "graph-1"])
+    found = AgentsFoundResponse(
+        title="Found 3 agents in your library",
+        message="Found 3 agents in your library",
+        agents=[
+            AgentInfo(
+                id=f"lib-{i}",
+                graph_id=f"graph-{i}",
+                name=f"Agent {i}",
+                description="",
+                source="library",
+            )
+            for i in range(3)
+        ],
+        count=3,
+    )
+    with (
+        patch(
+            "backend.copilot.tools.find_library_agent.session_workflow_scope",
+            AsyncMock(return_value=scope),
+        ),
+        patch.object(FindLibraryAgentTool, "_search", AsyncMock(return_value=found)),
+    ):
+        result = await tool._execute(
+            "owner", ChatSession.new("owner", dry_run=False, expert_id="expert-a")
+        )
+    assert isinstance(result, AgentsFoundResponse)
+    assert len(result.agents) == result.count == 2
+    assert result.title == "Found 2 installed workflows"
+    assert "3 agents" not in result.message
