@@ -48,6 +48,7 @@ import {
   getErrorMessage,
   getErrorStatus,
 } from "@/lib/mcp-errors";
+import { isKey } from "@/lib/keyboard";
 import { mcpServerIdentity, normalizeMcpUrl } from "@/lib/mcp-url";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -282,11 +283,30 @@ export function MCPToolDialog({
     setOauthLoading(true);
 
     try {
-      const loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: serverUrl.trim(),
-      });
-      if (loginResponse.status !== 200) {
-        throw getAPIResponseError(loginResponse.status, loginResponse.data);
+      // Only a 400 from the *initiate* call means "this server has no OAuth
+      // to offer" and justifies the manual-token fallback.  A 400 later in
+      // the flow is a rejected authorization response — a failed issuer
+      // check, say — and must surface as the error it is rather than an
+      // invitation to paste a credential instead.
+      let loginResponse: Awaited<
+        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+      >;
+      try {
+        loginResponse = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: serverUrl.trim(),
+        });
+        if (loginResponse.status !== 200) {
+          throw getAPIResponseError(loginResponse.status, loginResponse.data);
+        }
+      } catch (error: unknown) {
+        if (getErrorStatus(error) === 400) {
+          setShowManualToken(true);
+          setError(
+            "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
+          );
+          return;
+        }
+        throw error;
       }
       const { login_url, state_token } = loginResponse.data;
 
@@ -308,11 +328,13 @@ export function MCPToolDialog({
         callbackResult = await mcpProvider.mcpOAuthCallback(
           result.code,
           state_token,
+          result.iss,
         );
       } else {
         const cbResponse = await postV2ExchangeOauthCodeForMcpTokens({
           code: result.code,
           state_token,
+          iss: result.iss,
         });
         if (cbResponse.status !== 200) {
           throw getAPIResponseError(cbResponse.status, cbResponse.data);
@@ -340,13 +362,7 @@ export function MCPToolDialog({
     } catch (error: unknown) {
       const status = getErrorStatus(error);
       const message = getErrorMessage(error, "Failed to complete sign-in");
-      // If server doesn't support OAuth → show manual token entry
-      if (status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-        );
-      } else if (message === "OAuth flow timed out") {
+      if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");
       } else if (status === 401 || status === 403) {
         setError(
@@ -447,7 +463,7 @@ export function MCPToolDialog({
                   setError(null);
                   startOAuthRef.current = false;
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                 disabled={loading || oauthLoading}
                 autoFocus
               />
@@ -489,7 +505,7 @@ export function MCPToolDialog({
                     setManualToken(value);
                     detectSchemeFrom(value);
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && handleDiscoverTools()}
+                  onKeyDown={(e) => isKey(e, "Enter") && handleDiscoverTools()}
                   disabled={loading || oauthLoading}
                   autoFocus
                 />

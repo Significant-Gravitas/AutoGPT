@@ -16,12 +16,14 @@ import {
   mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { isKey } from "@/lib/keyboard";
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
@@ -180,15 +182,32 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     oauthAbortRef.current?.();
 
     try {
-      const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: serverUrl,
-      });
-      if (!(loginRes.status >= 200 && loginRes.status < 300)) {
-        const d =
-          loginRes.data && typeof loginRes.data === "object"
-            ? loginRes.data
-            : {};
-        throw { status: loginRes.status, ...d };
+      // Only a 400 from the *initiate* call means "this server has no OAuth
+      // to offer" and justifies the manual-token fallback.  A 400 from the
+      // callback is a rejected authorization response — a failed issuer
+      // check, say — and must surface as the error it is rather than an
+      // invitation to paste a credential instead.
+      let loginRes: Awaited<
+        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+      >;
+      try {
+        loginRes = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: serverUrl,
+        });
+        if (!(loginRes.status >= 200 && loginRes.status < 300)) {
+          throw getAPIResponseError(loginRes.status, loginRes.data);
+        }
+      } catch (e: unknown) {
+        if (getErrorStatus(e) === 400) {
+          setConnected(false);
+          setForceDisconnected(true);
+          setShowManualToken(true);
+          setError(
+            "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
+          );
+          return;
+        }
+        throw e;
       }
       const { login_url, state_token } = loginRes.data as {
         login_url: string;
@@ -205,16 +224,19 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       const mcpProvider = allProviders?.["mcp"];
       if (mcpProvider) {
-        await mcpProvider.mcpOAuthCallback(result.code, state_token);
+        await mcpProvider.mcpOAuthCallback(
+          result.code,
+          state_token,
+          result.iss,
+        );
       } else {
         const cbRes = await postV2ExchangeOauthCodeForMcpTokens({
           code: result.code,
           state_token,
+          iss: result.iss,
         });
         if (!(cbRes.status >= 200 && cbRes.status < 300)) {
-          const d =
-            cbRes.data && typeof cbRes.data === "object" ? cbRes.data : {};
-          throw { status: cbRes.status, ...d };
+          throw getAPIResponseError(cbRes.status, cbRes.data);
         }
       }
 
@@ -236,12 +258,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       // user retries.
       setConnected(false);
       setForceDisconnected(true);
-      if (err?.status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-        );
-      } else if (
+      if (
         typeof err?.message === "string" &&
         err.message === "OAuth flow timed out"
       ) {
@@ -470,7 +487,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                   detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && handleManualToken()
+                  isKey(e, "Enter") && !loading && handleManualToken()
                 }
                 className="flex-1 rounded border px-2 py-1 text-sm"
               />
