@@ -189,7 +189,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             return error
         assert graph is not None
         scope_error = await require_installed_workflow(
-            user_id, session, graph_id=graph.id, name=graph.name
+            user_id,
+            session,
+            graph_id=graph.id,
+            library_agent_id=(kwargs.get("library_agent_id") or "").strip() or None,
+            name=graph.name,
         )
         if scope_error is not None:
             return scope_error

@@ -349,7 +349,11 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
             scope_error = await require_installed_workflow(
-                user_id, session, graph_id=graph.id, name=graph.name
+                user_id,
+                session,
+                graph_id=graph.id,
+                library_agent_id=library_agent.id if library_agent else None,
+                name=graph.name,
             )
             if scope_error is not None:
                 return scope_error
