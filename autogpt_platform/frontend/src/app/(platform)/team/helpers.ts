@@ -81,7 +81,7 @@ export function getAutopilotSkills(
 /** Sized by the available width, not the viewport, so the roster reflows
  *  when a side panel takes space. */
 export const TEAM_GRID_CLASS =
-  "grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4";
+  "grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-4";
 
 /** Mirrors `CreatePodRequest.name`'s `max_length` on the backend. */
 export const POD_NAME_MAX_LENGTH = 100;

@@ -77,13 +77,12 @@ export function CopilotPage() {
       // content height and the accordion pushes the input below the fold.
       // The new layout gets the full viewport — its inset header overlays the
       // chat (see PlatformChrome) instead of stacking above it. The classic
-      // layout subtracts the navbar + preview banner. `svh` keeps the input
-      // visible when mobile browser chrome is shown.
+      // layout subtracts the navbar + preview banner.
       style={
         showNewLayout
-          ? { height: "100svh" }
+          ? { height: "100dvh" }
           : {
-              height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
+              height: `calc(100dvh - ${NAVBAR_HEIGHT_PX}px - var(--preview-banner-height, 0px))`,
             }
       }
       className="min-h-0"

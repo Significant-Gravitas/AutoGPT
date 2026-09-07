@@ -301,6 +301,126 @@ describe("TeamPage", () => {
     ).toBeDefined();
   });
 
+  test("keeps an expert chat draft when resizing between phone and desktop", async () => {
+    server.use(
+      getListExpertsMockHandler([hiredMaria]),
+      getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }),
+    );
+    const originalWidth = window.innerWidth;
+    const user = userEvent.setup();
+    function resize(width: number) {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: width,
+      });
+      fireEvent(window, new Event("resize"));
+    }
+    try {
+      resize(360);
+      render(<TeamPage />);
+      await screen.findByText("Maria");
+      await user.click(screen.getAllByRole("button", { name: "Chat" })[1]);
+      await screen.findByRole("dialog", { name: "Chat with Maria" });
+      await user.type(
+        screen.getByPlaceholderText("Message Maria…"),
+        "Keep my draft",
+      );
+      const fileInput = screen
+        .getByRole("dialog", { name: "Chat with Maria" })
+        .querySelector<HTMLInputElement>('input[type="file"]');
+      if (!fileInput) throw new Error("Missing composer file input");
+      await user.upload(
+        fileInput,
+        new File(["draft attachment"], "mobile-note.txt", {
+          type: "text/plain",
+        }),
+      );
+      expect(screen.getByText("mobile-note.txt")).toBeDefined();
+      resize(728);
+      expect(
+        (screen.getByPlaceholderText("Message Maria…") as HTMLTextAreaElement)
+          .value,
+      ).toBe("Keep my draft");
+      resize(1024);
+      await screen.findByRole("complementary", { name: "Chat with Maria" });
+      expect(
+        (screen.getByPlaceholderText("Message Maria…") as HTMLTextAreaElement)
+          .value,
+      ).toBe("Keep my draft");
+      expect(screen.getByText("mobile-note.txt")).toBeDefined();
+      resize(360);
+      await screen.findByRole("dialog", { name: "Chat with Maria" });
+      expect(
+        (screen.getByPlaceholderText("Message Maria…") as HTMLTextAreaElement)
+          .value,
+      ).toBe("Keep my draft");
+      expect(screen.getByText("mobile-note.txt")).toBeDefined();
+      await user.click(
+        screen.getByRole("button", { name: "Close chat panel" }),
+      );
+      await user.click(screen.getAllByRole("button", { name: "Chat" })[0]);
+      await screen.findByRole("dialog", { name: "Chat with Autopilot" });
+      await waitFor(() => {
+        expect(
+          (
+            screen.getByPlaceholderText(
+              "Message Autopilot…",
+            ) as HTMLTextAreaElement
+          ).value,
+        ).toBe("");
+        expect(screen.queryByText("mobile-note.txt")).toBeNull();
+      });
+    } finally {
+      resize(originalWidth);
+    }
+  });
+
+  test("keeps unsaved Soul edits when resizing between phone and desktop", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+    const originalWidth = window.innerWidth;
+    const user = userEvent.setup();
+    function resize(width: number) {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: width,
+      });
+      fireEvent(window, new Event("resize"));
+    }
+    try {
+      resize(360);
+      render(<TeamPage />);
+      await user.click(
+        await screen.findByRole("button", { name: "Edit Soul" }),
+      );
+      await screen.findByRole("dialog", { name: "Maria's Soul" });
+      await user.clear(screen.getByLabelText("Identity and personality"));
+      await user.type(
+        screen.getByLabelText("Identity and personality"),
+        "Keep my unsaved expert edit",
+      );
+      resize(1024);
+      await screen.findByRole("complementary", { name: "Maria's Soul" });
+      expect(
+        (
+          screen.getByLabelText(
+            "Identity and personality",
+          ) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Keep my unsaved expert edit");
+      resize(360);
+      await screen.findByRole("dialog", { name: "Maria's Soul" });
+      expect(
+        (
+          screen.getByLabelText(
+            "Identity and personality",
+          ) as HTMLTextAreaElement
+        ).value,
+      ).toBe("Keep my unsaved expert edit");
+    } finally {
+      resize(originalWidth);
+    }
+  });
+
   test("counts the integrations an expert has been granted", async () => {
     const credentialRequests = vi.fn();
     server.use(

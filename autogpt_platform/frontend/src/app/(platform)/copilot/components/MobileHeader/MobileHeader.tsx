@@ -1,5 +1,4 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
 import { Folder01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
@@ -10,10 +9,7 @@ export function MobileHeader() {
   const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
   const isContextPanelEnabled = useGetFlag(Flag.ARTIFACTS);
   return (
-    <div
-      className="fixed z-50 flex gap-2"
-      style={{ left: "1rem", top: `${NAVBAR_HEIGHT_PX + 20}px` }}
-    >
+    <div className="z-10 flex shrink-0 gap-2 px-4 pt-4">
       <Button
         variant="icon"
         size="icon"

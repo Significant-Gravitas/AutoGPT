@@ -99,6 +99,7 @@ interface BodyProps {
 
 function ChatPanelBody({ target, identity, chat }: BodyProps) {
   const {
+    draft,
     sessionId,
     messages,
     status,
@@ -155,6 +156,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
           <ChatInput
             inputId="expert-chat-input"
             variant="compact"
+            draft={draft}
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
             isStreaming={isStreaming}

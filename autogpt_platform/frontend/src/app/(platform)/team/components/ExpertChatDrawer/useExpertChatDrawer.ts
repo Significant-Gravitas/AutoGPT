@@ -1,4 +1,5 @@
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { useChatInputDraft } from "@/app/(platform)/copilot/components/ChatInput/useChatInputDraft";
 import { queueFollowUpMessage } from "@/app/(platform)/copilot/helpers/queueFollowUpMessage";
 import { latestExpertSessionParams } from "@/app/(platform)/copilot/expertSessionQuery";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
@@ -36,6 +37,9 @@ export function useExpertChatDrawer({
   seedPrompt,
 }: Args) {
   const expertId = target?.expertId ?? null;
+  const draft = useChatInputDraft();
+  const { setValue: setDraftValue, setAttachments: setDraftAttachments } =
+    draft;
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [skipLatest, setSkipLatest] = useState(false);
@@ -114,7 +118,9 @@ export function useExpertChatDrawer({
     setMessages([]);
     pendingPromptRef.current = null;
     setSeedToSend(seedPrompt);
-  }, [threadKey, seedPrompt, setMessages]);
+    setDraftValue("");
+    setDraftAttachments([]);
+  }, [threadKey, seedPrompt, setMessages, setDraftValue, setDraftAttachments]);
 
   const startSessionRef = useRef(startSession);
   startSessionRef.current = startSession;
@@ -139,6 +145,8 @@ export function useExpertChatDrawer({
     setSessionId(null);
     setMessages([]);
     pendingPromptRef.current = null;
+    setDraftValue("");
+    setDraftAttachments([]);
   }
 
   async function startSession(firstMessage: string) {
@@ -207,6 +215,7 @@ export function useExpertChatDrawer({
   const isResolvingSession = !sessionId && wantsLatest && latestQuery.isLoading;
 
   return {
+    draft,
     sessionId,
     startNewThread,
     messages,

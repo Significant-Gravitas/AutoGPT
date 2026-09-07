@@ -23,7 +23,6 @@ import {
 } from "react";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import {
-  type Attachment,
   type WorkspaceAttachment,
   partitionAttachments,
   workspaceItemToAttachment,
@@ -47,6 +46,7 @@ import {
   getFilesFromClipboard,
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
+import { useChatInputDraft } from "./useChatInputDraft";
 import { useChatMentions } from "./useChatMentions";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
@@ -86,6 +86,7 @@ interface Props {
   /** Compact composer for side panels: tighter radius, flat shadow, smaller
    *  controls, and no per-message connection chip. */
   variant?: "default" | "compact";
+  draft?: ReturnType<typeof useChatInputDraft>;
 }
 
 export function ChatInput({
@@ -106,6 +107,7 @@ export function ChatInput({
   recipientPicker,
   stacked = false,
   variant = "default",
+  draft,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -115,7 +117,9 @@ export function ChatInput({
   // hide both survivors until someone created them.
   const showAdvancedComposerControls = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showWorkspaceFiles = useGetFlag(Flag.CHAT_WORKSPACE_FILES);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const localDraft = useChatInputDraft();
+  const currentDraft = draft ?? localDraft;
+  const { attachments, setAttachments } = currentDraft;
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
 
@@ -139,7 +143,7 @@ export function ChatInput({
       ]);
       onDroppedFilesConsumed?.();
     }
-  }, [droppedFiles, onDroppedFilesConsumed]);
+  }, [droppedFiles, onDroppedFilesConsumed, setAttachments]);
 
   const hasAttachments = attachments.length > 0;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
@@ -176,6 +180,7 @@ export function ChatInput({
     disabled: isTextareaDisabled,
     canSendEmpty: hasAttachments,
     inputId,
+    draft: currentDraft,
   });
 
   const mentions = useChatMentions({
@@ -369,7 +374,7 @@ export function ChatInput({
               onMultilineChange={setIsMultiline}
               className={cn(
                 stacked && "px-0.5 py-1",
-                isCompact && "text-sm leading-5 md:text-sm",
+                isCompact && "text-base leading-5 md:text-sm",
               )}
             />
             {isRecording && !value && (
