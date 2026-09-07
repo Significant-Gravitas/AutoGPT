@@ -1,6 +1,7 @@
 "use client";
 
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
@@ -10,6 +11,7 @@ import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/compon
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import {
   CredentialsProvidersContext,
+  type CredentialsProviderData,
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
@@ -23,6 +25,10 @@ interface Props {
 }
 
 type Grantable = ExpertGrant["credentials"][number];
+type SavedCredential = CredentialsProviderData["savedCredentials"][number];
+
+const UNUSABLE_ACCOUNT_ERROR =
+  "That account is missing the access this needs. Try connecting again.";
 
 export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
@@ -186,16 +192,68 @@ export function ConnectorRow({ row }: Props) {
         }
         open={isDialogOpen}
         onClose={() => setDialogOpen(false)}
-        onConnected={() => {
-          if (expertGrant) {
+        onConnected={(credential) => {
+          if (!expertGrant) {
+            row.onConnected();
+            return;
+          }
+          const provider = allProviders?.[row.provider];
+          // A flow that does not report its credential (or a provider list
+          // not loaded yet) leaves the refresh to find the new account.
+          if (!credential || !provider) {
             setAwaitingGrant(true);
             return;
           }
-          row.onConnected();
+          // Grant the reported credential directly: a re-auth that upgraded
+          // an existing account keeps its id, which a refresh diff would
+          // never surface. One that cannot satisfy the row is an error, not
+          // a wait.
+          const usable = grantableAmong(row, provider, [
+            toSavedCredential(credential),
+          ]);
+          if (!usable) {
+            setGrantError(UNUSABLE_ACCOUNT_ERROR);
+            return;
+          }
+          setConnected(usable);
+          void grant(usable);
         }}
       />
     </div>
   );
+}
+
+/** The credential among `candidates` that satisfies `row`, shaped for a
+ *  grant. */
+function grantableAmong(
+  row: Row,
+  provider: CredentialsProviderData,
+  candidates: SavedCredential[],
+): Grantable | null {
+  if (candidates.length === 0) return null;
+  const match = findSavedUserCredentialByProviderAndType(
+    row.schema.credentials_provider ?? [],
+    row.schema.credentials_types ?? [],
+    row.schema.credentials_scopes,
+    { [row.provider]: { ...provider, savedCredentials: candidates } },
+    row.schema.discriminator_values,
+  );
+  return match
+    ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
+    : null;
+}
+
+/** The API reports absent fields as null; the provider list omits them. */
+function toSavedCredential(
+  credential: CredentialsMetaResponse,
+): SavedCredential {
+  return {
+    ...credential,
+    title: credential.title ?? undefined,
+    username: credential.username ?? undefined,
+    scopes: credential.scopes ?? undefined,
+    host: credential.host ?? undefined,
+  };
 }
 
 /** The credential that satisfies `row` and did not exist before Connect was
@@ -207,18 +265,11 @@ function newlyConnectedCredential(
 ): Grantable | null {
   const provider = allProviders?.[row.provider];
   if (!provider) return null;
-  const fresh = provider.savedCredentials.filter((c) => !knownIds.has(c.id));
-  if (fresh.length === 0) return null;
-  const match = findSavedUserCredentialByProviderAndType(
-    row.schema.credentials_provider ?? [],
-    row.schema.credentials_types ?? [],
-    row.schema.credentials_scopes,
-    { [row.provider]: { ...provider, savedCredentials: fresh } },
-    row.schema.discriminator_values,
+  return grantableAmong(
+    row,
+    provider,
+    provider.savedCredentials.filter((c) => !knownIds.has(c.id)),
   );
-  return match
-    ? { id: match.id, title: match.title ?? row.displayName, type: match.type }
-    : null;
 }
 
 /** The account a re-auth should upgrade in place. Signing in without it can

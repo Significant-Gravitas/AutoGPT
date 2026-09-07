@@ -1,5 +1,6 @@
 "use client";
 
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
 import {
@@ -30,9 +31,10 @@ interface Props {
   existing?: ExistingCredentialsOffer;
   open: boolean;
   onClose: () => void;
-  /** Fires only on a completed sign-in, unlike onClose. Using an existing
-   *  account goes through `existing.onUse` instead. */
-  onConnected?: () => void;
+  /** Fires only on a completed sign-in, unlike onClose, with the credential
+   *  the flow produced when it reports one. Using an existing account goes
+   *  through `existing.onUse` instead. */
+  onConnected?: (credential?: CredentialsMetaResponse) => void;
 }
 
 /** The onboarding connect flow (logo pair, "Connect AutoGPT to X",
@@ -84,18 +86,18 @@ export function ConnectCredentialDialog({
   }
 
   // The hook has already reset by the time it calls this.
-  function handleConnected() {
+  function handleConnected(credential?: CredentialsMetaResponse) {
     setAddingNew(false);
     setChosenId(null);
-    onConnected?.();
+    onConnected?.(credential);
     onClose();
   }
 
   // Device auth completes inside ConnectMethodView, bypassing the hook, so
   // this is the only place its reset can happen.
-  function handleDeviceAuthSuccess() {
+  function handleDeviceAuthSuccess(credential?: CredentialsMetaResponse) {
     reset();
-    handleConnected();
+    handleConnected(credential);
   }
 
   async function handleUseExisting() {

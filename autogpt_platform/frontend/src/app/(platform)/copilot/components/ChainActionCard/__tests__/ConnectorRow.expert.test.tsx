@@ -1,3 +1,4 @@
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ExistingCredentialsOffer } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/helpers";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import {
@@ -12,6 +13,8 @@ import { ConnectorRow } from "../ConnectorRow";
 import type { ConnectorRow as Row } from "../helpers";
 
 const mockGrant = vi.fn();
+// What the mocked dialog reports as the credential a sign-in produced.
+const mockReported: { current?: CredentialsMetaResponse } = {};
 const mockGrants = vi.fn(() => ({
   data: [] as { credential_id: string }[],
   refetch: vi.fn(),
@@ -36,7 +39,7 @@ vi.mock(
       open: boolean;
       existing?: ExistingCredentialsOffer;
       onClose: () => void;
-      onConnected?: () => void;
+      onConnected?: (credential?: CredentialsMetaResponse) => void;
     }) =>
       open ? (
         <div data-testid="connect-dialog">
@@ -51,7 +54,7 @@ vi.mock(
           {existing?.error && <span>{existing.error}</span>}
           <button
             onClick={() => {
-              onConnected?.();
+              onConnected?.(mockReported.current);
               onClose();
             }}
           >
@@ -65,6 +68,7 @@ vi.mock(
 afterEach(() => {
   cleanup();
   mockGrant.mockReset();
+  mockReported.current = undefined;
   mockGrants.mockReturnValue({ data: [], refetch: vi.fn() });
 });
 
@@ -280,6 +284,86 @@ describe("ConnectorRow in an expert chat", () => {
 describe("ConnectorRow after a sign-in in an expert chat", () => {
   const existing = { ...savedGithub, id: "old-cred", title: "Old GitHub" };
   const added = { ...savedGithub, id: "new-cred", title: "New GitHub" };
+
+  function reported(credential: typeof savedGithub) {
+    return { ...credential, username: null } as CredentialsMetaResponse;
+  }
+
+  it("grants the credential the sign-in reports without waiting for a refresh", async () => {
+    mockGrant.mockResolvedValue([]);
+    mockReported.current = reported(added);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith({
+        expertId: "expert-a",
+        data: { credential_ids: ["new-cred"] },
+      }),
+    );
+    expect(mockGrant).toHaveBeenCalledTimes(1);
+    expect(current.onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("grants a re-authenticated account that kept its id", async () => {
+    mockGrant.mockResolvedValue([]);
+    mockReported.current = reported(existing);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    await waitFor(() =>
+      expect(mockGrant).toHaveBeenCalledWith({
+        expertId: "expert-a",
+        data: { credential_ids: ["old-cred"] },
+      }),
+    );
+  });
+
+  it("reports an account that lacks the required scopes instead of granting it", async () => {
+    mockReported.current = reported(added);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+      schema: {
+        credentials_provider: ["github"],
+        credentials_types: ["oauth2"],
+        credentials_scopes: ["repo"],
+      },
+    });
+    render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    expect(
+      await screen.findByText(
+        "That account is missing the access this needs. Try connecting again.",
+      ),
+    ).toBeDefined();
+    expect(mockGrant).not.toHaveBeenCalled();
+    expect(current.select).not.toHaveBeenCalled();
+  });
 
   it("grants the account that appeared after Connect, not a pre-existing one", async () => {
     mockGrant.mockResolvedValue([]);

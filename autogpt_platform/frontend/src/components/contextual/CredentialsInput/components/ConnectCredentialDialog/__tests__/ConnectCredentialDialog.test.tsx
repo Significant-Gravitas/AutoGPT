@@ -288,6 +288,19 @@ describe("ConnectCredentialDialog", () => {
     expect(onClose).toHaveBeenCalledOnce();
     expect(apiKey.form.reset).toHaveBeenCalledOnce();
   });
+
+  it("hands the produced credential to onConnected", () => {
+    const onConnected = vi.fn();
+    renderDialog({ onConnected });
+    const produced = { id: "new-cred", provider: "github", type: "oauth2" };
+
+    const { onSuccess } = mockUseOAuthConnect.mock.calls[0][0] as {
+      onSuccess: (credential?: unknown) => void;
+    };
+    act(() => onSuccess(produced));
+
+    expect(onConnected).toHaveBeenCalledWith(produced);
+  });
 });
 
 describe("ConnectCredentialDialog with existing accounts", () => {
