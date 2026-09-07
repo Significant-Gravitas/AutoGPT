@@ -77,7 +77,7 @@ function RunMeta({ outcome, timezone, showAgentName }: Props) {
       </span>
     ) : null,
     showAgentName ? (
-      <span key="agent" className="font-medium text-zinc-500">
+      <span key="agent" className="max-w-40 truncate font-medium text-zinc-500">
         {outcome.agent_name}
       </span>
     ) : null,
@@ -87,6 +87,8 @@ function RunMeta({ outcome, timezone, showAgentName }: Props) {
     </span>,
   ].filter(Boolean);
 
+  // The meta keeps its width so the title, not the trigger and time, is what
+  // truncates on a narrow card; the agent name is the one unbounded part.
   return (
     <Text
       variant="small"
