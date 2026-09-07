@@ -21,6 +21,7 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
+    WEEKLY_BUDGET_MAX_CREDITS,
     Expert,
     ExpertActivity,
     ExpertActivityDay,
@@ -997,6 +998,43 @@ def test_update_expert_budget_rejects_negative(
     )
 
     response = client.patch("/experts/expert-1/budget", json={"weekly_budget": -1})
+
+    assert response.status_code == 422
+    mock_update.assert_not_awaited()
+
+
+def test_update_expert_budget_accepts_the_upper_bound(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_budget",
+        new_callable=AsyncMock,
+        return_value=_make_expert(weekly_budget=WEEKLY_BUDGET_MAX_CREDITS),
+    )
+
+    response = client.patch(
+        "/experts/expert-1/budget", json={"weekly_budget": WEEKLY_BUDGET_MAX_CREDITS}
+    )
+
+    assert response.status_code == 200
+    mock_update.assert_awaited_once_with(
+        test_user_id, "expert-1", WEEKLY_BUDGET_MAX_CREDITS
+    )
+
+
+def test_update_expert_budget_rejects_above_the_upper_bound(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_update = mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_budget",
+        new_callable=AsyncMock,
+    )
+
+    response = client.patch(
+        "/experts/expert-1/budget",
+        json={"weekly_budget": WEEKLY_BUDGET_MAX_CREDITS + 1},
+    )
 
     assert response.status_code == 422
     mock_update.assert_not_awaited()
