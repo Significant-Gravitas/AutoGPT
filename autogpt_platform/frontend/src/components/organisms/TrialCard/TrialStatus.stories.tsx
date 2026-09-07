@@ -31,8 +31,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Active: Story = {};
 
-export const CancellationScheduled: Story = {
+export const Canceled: Story = {
   args: {
-    trial: { ...meta.args.trial, cancel_at_period_end: true },
+    trial: { ...meta.args.trial, active: false, status: "canceled" },
   },
 };

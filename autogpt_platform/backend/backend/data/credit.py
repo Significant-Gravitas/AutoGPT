@@ -1601,13 +1601,10 @@ async def _cancel_customer_subscriptions(
     start billing once the trial ends and must be cleaned up on downgrade/upgrade to
     avoid double-charging or charging users who intended to cancel.
 
-    When ``at_period_end=True``, schedules cancellation at the end of the current
-    billing period instead of cancelling immediately — the user keeps their tier
-    until the period ends, then ``customer.subscription.deleted`` fires and the
-    webhook downgrades them to BASIC.
+    When ``at_period_end=True``, paid subscriptions retain access through their
+    paid period. Trials always end immediately without invoicing or proration.
 
-    Wraps every synchronous Stripe SDK call with run_in_threadpool so the async event
-    loop is never blocked. Raises stripe.StripeError on list/cancel failure so callers
+    Uses the async Stripe client. Raises stripe.StripeError on list/cancel failure so callers
     that need strict consistency can react; cleanup callers can catch and log instead.
 
     Returns the number of subscriptions cancelled/scheduled for cancellation.
@@ -1640,7 +1637,7 @@ async def _cancel_customer_subscriptions(
             if sub_id in seen_ids:
                 continue
             seen_ids.add(sub_id)
-            if at_period_end:
+            if at_period_end and status != "trialing":
                 # Stripe rejects modify(cancel_at_period_end=True) with 400 when a
                 # Subscription Schedule is attached (e.g. the user previously
                 # queued a paid→paid downgrade and is now clicking "Cancel").
@@ -1659,15 +1656,24 @@ async def _cancel_customer_subscriptions(
                 await stripe_call(
                     stripe.Subscription.modify_async, sub_id, cancel_at_period_end=True
                 )
+            elif status == "trialing":
+                canceled = await stripe_call(
+                    stripe.Subscription.cancel_async,
+                    sub_id,
+                    invoice_now=False,
+                    prorate=False,
+                )
+                if (sub.get("metadata") or {}).get("trial_enrollment_id"):
+                    await sync_subscription_from_stripe(dict(canceled))
             else:
                 await stripe_call(stripe.Subscription.cancel_async, sub_id)
     return len(seen_ids)
 
 
 async def cancel_stripe_subscription(user_id: str) -> bool:
-    """Schedule cancellation of all active/trialing Stripe subscriptions at period end.
+    """Cancel trials immediately and paid subscriptions at period end.
 
-    The subscription stays active until the end of the billing period so the user
+    A paid subscription stays active until the end of the billing period so the user
     keeps their tier for the time they already paid for. The ``customer.subscription.deleted``
     webhook fires at period end and downgrades the DB tier to BASIC.
 

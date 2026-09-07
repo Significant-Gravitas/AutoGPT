@@ -5,74 +5,16 @@ from datetime import UTC, datetime
 import stripe
 from prisma import Prisma
 from prisma.enums import SubscriptionTier
-from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState, get_subscription_trial
-from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_claims import claim_trial_identities
+from backend.data.subscription_trial_payment import Invoice as Invoice
 from backend.data.subscription_trial_payment import (
-    PaymentMethod,
-    get_customer_default_payment_method,
+    SubscriptionSnapshot as SubscriptionSnapshot,
 )
-
-
-class Invoice(BaseModel):
-    id: str
-    status: str | None = None
-    created: int
-    billing_reason: str | None = None
-
-
-class SubscriptionPrice(BaseModel):
-    id: str
-
-
-class SubscriptionItem(BaseModel):
-    price: SubscriptionPrice
-    quantity: int | None = None
-
-
-class SubscriptionItems(BaseModel):
-    data: list[SubscriptionItem]
-    has_more: bool = False
-
-
-class SubscriptionSnapshot(BaseModel):
-    id: str
-    customer: str
-    status: str
-    metadata: dict[str, str] = Field(default_factory=dict)
-    trial_start: int | None = None
-    trial_end: int | None = None
-    cancel_at_period_end: bool = False
-    default_payment_method: PaymentMethod | None = None
-    default_source: str | dict | None = None
-    customer_default_payment_method: PaymentMethod | None = None
-    pending_setup_intent: str | dict | None = None
-    latest_invoice: Invoice | None = None
-    items: SubscriptionItems | None = None
-
-    def has_accepted_price(self, offer: AcceptedTrialOffer) -> bool:
-        return bool(
-            self.items
-            and not self.items.has_more
-            and len(self.items.data) == 1
-            and self.items.data[0].price.id == offer.price_id
-            and self.items.data[0].quantity == 1
-        )
-
-    def has_verified_card(self, now: datetime) -> bool:
-        method = self.default_payment_method
-        if method is None and self.default_source is None:
-            method = self.customer_default_payment_method
-        return bool(
-            method
-            and method.type == "card"
-            and method.card
-            and (method.card.exp_year, method.card.exp_month) >= (now.year, now.month)
-            and not self.pending_setup_intent
-        )
+from backend.data.subscription_trial_payment import get_customer_default_payment_method
 
 
 async def reconcile_trial_subscription(
@@ -113,10 +55,6 @@ async def _reconcile_locked(
         return dict(raw), user.subscriptionTier
     if trial.subscription_id and trial.subscription_id != snapshot.id:
         raise ValueError("A different subscription already consumed this trial")
-    if trial.converted_at is None and not snapshot.has_accepted_price(trial.offer):
-        raise ValueError(
-            "Stripe items do not match the accepted trial price and quantity"
-        )
     if snapshot.default_payment_method is None and snapshot.default_source is None:
         snapshot.customer_default_payment_method = (
             await get_customer_default_payment_method(trial.customer_id)
@@ -125,6 +63,36 @@ async def _reconcile_locked(
     checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(
         trial, snapshot.id, tx
     )
+    if (
+        checkout_complete
+        and snapshot.status == "trialing"
+        and trial.converted_at is None
+    ):
+        method = snapshot.effective_payment_method()
+        duplicate = snapshot.has_verified_card(
+            now
+        ) and not await claim_trial_identities(
+            trial, method.card.fingerprint if method and method.card else None, tx
+        )
+        if snapshot.cancel_at_period_end or duplicate:
+            raw = await stripe_call(
+                stripe.Subscription.cancel_async,
+                snapshot.id,
+                invoice_now=False,
+                prorate=False,
+                expand=["default_payment_method", "latest_invoice"],
+            )
+            snapshot = SubscriptionSnapshot.model_validate(raw)
+            if snapshot.id != subscription_id or snapshot.status != "canceled":
+                raise ValueError("Stripe did not confirm trial cancellation")
+    if (
+        trial.converted_at is None
+        and snapshot.status in ("active", "trialing")
+        and not snapshot.has_accepted_price(trial.offer)
+    ):
+        raise ValueError(
+            "Stripe items do not match the accepted trial price and quantity"
+        )
     tier = (
         trial_subscription_tier(trial, snapshot, now)
         if checkout_complete
@@ -233,7 +201,7 @@ async def _save_snapshot(
 ) -> None:
     verified_at = (
         (trial.card_verified_at or now)
-        if checkout_complete and snapshot.has_verified_card(now)
+        if checkout_complete and tier == SubscriptionTier.TRIAL
         else None
     )
     consumed_at = trial.consumed_at
@@ -259,7 +227,11 @@ async def _save_snapshot(
             ),
             "cardVerifiedAt": verified_at,
             "startedAt": _timestamp(snapshot.trial_start),
-            "endsAt": _timestamp(snapshot.trial_end),
+            "endsAt": _timestamp(
+                snapshot.ended_at
+                if snapshot.status == "canceled" and snapshot.ended_at is not None
+                else snapshot.trial_end
+            ),
             "consumedAt": consumed_at,
             "convertedAt": converted_at,
             "stripeConversionInvoiceId": conversion_invoice_id,

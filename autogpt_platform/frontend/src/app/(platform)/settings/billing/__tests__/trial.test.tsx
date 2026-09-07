@@ -61,7 +61,7 @@ describe("trial billing", () => {
     expect(screen.queryByText(/0 one-time onboarding credits/i)).toBeNull();
   });
 
-  it("shows the accepted duration, card requirement, and conversion price", async () => {
+  it("shows accepted terms without onboarding-credit messaging", async () => {
     server.use(
       http.get("*/api/credits/trial", () =>
         HttpResponse.json({ eligible: true, offer }),
@@ -73,10 +73,12 @@ describe("trial billing", () => {
     ).toBeDefined();
     expect(screen.getByText(/card required/i)).toBeDefined();
     expect(screen.getByText(/\$20\.00.*month/i)).toBeDefined();
-    expect(screen.getByText(/one-time onboarding/i)).toBeDefined();
+    expect(
+      screen.queryByText(/onboarding credits|one-time onboarding/i),
+    ).toBeNull();
   });
 
-  it("does not promise another grant to an existing onboarding recipient", async () => {
+  it("omits credit messaging for an existing onboarding recipient", async () => {
     server.use(
       http.get("*/api/credits/trial", () =>
         HttpResponse.json({
@@ -87,10 +89,7 @@ describe("trial billing", () => {
       ),
     );
     render(<TrialCard />);
-    expect(
-      await screen.findByText(
-        /already received your one-time onboarding credits/i,
-      ),
-    ).toBeDefined();
+    await screen.findByRole("button", { name: /start 7-day trial/i });
+    expect(screen.queryByText(/onboarding credits/i)).toBeNull();
   });
 });

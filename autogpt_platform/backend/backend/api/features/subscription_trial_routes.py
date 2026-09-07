@@ -157,18 +157,33 @@ async def start_trial_checkout(
 @router.post("/cancel")
 async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
-    if trial is None or trial.subscription_id is None or trial.consumed_at is None:
+    if (
+        trial is None
+        or trial.subscription_id is None
+        or trial.consumed_at is None
+        or trial.converted_at is not None
+    ):
         raise HTTPException(409, "No trial subscription is available to cancel")
-    subscription = await stripe_call(
-        stripe.Subscription.retrieve_async, trial.subscription_id
-    )
-    if subscription.customer != trial.customer_id or subscription.status != "trialing":
-        raise HTTPException(409, "This trial has ended. Manage the plan in billing.")
-    subscription = await stripe_call(
-        stripe.Subscription.modify_async,
-        trial.subscription_id,
-        cancel_at_period_end=True,
-    )
+    try:
+        subscription = await stripe_call(
+            stripe.Subscription.retrieve_async, trial.subscription_id
+        )
+        if subscription.customer != trial.customer_id or subscription.status not in (
+            "trialing",
+            "canceled",
+        ):
+            raise HTTPException(
+                409, "This trial has ended. Manage the plan in billing."
+            )
+        if subscription.status == "trialing":
+            subscription = await stripe_call(
+                stripe.Subscription.cancel_async,
+                trial.subscription_id,
+                invoice_now=False,
+                prorate=False,
+            )
+    except stripe.StripeError as exc:
+        raise HTTPException(502, "Unable to cancel your trial. Please retry.") from exc
     await sync_subscription_from_stripe(dict(subscription))
     return await get_trial_status(user_id)
 

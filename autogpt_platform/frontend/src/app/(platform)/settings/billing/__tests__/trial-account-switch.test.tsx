@@ -111,7 +111,7 @@ describe("trial account isolation", () => {
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
     await screen.findByText(/\$30\.00/);
-    pending.resolve(trialResponse({ cancel_at_period_end: true }));
+    pending.resolve(trialResponse({ active: false, status: "canceled" }));
     await waitFor(() =>
       expect(
         screen

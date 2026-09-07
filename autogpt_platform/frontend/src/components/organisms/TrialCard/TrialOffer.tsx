@@ -24,17 +24,9 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
         {formatTrialPrice(offer)}, plus applicable tax, unless you cancel before
         the trial ends.
       </Text>
-      {trial.onboarding_credits_previously_received ||
-      offer.onboarding_credit_amount > 0 ? (
-        <Text variant="small">
-          {trial.onboarding_credits_previously_received
-            ? "You have already received your one-time onboarding credits. This trial does not add another grant."
-            : `Complete onboarding for ${offer.onboarding_credit_amount} one-time onboarding credits for automations.`}
-        </Text>
-      ) : null}
       <Text variant="small">
-        Trial usage is limited. Your billing page shows your remaining allowance
-        and cancellation options.
+        Trial usage is limited. Canceling ends trial access immediately. You can
+        manage your plan in billing.
       </Text>
       <Button
         variant="primary"

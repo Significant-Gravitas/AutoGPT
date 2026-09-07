@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import SubscriptionTier
@@ -164,3 +164,63 @@ async def test_old_attempt_is_acknowledged_without_rewriting_current_state(
     assert result is not None and result[1] == SubscriptionTier.PRO
     boundaries.user.update_many.assert_not_awaited()
     boundaries.subscriptiontrial.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reused_identity_cancels_trial_before_granting_access(
+    trial, subscription, boundaries
+):
+    canceled = {**subscription, "status": "canceled"}
+    with (
+        patch.object(
+            fulfillment,
+            "claim_trial_identities",
+            AsyncMock(return_value=False),
+            create=True,
+        ),
+        patch.object(
+            fulfillment.stripe.Subscription,
+            "cancel_async",
+            AsyncMock(return_value=canceled),
+        ) as cancel,
+    ):
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.NO_TIER
+    cancel.assert_awaited_once()
+    assert cancel.await_args.kwargs["invoice_now"] is False
+    assert cancel.await_args.kwargs["prorate"] is False
+    saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert saved["status"] == "canceled"
+    assert saved["consumedAt"] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed_items", [False, True])
+async def test_scheduled_portal_cancellation_ends_trial_immediately(
+    trial, subscription, boundaries, changed_items
+):
+    subscription["cancel_at_period_end"] = True
+    if changed_items:
+        subscription["items"] = None
+    canceled = {**subscription, "status": "canceled", "cancel_at_period_end": False}
+    with patch.object(
+        fulfillment.stripe.Subscription,
+        "cancel_async",
+        AsyncMock(return_value=canceled),
+    ) as cancel:
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.NO_TIER
+    cancel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_canceled_subscription_revokes_access_even_if_items_changed(
+    trial, subscription, boundaries
+):
+    subscription.update(status="canceled", items=None)
+    result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.NO_TIER
+    assert (
+        boundaries.subscriptiontrial.update.await_args.kwargs["data"]["cardVerifiedAt"]
+        is None
+    )

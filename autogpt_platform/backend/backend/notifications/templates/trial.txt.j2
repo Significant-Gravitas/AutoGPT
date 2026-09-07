@@ -4,7 +4,6 @@ Hi {{ user_name }},
 
 {% if kind == 'started' %}
 Your card is set up and your trial is ready. Pick a real task and give AutoGPT a first run.
-Complete onboarding to receive your one-time {{ onboarding_credit_amount }} automation credits. If you already received onboarding credits, they won't be granted a second time.
 Unless you cancel before {{ ends_label }}, your plan starts automatically at {{ plan.price_display }}. Applicable tax may be added. Trial access is subject to your trial allowance.
 {% elif kind == 'ending' %}
 Your trial ends {{ ends_label }}. Unless you cancel before then, your saved card will be charged {{ plan.price_display }} for your {{ plan.name }} plan. Applicable tax may be added.

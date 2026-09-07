@@ -681,7 +681,10 @@ async def test_cancel_stripe_subscription_no_active():
             "backend.data.credit.stripe.Subscription.list_async",
             return_value=mock_subscriptions,
         ),
-        patch("backend.data.credit.stripe.Subscription.cancel_async") as mock_cancel,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         mock_cancel.assert_not_called()
@@ -707,7 +710,7 @@ async def test_cancel_stripe_subscription_raises_on_list_failure():
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_trialing():
-    """Trialing subs must also be scheduled for cancellation, else users get billed after trial end."""
+    """Trial cancellation ends access without invoicing or prorating."""
     active_subs = MagicMock()
     active_subs.data = []
     active_subs.has_more = False
@@ -733,14 +736,21 @@ async def test_cancel_stripe_subscription_cancels_trialing():
             side_effect=list_side_effect,
         ),
         patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
-        mock_modify.assert_called_once_with("sub_trial_123", cancel_at_period_end=True)
+        mock_cancel.assert_called_once_with(
+            "sub_trial_123", invoice_now=False, prorate=False
+        )
+        mock_modify.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_active_and_trialing():
-    """Both active AND trialing subs present → both get scheduled for cancellation, no duplicates."""
+    """Paid access lasts through the paid period; trial access ends now."""
     active_subs = MagicMock()
     active_subs.data = [
         stripe.Subscription.construct_from(
@@ -770,10 +780,17 @@ async def test_cancel_stripe_subscription_cancels_active_and_trialing():
             side_effect=list_side_effect,
         ),
         patch("backend.data.credit.stripe.Subscription.modify_async") as mock_modify,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
     ):
         await cancel_stripe_subscription("user-1")
         modified_ids = {call.args[0] for call in mock_modify.call_args_list}
-        assert modified_ids == {"sub_active_1", "sub_trial_2"}
+        assert modified_ids == {"sub_active_1"}
+        mock_cancel.assert_called_once_with(
+            "sub_trial_2", invoice_now=False, prorate=False
+        )
 
 
 @pytest.mark.asyncio

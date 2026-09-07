@@ -5,6 +5,7 @@ import pytest
 import stripe
 from prisma import Prisma
 
+from backend.data import subscription_trial_stripe as fulfillment
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 
@@ -65,7 +66,7 @@ def subscription(trial):
         "default_payment_method": {
             "id": "pm_1",
             "type": "card",
-            "card": {"exp_month": 12, "exp_year": 2030},
+            "card": {"exp_month": 12, "exp_year": 2030, "fingerprint": "fp_test"},
         },
         "pending_setup_intent": None,
         "items": {
@@ -100,6 +101,9 @@ def boundaries(subscription, session):
     tx.subscriptiontrial = MagicMock(update=AsyncMock())
     tx.user = MagicMock(update_many=AsyncMock())
     with (
+        patch.object(
+            fulfillment, "claim_trial_identities", AsyncMock(return_value=True)
+        ),
         patch.object(
             stripe.Customer,
             "retrieve_async",

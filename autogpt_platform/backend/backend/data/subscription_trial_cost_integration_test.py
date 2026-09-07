@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from prisma.models import SubscriptionTrial
 
-from backend.data import trial_notifications_integration_test as fixtures
+from backend.data import subscription_trial_integration_fixtures as fixtures
 from backend.data.db_manager import DatabaseManager
 from backend.data.subscription_trial import (
     get_subscription_trial,

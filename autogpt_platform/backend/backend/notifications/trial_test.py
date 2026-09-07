@@ -1,14 +1,11 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import NotificationType
 
-from backend.data.notifications import (
-    NotificationResult,
-    SubscriptionPlan,
-    TrialUpdateData,
-)
+from backend.data.notifications import NotificationResult
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
 from backend.notifications import trial as notices
@@ -102,67 +99,73 @@ def test_trial_email_escapes_user_supplied_name(trial, urls):
     assert "&lt;script&gt;" in email.html
 
 
+def test_trial_welcome_does_not_advertise_onboarding_credits(trial, urls):
+    data = notices.trial_notice_data(trial, "started", "Sam")
+    email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
+    for body in (email.html, email.text):
+        assert "onboarding credits" not in body
+        assert "automation credits" not in body
+
+
 @pytest.mark.asyncio
-async def test_queue_failure_preserves_durable_notice_for_recovery(trial):
+@pytest.mark.parametrize("outcome", ["sent", "duplicate", "publish_failed", "raised"])
+async def test_notice_uses_shared_notification_queue(trial, outcome):
     raw = {
-        "id": "sub_1",
-        "customer": "cus_1",
+        "id": trial.subscription_id,
+        "customer": trial.customer_id,
         "status": "trialing",
+        "trial_end": int(trial.ends_at.timestamp()),
         "metadata": {
             "trial_enrollment_id": trial.id,
             "user_id": trial.user_id,
             "trial_checkout_attempt": str(trial.checkout_attempt),
         },
-        "trial_end": int(trial.ends_at.timestamp()),
     }
-    persist = AsyncMock(return_value=MagicMock(id="notice-1", created=True))
+    queue = AsyncMock(
+        return_value=NotificationResult(success=outcome != "publish_failed"),
+        side_effect=RuntimeError("queue unavailable") if outcome == "raised" else None,
+    )
     with (
-        patch.object(
-            notices.stripe.Subscription, "retrieve_async", AsyncMock(return_value=raw)
-        ),
+        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
         patch.object(
             notices,
             "credit_db",
             return_value=MagicMock(
-                get_subscription_trial=AsyncMock(return_value=trial),
-                enqueue_trial_notification=persist,
+                get_subscription_trial=AsyncMock(return_value=trial)
             ),
         ),
         patch.object(
             notices,
             "user_db",
             return_value=MagicMock(
-                get_user_by_id=AsyncMock(return_value=MagicMock(name="Sam"))
+                get_user_by_id=AsyncMock(return_value=SimpleNamespace(name="Sam"))
             ),
         ),
         patch.object(
-            notices,
-            "trial_notice_data",
-            return_value=TrialUpdateData(
-                user_name="Sam",
-                kind="started",
-                ends_label="17 Sep 2026",
-                onboarding_credit_amount=300,
-                offer_version="offer-v1",
-                plan=SubscriptionPlan(
-                    name="Pro",
-                    cycle="monthly",
-                    cycle_noun="month",
-                    label="Pro",
-                    price_display="$20.00 / month",
-                ),
-            ),
+            notices, "claim_once", AsyncMock(return_value=outcome != "duplicate")
         ),
-        patch.object(
-            notices,
-            "queue_trial_delivery",
-            AsyncMock(return_value=NotificationResult(success=False)),
-        ),
+        patch.object(notices, "release_claim", AsyncMock()) as release,
+        patch.object(notices, "queue_notification_async", queue),
         patch.object(notices, "_track_billing_event") as track,
     ):
-        assert await notices.notify_trial(raw, "started")
-    persist.assert_awaited_once()
-    track.assert_called_once()
+        if outcome in ("publish_failed", "raised"):
+            with pytest.raises(RuntimeError):
+                await notices.notify_trial(raw, "started")
+        else:
+            assert await notices.notify_trial(raw, "started")
+    if outcome == "duplicate":
+        queue.assert_not_awaited()
+    else:
+        queue.assert_awaited_once()
+        event = queue.await_args.args[0]
+        assert event.type == NotificationType.TRIAL_UPDATE
+        assert event.user_id == trial.user_id
+        assert event.data.notice_key == notices.trial_notice_key(trial, "started")
+    if outcome in ("publish_failed", "raised"):
+        release.assert_awaited_once_with(notices.trial_notice_key(trial, "started"))
+    else:
+        release.assert_not_awaited()
+    assert track.call_count == int(outcome == "sent")
 
 
 def test_canceled_trial_suppresses_late_ending_reminder(trial):

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import stripe
+from prisma.enums import NotificationType
 
 from backend.data.credit import (
     _invoice_subscription_id,
@@ -13,11 +14,16 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.db_accessors import credit_db, user_db
-from backend.data.notifications import SubscriptionPlan, TrialUpdateData
+from backend.data.notifications import (
+    NotificationEventModel,
+    SubscriptionPlan,
+    TrialUpdateData,
+)
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_trial import TrialState
+from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import format_amount
-from backend.notifications.queue import queue_trial_delivery
+from backend.notifications.queue import queue_notification_async
 
 logger = logging.getLogger(__name__)
 TRIAL_REMINDER_WINDOW = timedelta(days=3)
@@ -64,18 +70,19 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     data = trial_notice_data(trial, kind, user.name or "there")
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
-    receipt = await credit_db().enqueue_trial_notification(
-        user_id, trial.id, claim, data
-    )
-    result = await queue_trial_delivery(receipt.id)
-    if result.success:
-        await credit_db().mark_trial_notification_queued(receipt.id)
-    else:
-        logger.warning(
-            "Trial notice %s is durable and awaits queue recovery", receipt.id
-        )
-    if not receipt.created:
+    if not await claim_once(claim):
         return True
+    try:
+        result = await queue_notification_async(
+            NotificationEventModel[TrialUpdateData](
+                user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
+            )
+        )
+        if not result.success:
+            raise RuntimeError(f"Could not queue trial notice: {result.message}")
+    except Exception:
+        await release_claim(claim)
+        raise
     _track_billing_event(
         f"subscription_trial_{kind}",
         user_id,

@@ -229,32 +229,18 @@ model SubscriptionTrial {
   costMicrodollars          BigInt                      @default(0)
   createdAt                 DateTime                    @default(now())
   updatedAt                 DateTime                    @updatedAt
-  notifications             TrialNotificationDelivery[]
 
   @@index([status, endsAt])
   @@index([stripeCustomerId, id])
 }
 
-model TrialNotificationDelivery {
-  id                String            @id @default(uuid())
-  trialId           String
-  trial             SubscriptionTrial @relation(fields: [trialId], references: [id], onDelete: Cascade)
-  userId            String
-  idempotencyKey    String            @unique
-  payload           Json
-  status            String            @default("pending")
-  attempts          Int               @default(0)
-  nextAttemptAt     DateTime          @default(now())
-  nextWakeAt        DateTime          @default(now())
-  leaseToken        String?
-  leaseExpiresAt    DateTime?
-  providerMessageId String?           @unique
-  acceptedAt        DateTime?
-  lastError         String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+// No account/trial foreign key: deleting an account must not reset intro eligibility.
+model SubscriptionTrialClaim {
+  key       String   @id
+  trialId   String
+  createdAt DateTime @default(now())
 
-  @@index([status, nextWakeAt])
+  @@index([trialId])
 }
 
 model UserOnboarding {
