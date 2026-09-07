@@ -1353,16 +1353,6 @@ class CredentialRequirement(BaseModel):
 # ============================================================================
 
 
-class UploadWorkspaceFileResponse(BaseModel):
-    """Response after uploading a file to the user's workspace."""
-
-    file_uri: str = Field(description="URI to reference the uploaded file in agents")
-    file_name: str
-    size: int = Field(description="File size in bytes")
-    content_type: str
-    expires_in_hours: int
-
-
 class WorkspaceFileInfo(BaseModel):
     """Metadata for a file in the user's workspace."""
 
@@ -1373,6 +1363,14 @@ class WorkspaceFileInfo(BaseModel):
     size_bytes: int = Field(description="File size in bytes")
     created_at: datetime
     updated_at: datetime
+
+
+class UploadWorkspaceFileResponse(WorkspaceFileInfo):
+    """Response after uploading a file to the user's workspace."""
+
+    file_uri: str = Field(
+        description="URI to reference the uploaded file in agent file inputs"
+    )
 
 
 # ============================================================================
