@@ -109,6 +109,27 @@ describe("ConnectorRow in an expert chat", () => {
     expect(current.onConnected).toHaveBeenCalled();
   });
 
+  it("lets the user pick among several grantable accounts and still connect a new one", () => {
+    const current = row({
+      expertGrant: {
+        expertId: "expert-a",
+        credentials: [
+          { id: "cred-1", title: "Work GitHub", type: "oauth2" },
+          { id: "cred-2", title: "Personal GitHub", type: "oauth2" },
+        ],
+      },
+    });
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    expect(screen.getByText("Work GitHub")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Grant access" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Connect another" }));
+    expect(screen.getByTestId("connect-dialog")).toBeDefined();
+  });
+
   it("shows a retryable error when the grant fails", async () => {
     mockGrant.mockRejectedValue(new Error("nope"));
     const current = row({

@@ -3,6 +3,7 @@
 import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Select } from "@/components/atoms/Select/Select";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -24,6 +25,9 @@ export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [awaitingGrant, setAwaitingGrant] = useState(false);
   const [grantError, setGrantError] = useState<string | null>(null);
+  const [chosenCredentialId, setChosenCredentialId] = useState<string | null>(
+    null,
+  );
   const allProviders = useContext(CredentialsProvidersContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
@@ -97,7 +101,10 @@ export function ConnectorRow({ row }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
   }, [savedCredential?.id, row.selected, allProviders, awaitingGrant]);
 
-  const grantable = expertGrant?.credentials[0];
+  const grantableOptions = expertGrant?.credentials ?? [];
+  const grantable =
+    grantableOptions.find((c) => c.id === chosenCredentialId) ??
+    grantableOptions[0];
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -132,22 +139,46 @@ export function ConnectorRow({ row }: Props) {
           {expertGrant ? "Granted" : "Connected"}
         </span>
       ) : grantable ? (
-        <Button
-          variant="primary"
-          size="small"
-          className="shrink-0"
-          disabled={isGranting}
-          onClick={() =>
-            grant({
-              id: grantable.id,
-              provider: row.provider,
-              type: grantable.type,
-              title: grantable.title,
-            })
-          }
-        >
-          Grant access
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {grantableOptions.length > 1 && (
+            <Select
+              id={`grant-${row.provider}`}
+              label="Account to grant"
+              hideLabel
+              size="small"
+              wrapperClassName="mb-0"
+              value={grantable.id}
+              onValueChange={setChosenCredentialId}
+              options={grantableOptions.map((c) => ({
+                value: c.id,
+                label: c.title,
+              }))}
+            />
+          )}
+          <Button
+            variant="primary"
+            size="small"
+            disabled={isGranting}
+            onClick={() =>
+              grant({
+                id: grantable.id,
+                provider: row.provider,
+                type: grantable.type,
+                title: grantable.title,
+              })
+            }
+          >
+            Grant access
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            disabled={isGranting}
+            onClick={() => setDialogOpen(true)}
+          >
+            Connect another
+          </Button>
+        </div>
       ) : (
         <Button
           variant="primary"
