@@ -31,12 +31,19 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
 from backend.copilot.service import strip_server_injected_tags
-from backend.data.db_accessors import workspace_db
+from backend.data.db_accessors import experts_db, workspace_db
 from backend.data.redis_client import get_redis_async
+from backend.data.workspace_scope import (
+    EXPERT_SKILL_SCOPE_DENIED,
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+    expert_skills_folder,
+)
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.workspace import WorkspaceManager
@@ -68,6 +75,14 @@ MAX_BODY_CHARS = 20_000
 MAX_TRIGGERS = 10
 MAX_TRIGGER_CHARS = 64
 SKILL_FOLDER = "/skills"
+
+
+def skill_folder(expert_id: str | None) -> str:
+    """Owner folder. Personal AutoPilot's skills live under ``/skills``; each
+    expert's own skills under ``/experts/<id>/skills``. Ownership is the
+    folder — there is no separate assignment record."""
+    return SKILL_FOLDER if expert_id is None else expert_skills_folder(expert_id)
+
 
 # Redis-cached index TTL.  Skill content changes only on store/delete so a
 # 60s TTL with explicit invalidation gives near-zero index latency on warm
@@ -231,9 +246,60 @@ def _validate_name(name: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def _get_user_skill_manager(user_id: str) -> WorkspaceManager:
+async def _get_user_skill_manager(
+    user_id: str, scope: WorkspaceScope | None = None
+) -> WorkspaceManager:
     workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id=None)
+    return WorkspaceManager(user_id, workspace.id, session_id=None, scope=scope)
+
+
+async def resolve_skill_scope(
+    user_id: str | None, expert_id: str | None
+) -> WorkspaceScope | None:
+    """Workspace grants for an expert session's skill folder.
+
+    ``None`` means unrestricted — personal AutoPilot, REST callers, and
+    anonymous default-skill reads. The scope comes from the persisted expert
+    attribution on the session, never from a tool argument.
+    """
+    if not user_id or expert_id is None:
+        return None
+    return await workspace_db().resolve_expert_workspace_scope(user_id, expert_id)
+
+
+class SkillOwner(BaseModel):
+    """Whose skill folder a tool call operates on, plus the workspace scope
+    that call must run under."""
+
+    expert_id: str | None
+    scope: WorkspaceScope | None
+
+
+async def resolve_skill_owner(
+    user_id: str, session: ChatSession, requested_expert_id: str | None
+) -> SkillOwner | str:
+    """Decide the skill owner for a tool call, or return a denial message.
+
+    An expert session always operates on its own folder; naming any other
+    owner is refused. Personal AutoPilot operates on its own folder by
+    default and may name one of the owner's active experts to manage that
+    expert's skills.
+    """
+    if session.expert_id is not None:
+        if requested_expert_id and requested_expert_id != session.expert_id:
+            return EXPERT_SKILL_SCOPE_DENIED
+        return SkillOwner(
+            expert_id=session.expert_id,
+            scope=await resolve_skill_scope(user_id, session.expert_id),
+        )
+    if not requested_expert_id:
+        return SkillOwner(expert_id=None, scope=None)
+    expert = await experts_db().get_expert(
+        user_id, requested_expert_id, include_workflows=False
+    )
+    if expert is None:
+        return f"Expert '{requested_expert_id}' was not found on this account."
+    return SkillOwner(expert_id=expert.id, scope=None)
 
 
 # Redis lock key for serialising store_skill writes per user. A per-user
@@ -246,8 +312,8 @@ _SKILL_WRITE_LOCK_KEY_PREFIX = "copilot:skill_write:"
 _SKILL_WRITE_LOCK_TTL_SECONDS = 30
 
 
-def _skill_md_path(name: str) -> str:
-    return f"{SKILL_FOLDER}/{name}/SKILL.md"
+def _skill_md_path(name: str, expert_id: str | None = None) -> str:
+    return f"{skill_folder(expert_id)}/{name}/SKILL.md"
 
 
 def _load_default_body(skill: _DefaultSkill) -> str:
@@ -291,8 +357,15 @@ class SkillLimitError(Exception):
     """Raised by :func:`store_user_skill` when the per-user cap is reached."""
 
 
-async def delete_user_skill(user_id: str, name: str) -> str:
-    """Delete a user-distilled skill folder by slug.
+async def delete_user_skill(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> str:
+    """Delete a user-distilled skill folder by slug from *expert_id*'s folder
+    (personal AutoPilot's when ``None``).
 
     Returns the normalised slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
@@ -308,8 +381,8 @@ async def delete_user_skill(user_id: str, name: str) -> str:
     if slug in _DEFAULT_SKILLS_BY_NAME:
         raise BuiltInSkillError(f"'{slug}' is a built-in skill and cannot be deleted")
 
-    manager = await _get_user_skill_manager(user_id)
-    info = await manager.get_file_info_by_path(_skill_md_path(slug))
+    manager = await _get_user_skill_manager(user_id, scope)
+    info = await manager.get_file_info_by_path(_skill_md_path(slug, expert_id))
     if info is None:
         raise SkillNotFoundError(f"Skill '{slug}' not found")
 
@@ -320,7 +393,7 @@ async def delete_user_skill(user_id: str, name: str) -> str:
     # correlate later support requests.
     description_for_log = ""
     try:
-        raw = await manager.read_file(_skill_md_path(slug))
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -342,7 +415,7 @@ async def delete_user_skill(user_id: str, name: str) -> str:
 
     try:
         siblings = await manager.list_files(
-            path=f"{SKILL_FOLDER}/{slug}/",
+            path=f"{skill_folder(expert_id)}/{slug}/",
             limit=50,
             include_all_sessions=True,
         )
@@ -360,7 +433,9 @@ async def delete_user_skill(user_id: str, name: str) -> str:
                 sibling.path,
                 exc_info=True,
             )
-    await invalidate_skills_index_cache(user_id)
+    await invalidate_skills_index_cache(user_id, expert_id)
+    if expert_id is not None:
+        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
     return slug
 
 
@@ -372,12 +447,15 @@ async def store_user_skill(
     body: str,
     triggers: list[str] | None = None,
     version: str | None = None,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
 ) -> ParsedSkill:
     """Validate + persist a user-distilled skill, returning the stored skill.
 
-    Shared by the ``store_skill`` copilot tool and the REST ``POST /skills``
-    upload endpoint so both honour the same validation, per-user cap, and
-    write-lock semantics.  Raises :class:`ValueError` for any validation
+    The skill lands in *expert_id*'s folder (personal AutoPilot's when
+    ``None``) and becomes that owner's skill. Shared by the ``store_skill``
+    copilot tool and the REST ``POST /skills`` upload endpoint so both honour
+    the same validation, per-owner cap, and write-lock semantics.  Raises :class:`ValueError` for any validation
     failure, :class:`SkillLimitError` when the per-user cap is reached, and
     propagates ``VirusDetectedError`` / ``VirusScanError`` (and any other
     workspace write error) to the caller.
@@ -435,7 +513,7 @@ async def store_user_skill(
     try:
         lock = AsyncClusterLock(
             redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}",
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
             owner_id=uuid.uuid4().hex,
             timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
         )
@@ -452,13 +530,13 @@ async def store_user_skill(
             exc_info=True,
         )
     try:
-        manager = await _get_user_skill_manager(user_id)
-        # Enforce the per-user cap *before* we write.  When the lock IS held
+        manager = await _get_user_skill_manager(user_id, scope)
+        # Enforce the per-owner cap *before* we write.  When the lock IS held
         # this is a true atomic check-then-write — an upsert at-cap is safe
         # because no new slot is consumed.  When the lock FAILED to acquire,
         # the check is no longer atomic, so refuse any write at-or-above the
         # cap defensively (the caller can retry; a Redis blip is rare).
-        existing = await list_user_skills(user_id)
+        existing = await list_user_skills(user_id, expert_id)
         existing_slugs = {s.name for s in existing}
         at_cap = len(existing_slugs) >= MAX_USER_SKILLS
         is_new = name not in existing_slugs
@@ -494,12 +572,14 @@ async def store_user_skill(
         await manager.write_file(
             content=rendered.encode("utf-8"),
             filename="SKILL.md",
-            path=_skill_md_path(name),
+            path=_skill_md_path(name, expert_id),
             mime_type="text/markdown",
             overwrite=True,
             metadata=metadata,
         )
-        await invalidate_skills_index_cache(user_id)
+        await invalidate_skills_index_cache(user_id, expert_id)
+        if expert_id is not None:
+            await experts_db().add_expert_skill_name(user_id, expert_id, name)
         return parsed
     finally:
         if lock is not None and lock_held:
@@ -559,7 +639,9 @@ def _index_entry_from_metadata(slug: str, meta: dict) -> ParsedSkill | None:
     )
 
 
-async def _list_user_skills_from_workspace(user_id: str) -> list[ParsedSkill]:
+async def _list_user_skills_from_workspace(
+    user_id: str, expert_id: str | None = None
+) -> list[ParsedSkill]:
     """Workspace-side listing — no caching.  Body fields are always empty
     because the index never needs them; :func:`read_user_skill_with_body`
     is the path for retrieving full content.
@@ -571,7 +653,7 @@ async def _list_user_skills_from_workspace(user_id: str) -> list[ParsedSkill]:
     """
     manager = await _get_user_skill_manager(user_id)
     files = await manager.list_files(
-        path=f"{SKILL_FOLDER}/",
+        path=f"{skill_folder(expert_id)}/",
         limit=MAX_USER_SKILLS * 4,  # over-fetch in case of strays
         include_all_sessions=True,
     )
@@ -612,14 +694,17 @@ async def _list_user_skills_from_workspace(user_id: str) -> list[ParsedSkill]:
     return skills
 
 
-def _skills_cache_key(user_id: str) -> str:
-    return SKILLS_INDEX_CACHE_KEY.format(user_id=user_id)
+def _skills_cache_key(user_id: str, expert_id: str | None = None) -> str:
+    base = SKILLS_INDEX_CACHE_KEY.format(user_id=user_id)
+    return base if expert_id is None else f"{base}:expert:{expert_id}"
 
 
-async def _read_skills_cache(user_id: str) -> list[ParsedSkill] | None:
+async def _read_skills_cache(
+    user_id: str, expert_id: str | None = None
+) -> list[ParsedSkill] | None:
     try:
         redis = await get_redis_async()
-        raw = await redis.get(_skills_cache_key(user_id))
+        raw = await redis.get(_skills_cache_key(user_id, expert_id))
     except Exception:
         # Cache is best-effort — a redis blip must not break the turn.
         return None
@@ -645,7 +730,9 @@ async def _read_skills_cache(user_id: str) -> list[ParsedSkill] | None:
         return None
 
 
-async def _write_skills_cache(user_id: str, skills: list[ParsedSkill]) -> None:
+async def _write_skills_cache(
+    user_id: str, skills: list[ParsedSkill], expert_id: str | None = None
+) -> None:
     try:
         redis = await get_redis_async()
         payload = json.dumps(
@@ -660,7 +747,7 @@ async def _write_skills_cache(user_id: str, skills: list[ParsedSkill]) -> None:
             ]
         )
         await redis.set(
-            _skills_cache_key(user_id),
+            _skills_cache_key(user_id, expert_id),
             payload,
             ex=SKILLS_INDEX_CACHE_TTL_S,
         )
@@ -669,22 +756,26 @@ async def _write_skills_cache(user_id: str, skills: list[ParsedSkill]) -> None:
         pass
 
 
-async def invalidate_skills_index_cache(user_id: str) -> None:
+async def invalidate_skills_index_cache(
+    user_id: str, expert_id: str | None = None
+) -> None:
     """Drop the cached per-user skill index so the next turn rebuilds it.
     Called by ``store_skill`` / ``delete_user_skill`` so an edit shows up
     immediately rather than after the 60s TTL.
     """
     try:
         redis = await get_redis_async()
-        await redis.delete(_skills_cache_key(user_id))
+        await redis.delete(_skills_cache_key(user_id, expert_id))
     except Exception:
         # Cache invalidate is best-effort — at worst the user sees stale
         # state for up to ``SKILLS_INDEX_CACHE_TTL_S`` seconds.
         pass
 
 
-async def list_user_skills(user_id: str) -> list[ParsedSkill]:
-    """Return all skills the user has stored in workspace.
+async def list_user_skills(
+    user_id: str, expert_id: str | None = None
+) -> list[ParsedSkill]:
+    """Return the skills owned by *expert_id* (personal AutoPilot when ``None``).
 
     Two-level fast path: a 60s Redis cache covers warm turns, the
     ``WorkspaceFile.metadata`` index covers cold turns without any storage
@@ -693,16 +784,23 @@ async def list_user_skills(user_id: str) -> list[ParsedSkill]:
     parse as valid SKILL.md so a stray file in ``/skills/`` cannot break
     the index.
     """
-    cached = await _read_skills_cache(user_id)
+    cached = await _read_skills_cache(user_id, expert_id)
     if cached is not None:
         return cached
-    skills = await _list_user_skills_from_workspace(user_id)
-    await _write_skills_cache(user_id, skills)
+    skills = await _list_user_skills_from_workspace(user_id, expert_id)
+    await _write_skills_cache(user_id, skills, expert_id)
     return skills
 
 
-async def read_user_skill_with_body(user_id: str, name: str) -> ParsedSkill | None:
-    """Return a single user-stored skill with its body populated.
+async def read_user_skill_with_body(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> ParsedSkill | None:
+    """Return a single skill owned by *expert_id* (personal AutoPilot when
+    ``None``) with its body populated.
 
     Used by the ``read_skill`` MCP tool and the REST GET ``/skills/{name}``
     endpoint that powers the library UI's expand-to-view dialog.  Returns
@@ -712,11 +810,17 @@ async def read_user_skill_with_body(user_id: str, name: str) -> ParsedSkill | No
     slug = name.strip().lower()
     if not slug:
         return None
-    manager = await _get_user_skill_manager(user_id)
-    return await _parse_skill_from_workspace(manager, _skill_md_path(slug))
+    manager = await _get_user_skill_manager(user_id, scope)
+    return await _parse_skill_from_workspace(manager, _skill_md_path(slug, expert_id))
 
 
-async def list_user_skill_sibling_paths(user_id: str, name: str) -> list[str]:
+async def list_user_skill_sibling_paths(
+    user_id: str,
+    name: str,
+    *,
+    expert_id: str | None = None,
+    scope: WorkspaceScope | None = None,
+) -> list[str]:
     """Return the workspace paths of files siblings to ``SKILL.md`` in a
     user-stored skill's folder (``references/``, ``scripts/``, ``assets/``,
     or anything the model stashed there at distillation time).
@@ -730,9 +834,9 @@ async def list_user_skill_sibling_paths(user_id: str, name: str) -> list[str]:
     if not slug:
         return []
     try:
-        manager = await _get_user_skill_manager(user_id)
+        manager = await _get_user_skill_manager(user_id, scope)
         files = await manager.list_files(
-            path=f"{SKILL_FOLDER}/{slug}/",
+            path=f"{skill_folder(expert_id)}/{slug}/",
             limit=50,
             include_all_sessions=True,
         )
@@ -742,6 +846,47 @@ async def list_user_skill_sibling_paths(user_id: str, name: str) -> list[str]:
             "[skills] failed to list sibling files for %s", slug, exc_info=True
         )
         return []
+
+
+async def copy_skill_to_expert(user_id: str, expert_id: str, name: str) -> str | None:
+    """Give *expert_id* its own copy of one of personal AutoPilot's skills.
+
+    Returns the stored slug, or ``None`` when AutoPilot has no such skill.
+    Idempotent: an expert that already owns the slug keeps its copy. The
+    SKILL.md is re-validated through :func:`store_user_skill`; sibling files
+    are copied best-effort afterwards.
+    """
+    slug = name.strip().lower()
+    if not slug:
+        return None
+    manager = await _get_user_skill_manager(user_id)
+    if await manager.get_file_info_by_path(_skill_md_path(slug, expert_id)):
+        return slug
+    source = await read_user_skill_with_body(user_id, slug)
+    if source is None:
+        return None
+    stored = await store_user_skill(
+        user_id,
+        name=slug,
+        description=source.description,
+        body=source.body,
+        triggers=list(source.triggers),
+        version=source.version,
+        expert_id=expert_id,
+    )
+    for path in await list_user_skill_sibling_paths(user_id, slug):
+        relative = path[len(f"{SKILL_FOLDER}/{slug}/") :]
+        try:
+            await manager.write_file(
+                content=await manager.read_file(path),
+                filename=relative.rsplit("/", 1)[-1],
+                path=f"{skill_folder(expert_id)}/{slug}/{relative}",
+                mime_type=None,
+                overwrite=True,
+            )
+        except Exception:
+            logger.warning("[skills] failed to copy %s for expert", path, exc_info=True)
+    return stored.name
 
 
 def get_default_skills_for_index() -> list[ParsedSkill]:
@@ -791,17 +936,23 @@ def get_default_skills() -> list[ParsedSkill]:
     return result
 
 
-async def list_all_skills(user_id: str | None) -> list[ParsedSkill]:
-    """Default seeded skills first, then user-distilled skills.
+async def list_all_skills(
+    user_id: str | None, expert_id: str | None = None
+) -> list[ParsedSkill]:
+    """Default seeded skills first, then the owner's own skills.
 
     Defaults always lead so the model sees the built-in agent-building
     guide before any user customisation.  Index-only — default bodies
     are NOT loaded; :tool:`read_skill` re-reads them on demand via
     :func:`get_default_skills`.
+
+    *expert_id* selects whose skills follow the defaults: an expert's own
+    folder, or personal AutoPilot's when ``None``. Neither ever sees the
+    other's skills.
     """
     skills = get_default_skills_for_index()
     if user_id:
-        skills.extend(await list_user_skills(user_id))
+        skills.extend(await list_user_skills(user_id, expert_id))
     return skills
 
 
@@ -837,7 +988,9 @@ async def is_skills_feature_enabled(user_id: str | None) -> bool:
     return await is_feature_enabled(Flag.COPILOT_SKILLS, user_id, default=True)
 
 
-async def build_skills_context(user_id: str | None) -> str:
+async def build_skills_context(
+    user_id: str | None, expert_id: str | None = None
+) -> str:
     """Build the body of the ``<available_skills>`` block injected into
     the first user message.  Returns ``""`` if there are no skills to
     show — :func:`inject_user_context` then omits the block entirely so
@@ -846,10 +999,13 @@ async def build_skills_context(user_id: str | None) -> str:
     Also returns ``""`` when the ``COPILOT_SKILLS`` LD flag is off for
     this user, so the kill-switch fully suppresses the per-turn index
     cost (no list query, no Redis hit, nothing to cache).
+
+    ``expert_id`` is the session's persisted expert attribution; the index
+    then holds platform defaults plus that expert's own skills.
     """
     if not await is_skills_feature_enabled(user_id):
         return ""
-    skills = await list_all_skills(user_id)
+    skills = await list_all_skills(user_id, expert_id)
     index = render_skills_index(skills)
     if not index:
         return ""
@@ -868,11 +1024,22 @@ async def build_skills_context(user_id: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+_EXPERT_ID_PARAM = {
+    "type": "string",
+    "description": (
+        "Personal AutoPilot only: operate on this expert's own skills instead "
+        "of your own. Experts always use their own skills and cannot name "
+        "another owner."
+    ),
+}
+
+
 class StoreSkillResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SKILL_STORED
     name: str
     description: str
     triggers: list[str] = []
+    expert_id: str | None = None
 
 
 class ReadSkillResponse(ToolResponseBase):
@@ -883,16 +1050,19 @@ class ReadSkillResponse(ToolResponseBase):
     triggers: list[str] = []
     sibling_files: list[str] = []
     is_default: bool = False
+    expert_id: str | None = None
 
 
 class DeleteSkillResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SKILL_DELETED
     name: str
+    expert_id: str | None = None
 
 
 class ListSkillsResponse(ToolResponseBase):
     type: ResponseType = ResponseType.SKILL_LIST
     skills: list[dict[str, Any]]
+    expert_id: str | None = None
 
 
 class StoreSkillTool(BaseTool):
@@ -940,6 +1110,7 @@ class StoreSkillTool(BaseTool):
                     "items": {"type": "string"},
                     "description": "Optional tool/keyword triggers.",
                 },
+                "expert_id": _EXPERT_ID_PARAM,
             },
             "required": ["name", "description", "body"],
         }
@@ -956,12 +1127,18 @@ class StoreSkillTool(BaseTool):
         description: str = "",
         body: str = "",
         triggers: list[str] | None = None,
+        expert_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
+            )
+        owner = await resolve_skill_owner(user_id, session, expert_id)
+        if isinstance(owner, str):
+            return ErrorResponse(
+                message=owner, error="access_denied", session_id=session_id
             )
         if not await is_skills_feature_enabled(user_id):
             return ErrorResponse(
@@ -982,6 +1159,8 @@ class StoreSkillTool(BaseTool):
                 description=description,
                 body=body,
                 triggers=triggers,
+                expert_id=owner.expert_id,
+                scope=owner.scope,
             )
         except (VirusDetectedError, VirusScanError) as exc:
             logger.warning("[skills] virus scan failed for %s: %s", name, exc)
@@ -1004,12 +1183,18 @@ class StoreSkillTool(BaseTool):
             name=parsed.name,
             description=parsed.description,
             triggers=list(parsed.triggers),
+            expert_id=owner.expert_id,
             message=(
-                f"Skill '{parsed.name}' stored. It will appear in "
+                f"Skill '{parsed.name}' stored for "
+                f"{_owner_label(owner.expert_id)}. It will appear in "
                 "<available_skills> on the next turn."
             ),
             session_id=session_id,
         )
+
+
+def _owner_label(expert_id: str | None) -> str:
+    return "personal AutoPilot" if expert_id is None else f"expert {expert_id}"
 
 
 class ReadSkillTool(BaseTool):
@@ -1032,6 +1217,7 @@ class ReadSkillTool(BaseTool):
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Skill name."},
+                "expert_id": _EXPERT_ID_PARAM,
             },
             "required": ["name"],
         }
@@ -1047,6 +1233,7 @@ class ReadSkillTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         name: str = "",
+        expert_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -1087,9 +1274,21 @@ class ReadSkillTool(BaseTool):
                 session_id=session_id,
             )
 
+        owner = await resolve_skill_owner(user_id, session, expert_id)
+        if isinstance(owner, str):
+            return ErrorResponse(
+                message=owner, error="access_denied", session_id=session_id
+            )
+
         try:
-            manager = await _get_user_skill_manager(user_id)
-            raw = await manager.read_file(_skill_md_path(name))
+            manager = await _get_user_skill_manager(user_id, owner.scope)
+            raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
+        except WorkspaceAccessDeniedError:
+            return ErrorResponse(
+                message=EXPERT_SKILL_SCOPE_DENIED,
+                error="access_denied",
+                session_id=session_id,
+            )
         except FileNotFoundError:
             return ErrorResponse(
                 message=(
@@ -1130,7 +1329,7 @@ class ReadSkillTool(BaseTool):
         # the model knows what else lives in the bundle.
         try:
             siblings = await manager.list_files(
-                path=f"{SKILL_FOLDER}/{name}/",
+                path=f"{skill_folder(owner.expert_id)}/{name}/",
                 limit=50,
                 include_all_sessions=True,
             )
@@ -1150,6 +1349,7 @@ class ReadSkillTool(BaseTool):
             triggers=list(parsed.triggers),
             sibling_files=sibling_paths,
             is_default=False,
+            expert_id=owner.expert_id,
             message=f"Loaded skill '{name}'.",
             session_id=session_id,
         )
@@ -1172,6 +1372,7 @@ class DeleteSkillTool(BaseTool):
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Skill name."},
+                "expert_id": _EXPERT_ID_PARAM,
             },
             "required": ["name"],
         }
@@ -1185,12 +1386,18 @@ class DeleteSkillTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         name: str = "",
+        expert_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
+            )
+        owner = await resolve_skill_owner(user_id, session, expert_id)
+        if isinstance(owner, str):
+            return ErrorResponse(
+                message=owner, error="access_denied", session_id=session_id
             )
         if not await is_skills_feature_enabled(user_id):
             return ErrorResponse(
@@ -1199,7 +1406,15 @@ class DeleteSkillTool(BaseTool):
                 session_id=session_id,
             )
         try:
-            slug = await delete_user_skill(user_id, name)
+            slug = await delete_user_skill(
+                user_id, name, expert_id=owner.expert_id, scope=owner.scope
+            )
+        except WorkspaceAccessDeniedError:
+            return ErrorResponse(
+                message=EXPERT_SKILL_SCOPE_DENIED,
+                error="access_denied",
+                session_id=session_id,
+            )
         except ValueError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except BuiltInSkillError as exc:
@@ -1214,7 +1429,8 @@ class DeleteSkillTool(BaseTool):
 
         return DeleteSkillResponse(
             name=slug,
-            message=f"Skill '{slug}' deleted.",
+            expert_id=owner.expert_id,
+            message=f"Skill '{slug}' deleted for {_owner_label(owner.expert_id)}.",
             session_id=session_id,
         )
 
@@ -1232,11 +1448,15 @@ class ListSkillsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List all skills (defaults + user-distilled)."
+        return "List the skills available here (platform defaults + your own)."
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}, "required": []}
+        return {
+            "type": "object",
+            "properties": {"expert_id": _EXPERT_ID_PARAM},
+            "required": [],
+        }
 
     @property
     def requires_auth(self) -> bool:
@@ -1246,6 +1466,7 @@ class ListSkillsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        expert_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         if not await is_skills_feature_enabled(user_id):
@@ -1254,7 +1475,15 @@ class ListSkillsTool(BaseTool):
                 error="feature_disabled",
                 session_id=session.session_id,
             )
-        skills = await list_all_skills(user_id)
+        owner_id: str | None = None
+        if user_id:
+            owner = await resolve_skill_owner(user_id, session, expert_id)
+            if isinstance(owner, str):
+                return ErrorResponse(
+                    message=owner, error="access_denied", session_id=session.session_id
+                )
+            owner_id = owner.expert_id
+        skills = await list_all_skills(user_id, owner_id)
         payload = [
             {
                 "name": s.name,
@@ -1266,6 +1495,7 @@ class ListSkillsTool(BaseTool):
         ]
         return ListSkillsResponse(
             skills=payload,
-            message=f"{len(payload)} skill(s) available.",
+            expert_id=owner_id,
+            message=f"{len(payload)} skill(s) available for {_owner_label(owner_id)}.",
             session_id=session.session_id,
         )

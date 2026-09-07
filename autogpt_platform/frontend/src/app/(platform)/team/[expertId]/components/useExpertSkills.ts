@@ -40,7 +40,7 @@ export function useExpertSkills(expert: Expert) {
       },
     },
   );
-  const librarySkills = useListCopilotSkills({
+  const librarySkills = useListCopilotSkills(undefined, {
     query: { select: (res) => okData(res) ?? [] },
   });
   const { mutateAsync: updateSkills, isPending } = useUpdateExpertSkills();

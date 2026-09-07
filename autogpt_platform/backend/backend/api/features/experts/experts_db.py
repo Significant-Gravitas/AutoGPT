@@ -55,9 +55,12 @@ from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
 from backend.copilot.tools.skills import (
+    BuiltInSkillError,
+    SkillNotFoundError,
+    copy_skill_to_expert,
+    delete_user_skill,
     get_default_skill_with_body,
     list_user_skills,
-    read_user_skill_with_body,
 )
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
@@ -901,6 +904,7 @@ async def create_raised_expert(
         weekly_budget=weekly_budget,
         skills=resolved.skill_names,
     )
+    await _copy_library_skills(user_id, expert.id, resolved.skill_names)
     failed_attachments = await raise_attachments.install_workflows(
         user_id, expert.id, resolved.workflows
     )
@@ -911,6 +915,19 @@ async def create_raised_expert(
     else:
         hydrated = _to_model(expert)
     return RaiseResult(expert=hydrated, failed_attachments=failed_attachments)
+
+
+async def _copy_library_skills(user_id: str, expert_id: str, names: list[str]) -> None:
+    """Give a freshly raised expert its own copies of the AutoPilot skills it
+    was raised with. Defaults and marketplace names have nothing to copy;
+    a failed copy is logged, never fatal to the raise."""
+    for name in names:
+        if get_default_skill_with_body(name.strip().lower()) is not None:
+            continue
+        try:
+            await copy_skill_to_expert(user_id, expert_id, name)
+        except Exception:
+            logger.exception(f"Failed to copy skill {name!r} to expert #{expert_id}")
 
 
 async def _create_raised_expert_row(
@@ -973,9 +990,13 @@ async def update_skills(
     skills: list[str],
     marketplace_listing_ids: list[str] | None = None,
 ) -> Expert:
-    """Replace an expert's skill list. Names the expert does not already
-    carry must resolve to a library skill; the stored name is the skill's
-    canonical one so display and lookup agree."""
+    """Replace an expert's skill list.
+
+    Names the expert does not already carry must resolve to a library skill.
+    A personal-AutoPilot skill is copied into the expert's own folder so the
+    expert owns it from then on; names dropped from the list delete the
+    expert's copy. The stored name is the skill's canonical one so display
+    and lookup agree."""
     row = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -990,13 +1011,17 @@ async def update_skills(
 
     current = {name.lower(): name for name in row.skills or []}
     resolved = [
-        current.get(name.lower()) or await _resolve_library_skill_name(user_id, name)
+        current.get(name.lower())
+        or await _attach_library_skill(user_id, expert_id, name)
         for name in skills
     ]
     for listing_id in marketplace_listing_ids or []:
         name = await _resolve_marketplace_skill_name(listing_id)
         if name.lower() not in {r.lower() for r in resolved}:
             resolved.append(name)
+    kept = {r.lower() for r in resolved}
+    for dropped in [name for name in current.values() if name.lower() not in kept]:
+        await _detach_expert_skill(user_id, expert_id, dropped)
     await prisma.models.Expert.prisma().update(
         where={"id": row.id}, data={"skills": resolved}
     )
@@ -1019,14 +1044,14 @@ async def _resolve_marketplace_skill_name(store_listing_version_id: str) -> str:
     return listing.name
 
 
-async def _resolve_library_skill_name(user_id: str, name: str) -> str:
+async def _attach_library_skill(user_id: str, expert_id: str, name: str) -> str:
     slug = name.strip().lower()
     default = get_default_skill_with_body(slug)
     if default is not None:
         return default.name
-    stored = await read_user_skill_with_body(user_id, slug)
-    if stored is not None:
-        return stored.name
+    copied = await copy_skill_to_expert(user_id, expert_id, slug)
+    if copied is not None:
+        return copied
     # A skill whose frontmatter name differs from its folder slug (anything
     # not written through store_user_skill) is listed by the library UI under
     # the frontmatter name, so match on that too before giving up.
@@ -1037,6 +1062,49 @@ async def _resolve_library_skill_name(user_id: str, name: str) -> str:
     if listed is None:
         raise NotFoundError(f"Skill '{name}' is not in your library")
     return listed.name
+
+
+async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
+    try:
+        await delete_user_skill(user_id, name, expert_id=expert_id)
+    except (SkillNotFoundError, BuiltInSkillError, ValueError):
+        return
+
+
+async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
+    """Record a skill the expert now owns (idempotent, case-insensitive)."""
+    row = await _owned_active_expert(user_id, expert_id)
+    if row is None or name.lower() in {s.lower() for s in row.skills or []}:
+        return
+    await prisma.models.Expert.prisma().update(
+        where={"id": row.id}, data={"skills": [*(row.skills or []), name]}
+    )
+
+
+async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
+    """Forget a skill the expert no longer owns."""
+    row = await _owned_active_expert(user_id, expert_id)
+    if row is None:
+        return
+    remaining = [s for s in row.skills or [] if s.lower() != name.lower()]
+    if len(remaining) != len(row.skills or []):
+        await prisma.models.Expert.prisma().update(
+            where={"id": row.id}, data={"skills": remaining}
+        )
+
+
+async def _owned_active_expert(
+    user_id: str, expert_id: str
+) -> prisma.models.Expert | None:
+    return await prisma.models.Expert.prisma().find_first(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        }
+    )
 
 
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
