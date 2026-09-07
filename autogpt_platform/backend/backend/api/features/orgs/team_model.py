@@ -26,19 +26,29 @@ class TeamResponse(BaseModel):
     join_policy: str
     org_id: str
     member_count: int
+    is_member: bool
     created_at: datetime
 
     @staticmethod
-    def from_db(ws, member_count: int = 0) -> "TeamResponse":
+    def from_db(
+        ws,
+        member_count: int = 0,
+        is_member: bool = False,
+        redact_description: bool = False,
+    ) -> "TeamResponse":
+        # redact_description hides the description of PRIVATE teams an org admin
+        # can see for governance but isn't a member of ("governance without
+        # surveillance"); name/member_count/join_policy stay visible.
         return TeamResponse(
             id=ws.id,
             name=ws.name,
             slug=ws.slug,
-            description=ws.description,
+            description=None if redact_description else ws.description,
             is_default=ws.isDefault,
             join_policy=ws.joinPolicy,
             org_id=ws.orgId,
             member_count=member_count,
+            is_member=is_member,
             created_at=ws.createdAt,
         )
 
