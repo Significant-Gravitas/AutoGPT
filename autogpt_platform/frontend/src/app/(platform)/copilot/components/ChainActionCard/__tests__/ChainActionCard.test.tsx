@@ -29,6 +29,13 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   }),
 }));
 
+vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
+  useGrantExpertCredentials: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",
   () => ({

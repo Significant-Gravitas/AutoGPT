@@ -39,6 +39,7 @@ from .execution_utils import (
     wait_for_execution,
 )
 from .expert_scope import (
+    annotate_expert_grants,
     provider_slug,
     require_installed_workflow,
     ungranted_credential_hint,
@@ -670,8 +671,10 @@ class RunAgentTool(BaseTool):
         # --- Credential gate ---
         if missing_creds:
             requirements_creds_dict = build_missing_credentials_from_graph(graph, None)
-            missing_credentials_dict = build_missing_credentials_from_graph(
-                graph, graph_credentials
+            missing_credentials_dict = await annotate_expert_grants(
+                user_id,
+                expert_id,
+                build_missing_credentials_from_graph(graph, graph_credentials),
             )
             return graph_credentials, SetupRequirementsResponse(
                 message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE)

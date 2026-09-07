@@ -3,6 +3,7 @@ import type { CredentialField } from "@/components/contextual/CredentialsInput/c
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
+import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
@@ -76,6 +77,10 @@ export interface ConnectorRow {
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
   onConnected: () => void;
+  /** Set when an expert asked: an account credential only counts once the
+   *  expert has been granted it, so the row offers Grant access or grants a
+   *  freshly connected one itself. */
+  expertGrant?: ExpertGrant;
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -126,6 +131,7 @@ export function toConnectorRows(
       byName.get(provider)?.description ?? row.schema.description ?? null,
     schema: row.schema,
     selected: row.selected,
+    expertGrant: row.schema.expert_grant as ExpertGrant | undefined,
     select: (value?: CredentialsMetaInput) =>
       row.targets.forEach(({ request, key }) => request.onChange(key, value)),
     onConnected: () =>

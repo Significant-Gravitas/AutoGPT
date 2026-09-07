@@ -179,3 +179,32 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "granted-cred" not in hint and "other-cred" not in hint
     assert "grant_expert_credential" in hint
     assert none == "" and personal == ""
+
+
+async def test_missing_credentials_are_annotated_with_expert_grants(experts):
+    from backend.copilot.tools.expert_scope import annotate_expert_grants
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            MagicMock(
+                id="granted-cred", provider="github", title="GH granted", type="oauth2"
+            ),
+            MagicMock(
+                id="spare-cred", provider="github", title="GH spare", type="oauth2"
+            ),
+        ]
+    )
+    missing = {"github_credentials": {"provider": "github", "types": ["oauth2"]}}
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        annotated = await annotate_expert_grants("user-1", "expert-a", missing)
+        untouched = await annotate_expert_grants("user-1", None, missing)
+    grant = annotated["github_credentials"]["expert_grant"]
+    assert grant["expert_id"] == "expert-a"
+    assert [c["id"] for c in grant["credentials"]] == ["spare-cred"]
+    assert grant["credentials"][0]["type"] == "oauth2"
+    assert "expert_grant" not in missing["github_credentials"]
+    assert untouched is missing

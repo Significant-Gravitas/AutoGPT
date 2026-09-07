@@ -9,6 +9,7 @@ expert's resources.
 
 import logging
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -196,6 +197,40 @@ async def _ungranted_credentials(
         and c.id not in allowed
         and not is_system_credential(c.id)
     ]
+
+
+async def annotate_expert_grants(
+    user_id: str, expert_id: str | None, missing: dict[str, Any]
+) -> dict[str, Any]:
+    """Tell the setup card which expert is asking and what it could be granted.
+
+    Each missing credential gains an ``expert_grant`` entry so the card can
+    offer "Grant access" for an account credential the expert lacks, and can
+    grant a freshly connected one to the expert instead of leaving it
+    account-only. Returns a new mapping; personal AutoPilot passes through.
+    """
+    if expert_id is None or not missing:
+        return missing
+    providers = {str(entry.get("provider", "")) for entry in missing.values()} - {""}
+    candidates = await _ungranted_credentials(user_id, expert_id, providers)
+    return {
+        key: {
+            **entry,
+            "expert_grant": {
+                "expert_id": expert_id,
+                "credentials": [
+                    {
+                        "id": c.id,
+                        "title": c.title or str(c.provider),
+                        "type": str(c.type),
+                    }
+                    for c in candidates
+                    if str(c.provider) == str(entry.get("provider", ""))
+                ],
+            },
+        }
+        for key, entry in missing.items()
+    }
 
 
 async def ungranted_credential_hint(
