@@ -510,6 +510,49 @@ async def test_update_reconfigure_webhook_rejected_raises():
 
 
 @pytest.mark.asyncio
+async def test_update_reconfigure_validates_inputs_before_registering(
+    _mock_validate_execution_input,
+):
+    """Regular graph inputs are editable on a triggered preset, so the update
+    path must reject an invalid set before the webhook is re-registered —
+    otherwise every later delivery dies inside the executor's catch-all."""
+    _mock_validate_execution_input.side_effect = ValueError("field required: topic")
+    with _update_patches(current=_preset(webhook_id="wh-old")) as m:
+        with pytest.raises(InvalidInputError, match="Invalid preset inputs"):
+            await update_triggered_preset(
+                user_id=_USER,
+                preset_id="preset-1",
+                inputs={"_node_input_mask_trigger": {"repo": "x"}, "topic": None},
+                credentials={},
+            )
+    m["setup"].assert_not_awaited()
+    m["update"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_reconfigure_validates_mask_apart_from_graph_inputs(
+    _mock_validate_execution_input,
+):
+    """The trigger config goes to the node mask, everything else to graph
+    inputs — the same split the executor makes at delivery time."""
+    with _update_patches(current=_preset(webhook_id="wh-old")):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={
+                "_node_input_mask_trigger": {"repo": "owner/repo"},
+                "topic": "weather",
+            },
+            credentials={},
+        )
+    kwargs = _mock_validate_execution_input.await_args.kwargs
+    assert kwargs["graph_inputs"] == {"topic": "weather"}
+    assert kwargs["nodes_input_masks"] == {
+        "trigger-node": {"repo": "owner/repo", "payload": {}}
+    }
+
+
+@pytest.mark.asyncio
 async def test_update_reconfigure_missing_input_mask_raises():
     """Reconfiguring a triggered preset without the ``_node_input_mask_{node_id}``
     key is rejected before any webhook work happens."""

@@ -248,20 +248,26 @@ async def test_update_pause(session):
     assert tdb.update_triggered_preset.await_args.kwargs["is_active"] is False
 
 
-@pytest.mark.asyncio
-async def test_update_reconfigure_merges_into_trigger_mask(session):
-    """The model's flat trigger fields are merged into the nested
-    `_node_input_mask_` sub-dict, not at the top level, so the reconfiguration
-    actually reaches update_triggered_preset."""
+def _triggered_preset_db(inputs):
+    """A preset whose trigger config is nested under a mask key, plus the two
+    db handles UpdatePresetTool reaches through."""
     current = _preset()
-    current.inputs = {
-        "_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}
-    }
+    current.inputs = inputs
     current.credentials = {"github": MagicMock()}
     ldb = MagicMock()
     ldb.get_preset = AsyncMock(return_value=current)
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(return_value=_preset())
+    return current, ldb, tdb
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_config_merges_into_trigger_mask(session):
+    """`trigger_config` is merged into the nested `_node_input_mask_` sub-dict,
+    not at the top level, so the reconfiguration reaches the trigger."""
+    current, ldb, tdb = _triggered_preset_db(
+        {"_node_input_mask_abc": {"repo": "owner/repo", "events": ["push"]}}
+    )
     with (
         patch(f"{_PATH}.library_db", return_value=ldb),
         patch(f"{_PATH}.triggers_db", return_value=tdb),
@@ -270,7 +276,7 @@ async def test_update_reconfigure_merges_into_trigger_mask(session):
             user_id=_USER,
             session=session,
             preset_id="preset-1",
-            inputs={"events": ["push", "pull_request"]},
+            trigger_config={"events": ["push", "pull_request"]},
         )
     kwargs = tdb.update_triggered_preset.await_args.kwargs
     assert kwargs["inputs"] == {
@@ -280,6 +286,47 @@ async def test_update_reconfigure_merges_into_trigger_mask(session):
         },
     }
     assert kwargs["credentials"] == current.credentials
+
+
+@pytest.mark.asyncio
+async def test_update_graph_inputs_stay_out_of_the_trigger_mask(session):
+    """A triggered preset's own graph inputs are editable, and must land beside
+    the mask rather than inside it — inside, the graph input never changes and
+    the key pollutes the trigger config."""
+    _, ldb, tdb = _triggered_preset_db(
+        {"topic": "weather", "_node_input_mask_abc": {"repo": "owner/repo"}}
+    )
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            inputs={"topic": "sports"},
+        )
+    assert tdb.update_triggered_preset.await_args.kwargs["inputs"] == {
+        "topic": "sports",
+        "_node_input_mask_abc": {"repo": "owner/repo"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_config_without_a_trigger_is_rejected(session):
+    _, ldb, tdb = _triggered_preset_db({"topic": "weather"})
+    with (
+        patch(f"{_PATH}.library_db", return_value=ldb),
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+    ):
+        result = await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            trigger_config={"repo": "owner/repo"},
+        )
+    assert isinstance(result, ErrorResponse)
+    tdb.update_triggered_preset.assert_not_awaited()
 
 
 @pytest.mark.asyncio

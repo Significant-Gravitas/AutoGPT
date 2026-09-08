@@ -9,7 +9,10 @@ from backend.util.settings import Config
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
+    from prisma.models import AgentNodeExecutionInputOutput, AgentPreset
+
     from backend.blocks._base import AnyBlockSchema
+    from backend.data.graph import GraphModel
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
     from backend.integrations.providers import ProviderName
@@ -266,7 +269,7 @@ async def migrate_flat_triggered_preset_inputs():
         include={"InputPresets": True},
     )
 
-    n_migrated = 0
+    n_migrated, n_failed = 0, 0
 
     for preset in unwrapped_presets:
         try:
@@ -300,16 +303,22 @@ async def migrate_flat_triggered_preset_inputs():
 
             n_migrated += 1
         except Exception as e:
+            n_failed += 1
             logger.error(f"Failed to wrap trigger config of preset #{preset.id}: {e}")
             continue
 
-    if n_migrated:
+    if n_migrated or n_failed:
         logger.info(
-            f"Wrapped trigger config of {n_migrated} legacy triggered preset(s)"
+            f"Wrapped trigger config of {n_migrated} legacy triggered preset(s); "
+            f"{n_failed} failed"
         )
 
 
-def _holds_flat_trigger_config(preset, config_rows, graph) -> bool:
+def _holds_flat_trigger_config(
+    preset: "AgentPreset",
+    config_rows: list["AgentNodeExecutionInputOutput"],
+    graph: "GraphModel",
+) -> bool:
     """Whether a mask-less preset's inputs are a legacy flat trigger config.
 
     A run-template preset (real graph inputs, no webhook) can live on a graph

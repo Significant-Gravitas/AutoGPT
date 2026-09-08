@@ -3,14 +3,18 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { useSelectedTriggerView } from "./useSelectedTriggerView";
 
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  useToast: () => ({ toast: vi.fn(), toasts: [], dismiss: vi.fn() }),
-  toast: vi.fn(),
+  useToast: () => ({ toast: toastMock, toasts: [], dismiss: vi.fn() }),
+  toast: toastMock,
   useToastOnFail: () => vi.fn(),
 }));
+
+beforeEach(() => toastMock.mockClear());
 
 const PRESET_PATH = "/api/proxy/api/library/presets/:presetId";
 
@@ -116,4 +120,45 @@ test("does not send inputs when nothing changed", async () => {
   // and needlessly re-register its webhook.
   expect(patched!.name).toBe("Renamed");
   expect(patched).not.toHaveProperty("inputs");
+});
+
+test("refuses a trigger edit on a preset with no mask key", async () => {
+  // The cohort the SQL data migration skips: inputs are still flat, so there is
+  // no mask key to write the edited trigger config back into.
+  let patched = false;
+  server.use(
+    http.get(PRESET_PATH, () =>
+      HttpResponse.json({
+        id: "preset-1",
+        name: "Watcher",
+        description: "",
+        inputs: { repo: "owner/repo" },
+        credentials: {},
+      }),
+    ),
+    http.patch(PRESET_PATH, () => {
+      patched = true;
+      return HttpResponse.json({
+        id: "preset-1",
+        name: "Watcher",
+        description: "",
+        inputs: { repo: "owner/repo" },
+        credentials: {},
+      });
+    }),
+  );
+
+  const { result } = renderTriggerView();
+  await waitFor(() => expect(result.current.name).toBe("Watcher"));
+
+  act(() => result.current.setTriggerConfigValue("repo", "owner/other"));
+  act(() => result.current.handleSaveChanges());
+
+  // Saving used to drop the edit and still toast "Trigger updated".
+  await waitFor(() =>
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    ),
+  );
+  expect(patched).toBe(false);
 });
