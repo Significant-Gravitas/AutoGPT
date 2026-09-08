@@ -6,20 +6,24 @@ Blocks for slicing 3D models and getting pricing information from Slant3D.
 ## Slant3D Slicer
 
 ### What it is
-Slice a 3D model file and get pricing information
+Upload or reuse an STL file and estimate its printing cost
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends an STL file to Slant3D's slicing service to analyze the 3D model. The slicer calculates print parameters and returns pricing information based on the model's complexity, size, and material requirements.
+This block uploads a public STL URL using Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply file_id to reuse an existing upload. Set platform_id, or omit it when the account has exactly one enabled platform.
 
-Provide the URL to your STL file, and the block returns the calculated price for printing the model.
+The price is in USD for the requested quantity and excludes shipping. filament_id selects a public filament ID; omitting it uses Slant3D's default black PLA. The returned file_id can be reused in order items.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| file_url | URL of the 3D model file to slice (STL) | str | Yes |
+| file_url | Public STL URL to upload; ignored when file_id is set | str | No |
+| file_id | Previously uploaded Slant3D public file service ID | str | No |
+| platform_id | Platform ID for uploads; may be omitted with one enabled platform | str | No |
+| filament_id | Filament public ID; defaults to Slant3D's PLA Black | str | No |
+| quantity | Number of prints to estimate | int | No |
 
 ### Outputs
 
@@ -27,7 +31,8 @@ Provide the URL to your STL file, and the block returns the calculated price for
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | message | Response message | str |
-| price | Calculated price for printing | float |
+| price | Estimated printing price for the requested quantity in USD | float |
+| file_id | Slant3D public file service ID for order items | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

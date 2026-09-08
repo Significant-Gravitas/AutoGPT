@@ -3,68 +3,33 @@
 Blocks for managing 3D print orders through Slant3D.
 <!-- END MANUAL -->
 
-## Slant3D Cancel Order
-
-### What it is
-Cancel an existing order
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block cancels an existing order in the Slant3D system using the order ID. The cancellation request is sent to the Slant3D API and returns a status message confirming the cancellation.
-
-Orders can only be cancelled before they enter production. Check order status before attempting cancellation.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| order_id | Slant3D order ID to cancel | str | Yes |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| status | Cancellation status message | str |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Customer Cancellations**: Allow customers to cancel orders through your interface.
-
-**Error Recovery**: Cancel orders placed with incorrect details or specifications.
-
-**Order Management**: Implement cancellation functionality in order management dashboards.
-<!-- END MANUAL -->
-
----
-
 ## Slant3D Create Order
 
 ### What it is
-Create a new print order
+Create and process a print order, charging the Slant3D account payment method
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates a new 3D print order through the Slant3D API. Provide customer shipping details and a list of items to print (STL files with specifications). Each item includes file URL, quantity, and filament selection.
+This block uploads and confirms any public STL URLs, creates a draft, then processes it to charge the Slant3D account payment method and start production. Each item can reuse a file_id instead of uploading again. Provide customer shipping details, a positive quantity, and a filament public ID. Legacy color/profile values are accepted only when they identify one available filament.
 
-The block returns the Slant3D order ID which you can use for tracking and status updates.
+Set platform_id, or omit it when the account has exactly one enabled platform. The block returns the public order ID for tracking. Use Estimate Order first when the customer needs to approve a quote.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| order_number | Your custom order number (or leave blank for a random one) | str | No |
-| customer | Customer details for where to ship the item | CustomerDetails | Yes |
-| items | List of items to print | List[OrderItem] | Yes |
+| platform_id | Slant3D platform ID; may be omitted when the account has one enabled platform | str | No |
+| order_number | Your custom order reference, stored as orderNumber in Slant3D metadata | str | No |
+| customer | Customer shipping details | CustomerDetails | Yes |
+| items | Items to print | List[OrderItem] | Yes |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| order_id | Slant3D order ID | str |
+| order_id | Slant3D public order ID | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -80,22 +45,23 @@ The block returns the Slant3D order ID which you can use for tracking and status
 ## Slant3D Estimate Order
 
 ### What it is
-Get order cost estimate
+Create an uncharged draft order to estimate printing and shipping costs
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calculates a cost estimate for a potential order without actually placing it. Provide the same details as a create order request, and receive a breakdown of printing and shipping costs.
+This block creates an uncharged draft order and returns its public order ID together with printing, shipping, and total costs. Provide the same customer and item details as Create Order. Slant3D requires an account payment method to create a draft, but estimating does not charge it or start production.
 
-Use this for price quotes before customers commit to orders.
+After the customer approves the quote, pass the returned order_id to Process Order.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| order_number | Your custom order number (or leave blank for a random one) | str | No |
-| customer | Customer details for where to ship the item | CustomerDetails | Yes |
-| items | List of items to print | List[OrderItem] | Yes |
+| platform_id | Slant3D platform ID; may be omitted when the account has one enabled platform | str | No |
+| order_number | Your custom order reference, stored as orderNumber in Slant3D metadata | str | No |
+| customer | Customer shipping details | CustomerDetails | Yes |
+| items | Items to print | List[OrderItem] | Yes |
 
 ### Outputs
 
@@ -103,8 +69,9 @@ Use this for price quotes before customers commit to orders.
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | total_price | Total price in USD | float |
-| shipping_cost | Shipping cost | float |
-| printing_cost | Printing cost | float |
+| shipping_cost | Shipping cost in USD | float |
+| printing_cost | Printing cost in USD | float |
+| order_id | Uncharged draft ID; pass to Process Order to place it | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -120,30 +87,32 @@ Use this for price quotes before customers commit to orders.
 ## Slant3D Estimate Shipping
 
 ### What it is
-Get shipping cost estimate
+Create an uncharged draft order to estimate shipping costs
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block calculates shipping costs for a potential order based on the destination and items. It provides an estimate before placing the full order.
+This block creates an uncharged draft using the destination and items, then returns its shipping cost, currency, and public order ID. Slant3D requires an account payment method for drafts, but estimating does not charge it or start production.
 
-Use this to display shipping costs at checkout or calculate delivery options for customers.
+Use this to display shipping costs at checkout. Process the returned draft only after the customer approves the order.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| order_number | Your custom order number (or leave blank for a random one) | str | No |
-| customer | Customer details for where to ship the item | CustomerDetails | Yes |
-| items | List of items to print | List[OrderItem] | Yes |
+| platform_id | Slant3D platform ID; may be omitted when the account has one enabled platform | str | No |
+| order_number | Your custom order reference, stored as orderNumber in Slant3D metadata | str | No |
+| customer | Customer shipping details | CustomerDetails | Yes |
+| items | Items to print | List[OrderItem] | Yes |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
-| shipping_cost | Estimated shipping cost | float |
-| currency_code | Currency code (e.g., 'usd') | str |
+| shipping_cost | Estimated shipping cost in USD | float |
+| currency_code | Currency code | str |
+| order_id | Uncharged draft ID; pass to Process Order to place it | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -152,73 +121,6 @@ Use this to display shipping costs at checkout or calculate delivery options for
 **International Pricing**: Calculate shipping for different destinations to optimize pricing.
 
 **Cost Breakdown**: Provide transparent shipping cost breakdowns to customers.
-<!-- END MANUAL -->
-
----
-
-## Slant3D Get Orders
-
-### What it is
-Get all orders for the account
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block retrieves all orders associated with your Slant3D account. It returns a list of orders with their current status and details.
-
-Use this for order management dashboards or to sync order data with your systems.
-<!-- END MANUAL -->
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| orders | List of orders with their details | List[str] |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Order Dashboard**: Build dashboards showing all orders and their current status.
-
-**Sync Operations**: Regularly sync Slant3D orders with your internal order management system.
-
-**Reporting**: Generate reports on order volume and status distribution.
-<!-- END MANUAL -->
-
----
-
-## Slant3D Tracking
-
-### What it is
-Track order status and shipping
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block retrieves the current status and shipping tracking information for a specific order. It returns the order status and any available tracking numbers.
-
-Use this to provide customers with real-time order status updates.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| order_id | Slant3D order ID to track | str | Yes |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| status | Order status | str |
-| tracking_numbers | List of tracking numbers | List[str] |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Order Status Page**: Display current order status to customers on your website.
-
-**Shipping Notifications**: Get tracking numbers to send shipping notifications to customers.
-
-**Customer Support**: Look up order status quickly for customer service inquiries.
 <!-- END MANUAL -->
 
 ---

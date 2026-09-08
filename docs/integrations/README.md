@@ -77,14 +77,15 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Reverse List Order](block-integrations/basic.md#reverse-list-order) | Reverses the order of elements in a list |
 | [Search Memory](block-integrations/basic.md#search-memory) | Search memories in Mem0 by user |
 | [Search Store Agents](block-integrations/system/store_operations.md#search-store-agents) | Search for agents in the store |
-| [Slant3D Cancel Order](block-integrations/slant3d/order.md#slant3d-cancel-order) | Cancel an existing order |
-| [Slant3D Create Order](block-integrations/slant3d/order.md#slant3d-create-order) | Create a new print order |
-| [Slant3D Estimate Order](block-integrations/slant3d/order.md#slant3d-estimate-order) | Get order cost estimate |
-| [Slant3D Estimate Shipping](block-integrations/slant3d/order.md#slant3d-estimate-shipping) | Get shipping cost estimate |
-| [Slant3D Filament](block-integrations/slant3d/filament.md#slant3d-filament) | Get list of available filaments |
-| [Slant3D Get Orders](block-integrations/slant3d/order.md#slant3d-get-orders) | Get all orders for the account |
-| [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
-| [Slant3D Tracking](block-integrations/slant3d/order.md#slant3d-tracking) | Track order status and shipping |
+| [Slant3D Cancel Order](block-integrations/slant3d/order_status.md#slant3d-cancel-order) | Cancel an order before production starts |
+| [Slant3D Create Order](block-integrations/slant3d/order.md#slant3d-create-order) | Create and process a print order, charging the Slant3D account payment method |
+| [Slant3D Estimate Order](block-integrations/slant3d/order.md#slant3d-estimate-order) | Create an uncharged draft order to estimate printing and shipping costs |
+| [Slant3D Estimate Shipping](block-integrations/slant3d/order.md#slant3d-estimate-shipping) | Create an uncharged draft order to estimate shipping costs |
+| [Slant3D Filament](block-integrations/slant3d/filament.md#slant3d-filament) | Get available filaments, their public IDs, and material and color details |
+| [Slant3D Get Orders](block-integrations/slant3d/order_status.md#slant3d-get-orders) | Get all orders for the account |
+| [Slant3D Process Order](block-integrations/slant3d/order_status.md#slant3d-process-order) | Process an existing draft, charging the Slant3D account payment method and starting production |
+| [Slant3D Slicer](block-integrations/slant3d/slicing.md#slant3d-slicer) | Upload or reuse an STL file and estimate its printing cost |
+| [Slant3D Tracking](block-integrations/slant3d/order_status.md#slant3d-tracking) | Track order status and shipping |
 | [Store Value](block-integrations/basic.md#store-value) | Holds or receives a value and outputs it statically so that it can be used multiple times within the same agent run |
 | [Universal Type Converter](block-integrations/basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](block-integrations/basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
