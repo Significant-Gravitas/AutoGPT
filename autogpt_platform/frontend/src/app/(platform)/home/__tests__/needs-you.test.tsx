@@ -103,7 +103,7 @@ function makeDashboard(attention: HomeAttentionItem[]): HomeDashboardResponse {
       failed_count: 0,
       routine_count: 0,
       outcomes: [],
-      author: { kind: "autopilot", name: "Autopilot", role: "Head of AI" },
+      author: { kind: "autopilot", name: "AutoPilot", role: "Head of AI" },
     },
     active_tasks: [],
     upcoming_tasks: [],

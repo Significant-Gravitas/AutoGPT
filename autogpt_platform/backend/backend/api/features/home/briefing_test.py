@@ -626,7 +626,7 @@ def test_the_brief_is_authored_by_autopilot_whoever_did_the_work() -> None:
     assert briefing.outcomes[0].expert is not None
     assert briefing.outcomes[0].expert.name == "Ana"
     assert briefing.author == AUTOPILOT_BRIEFING_AUTHOR
-    assert briefing.author.name == "Autopilot"
+    assert briefing.author.name == "AutoPilot"
     assert briefing.author.role == "Head of AI"
     with pytest.raises(ValidationError):
         HomeBriefingAuthor(kind="expert", name="Ana", role="Researcher")

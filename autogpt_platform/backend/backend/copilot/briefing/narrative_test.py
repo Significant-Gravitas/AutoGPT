@@ -169,7 +169,7 @@ async def test_autopilot_authors_the_briefing_whatever_the_team_did():
         await compose_narrative(USER, content)
 
     system = mock.await_args.kwargs["messages"][0]["content"]
-    assert "You are Autopilot, the user's Head of AI" in system
+    assert "You are AutoPilot, the user's Head of AI" in system
     assert "You are Bo" not in system
     assert "hired expert" not in system
 

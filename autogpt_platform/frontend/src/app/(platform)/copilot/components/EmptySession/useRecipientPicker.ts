@@ -5,7 +5,7 @@ import type { RecipientOption } from "../ChatInput/components/RecipientChip";
 
 const AUTOPILOT_RECIPIENT: RecipientOption = {
   id: null,
-  name: "Autopilot",
+  name: "AutoPilot",
   avatarUrl: null,
 };
 
@@ -23,8 +23,8 @@ export function useRecipientPicker() {
 
   // An ?expertId= pointing at an expert the user can no longer address
   // (archived, deleted, or simply wrong) would leave the chip reading
-  // "Autopilot" while `createSession` still sent the id — which the backend
-  // rejects with a 404 on every send. Drop it so both agree on Autopilot.
+  // "AutoPilot" while `createSession` still sent the id — which the backend
+  // rejects with a 404 on every send. Drop it so both agree on AutoPilot.
   useEffect(
     function clearUnknownExpertParam() {
       if (!hasExpertsSettled || !expertIdParam) return;
@@ -48,7 +48,7 @@ export function useRecipientPicker() {
     recipient:
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,
-    // Only a pending param can be mis-rendered as "Autopilot"; without one the
+    // Only a pending param can be mis-rendered as "AutoPilot"; without one the
     // fallback is already the right answer.
     isLoadingRecipient: isLoadingExperts && !!expertIdParam,
     selectRecipient(id: string | null) {

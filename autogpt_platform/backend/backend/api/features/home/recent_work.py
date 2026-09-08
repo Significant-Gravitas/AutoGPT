@@ -2,7 +2,7 @@
 
 The card answers "who did what this week". Every run that finished and
 every durable thing produced — files written, integration actions taken,
-schedules set up — is attributed to the expert, workflow, or Autopilot
+schedules set up — is attributed to the expert, workflow, or AutoPilot
 that did it, so the two feeds land in the same block instead of describing
 the same day from different angles.
 """

@@ -2,7 +2,7 @@
 
 # AutoPilot is the account's built-in helper — the identity every session
 # without an expert speaks as, and the fixed author of the morning briefing.
-AUTOPILOT_NAME = "Autopilot"
+AUTOPILOT_NAME = "AutoPilot"
 AUTOPILOT_ROLE = "Head of AI"
 
 # Special message prefixes for text-based markers (parsed by frontend).

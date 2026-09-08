@@ -16,7 +16,7 @@ interface Props {
 }
 
 /** One card for what the agents did this week: the team (each expert and
- *  Autopilot) first, then the workflows that ran on their own. */
+ *  AutoPilot) first, then the workflows that ran on their own. */
 export function RecentWork({ dashboard, className }: Props) {
   const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
