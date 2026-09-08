@@ -337,7 +337,7 @@ describe("ConnectorRow in an expert chat", () => {
       </CredentialsProvidersContext.Provider>,
     );
     expect(screen.getByText("Needs this expert's access")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
     await waitFor(() =>
       expect(mockGrant).toHaveBeenCalledWith({
@@ -364,7 +364,7 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
     await waitFor(() => expect(current.onConnected).toHaveBeenCalled());
     expect(mockGrant.mock.invocationCallOrder[0]).toBeLessThan(
@@ -388,7 +388,7 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
     expect(
       await screen.findByText("Couldn't grant access. Try again."),
@@ -412,7 +412,7 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     expect(
       screen.getByRole("button", { name: "use-Work GitHub" }),
     ).toBeDefined();
@@ -437,7 +437,7 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
     expect(
       await screen.findByText("Couldn't grant access. Try again."),
@@ -462,7 +462,7 @@ describe("ConnectorRow in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
     expect(
       await screen.findByText("Expert is out of credentials seats"),
@@ -659,7 +659,7 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
     expect(
       await screen.findByText("Couldn't grant access. Try again."),
     ).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
     fireEvent.click(screen.getByRole("button", { name: "use-New GitHub" }));
     await waitFor(() => expect(mockGrant).toHaveBeenCalledTimes(2));
     expect(current.onConnected).toHaveBeenCalledTimes(1);

@@ -201,7 +201,7 @@ export function ConnectorRow({ row }: Props) {
           }
           onClick={openDialog}
         >
-          Connect
+          {grantableOptions.length > 0 ? "Grant access" : "Connect"}
         </Button>
       )}
 
