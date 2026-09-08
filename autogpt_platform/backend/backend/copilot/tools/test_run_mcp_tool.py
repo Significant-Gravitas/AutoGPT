@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
+from backend.data.model import OAuth2Credentials
 
 from ._test_data import make_session
 from .models import (
@@ -160,11 +161,6 @@ async def test_non_dict_tool_arguments_returns_error():
     assert "json object" in response.message.lower()
 
 
-# ---------------------------------------------------------------------------
-# Stage 1 — Discovery
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_discover_tools_returns_discovered_response():
     """Calling with only server_url triggers discovery and returns tool list."""
@@ -204,12 +200,22 @@ async def test_discover_tools_returns_discovered_response():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_discover_tools_with_credentials():
-    """Stored credentials are passed as Bearer token to MCPClient."""
+    """A legacy stored credential is sent as a Bearer header.
+
+    A real credential rather than a ``MagicMock``: the header is built from
+    ``mcp_auth_scheme`` metadata, and a mock answers every attribute lookup
+    truthily, which silently exercises the wrong branch.
+    """
     tool = RunMCPToolTool()
     session = make_session(_USER_ID)
 
-    mock_creds = MagicMock()
-    mock_creds.access_token = SecretStr("test-token-abc")
+    mock_creds = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: remote.mcpservers.org",
+        access_token=SecretStr("test-token-abc"),
+        scopes=[],
+        metadata={"mcp_server_url": _SERVER_URL},
+    )
     mock_tools = _make_tool_list("push_notification")
 
     with patch(
@@ -232,9 +238,9 @@ async def test_discover_tools_with_credentials():
                     session=session,
                     server_url=_SERVER_URL,
                 )
-                # Verify MCPClient was created with the resolved auth token
+                # Verify MCPClient was created with the resolved auth header
                 MockMCPClient.assert_called_once_with(
-                    _SERVER_URL, auth_token="test-token-abc"
+                    _SERVER_URL, authorization="Bearer test-token-abc"
                 )
 
     assert isinstance(response, MCPToolsDiscoveredResponse)
@@ -913,15 +919,27 @@ async def test_surface_connect_card_probe_timeout_reports_optimistically_connect
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
-    """HTTP 403 when creds ARE present → still fire setup card, drop the stale row.
+@pytest.mark.parametrize(
+    "status_code, expect_invalidated, expect_connected",
+    [
+        # 401 is the one status that means "this credential was refused".
+        (401, True, False),
+        # A 403 routinely means "valid token, not allowed to call *this*" —
+        # deleting on it forces a re-entry that fails identically, and a bare
+        # Connect button invites re-pasting the token that already works.
+        (403, False, True),
+    ],
+)
+async def test_auth_error_with_stale_creds_fires_setup_and_invalidates(
+    status_code, expect_invalidated, expect_connected
+):
+    """Auth error when creds ARE present → always fire the setup card; drop the
+    row only when the credential itself was refused.
 
     Stored creds whose ``access_token_expires_at`` is in the future locally
-    but which the server has revoked/expired don't get refreshed by
+    but which the server has revoked don't get refreshed by
     ``auto_lookup_mcp_credential`` — they come back live, the request 401s,
-    and the user is stuck.  The fix: on any 401/403, surface the setup card
-    so the user can re-auth, and delete the stale row so the next attempt
-    doesn't loop on the same dead token.
+    and the user is stuck until the dead row goes.
     """
     from backend.util.request import HTTPClientError
 
@@ -942,7 +960,7 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
         ):
             mock_client = AsyncMock()
             mock_client.initialize = AsyncMock(
-                side_effect=HTTPClientError("Forbidden", status_code=403)
+                side_effect=HTTPClientError("Auth error", status_code=status_code)
             )
             with patch(
                 "backend.copilot.tools.run_mcp_tool.MCPClient",
@@ -963,9 +981,15 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
                             server_url=_SERVER_URL,
                         )
                         mock_build.assert_called_once()
-                        mock_invalidate.assert_awaited_once_with(
-                            _USER_ID, "stale-cred-id"
+                        assert (
+                            mock_build.call_args.kwargs["connected"] is expect_connected
                         )
+                        if expect_invalidated:
+                            mock_invalidate.assert_awaited_once_with(
+                                _USER_ID, "stale-cred-id"
+                            )
+                        else:
+                            mock_invalidate.assert_not_awaited()
 
     assert response is mock_build.return_value
 
@@ -1213,17 +1237,22 @@ async def test_agptfile_ref_expanded_before_mcp_call():
     schema = {"type": "object", "properties": {"content": {"type": "string"}}}
     tool_schema = _make_tool_schema("notion-update-page", schema)
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
-        new_callable=AsyncMock,
-        return_value=expanded,
-    ) as mock_expand:
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
+            new_callable=AsyncMock,
+            return_value=expanded,
+        ) as mock_expand,
+    ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[tool_schema])
         mock_client.call_tool = AsyncMock(
@@ -1259,16 +1288,21 @@ async def test_agptfile_expansion_failure_returns_error():
     tool = RunMCPToolTool()
     session = make_session(_USER_ID)
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
-        new_callable=AsyncMock,
-        side_effect=FileRefExpansionError("missing.md not found"),
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.expand_file_refs_in_args",
+            new_callable=AsyncMock,
+            side_effect=FileRefExpansionError("missing.md not found"),
+        ),
     ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[])
@@ -1296,12 +1330,16 @@ async def test_no_agptfile_ref_skips_schema_lookup():
     session = make_session(_USER_ID)
     raw_args = {"url": "https://example.com"}
 
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
-    ), patch(
-        "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
-        new_callable=AsyncMock,
-        return_value=None,
+    with (
+        patch(
+            "backend.copilot.tools.run_mcp_tool.validate_url_host",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         mock_client = AsyncMock()
         mock_client.list_tools = AsyncMock(return_value=[])

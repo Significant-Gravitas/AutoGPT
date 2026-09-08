@@ -86,12 +86,12 @@ describe("minimap helpers", () => {
   });
 
   it("swells ticks toward the cursor and tapers with distance", () => {
-    expect(tickScale(3, null)).toBe(0.4);
+    expect(tickScale(3, null)).toBe(0.6);
     expect(tickScale(3, 3)).toBe(1);
     expect(tickScale(4, 3)).toBeCloseTo(0.8);
-    expect(tickScale(9, 3)).toBe(0.4);
+    expect(tickScale(9, 3)).toBe(0.6);
     expect(tickColor(0)).toBe("bg-zinc-800");
-    expect(tickColor(1)).toBe("bg-zinc-400");
-    expect(tickColor(4)).toBe("bg-zinc-300");
+    expect(tickColor(1)).toBe("bg-zinc-500");
+    expect(tickColor(4)).toBe("bg-zinc-400");
   });
 });

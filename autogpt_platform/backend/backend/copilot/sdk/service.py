@@ -48,13 +48,17 @@ from backend.copilot.model_router import (
     resolve_model_route,
 )
 from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.markers import append_error_marker
+from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
-from backend.integrations.codex.transport import PooledCodexRuntimeLease
+from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -65,7 +69,7 @@ from backend.util.prompt import (
 )
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotLLMModel, CopilotMode
+from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -124,9 +128,9 @@ from ..response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
+    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
-    StreamModeChanged,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -136,6 +140,7 @@ from ..response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
+    StreamToolDisplayAvailable,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
@@ -198,6 +203,11 @@ from .tool_adapter import (
     reset_tool_failure_counters,
     set_execution_context,
     wait_for_stash,
+)
+from .tool_display import (
+    SDKToolDisplayBridge,
+    stamp_tool_display_name,
+    strip_display_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -373,7 +383,17 @@ async def _consume_sdk_until_done(
     fires a synthetic re-prompt and invokes this again for the second
     pass — bounded to one re-prompt per turn.
     """
-    async for sdk_msg in _iter_sdk_messages(client, wake=ctx.compaction.hook_fired):
+    async for sdk_msg in _iter_sdk_messages(
+        client,
+        wake=ctx.compaction.hook_fired,
+        tool_display_wake=ctx.tool_display.ready if ctx.tool_display else None,
+    ):
+        for display in ctx.tool_display.drain() if ctx.tool_display else []:
+            dispatched = _dispatch_response(
+                display, acc, ctx, state, False, ctx.log_prefix
+            )
+            if dispatched is not None:
+                yield dispatched
         # Heartbeat sentinel — refresh lock and keep SSE alive
         if sdk_msg is None:
             await ctx.lock.refresh()
@@ -797,6 +817,13 @@ async def _consume_sdk_until_done(
                     ),
                 ):
                     continue
+                # The envelope goes out just ahead of the error it explains,
+                # so a client acting on it has it in hand before the turn is
+                # reported failed. Same contract as the baseline path.
+                if isinstance(dispatched, StreamError):
+                    codex_failure = _provider_failure_for(ctx)
+                    if codex_failure is not None:
+                        yield StreamProviderFailure(failure=codex_failure.as_part())
                 yield dispatched
 
             # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -1131,6 +1158,7 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 # ``None`` when ``events_yielded > 0``.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
+    StreamToolDisplayAvailable,
     # Compaction UI events are cosmetic and must not block retry — they're
     # emitted before the SDK query on compacted attempts.
     StreamStartStep,
@@ -1355,6 +1383,12 @@ class _StreamContext:
     attachments: "PreparedAttachments"
     compaction: CompactionTracker
     lock: AsyncClusterLock
+    # The Codex gateway for this turn, when the route is a ChatGPT
+    # subscription. Carried here so the error path can ask it what actually
+    # failed: by the time a provider failure reaches this layer it is CLI
+    # text, and the gateway holds the last point at which it was typed.
+    codex_gateway: "CodexAnthropicGateway | None" = None
+    tool_display: SDKToolDisplayBridge | None = None
 
 
 # Per-retry token budgets for the no-transcript (use_resume=False) path.
@@ -1387,11 +1421,18 @@ _COMPACTION_HEADROOM_TOKENS: int = 20_000
 def _compaction_target_tokens(model: str) -> int:
     """Compaction target consistent with the CLI's autocompact threshold.
 
-    Mirrors the bundled CLI's ``i6_()`` formula for autocompact:
+    Mirrors the bundled CLI's formula for autocompact:
     ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
     so post-compaction context sits comfortably below the CLI's trigger and
     a follow-up assistant message doesn't immediately re-trigger.
     Floors at 10K to preserve at least some history budget.
+
+    Deliberately a *different* window from the one the CLI subprocess is
+    pinned to (``ChatConfig.claude_agent_context_window``): the catalog caps
+    every Anthropic model at 200K pending the Claude-5 tokenizer soak, and
+    this path feeds our own estimate-based compressor, which needs that
+    margin.  The 20K headroom absorbs the max-output reserve the CLI also
+    subtracts and this formula does not.
     """
     from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
 
@@ -1399,7 +1440,7 @@ def _compaction_target_tokens(model: str) -> int:
     if window is None:
         return DEFAULT_TOKEN_THRESHOLD
     pct = config.claude_agent_autocompact_pct_override
-    cli_buffer = 13_000  # E88 in the bundled CLI
+    cli_buffer = 13_000  # the CLI's own summary buffer
     if pct > 0 and not _is_moonshot_model(model):
         cli_threshold = min(window * pct // 100, window - cli_buffer)
     else:
@@ -1500,14 +1541,30 @@ def _append_error_marker(
     display_msg: str,
     *,
     retryable: bool = False,
+    failure: dict[str, Any] | None = None,
 ) -> None:
-    """Append a copilot error marker to *session* so it persists across refresh."""
-    if session is None:
-        return
-    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
-    session.messages.append(
-        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
-    )
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Delegates to the shared writer so both engines produce the same row: the
+    frontend's rendering contract lives in one place, and a failure recorded
+    on a Codex turn carries the same envelope a baseline turn would.
+    """
+    append_error_marker(session, display_msg, retryable=retryable, failure=failure)
+
+
+def _provider_failure_for(ctx: "_StreamContext") -> ProviderFailure | None:
+    """What the Codex gateway last named, if it named anything.
+
+    The gateway is the last point where a provider failure is still a typed
+    exception; downstream it is an HTTP status, then CLI text. Reading it
+    here is what lets a Codex turn say "your ChatGPT login expired" rather
+    than "the assistant ran into an error".
+
+    ``None`` on the platform route, and on a Codex turn whose failure the
+    gateway declined to name -- the caller keeps its existing behaviour.
+    """
+    gateway = ctx.codex_gateway
+    return gateway.last_failure if gateway is not None else None
 
 
 def _is_error_marker(msg: ChatMessage) -> bool:
@@ -1599,6 +1656,7 @@ class _InterruptedAttempt:
         display_msg: str,
         *,
         retryable: bool,
+        failure: dict[str, Any] | None = None,
     ) -> list[StreamBaseResponse]:
         """Re-attach partial + synthetic tool_result rows + error marker.
 
@@ -1617,7 +1675,12 @@ class _InterruptedAttempt:
             session.messages.extend(self.partial)
             self.partial = []
         events = _flush_orphan_tool_uses_to_session(session, state)
-        _append_error_marker(session, display_msg, retryable=retryable)
+        _append_error_marker(
+            session,
+            display_msg,
+            retryable=retryable,
+            failure=failure,
+        )
         return events
 
 
@@ -1963,6 +2026,7 @@ async def _safe_close_sdk_client(
 async def _iter_sdk_messages(
     client: ClaudeSDKClient,
     wake: asyncio.Event | None = None,
+    tool_display_wake: asyncio.Event | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Yield SDK messages with heartbeat-based timeouts.
 
@@ -1988,7 +2052,7 @@ async def _iter_sdk_messages(
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
-    wake_task: asyncio.Task[Any] | None = None
+    wake_tasks: dict[asyncio.Task[bool], asyncio.Event] = {}
 
     async def _next_msg() -> Any:
         """Await the next SDK message, wrapped for use with `asyncio.Task`."""
@@ -1999,10 +2063,10 @@ async def _iter_sdk_messages(
             if pending_task is None:
                 pending_task = asyncio.create_task(_next_msg())
             waiters: set[asyncio.Task[Any]] = {pending_task}
-            if wake is not None:
-                if wake_task is None:
-                    wake_task = asyncio.create_task(wake.wait())
-                waiters.add(wake_task)
+            for event in (wake, tool_display_wake):
+                if event is not None and event not in wake_tasks.values():
+                    wake_tasks[asyncio.create_task(event.wait())] = event
+            waiters.update(wake_tasks)
 
             done, _ = await asyncio.wait(
                 waiters,
@@ -2010,12 +2074,13 @@ async def _iter_sdk_messages(
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            if wake is not None and wake_task in done:
+            completed_wakes = [task for task in wake_tasks if task in done]
+            if completed_wakes:
                 # Woken: hand the sentinel over BEFORE any message that
                 # landed in the same tick, or the row the hook announced
                 # would be closed by the very message meant to follow it.
-                wake_task = None
-                wake.clear()
+                for task in completed_wakes:
+                    wake_tasks.pop(task).clear()
                 yield None
                 continue
 
@@ -2029,7 +2094,7 @@ async def _iter_sdk_messages(
             except StopAsyncIteration:
                 return
     finally:
-        for task in (pending_task, wake_task):
+        for task in (pending_task, *wake_tasks):
             if task is not None and not task.done():
                 task.cancel()
                 try:
@@ -2348,14 +2413,15 @@ def _build_system_prompt_value(
     prompt cache.  Our custom *system_prompt* is appended after the preset.
 
     Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
-    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.248 at
+    ``claude-agent-sdk >= 0.2.146``, so the pin in ``pyproject.toml`` is
     the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
-    returned.  Note this causes the CLI to REPLACE its built-in prompt via
-    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
-    which loses Claude Code's default prompt and its cache markers entirely.
+    returned.  This intentionally replaces the CLI's built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset).
+    Per-session prompt caching remains available; only the shared Claude Code
+    preset prefix and its cross-user cache reuse are removed.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
@@ -2662,7 +2728,7 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                     "type": "tool_use",
                     "id": block.id,
                     "name": block.name,
-                    "input": block.input,
+                    "input": strip_display_token(block.input),
                 }
             )
         elif isinstance(block, ToolResultBlock):
@@ -2721,7 +2787,7 @@ def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
     if msg.content:
         payload["content"] = msg.content
     if msg.tool_calls:
-        payload["tool_calls"] = msg.tool_calls
+        payload["tool_calls"] = tool_calls_for_provider(msg.tool_calls)
     if msg.tool_call_id:
         payload["tool_call_id"] = msg.tool_call_id
     return payload
@@ -3549,6 +3615,7 @@ class _StreamAccumulator:
     # inline with text/tool rows so they survive session reload; the reader
     # filters role="reasoning" out of LLM context.
     reasoning_response: ChatMessage | None = None
+    tool_display_names: dict[str, str] = dataclass_field(default_factory=dict)
 
 
 def _dispatch_response(
@@ -3603,10 +3670,16 @@ def _dispatch_response(
             response.errorText,
             response.code,
         )
+        failure = _provider_failure_for(ctx)
         _append_error_marker(
             ctx.session,
-            response.errorText,
-            retryable=response.code in _RETRYABLE_STREAM_ERROR_CODES,
+            failure.message if failure else response.errorText,
+            retryable=(
+                failure.retryable
+                if failure
+                else response.code in _RETRYABLE_STREAM_ERROR_CODES
+            ),
+            failure=failure.as_part() if failure else None,
         )
 
     if isinstance(response, StreamReasoningStart):
@@ -3652,6 +3725,15 @@ def _dispatch_response(
                 ctx.session.messages.append(acc.assistant_response)
                 acc.has_appended_assistant = True
 
+    elif isinstance(response, StreamToolDisplayAvailable):
+        display = response.data
+        acc.tool_display_names[display.toolCallId] = display.displayName
+        stamp_tool_display_name(
+            [acc.assistant_response, *ctx.session.messages],
+            display.toolCallId,
+            display.displayName,
+        )
+
     elif isinstance(response, StreamToolInputAvailable):
         acc.accumulated_tool_calls.append(
             {
@@ -3663,6 +3745,8 @@ def _dispatch_response(
                 },
             }
         )
+        if name := acc.tool_display_names.get(response.toolCallId):
+            acc.accumulated_tool_calls[-1]["display_name"] = name
         acc.assistant_response.tool_calls = acc.accumulated_tool_calls
         acc.assistant_response.mark_tool_calls_pending_save()
         if not acc.has_appended_assistant:
@@ -4367,12 +4451,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     request_arrival_at: float = 0.0,
     organization_id: str | None = None,
     team_id: str | None = None,
-    credential_lease: CredentialLease | PooledCodexRuntimeLease | None = None,
+    credential_lease: CredentialLease | CodexCredentialLease | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4589,8 +4672,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     compaction: CompactionTracker | None = None
     codex_effort: "CodexReasoningEffort | None" = None
     codex_gateway: CodexAnthropicGateway | None = None
+    tool_display_bridge = SDKToolDisplayBridge()
     deferred_codex_cleanup_error: BaseException | None = None
     is_codex_transport = credential_lease is not None
+    turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
     # files created during THIS turn contribute gen-IDs.  Without this
@@ -4728,13 +4813,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        if mode == "fast" and not is_codex_transport:
-            # The request asked for Fast but this turn runs on the SDK
-            # engine (building-mode pin or engine-switch continuation).
-            # Tell stale pickers — a client that missed the original
-            # data-mode-changed (reload, second tab) re-syncs here.
-            yield StreamModeChanged(mode="extended_thinking")
-
         set_execution_context(
             user_id,
             session,
@@ -4783,7 +4861,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
         )
         mcp_server = create_copilot_mcp_server(
-            use_e2b=use_e2b, hidden_tool_names=hidden_tools
+            use_e2b=use_e2b,
+            hidden_tool_names=hidden_tools,
+            tool_display_bridge=tool_display_bridge,
         )
 
         # Resolve model (request tier → LD per-user override → config default).
@@ -4793,13 +4873,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
-            route_mode = "fast" if mode == "fast" else "thinking"
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
-                route_mode,
+                # This turn is on the SDK engine by definition.
+                "thinking",
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, PooledCodexRuntimeLease):
+            if isinstance(credential_lease, CodexCredentialLease):
                 codex_gateway = CodexAnthropicGateway(
                     agent_session=credential_lease,
                     model=sdk_model,
@@ -4838,6 +4918,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sdk_cwd=sdk_cwd,
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
+            tool_display_bridge=tool_display_bridge,
         )
 
         if permissions is not None:
@@ -4869,13 +4950,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sid,
                 )
 
-        # Use SystemPromptPreset with exclude_dynamic_sections=True on
-        # every turn — including resumed ones — so all turns share the
-        # same static prefix and hit the cross-user prompt cache.
+        # When cross-user caching is enabled, use SystemPromptPreset with
+        # exclude_dynamic_sections=True on every turn — including resumed
+        # ones — so all turns share the same static prefix.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
-        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
-        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # is combined with --resume).  claude-agent-sdk >= 0.2.146 bundles
+        # CLI 2.1.248, so the pin in pyproject.toml is sufficient — no
         # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
@@ -4906,11 +4987,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # effort: applies to models with extended thinking (Sonnet,
             # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
             # extension (#12871).
-            effort=(
-                "medium"
-                if mode == "fast"
-                else (config.claude_agent_thinking_effort or "high")
-            ),
+            effort=config.claude_agent_thinking_effort or "high",
         )
         if not is_codex_transport:
             # The Claude/OpenRouter paths use provider-USD controls. A Codex
@@ -5256,6 +5333,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             attachments=attachments,
             compaction=compaction,
             lock=lock,
+            codex_gateway=codex_gateway,
+            tool_display=tool_display_bridge,
         )
 
         # ---------------------------------------------------------------
@@ -5314,6 +5393,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # the name-keyed FIFO would otherwise serve them (off-by-one) to
             # this attempt's tool calls, corrupting frontend tool payloads.
             reset_pending_tool_outputs()
+            tool_display_bridge.reset()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
@@ -5367,8 +5447,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_retry.resume = None
                     sdk_options_retry.session_id = session_id
-                # Recompute system_prompt for retry — the preset is safe on
-                # every turn (requires CLI ≥ 2.1.98, bundled in
+                # Recompute system_prompt for retry. When enabled, the preset
+                # is safe on every turn (requires CLI ≥ 2.1.98, bundled in
                 # claude-agent-sdk >= 0.1.64).
                 sdk_options_retry.system_prompt = _build_system_prompt_value(
                     system_prompt,
@@ -5644,6 +5724,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 interrupted, attempts_exhausted, transient_exhausted, stream_err
             )
             if failure is not None:
+                provider_failure = _provider_failure_for(stream_ctx)
                 cleanup_events: list[StreamBaseResponse] = []
                 if state is not None:
                     state.adapter._end_text_if_open(cleanup_events)
@@ -5653,6 +5734,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         state,
                         failure.display_msg,
                         retryable=failure.retryable,
+                        failure=(
+                            provider_failure.as_part() if provider_failure else None
+                        ),
                     )
                 )
                 for response in cleanup_events:
@@ -5750,7 +5834,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # so this is a no-op for those and only kicks in for unhandled errors
         # that bypass the retry-loop handlers entirely.
         if not ended_with_stream_error:
-            interrupted.finalize(session, state, display_msg, retryable=is_transient)
+            interrupted.finalize(
+                session,
+                state,
+                display_msg,
+                retryable=is_transient,
+                failure=(
+                    codex_gateway.last_failure.as_part()
+                    if codex_gateway and codex_gateway.last_failure
+                    else None
+                ),
+            )
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
@@ -5777,6 +5871,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         raise
     finally:
         turn_error = sys.exception()
+        tool_display_bridge.reset()
         # Pending messages are drained atomically at the start of each
         # turn (see drain_pending_messages call above), so there's
         # nothing to clean up here — any message pushed after that
@@ -5978,6 +6073,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 requested_model=sdk_model,
                 actual_model=state.observed_model if state is not None else None,
                 routing_source=routing_source,
+            )
+            # What this turn ran on, recorded on the turn rather than read
+            # back off the session later, so a route change cannot rewrite it.
+            stamp_segment(
+                session.messages,
+                pre_turn_message_count,
+                turn_segment,
             )
             try:
                 await asyncio.shield(upsert_chat_session(session))
@@ -6205,7 +6307,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     session=session,
                     file_ids=None,
                     permissions=permissions,
-                    mode=mode,
                     model=model,
                     organization_id=organization_id,
                     team_id=team_id,
@@ -6305,6 +6406,19 @@ def _canonical_model(model: str) -> str:
 
 def _same_model(a: str, b: str | None) -> bool:
     return b is not None and _canonical_model(a) == _canonical_model(b)
+
+
+def _sdk_serving_segment(
+    credential_lease: CredentialLease | CodexCredentialLease | None,
+) -> Segment:
+    """The immutable route that actually serves this SDK turn."""
+    if credential_lease is None:
+        return Segment("platform", None, is_segment_zero=False)
+    return Segment(
+        "codex",
+        credential_lease.credentials.id,
+        is_segment_zero=False,
+    )
 
 
 def _stamp_turn_messages(

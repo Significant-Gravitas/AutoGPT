@@ -15,6 +15,9 @@ export interface ExpertAccent {
    *  across a full-width card. */
   washWide: string;
   pill: string;
+  /** Glossy tag for the expert page's skills: a white-to-tint gradient with
+   *  a top highlight and a soft glow in the accent hue. */
+  chip: string;
   icon: string;
   roleIcon: IconSvgElement;
 }
@@ -25,6 +28,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       "bg-[linear-gradient(180deg,rgba(139,92,246,0.10),rgba(139,92,246,0.03)_60%,transparent)]",
     pill: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/10",
+    chip: "bg-gradient-to-b from-white to-violet-50 text-violet-800 ring-1 ring-inset ring-violet-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(139,92,246,0.12),0_0_18px_-4px_rgba(139,92,246,0.45)]",
     icon: "text-violet-500",
     roleIcon: Megaphone01Icon,
   },
@@ -33,6 +37,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       "bg-[linear-gradient(180deg,rgba(245,158,11,0.10),rgba(245,158,11,0.03)_60%,transparent)]",
     pill: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10",
+    chip: "bg-gradient-to-b from-white to-amber-50 text-amber-800 ring-1 ring-inset ring-amber-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(245,158,11,0.12),0_0_18px_-4px_rgba(245,158,11,0.45)]",
     icon: "text-amber-500",
     roleIcon: ChartIncreaseIcon,
   },
@@ -41,6 +46,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),rgba(14,165,233,0.03)_60%,transparent)]",
     pill: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10",
+    chip: "bg-gradient-to-b from-white to-sky-50 text-sky-800 ring-1 ring-inset ring-sky-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(14,165,233,0.12),0_0_18px_-4px_rgba(14,165,233,0.45)]",
     icon: "text-sky-500",
     roleIcon: Settings01Icon,
   },
@@ -49,6 +55,7 @@ const ACCENTS: Record<string, ExpertAccent> = {
     washWide:
       "bg-[linear-gradient(180deg,rgba(113,113,122,0.08),rgba(113,113,122,0.02)_60%,transparent)]",
     pill: "bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/10",
+    chip: "bg-gradient-to-b from-white to-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(113,113,122,0.12),0_0_18px_-4px_rgba(113,113,122,0.45)]",
     icon: "text-zinc-500",
     roleIcon: Briefcase01Icon,
   },

@@ -1,5 +1,10 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 
+import {
+  describeProviderFailure,
+  type ProviderFailure,
+} from "./providerFailure";
+
 /**
  * Parses a backend-encoded error code from an `errorText` payload.
  *
@@ -94,9 +99,15 @@ function extractErrorDetail(error: Error): string {
 
 interface HandleStreamErrorArgs {
   error: Error;
-  onRateLimit: (message: string) => void;
+  onRateLimit: (message: string, providerFailure?: ProviderFailure) => void;
   onReconnect: () => void;
   isUserStoppingRef: React.MutableRefObject<boolean>;
+  /**
+   * The typed envelope, when this turn sent one. It is the only source here
+   * that actually knows what happened; every branch below it is inference
+   * from error text.
+   */
+  providerFailure?: ProviderFailure | null;
 }
 
 /**
@@ -104,6 +115,8 @@ interface HandleStreamErrorArgs {
  * (or rate-limit UI), and decides whether to retry via reconnect.
  *
  * Dispatch order (exclusive branches):
+ *  0. A typed provider-failure envelope → its own copy. Preferred over
+ *     everything below, which is guesswork from error text.
  *  1. `usage limit` substring → rate-limit UI via `onRateLimit`.
  *  2. 401 / auth failure → auth-error toast.
  *  3. `[code:<id>]` backend prefix → curated or generic backend toast.
@@ -117,8 +130,34 @@ export function handleStreamError({
   onRateLimit,
   onReconnect,
   isUserStoppingRef,
+  providerFailure,
 }: HandleStreamErrorArgs): void {
   const errorDetail = extractErrorDetail(error);
+
+  // 0. The server said what went wrong, so stop guessing.
+  if (providerFailure) {
+    const copy = describeProviderFailure(providerFailure);
+    if (providerFailure.kind === "usage_limit") {
+      // Still routed through the rate-limit path: it restores the composer
+      // text for a message the backend refused before persisting, which a
+      // toast alone would lose.
+      //
+      // The failure travels with it so the caller can tell the two limits
+      // apart. They are not the same event: our own credits running out is
+      // answered by upgrading a plan with us, and a linked subscription
+      // running out is answered by continuing on a different connection.
+      // Offering the first for the second asks someone to pay us because
+      // OpenAI said no.
+      onRateLimit(`${copy.title}. ${copy.description}`, providerFailure);
+      return;
+    }
+    toast({
+      title: copy.title,
+      description: copy.description,
+      variant: "destructive",
+    });
+    return;
+  }
 
   // 1. Rate limit (FastAPI 429 body contains "usage limit")
   if (errorDetail.toLowerCase().includes("usage limit")) {

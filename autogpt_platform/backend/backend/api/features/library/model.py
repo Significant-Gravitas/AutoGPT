@@ -159,6 +159,11 @@ class LibraryAgentRef(pydantic.BaseModel):
     id: str
     graph_id: str
     name: str
+    # The agent's own picture, so a surface listing runs can show the agent
+    # instead of a generic glyph.
+    image_url: str | None = None
+    # A removed agent still names its past runs; it just cannot be linked.
+    is_deleted: bool = False
 
 
 class RecentExecution(pydantic.BaseModel):
@@ -256,14 +261,6 @@ class LibraryAgent(pydantic.BaseModel):
     )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
-    store_listing_version_id: Optional[str] = pydantic.Field(
-        default=None,
-        description=(
-            "ID of the approved marketplace listing version whose graph snapshot "
-            "exactly matches this agent's graph_id and graph_version. Install "
-            "flows can use it directly to install this exact version."
-        ),
-    )
 
     @staticmethod
     def from_db(
@@ -273,7 +270,6 @@ class LibraryAgent(pydantic.BaseModel):
         profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
-        store_listing_version_id: Optional[str] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -425,7 +421,6 @@ class LibraryAgent(pydantic.BaseModel):
             ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
-            store_listing_version_id=store_listing_version_id,
         )
 
 

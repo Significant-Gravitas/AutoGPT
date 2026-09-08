@@ -19,6 +19,8 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.activity_event import ActivityEventDraft
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -426,7 +428,11 @@ class ListWorkspaceFilesTool(BaseTool):
                 },
                 "include_all_sessions": {
                     "type": "boolean",
-                    "description": "Include files from all sessions (default: false).",
+                    "description": (
+                        "Include files from all sessions (default: false). "
+                        "Expert chats only ever see files from their own "
+                        "conversations and ones they delegated."
+                    ),
                 },
             },
             "required": [],
@@ -488,6 +494,10 @@ class ListWorkspaceFilesTool(BaseTool):
                 message="\n".join(lines),
                 session_id=session_id,
             )
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except Exception as e:
             logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
@@ -514,7 +524,9 @@ class ReadWorkspaceFileTool(BaseTool):
             "Small text/image files return inline; large/binary return metadata+URL. "
             "Use save_to_path to copy to working dir for processing. "
             "Use offset/length for paginated reads. "
-            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
+            "Paths scoped to current session; use /sessions/<id>/... for "
+            "cross-session access (expert chats can read their own "
+            "conversations and ones they delegated)."
         )
 
     @property
@@ -724,6 +736,10 @@ class ReadWorkspaceFileTool(BaseTool):
             )
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except Exception as e:
             logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
@@ -773,7 +789,9 @@ class WriteWorkspaceFileTool(BaseTool):
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
             f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
-            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
+            "Paths scoped to current session; use /sessions/<id>/... for "
+            "cross-session access (expert chats are limited to their own "
+            "conversations)."
         )
 
     @property
@@ -816,6 +834,26 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceWriteResponse):
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.updated" if kwargs.get("overwrite") else "file.created",
+            title=result.name,
+            object_id=result.file_id,
+            data={
+                "path": result.path,
+                "mime_type": result.mime_type,
+                "size_bytes": result.size_bytes,
+            },
+        )
 
     async def _execute(
         self,
@@ -956,6 +994,10 @@ class WriteWorkspaceFileTool(BaseTool):
         except VirusScanError as e:
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
             return ErrorResponse(message=str(e), session_id=session_id)
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
+            )
         except ValueError as e:
             msg = str(e)
             if msg.startswith("Storage limit exceeded"):
@@ -1005,6 +1047,21 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceDeleteResponse) or not result.success:
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.deleted",
+            title=kwargs.get("path") or "Workspace file",
+            object_id=result.file_id,
+        )
 
     async def _execute(
         self,
@@ -1060,6 +1117,10 @@ class DeleteWorkspaceFileTool(BaseTool):
                     f"({file_info.size_bytes:,} bytes)"
                 ),
                 session_id=session_id,
+            )
+        except WorkspaceAccessDeniedError as e:
+            return ErrorResponse(
+                message=str(e), error="access_denied", session_id=session_id
             )
         except Exception as e:
             logger.error(f"Error deleting workspace file: {e}", exc_info=True)

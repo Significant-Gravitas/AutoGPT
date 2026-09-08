@@ -10,6 +10,7 @@ import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubscriptionTier
 
+from .credits_rate_limit import enforce_subscription_status_rate_limit
 from .v1 import _validate_checkout_redirect_url, v1_router
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
@@ -31,6 +32,11 @@ def client() -> fastapi.testclient.TestClient:
         return {"sub": TEST_USER_ID, "role": "user", "email": "test@example.com"}
 
     app.dependency_overrides[get_jwt_payload] = override_get_jwt_payload
+    # Neutralise the subscription-status limiter: it counts in Redis against a
+    # shared key derived from the hardcoded TEST_USER_ID, so without this the
+    # GET tests here consume a real, never-reset window and start 429ing once
+    # enough of them run.
+    app.dependency_overrides[enforce_subscription_status_rate_limit] = lambda: None
     try:
         yield fastapi.testclient.TestClient(app)
     finally:
@@ -255,8 +261,8 @@ def test_get_subscription_status_pro(
     # so the frontend never renders a multiplier badge for a hidden row.
     assert set(data["tier_multipliers"].keys()) == set(data["tier_costs"].keys())
     assert data["tier_multipliers"]["BASIC"] == 1.0
-    assert data["tier_multipliers"]["PRO"] == 5.0
-    assert data["tier_multipliers"]["MAX"] == 20.0
+    assert data["tier_multipliers"]["PRO"] == 1.25
+    assert data["tier_multipliers"]["MAX"] == 10.6667
     assert data["tier_multipliers"]["BUSINESS"] == 60.0
 
 

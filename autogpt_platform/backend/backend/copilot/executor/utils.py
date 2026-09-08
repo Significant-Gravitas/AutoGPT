@@ -17,7 +17,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
-from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel, CopilotMode
+from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -206,9 +206,6 @@ class CoPilotExecutionEntry(BaseModel):
     team_id: str | None = None
     """Active workspace for tenant-scoped execution"""
 
-    mode: CopilotMode | None = None
-    """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
-
     model: CopilotLLMModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
@@ -253,7 +250,6 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -287,7 +283,6 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         organization_id=organization_id,
         team_id=team_id,
-        mode=mode,
         model=model,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
@@ -316,7 +311,6 @@ async def schedule_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -382,7 +376,6 @@ async def schedule_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -405,7 +398,6 @@ async def dispatch_turn(
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -458,7 +450,6 @@ async def dispatch_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
@@ -490,10 +481,10 @@ async def schedule_chat_turn(
     message_already_persisted: bool = False,
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
+    voice: bool = False,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-    mode: CopilotMode | None = None,
     model: CopilotLLMModel | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -525,7 +516,20 @@ async def schedule_chat_turn(
     from uuid import uuid4
 
     from backend.copilot.model import ChatMessage, append_and_save_message
+    from backend.copilot.prompting import VOICE_TURN_PREFIX
+    from backend.copilot.service import strip_server_injected_tags
     from backend.copilot.tracking import track_user_message
+
+    # Prefix before persistence, not after: the services dedup the incoming
+    # message against the row saved here, and a prefix applied later fails
+    # that match and saves the turn a second time. Display strips it again.
+    raw_message_length = len(message)
+    if message and voice and is_user_message and not message_already_persisted:
+        # Sanitise here, not in the engines: they strip inbound tags at their
+        # own entry points, which is after this function has already saved the
+        # row. A forged </voice_turn> would close the server's block, and the
+        # display stripper would take the user's own text with it.
+        message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id) as slot:
         if message_already_persisted and not slot.admitted:
@@ -545,7 +549,7 @@ async def schedule_chat_turn(
                 track_user_message(
                     user_id=user_id,
                     session_id=session_id,
-                    message_length=len(message),
+                    message_length=raw_message_length,
                 )
 
         if is_duplicate:
@@ -563,7 +567,6 @@ async def schedule_chat_turn(
             file_ids=file_ids,
             organization_id=organization_id,
             team_id=team_id,
-            mode=mode,
             model=model,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,

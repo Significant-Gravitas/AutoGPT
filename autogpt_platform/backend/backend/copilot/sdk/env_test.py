@@ -26,6 +26,10 @@ def _make_config(**overrides) -> ChatConfig:
         "base_url": None,
         "thinking_standard_model": "anthropic/claude-sonnet-4-6",
         "thinking_advanced_model": "anthropic/claude-opus-4-7",
+        # Pinned: both are settable from the environment, and a developer's
+        # .env otherwise rewrites what build_sdk_env() is asked to emit.
+        "claude_agent_autocompact_pct_override": 50,
+        "claude_agent_context_window": 200_000,
         # Aux key satisfies ``_validate_aux_client_for_direct_main`` —
         # these tests target SDK behavior, not the aux check.
         "aux_api_key": "or-aux-key",
@@ -599,6 +603,7 @@ class TestAutocompactPctSonnet5Scaling:
             "anthropic/claude-sonnet-4-6",
             "anthropic/claude-sonnet-4-5",  # substring near-miss guard
             "anthropic/claude-opus-4-7",
+            "anthropic/claude-opus-4-8",
         ],
     )
     def test_non_sonnet_5_not_scaled(self, model):
@@ -625,16 +630,40 @@ class TestAutocompactPctSonnet5Scaling:
 
 
 class TestContextWindowPin:
-    """CLAUDE_CODE_DISABLE_1M_CONTEXT pins the CLI's perceived window at
-    200K: 1M context is GA (not beta-gated) on Sonnet 4.6+/5, so the
-    experimental-betas flag alone no longer prevents a future CLI from
-    silently moving the autocompact trigger to ~500K."""
+    """The window the CLI compacts against is ours, not the CLI's guess.
 
-    def test_disable_1m_context_set_in_all_modes(self):
-        cfg = _make_config(use_openrouter=False)
+    At or below the default, ``CLAUDE_CODE_DISABLE_1M_CONTEXT`` holds the model
+    window itself at 200K too, making the default a real cap.
+    """
+
+    @pytest.mark.parametrize(
+        "window, expected, kill_switch",
+        [
+            # At the 200K default and a 50% override the CLI compacts at ~90K
+            # (~117K on Sonnet 5, whose override is scaled to 65%).
+            (200_000, "200000", True),
+            (200_001, "200001", False),
+            (1_000_000, "1000000", False),
+        ],
+    )
+    def test_window_pin_and_1m_kill_switch(self, window, expected, kill_switch):
+        """Above the default the kill-switch has to come off with the raise:
+        it would otherwise clamp the model window back to 200K and swallow it."""
+        cfg = _make_config(use_openrouter=False, claude_agent_context_window=window)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env(model="anthropic/claude-sonnet-5")
 
-        assert result.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+        assert result.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") == expected
+        assert ("CLAUDE_CODE_DISABLE_1M_CONTEXT" in result) is kill_switch
+
+    def test_context_window_rejects_out_of_range(self):
+        """Pydantic bounds (ge=100_000, le=1_000_000) are the only guard between
+        a typo'd env var and the CLI's own clamps."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=99_999)
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_context_window=1_000_001)

@@ -15,6 +15,7 @@ from backend.copilot.executor.utils import (
     CoPilotLogMetadata,
     create_copilot_queue_config,
 )
+from backend.copilot.prompting import VOICE_TURN_TAG
 
 
 @pytest.mark.asyncio
@@ -79,26 +80,9 @@ class TestCoPilotExecutionEntry:
         assert entry.user_id == "u1"
         assert entry.message == "hello"
         assert entry.is_user_message is True
-        assert entry.mode is None
+        assert not hasattr(entry, "mode")
         assert entry.context is None
         assert entry.file_ids is None
-
-    def test_mode_field(self):
-        entry = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="fast",
-        )
-        assert entry.mode == "fast"
-
-        entry2 = CoPilotExecutionEntry(
-            session_id="s1",
-            user_id="u1",
-            message="test",
-            mode="extended_thinking",
-        )
-        assert entry2.mode == "extended_thinking"
 
     def test_optional_fields(self):
         entry = CoPilotExecutionEntry(
@@ -120,7 +104,6 @@ class TestCoPilotExecutionEntry:
             session_id="s1",
             user_id="u1",
             message="hello",
-            mode="fast",
         )
         json_str = entry.model_dump_json()
         restored = CoPilotExecutionEntry.model_validate_json(json_str)
@@ -178,3 +161,87 @@ class TestCoPilotLogMetadata:
             base_logger, session_id="s1", user_id=None, turn_id="t1"
         )
         assert log is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> None:
+    # The services dedup the dispatched message against the row saved here.
+    # When the two diverged, the turn was saved twice — once with the prefix
+    # and once without.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+            voice=True,
+        )
+
+    persisted = append.await_args.args[1].content
+    assert persisted == dispatch.await_args.kwargs["message"]
+    assert persisted.startswith(f"<{VOICE_TURN_TAG}>")
+    assert persisted.endswith("what did I run yesterday")
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_a_typed_message_alone() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    append = AsyncMock()
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch("backend.copilot.model.append_and_save_message", new=append),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="what did I run yesterday",
+        )
+
+    assert append.await_args.args[1].content == "what did I run yesterday"
+    assert dispatch.await_args.kwargs["message"] == "what did I run yesterday"
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
+    # The row was saved by an earlier call; prefixing now would put the two
+    # out of step again, which is the duplicate this guard exists to prevent.
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kick it off",
+            message_already_persisted=True,
+            voice=True,
+        )
+
+    assert dispatch.await_args.kwargs["message"] == "kick it off"
