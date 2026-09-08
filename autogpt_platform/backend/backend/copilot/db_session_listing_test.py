@@ -92,6 +92,22 @@ async def test_list_query_excludes_dreams_with_null_safe_operator():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pinned_first", [True, False])
+async def test_list_ordering_is_total_so_offset_paging_cannot_skip_a_row(
+    pinned_first,
+):
+    """``isPinned``/``updatedAt`` alone leave ties in an arbitrary order, and
+    LIMIT/OFFSET over an arbitrary order can drop or repeat a session between
+    pages. The id makes the sort total."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1", pinned_first=pinned_first)
+
+    order_by = raw.call_args.args[0].split("ORDER BY")[1].split("LIMIT")[0]
+    assert order_by.strip().endswith('"id" DESC')
+
+
+@pytest.mark.asyncio
 async def test_list_query_maps_raw_rows_to_chat_session_info():
     raw = AsyncMock(return_value=[_make_prisma_session("sess-42")])
     with patch(_RAW_QUERY_TARGET, raw):

@@ -833,8 +833,12 @@ async def get_user_chat_sessions(
     elif experts_only:
         conditions.append('"expertId" IS NOT NULL')
     params.extend((limit, offset))
+    # "id" breaks ties: without a total order, LIMIT/OFFSET paging can skip or
+    # repeat a row when two sessions share an updatedAt.
     ordering = (
-        '"isPinned" DESC, "updatedAt" DESC' if pinned_first else '"updatedAt" DESC'
+        '"isPinned" DESC, "updatedAt" DESC, "id" DESC'
+        if pinned_first
+        else '"updatedAt" DESC, "id" DESC'
     )
     query = (
         'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
