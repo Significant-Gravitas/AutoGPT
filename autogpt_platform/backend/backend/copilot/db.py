@@ -69,6 +69,20 @@ MAX_LOADED_CHAT_MESSAGES = 1000
 # guarantee already apply, and the cap-hit signal lives in ``has_more``.
 
 
+async def get_chat_session_expert_ids(
+    user_id: str, session_ids: list[str]
+) -> dict[str, str | None]:
+    """Map each of *user_id*'s sessions in *session_ids* to the expert it is
+    scoped to (``None`` for a personal AutoPilot session). Sessions that do
+    not belong to the user are left out."""
+    if not session_ids:
+        return {}
+    rows = await PrismaChatSession.prisma().find_many(
+        where={"id": {"in": session_ids}, "userId": user_id}
+    )
+    return {row.id: row.expertId for row in rows}
+
+
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     """Get chat session metadata (without messages) for ownership validation."""
     session = await PrismaChatSession.prisma().find_unique(

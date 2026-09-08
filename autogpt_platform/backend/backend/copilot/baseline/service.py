@@ -2082,12 +2082,25 @@ async def stream_chat_completion_baseline(
     if message and is_user_message:
         transcript_builder.append_user(content=user_message_for_transcript or message)
 
-    # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
-    attachment_hint = ""
-    image_blocks: list[dict[str, Any]] = []
     if file_ids and user_id:
         working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+
+    # Propagate execution context so tool handlers can read session-level
+    # flags. This must precede attachment resolution: the workspace manager
+    # derives the expert's file scope from the session set here.
+    set_execution_context(
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
+    )
+
+    # --- File attachments (feature parity with SDK path) ---
+    attachment_hint = ""
+    image_blocks: list[dict[str, Any]] = []
+    if file_ids and user_id and working_dir:
         attachment_hint, image_blocks = await _prepare_baseline_attachments(
             file_ids, user_id, session_id, working_dir
         )
@@ -2160,15 +2173,6 @@ async def stream_chat_completion_baseline(
         tools = cast(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
-
-    # Propagate execution context so tool handlers can read session-level flags.
-    set_execution_context(
-        user_id,
-        session,
-        sandbox=e2b_sandbox,
-        sdk_cwd=working_dir,
-        permissions=permissions,
-    )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
