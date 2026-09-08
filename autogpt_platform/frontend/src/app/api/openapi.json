@@ -13372,16 +13372,30 @@
       "get": {
         "tags": ["v1", "skills"],
         "summary": "List user-distilled copilot skills",
-        "description": "Return user-stored skills for the current user.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
+        "description": "Return the skills owned by personal AutoPilot, or by one expert.\n\nReuses :func:`backend.copilot.tools.skills.list_user_skills` so the\nlibrary UI sees the exact same set the copilot ``<available_skills>``\nblock surfaces, minus the built-in defaults (which are read-only and\nhandled separately by the copilot runtime).",
         "operationId": "listCopilotSkills",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "List this expert's own skills instead of personal AutoPilot's.",
+              "title": "Expert Id"
+            },
+            "description": "List this expert's own skills instead of personal AutoPilot's."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
                   "type": "array",
+                  "items": { "$ref": "#/components/schemas/CopilotSkillInfo" },
                   "title": "Response Listcopilotskills"
                 }
               }
@@ -13389,24 +13403,45 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       },
       "post": {
         "tags": ["v1", "skills"],
         "summary": "Upload a copilot skill from a SKILL.md file",
         "description": "Create a user-distilled skill from an uploaded ``SKILL.md`` file.\n\nParses the canonical frontmatter + body, then reuses\n:func:`backend.copilot.tools.skills.store_user_skill` so an uploaded skill\nis validated, capped, and persisted exactly like one the copilot distils\nvia ``store_skill``.  Malformed files return 400, the per-user cap returns\n409, and an existing slug is overwritten (upsert).",
         "operationId": "uploadCopilotSkill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Store the skill as this expert's own.",
+              "title": "Expert Id"
+            },
+            "description": "Store the skill as this expert's own."
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UploadCopilotSkillRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -13430,8 +13465,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/skills/{name}": {
@@ -13452,6 +13486,17 @@
               "title": "Name"
             },
             "description": "Slug of the skill to delete"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Delete this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Delete this expert's own copy of the skill."
           }
         ],
         "responses": {
@@ -13497,6 +13542,17 @@
               "title": "Name"
             },
             "description": "Slug of the skill to read"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Read this expert's own copy of the skill.",
+              "title": "Expert Id"
+            },
+            "description": "Read this expert's own copy of the skill."
           }
         ],
         "responses": {

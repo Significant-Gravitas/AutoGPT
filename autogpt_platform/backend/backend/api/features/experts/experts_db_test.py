@@ -1718,11 +1718,8 @@ async def test_update_skills_attaches_library_skills_and_keeps_existing(
 async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
     server: SpinTestServer, test_user, monkeypatch
 ):
-    from backend.copilot.tools.skills import ParsedSkill
-
-    listed = ParsedSkill(name="Deep Research", description="Research anything", body="")
-    monkeypatch.setattr(experts_db, "read_user_skill_with_body", _none_skill)
-    monkeypatch.setattr(experts_db, "list_user_skills", _listing_skills([listed]))
+    monkeypatch.setattr(experts_db, "find_user_skill_slug", _slug("deep-research"))
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copied)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
 
@@ -1730,18 +1727,18 @@ async def test_update_skills_resolves_a_library_skill_by_its_listed_name(
         test_user.id, hired.expert.id, ["deep research"]
     )
 
-    assert updated.skills == ["Deep Research"]
+    assert updated.skills == ["deep-research"]
 
 
-async def _none_skill(*_args, **_kwargs):
-    return None
+def _slug(slug):
+    async def _find(*_args, **_kwargs):
+        return slug
+
+    return _find
 
 
-def _listing_skills(skills):
-    async def _list(*_args, **_kwargs):
-        return skills
-
-    return _list
+async def _copied(user_id, expert_id, name):
+    return name
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3975,3 +3972,53 @@ def test_expert_soul_fields_patch_strips_and_preserves_none():
     assert patch.voice_preferences == ""
     assert patch.boundaries == "Keep it short."
     assert patch.identity is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_resolves_every_name_before_copying(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    copies: list[str] = []
+
+    async def _find(user_id, name):
+        return None if name == "missing" else name
+
+    async def _copy(user_id, expert_id, name):
+        copies.append(name)
+        return name
+
+    monkeypatch.setattr(experts_db, "find_user_skill_slug", _find)
+    monkeypatch.setattr(experts_db, "copy_skill_to_expert", _copy)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+
+    with pytest.raises(NotFoundError):
+        await experts_db.update_skills(
+            test_user.id, hired.expert.id, ["valid", "missing"]
+        )
+    assert copies == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_skill_names_add_and_remove_atomically(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+
+    await asyncio.gather(
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "alpha"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "beta"),
+        experts_db.add_expert_skill_name(test_user.id, expert_id, "Alpha"),
+    )
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert sorted(s.lower() for s in row.skills) == sorted(
+        {*(s.lower() for s in template.skills), "alpha", "beta"}
+    )
+
+    await experts_db.remove_expert_skill_name(test_user.id, expert_id, "ALPHA")
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert "alpha" not in {s.lower() for s in row.skills}

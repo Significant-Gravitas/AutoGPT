@@ -5179,7 +5179,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # NOT block the turn — log and continue with an empty index.
             skills_ctx_content = ""
             try:
-                skills_ctx_content = await build_skills_context(user_id)
+                skills_ctx_content = await build_skills_context(
+                    user_id, expert_id=session.expert_id
+                )
             except Exception:
                 logger.exception(
                     "[skills] failed to build skills_ctx — proceeding without it"
