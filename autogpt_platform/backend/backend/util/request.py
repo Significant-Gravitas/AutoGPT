@@ -623,14 +623,19 @@ class Requests:
                         dict(req_headers), parsed_url, redirect_url
                     )
 
-                    # ``auth=`` is not a header at this point — aiohttp builds
-                    # ``Authorization`` from it per request, downstream of the
-                    # strip above — so the header dance cannot see it and it
-                    # would be regenerated for the new origin. Drop it with the
-                    # headers it stands in for.
+                    # ``auth=`` and ``cookies=`` are not headers at this point
+                    # — aiohttp builds ``Authorization`` and ``Cookie`` from
+                    # them per request, downstream of the strip above — so the
+                    # header dance cannot see either, and both would be
+                    # regenerated for the new origin. Drop them with the
+                    # headers they stand in for. Same-origin hops keep them:
+                    # ``_remove_insecure_headers`` keeps the header spellings
+                    # there too, and an authenticated same-origin redirect is
+                    # a normal flow.
                     redirect_kwargs = dict(kwargs)
                     if _is_cross_origin(parsed_url, redirect_url):
                         redirect_kwargs.pop("auth", None)
+                        redirect_kwargs.pop("cookies", None)
 
                     return await self.request(
                         method,

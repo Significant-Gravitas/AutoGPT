@@ -486,3 +486,100 @@ def test_drop_headers_lower_cases_the_names_it_is_given():
     headers = {"authorization": "Bearer t", "X-Keep": "1"}
     _drop_headers(headers, frozenset({"AUTHORIZATION"}))
     assert headers == {"X-Keep": "1"}
+
+
+@pytest.mark.asyncio
+async def test_cookies_kwarg_is_not_replayed_across_a_cross_origin_redirect():
+    """``cookies=`` is the sibling of ``auth=``: same mechanism, same hole.
+
+    aiohttp synthesises the ``Cookie`` header from it downstream of
+    ``_remove_insecure_headers``, so it rides ``**kwargs`` into the new origin
+    even though ``cookie`` is in ``SENSITIVE_HEADERS`` — only the header
+    spelling was covered.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    await aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned, so the test cannot pass by the cookie never being applied.
+        seen["origin_cookie"] = request.headers.get("Cookie")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{attacker_port}/collect")
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    await aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_cookie"] == "session=secret_session_value"
+    assert seen["cookie"] is None
+
+
+@pytest.mark.asyncio
+async def test_credentials_survive_a_same_origin_redirect():
+    """The cross-origin guard has to be a guard, not an unconditional drop.
+
+    Dropping ``auth=``/``cookies=`` on *every* hop would also break ordinary
+    authenticated same-origin redirects, and nothing else in the suite would
+    notice: every other test here crosses an origin.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def final(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Same scheme, host and port — only the path changes.
+        raise aiohttp_web.HTTPFound("/final")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/final", final)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    await aiohttp_web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{port}/start",
+            auth=("user", "pass"),
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert seen["authorization"] == "Basic dXNlcjpwYXNz"
+    assert seen["cookie"] == "session=secret_session_value"
