@@ -11,7 +11,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { DragEvent } from "react";
-import { FILE_DRAG_MIME } from "../../WorkspaceFolders/drag";
+import { FILE_DRAG_MIME, readFileDragIds } from "../../WorkspaceFolders/drag";
 import { FOLDER_STYLE } from "../../WorkspaceFolders/folder-constants";
 import { formatDayLabel, formatFullDate } from "../helpers";
 import {
@@ -32,7 +32,7 @@ interface Props {
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onFileDrop: (fileId: string) => void;
+  onFileDrop: (fileIds: string[]) => void;
 }
 
 const ACTION_BUTTON_CLASS =
@@ -69,8 +69,8 @@ export function FolderRow({
   function handleDrop(e: DragEvent<HTMLLIElement>) {
     e.preventDefault();
     setIsDragOver(false);
-    const fileId = e.dataTransfer.getData(FILE_DRAG_MIME);
-    if (fileId) onFileDrop(fileId);
+    const fileIds = readFileDragIds(e.dataTransfer);
+    if (fileIds.length > 0) onFileDrop(fileIds);
   }
 
   return (

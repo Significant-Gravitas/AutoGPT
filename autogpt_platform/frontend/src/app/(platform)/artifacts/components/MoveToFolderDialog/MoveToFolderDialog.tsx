@@ -8,28 +8,36 @@ import { Folder01Icon, Home01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
-  fileId: string;
-  fileName: string;
+  fileIds: string[];
+  /** What is being moved, as shown in the prompt: `“report.pdf”` or `3 files`. */
+  subject: string;
+  /** Folder every file already sits in; offered as neither a destination nor
+      hidden root. `null` when the files are at the root or in mixed folders. */
   currentFolderId?: string | null;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
+  onMoved?: () => void;
 }
 
 export function MoveToFolderDialog({
-  fileId,
-  fileName,
+  fileIds,
+  subject,
   currentFolderId,
   isOpen,
   setIsOpen,
+  onMoved,
 }: Props) {
-  const { folders, moveFileToFolder } = useArtifactsFolders();
+  const { folders, moveFilesToFolder } = useArtifactsFolders();
   const destinationFolders = folders.filter((f) => f.id !== currentFolderId);
 
   function handleMove(folderId: string | null) {
     // Close only on success; the hook toasts on error and we keep the dialog
     // open so the user can retry without re-opening it.
-    moveFileToFolder({ fileId, folderId })
-      .then(() => setIsOpen(false))
+    moveFilesToFolder({ fileIds, folderId })
+      .then(() => {
+        setIsOpen(false);
+        onMoved?.();
+      })
       .catch(() => {});
   }
 
@@ -42,7 +50,7 @@ export function MoveToFolderDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-1">
           <Text variant="small" className="mb-1 text-zinc-500">
-            Move &ldquo;{fileName}&rdquo; to:
+            Move {subject} to:
           </Text>
           {currentFolderId != null && (
             <Button
