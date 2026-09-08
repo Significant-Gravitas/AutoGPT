@@ -32,6 +32,7 @@ from .run_mcp_tool import RunMCPToolTool
 
 _USER_ID = "test-user-mcp-manual-token"
 _SERVER_URL = "https://mcp.datafa.st/mcp"
+_SERVER_URL_NO_SCHEME = "mcp.datafa.st/mcp"
 _TOKEN = "dft_live_token_value"
 # A bare token is stored (and sent) as a complete Bearer header.
 _AUTHORIZATION = f"Bearer {_TOKEN}"
@@ -213,6 +214,34 @@ async def test_trailing_slash_variant_still_resolves(client, store):
             user_id=_USER_ID,
             session=make_session(_USER_ID),
             server_url=f"{_SERVER_URL}/",
+        )
+
+    assert MockClient.call_args.kwargs["authorization"] == _AUTHORIZATION
+
+
+async def test_scheme_less_server_url_resolves_after_storing(client, store):
+    """Storing and looking up must apply the same scheme rule.
+
+    Users type ``mcp.example.com/mcp``. ``/token`` canonicalizes that to
+    ``https://`` before writing ``metadata["mcp_server_url"]``, so every lookup
+    has to canonicalize identically or the row is stored under a key no lookup
+    ever produces — a 2xx and a green pill over a credential the agent cannot
+    find, which is the exact contradiction this PR removes.
+    """
+    with patch("backend.api.features.mcp.routes.MCPClient", return_value=_mcp_client()):
+        response = await client.post(
+            "/token", json={"server_url": _SERVER_URL_NO_SCHEME, "token": _TOKEN}
+        )
+    assert response.status_code == 200, response.text
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.MCPClient",
+        return_value=_mcp_client([_tool("get_analytics")]),
+    ) as MockClient:
+        await RunMCPToolTool()._execute(
+            user_id=_USER_ID,
+            session=make_session(_USER_ID),
+            server_url=_SERVER_URL_NO_SCHEME,
         )
 
     assert MockClient.call_args.kwargs["authorization"] == _AUTHORIZATION

@@ -521,14 +521,10 @@ async def mcp_store_token(
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
-    # Normalize URL so trailing-slash variants match existing credentials.
+    # Normalize URL so trailing-slash and scheme-less variants match existing
+    # credentials — and so the value stored below is the one every lookup path
+    # re-derives from the same user input.
     server_url = normalize_mcp_url(request.server_url)
-
-    # A URL with no scheme is the user not typing one, not the user asking for
-    # cleartext. Default it rather than accusing them of something they didn't
-    # write. Before ``server_host``, which needs a scheme to find a hostname.
-    if "://" not in server_url:
-        server_url = f"https://{server_url}"
 
     hostname = server_host(server_url)
 

@@ -20,8 +20,17 @@ def normalize_mcp_url(url: str) -> str:
     Strips leading/trailing whitespace and a single trailing slash so that
     ``https://mcp.example.com/`` and ``https://mcp.example.com`` resolve to
     the same stored credential.
+
+    A URL with no scheme gets ``https://``. That is the user omitting a scheme
+    rather than asking for cleartext — but the reason it belongs *here* is
+    matching, not politeness: the credential is stored under this value and
+    every lookup re-derives it from user input through this same function, so
+    the default has to be applied in one place or storage and lookup disagree.
     """
-    return url.strip().rstrip("/")
+    url = url.strip().rstrip("/")
+    if url and "://" not in url:
+        url = f"https://{url}"
+    return url
 
 
 def server_host(server_url: str) -> str:
