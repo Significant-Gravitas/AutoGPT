@@ -82,6 +82,13 @@ test("only the acted row locks while its decision is in flight", async () => {
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(false);
   });
+
+  await waitFor(() => {
+    const [first] = screen.getAllByRole("button", {
+      name: /^Approve:/,
+    }) as HTMLButtonElement[];
+    expect(first.disabled).toBe(false);
+  });
 });
 
 test("confirms a successful decision with a toast", async () => {
