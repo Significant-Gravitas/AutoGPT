@@ -21598,6 +21598,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -22014,6 +22018,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -22076,6 +22084,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23016,6 +23028,11 @@
             "type": "string",
             "title": "State Token",
             "description": "State token for CSRF verification"
+          },
+          "iss": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Iss",
+            "description": "Issuer identifier from the authorization response (RFC 9207). Must match the authorization server discovered at login; required when that server advertises `authorization_response_iss_parameter_supported`."
           }
         },
         "type": "object",
