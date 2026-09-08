@@ -71,19 +71,22 @@ export function readFirstLanding(): FirstLanding | null {
 }
 
 /**
- * Forget this browser's anonymous identity and first landing. Called on
- * logout so the next visitor on a shared machine starts as a new person
- * instead of being bootstrapped onto the previous user's PostHog and
- * LaunchDarkly identity, or reporting their landing page and UTMs.
+ * Rotate the browser identity and clear its first landing. Persist the new
+ * identity immediately so old PostHog storage cannot restore the last visitor.
  */
-export function resetAnonymousID(): void {
-  memoryID = null;
+export function resetAnonymousID(nextID?: string): void {
+  if (typeof window === "undefined") {
+    memoryID = null;
+    return;
+  }
+  memoryID = nextID || newID();
   try {
     window.localStorage.removeItem(ANONYMOUS_ID_KEY);
     window.localStorage.removeItem(FIRST_LANDING_KEY);
   } catch {
     // Storage blocked: nothing persisted to clear.
   }
+  writeStorage(ANONYMOUS_ID_KEY, memoryID);
 }
 
 export function resetAnonymousIDForTests(): void {

@@ -38,7 +38,7 @@ vi.mock("next/link", () => ({
 }));
 
 import { AdminSidebar } from "../components/AdminSidebar/AdminSidebar";
-import { adminNavItems } from "../components/AdminSidebar/helpers";
+import { getAdminNavItems } from "../components/AdminSidebar/helpers";
 
 describe("AdminSidebar", () => {
   beforeEach(() => {
@@ -51,7 +51,7 @@ describe("AdminSidebar", () => {
     const back = screen.getByRole("link", { name: /back/i });
     expect(back.getAttribute("href")).toBe("/copilot");
 
-    for (const { label, href } of adminNavItems) {
+    for (const { label, href } of getAdminNavItems()) {
       const link = screen.getByRole("link", { name: new RegExp(label, "i") });
       expect(link.getAttribute("href")).toBe(href);
     }

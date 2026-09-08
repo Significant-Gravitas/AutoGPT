@@ -265,7 +265,7 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Invoice.retrieve",
+        "backend.api.features.v1.stripe.Invoice.retrieve_async",
         side_effect=stripe.StripeError("stripe down"),
     )
 

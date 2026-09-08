@@ -39,7 +39,7 @@ const mariaExpert: Expert = {
   boundaries: "Never invent customer evidence.",
   protected_soul_rules: [
     "The expert discloses that it is AI when acting externally.",
-    "External actions require approval.",
+    "The expert asks for approval before acting externally.",
   ],
   is_template: false,
   source_template_id: "template-maria",
@@ -188,9 +188,12 @@ describe("RecentChats — expert groups", () => {
     );
     renderRecentChats();
 
+    const expertGroup = await screen.findByRole("button", {
+      name: "Expert chats",
+    });
     expect(
-      await screen.findByRole("button", { name: "Expert chats" }),
-    ).toBeDefined();
+      expertGroup.querySelector('svg[aria-label="AutoGPT Logo"]'),
+    ).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
@@ -235,5 +238,40 @@ describe("RecentChats — expert groups", () => {
 
     expect(screen.getByText("autopilot chat 11")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 1")).toBeNull();
+  });
+
+  it("links each group header to a new chat, except for fired experts", async () => {
+    const maxExpert: Expert = {
+      ...mariaExpert,
+      id: "expert-max",
+      name: "Max",
+      is_archived: true,
+    };
+    const sessions = [
+      ...makeSessions(1),
+      ...makeSessions(1, mariaExpert.id),
+      ...makeSessions(1, maxExpert.id),
+    ];
+    server.use(
+      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+      getListExpertIdentitiesMockHandler([mariaExpert, maxExpert]),
+    );
+    renderRecentChats();
+
+    const mariaLink = await screen.findByRole("link", {
+      name: "New chat with Maria",
+    });
+    expect(mariaLink.getAttribute("href")).toBe(
+      "/copilot?expertId=expert-maria",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "New chat with Autopilot" })
+        .getAttribute("href"),
+    ).toBe("/copilot");
+    expect(groupHeader("Max")).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: "New chat with Max" }),
+    ).toBeNull();
   });
 });

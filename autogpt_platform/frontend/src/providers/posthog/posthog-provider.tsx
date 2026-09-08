@@ -4,7 +4,6 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   captureFirstLanding,
   getAnonymousID,
-  resetAnonymousID,
 } from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
@@ -47,7 +46,11 @@ export function PostHogUserTracker() {
   const isPostHogEnabled = environment.isPostHogEnabled();
 
   useEffect(() => {
-    if (isUserLoading || !isPostHogEnabled) return;
+    if (isUserLoading) return;
+    if (!isPostHogEnabled) {
+      previousUserIdRef.current = null;
+      return;
+    }
 
     if (user) {
       if (previousUserIdRef.current !== user.id) {
@@ -58,10 +61,6 @@ export function PostHogUserTracker() {
         previousUserIdRef.current = user.id;
       }
     } else if (previousUserIdRef.current !== null) {
-      // Drop the shared anonymous id with PostHog's own reset, otherwise the
-      // next load bootstraps the previous user's visitor id straight back.
-      resetAnonymousID();
-      posthog.reset();
       previousUserIdRef.current = null;
     }
   }, [user, isUserLoading, isPostHogEnabled]);

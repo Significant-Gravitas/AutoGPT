@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
 import { getKickoffExpertIdFromMetadata } from "./expertKickoff";
 import { getCopilotAuthHeaders } from "./helpers";
+import { isVoiceTurn } from "./voice/pendingVoiceStart";
 import { isTokenDevtoolEnabled } from "./tokenDevtool/gate";
 import { createUsageCapturingFetch } from "./tokenDevtool/usageTap";
 import type { CopilotLlmModel } from "./store";
@@ -104,6 +105,9 @@ export function createCopilotTransport({
           // getRandomValues is available on plain-HTTP LAN origins used
           // by the local single-container appliance.
           message_id: uuidv4({}),
+          // Asks the reply to speak before it starts working. Text turns
+          // send false and pay nothing for it.
+          voice: isVoiceTurn(),
           expert_kickoff: kickoffExpertId !== null,
         },
         headers: await getCopilotAuthHeaders(),

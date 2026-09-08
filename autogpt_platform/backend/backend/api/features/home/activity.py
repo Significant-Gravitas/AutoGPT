@@ -15,6 +15,7 @@ def compose_active_tasks(
     executions: list[GraphExecutionMeta],
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    expert_by_graph: dict[str, Expert] | None = None,
 ) -> list[HomeActiveTask]:
     active = [
         execution
@@ -22,7 +23,7 @@ def compose_active_tasks(
         if execution.status in {ExecutionStatus.RUNNING, ExecutionStatus.QUEUED}
     ]
     return [
-        _active_task(execution, expert_by_id, agent_by_graph)
+        _active_task(execution, expert_by_id, agent_by_graph, expert_by_graph or {})
         for execution in active[:_MAX_ACTIVE]
     ]
 
@@ -31,17 +32,20 @@ def _active_task(
     execution: GraphExecutionMeta,
     expert_by_id: dict[str, Expert],
     agent_by_graph: dict[str, AgentRef],
+    expert_by_graph: dict[str, Expert],
 ) -> HomeActiveTask:
     agent = agent_by_graph.get(execution.graph_id, UNKNOWN_AGENT)
+    # A run started by hand from the library carries no expert stamp, so the
+    # expert that owns the workflow stands in for it.
+    expert = expert_by_id.get(execution.expert_id or "") or expert_by_graph.get(
+        execution.graph_id
+    )
     return HomeActiveTask(
         id=execution.id,
         title=agent.name,
         status="running" if execution.status == ExecutionStatus.RUNNING else "queued",
-        expert=(
-            to_home_expert(expert_by_id[execution.expert_id])
-            if execution.expert_id in expert_by_id
-            else None
-        ),
+        expert=to_home_expert(expert) if expert else None,
+        image_url=agent.image_url,
         started_at=as_utc_or_none(execution.started_at),
         link=run_link(agent.library_agent_id, execution.id),
     )
@@ -50,6 +54,7 @@ def _active_task(
 def compose_upcoming_tasks(
     schedules: list[GraphExecutionJobInfo | CopilotTurnJobInfo],
     expert_by_schedule: dict[str, Expert],
+    agent_by_graph: dict[str, AgentRef] | None = None,
 ) -> list[HomeUpcomingTask]:
     upcoming = []
     for schedule in schedules:
@@ -58,12 +63,14 @@ def compose_upcoming_tasks(
             continue
         if isinstance(schedule, GraphExecutionJobInfo):
             expert = expert_by_schedule.get(schedule.id)
+            agent = (agent_by_graph or {}).get(schedule.graph_id)
             upcoming.append(
                 HomeUpcomingTask(
                     id=schedule.id,
                     title=schedule.agent_name or schedule.name,
                     kind="agent",
                     expert=to_home_expert(expert) if expert else None,
+                    image_url=agent.image_url if agent else None,
                     next_run_time=next_run,
                 )
             )
