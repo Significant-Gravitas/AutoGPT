@@ -881,6 +881,21 @@ describe("ArtifactsPage - rename", () => {
     await waitFor(() => expect(patchedName).toBe("new.txt"));
   });
 
+  test("clicking inside the rename dialog does not open the viewer", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    fireEvent.click(input);
+
+    expect(screen.queryByTestId("file-viewer")).toBeNull();
+    expect(screen.getByLabelText(/file name/i)).toBeDefined();
+  });
+
   test("rejects a name with a slash before sending anything", async () => {
     useStorageHandler();
     useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);

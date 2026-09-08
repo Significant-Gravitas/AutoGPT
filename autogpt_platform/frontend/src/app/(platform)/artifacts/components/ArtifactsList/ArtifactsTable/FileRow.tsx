@@ -139,11 +139,16 @@ export function FileRow({ file, onOpen, index = 0 }: Props) {
         <FileActionsMenu file={file} />
       </div>
       {isRenameOpen && (
-        <RenameFileDialog
-          file={file}
-          isOpen={isRenameOpen}
-          setIsOpen={setIsRenameOpen}
-        />
+        // The dialog portals out of the row in the DOM, but React events still
+        // bubble through the component tree, so its clicks must not reach the
+        // row's open handler.
+        <div onClick={(e) => e.stopPropagation()}>
+          <RenameFileDialog
+            file={file}
+            isOpen={isRenameOpen}
+            setIsOpen={setIsRenameOpen}
+          />
+        </div>
       )}
     </motion.li>
   );
