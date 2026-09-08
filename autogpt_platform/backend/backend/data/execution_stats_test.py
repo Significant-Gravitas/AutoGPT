@@ -27,6 +27,8 @@ def _db_execution(*, status: ExecutionStatus, stats: dict):
         expertId=None,
         triggerSource=None,
         triggerRef=None,
+        scheduleId=None,
+        webhookId=None,
     )
 
 
