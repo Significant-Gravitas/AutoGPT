@@ -312,13 +312,22 @@ class RunMCPToolTool(BaseTool):
 
         except HTTPClientError as e:
             if e.status_code in AUTH_STATUS_CODES:
+                credential_rejected = e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
                 # Fire the setup card whether or not a credential row exists.
-                if (
-                    creds is not None
-                    and e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
-                ):
+                if creds is not None and credential_rejected:
                     await invalidate_mcp_credential(user_id, creds.id)
-                return self._build_setup_requirements(server_url, session_id)
+                # A 403 over a credential we deliberately kept means "this
+                # token is fine, it just may not call *this* tool". Rendering
+                # a bare Connect button there invites the user to re-paste the
+                # same working token: ``/token``'s probe 403s too, which is
+                # not a rejection, so it stores, returns 2xx and greens the
+                # pill — and the next call 403s again. Reporting it as
+                # connected breaks that loop.
+                return self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    connected=creds is not None and not credential_rejected,
+                )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(

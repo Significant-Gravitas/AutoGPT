@@ -920,17 +920,18 @@ async def test_surface_connect_card_probe_timeout_reports_optimistically_connect
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
-    "status_code, expect_invalidated",
+    "status_code, expect_invalidated, expect_connected",
     [
         # 401 is the one status that means "this credential was refused".
-        (401, True),
+        (401, True, False),
         # A 403 routinely means "valid token, not allowed to call *this*" —
-        # deleting on it forces a re-entry that fails identically.
-        (403, False),
+        # deleting on it forces a re-entry that fails identically, and a bare
+        # Connect button invites re-pasting the token that already works.
+        (403, False, True),
     ],
 )
 async def test_auth_error_with_stale_creds_fires_setup_and_invalidates(
-    status_code, expect_invalidated
+    status_code, expect_invalidated, expect_connected
 ):
     """Auth error when creds ARE present → always fire the setup card; drop the
     row only when the credential itself was refused.
@@ -980,6 +981,9 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates(
                             server_url=_SERVER_URL,
                         )
                         mock_build.assert_called_once()
+                        assert (
+                            mock_build.call_args.kwargs["connected"] is expect_connected
+                        )
                         if expect_invalidated:
                             mock_invalidate.assert_awaited_once_with(
                                 _USER_ID, "stale-cred-id"
