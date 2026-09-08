@@ -3,13 +3,45 @@ import type { User } from "@/lib/auth/types";
 export const AUTOPILOT_INTRO =
   "Tell me about your work — I'll find what to automate.";
 
+// A role is free text, and the hire flow's own presets come in both shapes:
+// some name a person ("Marketer", "Analyst"), others just a domain ("Sales",
+// "Support", "Operations"). "I'm Max, your Sales." reads as an unfinished
+// sentence, so a domain gets "expert" appended while a role that already
+// names a person is used as it was written.
+const PERSON_NOUN_SUFFIXES = ["er", "or", "ist", "yst", "ant", "ian"];
+// Person-nouns that none of the suffixes catch.
+const PERSON_NOUNS = new Set([
+  "agent",
+  "assistant",
+  "chef",
+  "chief",
+  "expert",
+  "head",
+  "lead",
+  "pro",
+  "rep",
+  "specialist",
+]);
+
+function namesAPerson(role: string) {
+  // Only the last word decides: "Customer Success" is a domain even though
+  // "Customer" would pass the suffix test on its own.
+  const head = role.split(/\s+/).pop()?.toLowerCase() ?? "";
+  if (PERSON_NOUNS.has(head)) return true;
+  return PERSON_NOUN_SUFFIXES.some((suffix) => head.endsWith(suffix));
+}
+
+export function getExpertRoleLabel(role: string) {
+  return namesAPerson(role) ? role : `${role} expert`;
+}
+
 export function getIntroLine(
   expert: { name: string; role: string | null } | null,
 ) {
   if (!expert) return AUTOPILOT_INTRO;
   const role = expert.role?.trim();
   return role
-    ? `I'm ${expert.name}, your ${role}. What should I take on?`
+    ? `I'm ${expert.name}, your ${getExpertRoleLabel(role)}. What should I take on?`
     : `I'm ${expert.name}. What should I take on?`;
 }
 

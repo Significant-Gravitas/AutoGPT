@@ -52,9 +52,12 @@ const mariaExpert = makeExpert({
   role: "Marketing Strategist",
 });
 const maxExpert = makeExpert({ id: "expert-max", name: "Max", role: "" });
+const samExpert = makeExpert({ id: "expert-sam", name: "Sam", role: "Sales" });
 
 function renderEmptySession(searchParams: string) {
-  server.use(getListExpertIdentitiesMockHandler([mariaExpert, maxExpert]));
+  server.use(
+    getListExpertIdentitiesMockHandler([mariaExpert, maxExpert, samExpert]),
+  );
   const Wrapper = withNuqsTestingAdapter({ searchParams });
   return render(
     <Wrapper>
@@ -79,6 +82,16 @@ describe("EmptySession — recipient-aware intro", () => {
     expect(
       screen.getByPlaceholderText("What should Maria work on?"),
     ).toBeDefined();
+  });
+
+  it("calls a bare-domain role an expert so the line still reads", async () => {
+    const { container } = renderEmptySession("?expertId=expert-sam");
+
+    await waitFor(() =>
+      expect(normalizeWhitespace(container)).toContain(
+        "I'm Sam, your Sales expert. What should I take on?",
+      ),
+    );
   });
 
   it("drops the role clause when the expert has none", async () => {
