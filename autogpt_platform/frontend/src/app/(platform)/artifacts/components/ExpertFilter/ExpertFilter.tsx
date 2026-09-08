@@ -1,12 +1,14 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
 
 export interface ExpertFilterOption {
   id: string;
   name: string;
+  avatarUrl: string | null;
 }
 
 interface Props {
@@ -48,6 +50,7 @@ export function ExpertFilter({ experts, value, onChange }: Props) {
           <ExpertTab
             key={expert.id}
             label={expert.name}
+            avatarUrl={expert.avatarUrl}
             active={value === expert.id}
             onClick={() => onChange(expert.id)}
             testId={`artifacts-expert-filter-${expert.id}`}
@@ -63,9 +66,18 @@ interface ExpertTabProps {
   active: boolean;
   onClick: () => void;
   testId: string;
+  /** Present for expert tabs; "Everyone" has no avatar. */
+  avatarUrl?: string | null;
 }
 
-function ExpertTab({ label, active, onClick, testId }: ExpertTabProps) {
+function ExpertTab({
+  label,
+  active,
+  onClick,
+  testId,
+  avatarUrl,
+}: ExpertTabProps) {
+  const hasAvatar = avatarUrl !== undefined;
   return (
     <button
       type="button"
@@ -73,7 +85,8 @@ function ExpertTab({ label, active, onClick, testId }: ExpertTabProps) {
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative max-w-48 truncate rounded-full px-4 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400",
+        hasAvatar ? "pl-1.5 pr-3.5" : "px-4",
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900",
       )}
       data-testid={testId}
@@ -85,7 +98,13 @@ function ExpertTab({ label, active, onClick, testId }: ExpertTabProps) {
           transition={snappySpring}
         />
       ) : null}
-      <span className="relative z-10">{label}</span>
+      {hasAvatar ? (
+        // Decorative: the label carries the name for assistive tech.
+        <span aria-hidden className="relative z-10 shrink-0">
+          <ExpertAvatar name={label} avatarUrl={avatarUrl} size={22} />
+        </span>
+      ) : null}
+      <span className="relative z-10 truncate">{label}</span>
     </button>
   );
 }

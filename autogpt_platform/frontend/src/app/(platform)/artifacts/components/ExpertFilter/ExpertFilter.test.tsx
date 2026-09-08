@@ -4,8 +4,8 @@ import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { ExpertFilter } from "./ExpertFilter";
 
 const EXPERTS = [
-  { id: "expert-a", name: "Nova" },
-  { id: "expert-b", name: "Kai" },
+  { id: "expert-a", name: "Nova", avatarUrl: "https://cdn.test/nova.png" },
+  { id: "expert-b", name: "Kai", avatarUrl: null },
 ];
 
 describe("ExpertFilter", () => {
