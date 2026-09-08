@@ -15,9 +15,7 @@ def db():
     db = MagicMock()
     db.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
     db.resolve_expert_workspace_scope = AsyncMock(
-        return_value=WorkspaceScope(
-            expert_id="expert-a", session_ids=["older"], skill_names=["assigned"]
-        )
+        return_value=WorkspaceScope(expert_id="expert-a", session_ids=["older"])
     )
     with patch("backend.copilot.context.workspace_db", return_value=db):
         yield db

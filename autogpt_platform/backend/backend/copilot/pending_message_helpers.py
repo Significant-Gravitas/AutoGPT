@@ -38,6 +38,8 @@ from backend.data.workspace import resolve_attachable_workspace_files
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 if TYPE_CHECKING:
+    from prisma.models import UserWorkspaceFile
+
     from backend.copilot.model import ChatSession
     from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -172,6 +174,23 @@ async def queue_user_message(
     )
 
 
+async def resolve_attachments_for_http(
+    user_id: str,
+    file_ids: list[str],
+    *,
+    session_id: str,
+    expert_id: str | None,
+) -> list["UserWorkspaceFile"]:
+    """Resolve attachment IDs for an HTTP request, mapping an expert-scope
+    violation to a 400 so the stream and pending routes answer alike."""
+    try:
+        return await resolve_attachable_workspace_files(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
+    except WorkspaceAccessDeniedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def queue_pending_for_http(
     *,
     session_id: str,
@@ -197,12 +216,9 @@ async def queue_pending_for_http(
     """
     sanitized_file_ids: list[str] | None = None
     if file_ids:
-        try:
-            files = await resolve_attachable_workspace_files(
-                user_id, file_ids, session_id=session_id, expert_id=expert_id
-            )
-        except WorkspaceAccessDeniedError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        files = await resolve_attachments_for_http(
+            user_id, file_ids, session_id=session_id, expert_id=expert_id
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so

@@ -338,7 +338,7 @@ async def list_workspace_files(
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
     if allowed_path_prefixes:
-        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
+        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
 
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
@@ -350,9 +350,9 @@ async def list_workspace_files(
 
 
 def _path_prefix_filters(prefixes: list[str]) -> list[UserWorkspaceFileWhereInput]:
-    return [
-        {"path": {"startswith": p if p.startswith("/") else f"/{p}"}} for p in prefixes
-    ]
+    """Nested under ``AND`` so the scope filter can never replace another
+    ``OR`` branch a caller adds later; scope prefixes are always rooted."""
+    return [{"path": {"startswith": prefix}} for prefix in prefixes]
 
 
 async def count_workspace_files(
@@ -386,7 +386,7 @@ async def count_workspace_files(
         where_clause["path"] = {"startswith": path_prefix}
 
     if allowed_path_prefixes:
-        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
+        where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
 
@@ -468,6 +468,9 @@ async def resolve_attachable_workspace_files(
     file from another expert's conversations raises
     ``WorkspaceAccessDeniedError`` naming the files, so the caller can surface
     a clear error instead of leaking the file's metadata into the turn.
+
+    Runs in the API server with direct DB access, so the resolver is called
+    in-process; code in the executor must go through ``workspace_db()``.
     """
     files = await resolve_workspace_files(user_id, file_ids)
     if expert_id is None or not files:

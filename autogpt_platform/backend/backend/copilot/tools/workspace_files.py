@@ -431,7 +431,7 @@ class ListWorkspaceFilesTool(BaseTool):
                     "description": (
                         "Include files from all sessions (default: false). "
                         "Expert chats only ever see files from their own "
-                        "conversations."
+                        "conversations and ones they delegated."
                     ),
                 },
             },
@@ -525,8 +525,8 @@ class ReadWorkspaceFileTool(BaseTool):
             "Use save_to_path to copy to working dir for processing. "
             "Use offset/length for paginated reads. "
             "Paths scoped to current session; use /sessions/<id>/... for "
-            "cross-session access (expert chats are limited to their own "
-            "conversations)."
+            "cross-session access (expert chats can read their own "
+            "conversations and ones they delegated)."
         )
 
     @property

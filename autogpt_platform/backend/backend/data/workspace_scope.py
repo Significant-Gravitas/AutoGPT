@@ -77,7 +77,9 @@ async def resolve_expert_workspace_scope(
     Own conversations are every session attributed to the expert, so a new
     conversation keeps reaching files from earlier ones. Fails closed: a
     missing, archived, or foreign expert yields no session grants at all
-    (callers add the current session explicitly).
+    (callers add the current session explicitly). The ``visibility`` filter
+    mirrors ``experts_db.get_expert``: hired experts are PRIVATE in v1, and
+    a TEAM/ORG expert must not read files until sharing rules exist for it.
     """
     expert = await PrismaExpert.prisma().find_first(
         where={
