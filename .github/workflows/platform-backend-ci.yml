@@ -197,9 +197,9 @@ jobs:
     permissions:
       contents: read
     # Each Python leg preserves the complete suite while its four disjoint path
-    # groups run on separate standard runners. This avoids CPU and service
-    # contention without deselecting tests or sharing mutable state between
-    # shards. The timeout remains a hang guard, not a performance budget.
+    # groups run on separate standard runners. The cap is a hang guard, not a
+    # performance budget: on merge_group a cancelled job reads as a failed
+    # check and ejects the PR from the queue, so keep it well above p99.
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -554,7 +554,7 @@ jobs:
               test_paths=()
               for path in backend/*/; do
                 case "$path" in
-                  backend/data/|backend/copilot/|backend/util/|backend/executor/)
+                  backend/data/|backend/copilot/|backend/util/|backend/executor/|backend/__pycache__/)
                     continue
                     ;;
                 esac
@@ -582,16 +582,17 @@ jobs:
         if: ${{ always() }}
         run: >-
           python ../../.github/scripts/validate_junit.py --synthesize-invalid
-          junit-${{ matrix.test-shard }}.xml
+          "junit-${TEST_SHARD}.xml"
 
       - name: Validate coverage reports
         if: ${{ always() }}
         run: |
-          python - <<'PY'
+          python - "coverage-${TEST_SHARD}.xml" <<'PY'
+          import sys
           from pathlib import Path
           from xml.etree import ElementTree
 
-          report = Path("coverage-${{ matrix.test-shard }}.xml")
+          report = Path(sys.argv[1])
           if not report.is_file() or not report.stat().st_size:
               raise SystemExit(f"Missing or empty report: {report}")
           ElementTree.parse(report)
