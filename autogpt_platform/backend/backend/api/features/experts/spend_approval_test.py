@@ -136,6 +136,32 @@ async def test_park_opens_a_review_on_the_run_and_sets_review_status(mocker) -> 
 
 
 @pytest.mark.asyncio
+async def test_a_park_that_cannot_hold_the_run_undoes_its_review_and_raises(
+    mocker,
+) -> None:
+    """A waiting card over an execution that is not in REVIEW is worse than no
+    gate: the resume path reads the durable status, so it would skip the check
+    and requeue unapproved."""
+    _, status, post = _park_mocks(mocker)
+    status.return_value = None
+    delete = mocker.patch.object(
+        sa.human_review, "delete_review_by_node_exec_id", AsyncMock(return_value=1)
+    )
+
+    with pytest.raises(sa.SpendApprovalParkFailed):
+        await sa.park_execution_for_spend_approval(
+            user_id="owner",
+            graph_exec_id="exec-9",
+            graph_id="graph",
+            graph_version=3,
+            needed=NEEDED,
+        )
+
+    delete.assert_awaited_once_with("expert-spend:e-1:exec-9", "owner")
+    post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_thread_message_is_posted_once_per_window(mocker) -> None:
     _, _, post = _park_mocks(mocker)
 

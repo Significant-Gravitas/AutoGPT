@@ -36,6 +36,10 @@ SPEND_REVIEW_MARKER = "expert-spend:"
 _POST_NAMESPACE = uuid.UUID("2b7d1c4e-5a6f-4e8b-9c0d-1e2f3a4b5c6d")
 
 
+class SpendApprovalParkFailed(Exception):
+    """The execution could not be held, so it must not be allowed to run."""
+
+
 class SpendApprovalNeeded(BaseModel):
     expert_id: str
     expert_name: str
@@ -136,9 +140,10 @@ async def park_execution_for_spend_approval(
     """Hold a just-created, unpublished execution: one review row keyed on
     it, status REVIEW so the run page shows the approval, and one message in
     the expert's thread per window."""
+    review_id = spend_review_id(needed.expert_id, graph_exec_id)
     await human_review.get_or_create_human_review(
         user_id=user_id,
-        node_exec_id=spend_review_id(needed.expert_id, graph_exec_id),
+        node_exec_id=review_id,
         graph_exec_id=graph_exec_id,
         graph_id=graph_id,
         graph_version=graph_version,
@@ -154,9 +159,12 @@ async def park_execution_for_spend_approval(
         )
         is None
     ):
-        logger.warning(
-            f"Execution #{graph_exec_id} parked for spend approval but its "
-            "status could not be set to REVIEW"
+        # The resume gate reads the durable status, so a waiting review over an
+        # execution left in another status is worse than no gate: the run
+        # requeues unapproved while the card still asks. Undo and fail instead.
+        await human_review.delete_review_by_node_exec_id(review_id, user_id)
+        raise SpendApprovalParkFailed(
+            f"Execution #{graph_exec_id} could not be set to REVIEW"
         )
     await _post_thread_message(user_id, needed)
 
