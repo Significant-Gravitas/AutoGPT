@@ -2,13 +2,15 @@ import {
   CredentialsProvidersContext,
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderBare,
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainActionCard } from "../ChainActionCard";
 import type {
@@ -35,7 +37,25 @@ vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  getListExpertCredentialsQueryKey: (expertId?: string) => [
+    `/api/experts/${expertId}/credentials`,
+  ],
 }));
+
+// ConnectorRow's expert-grant hook writes the granted list into the cache.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function QueryWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function render(ui: ReactElement) {
+  return renderBare(ui, { wrapper: QueryWrapper });
+}
 
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",

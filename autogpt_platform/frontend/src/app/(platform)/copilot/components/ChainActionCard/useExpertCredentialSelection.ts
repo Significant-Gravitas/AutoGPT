@@ -1,8 +1,14 @@
-import { useListExpertCredentials } from "@/app/api/__generated__/endpoints/experts/experts";
+import {
+  getListExpertCredentialsQueryKey,
+  useListExpertCredentials,
+  type grantExpertCredentialsResponse,
+  type listExpertCredentialsResponseSuccess,
+} from "@/app/api/__generated__/endpoints/experts/experts";
 import { okData } from "@/app/api/helpers";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { ConnectorRow } from "./helpers";
 
@@ -10,7 +16,9 @@ export function useExpertCredentialSelection(
   row: ConnectorRow,
   providers: CredentialsProvidersContextType | null,
 ) {
-  const grants = useListExpertCredentials(row.expertGrant?.expertId ?? "", {
+  const queryClient = useQueryClient();
+  const expertId = row.expertGrant?.expertId;
+  const grants = useListExpertCredentials(expertId ?? "", {
     query: {
       enabled: Boolean(row.expertGrant),
       select: (response) => okData(response),
@@ -48,34 +56,49 @@ export function useExpertCredentialSelection(
     }
     return undefined;
   }
-  const credential = findCredential(row.selected?.id) ?? firstGrantedMatch();
+
+  const selectedID = row.selected?.id;
+  const isSelectedGranted = Boolean(selectedID && grantedIDs.has(selectedID));
+  // The provider list reloads asynchronously after a connect, so an account
+  // it has not caught up with is merely absent, not unusable.
+  const isSelectedLoaded = Boolean(
+    selectedID &&
+      provider?.savedCredentials.some(
+        (credential) => credential.id === selectedID,
+      ),
+  );
+  // A granted selection stays put: swapping it for a different granted
+  // account would undo the choice just made, and clearing it would flip the
+  // row from Granted back to Connect until the provider list catches up. Only
+  // a revoked grant, or a loaded account that fails the row, drops it.
+  const keepsSelection =
+    isSelectedGranted &&
+    (!isSelectedLoaded || Boolean(findCredential(selectedID)));
+  const hydrated = keepsSelection ? undefined : firstGrantedMatch();
   const hasGrant = Boolean(row.expertGrant);
   const isSelectionGranted = Boolean(
-    hasGrant &&
-      row.selected &&
-      !grants.isError &&
-      grants.data &&
-      credential?.id === row.selected.id,
+    hasGrant && !grants.isError && grants.data && keepsSelection,
   );
 
   useEffect(() => {
     if (!hasGrant || !grants.data || !providers || grants.isFetching) return;
-    if (row.selected?.id === credential?.id) return;
+    if (keepsSelection || selectedID === hydrated?.id) return;
     row.select(
-      credential
+      hydrated
         ? {
-            id: credential.id,
+            id: hydrated.id,
             provider: row.provider,
-            type: credential.type as CredentialsMetaInput["type"],
-            title: credential.title ?? undefined,
+            type: hydrated.type as CredentialsMetaInput["type"],
+            title: hydrated.title ?? undefined,
           }
         : undefined,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- row is rebuilt each render by the card; track the fields it reads
   }, [
     hasGrant,
-    row.selected?.id,
-    credential?.id,
+    selectedID,
+    hydrated?.id,
+    keepsSelection,
     grants.data,
     grants.isFetching,
     providers,
@@ -85,14 +108,24 @@ export function useExpertCredentialSelection(
     isPending: grants.isPending,
     isError: grants.isError,
     isSelectionGranted,
-    /** Whether the expert holds the grant according to a freshly fetched list.
-     *  A refetch resolves rather than throws when it fails, so its result is
-     *  the only proof the grant landed. */
-    async confirmGrant(id: string) {
-      const refreshed = await grants.refetch();
-      return Boolean(
-        refreshed?.data?.some((grant) => grant.credential_id === id),
+    /** Records the list the POST returned as the expert's grants and reports
+     *  whether it holds `id`. That response is the only proof available: the
+     *  list query is shared by every row of this expert, so a refetch started
+     *  here is cancelled by a sibling row's and resolves against pre-POST
+     *  data — a grant that landed would read back as a failure. */
+    confirmGrant(id: string, response: grantExpertCredentialsResponse) {
+      const granted = okData(response);
+      if (!granted || !expertId) return false;
+      const refreshed: listExpertCredentialsResponseSuccess = {
+        status: 200,
+        data: granted,
+        headers: response.headers,
+      };
+      queryClient.setQueryData(
+        getListExpertCredentialsQueryKey(expertId),
+        refreshed,
       );
+      return granted.some((grant) => grant.credential_id === id);
     },
   };
 }

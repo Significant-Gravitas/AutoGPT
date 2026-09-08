@@ -1,15 +1,16 @@
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ExistingCredentialsOffer } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/helpers";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderBare,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState, type ReactElement, type ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectorRow } from "../ConnectorRow";
 import type { ConnectorRow as Row } from "../helpers";
 
@@ -26,7 +27,26 @@ vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
     mutateAsync: mockGrant,
     isPending: false,
   }),
+  getListExpertCredentialsQueryKey: (expertId?: string) => [
+    `/api/experts/${expertId}/credentials`,
+  ],
 }));
+
+// The selection hook writes the grant list it got back into the query cache,
+// so the rows need a client even though the list hook itself is mocked.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function QueryWrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function render(ui: ReactElement) {
+  return renderBare(ui, { wrapper: QueryWrapper });
+}
 
 vi.mock(
   "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog",
@@ -70,40 +90,61 @@ interface GrantsResult {
   data?: { credential_id: string }[];
   isPending: boolean;
   isError: boolean;
-  refetch: () => Promise<{ data?: { credential_id: string }[] } | undefined>;
+  isFetching: boolean;
+  refetch: () => Promise<{ data?: { credential_id: string }[] }>;
 }
 
-/** Credential ids the grant mutation was asked for, i.e. what the server
- *  would report once a successful grant is refetched. */
-function grantedByMutation() {
-  return mockGrant.mock.calls.flatMap(
-    (call) =>
-      (call[0] as { data: { credential_ids: string[] } }).data.credential_ids,
-  );
+/** Credential ids the expert currently holds. A successful grant adds to it,
+ *  the way the list the POST returns does once it lands in the cache. */
+let serverGrants: string[] = [];
+
+/** React Query cancels a refetch when a sibling row starts its own, so a row
+ *  that trusted one would read pre-POST data. Always stale here. */
+function staleRefetch() {
+  return Promise.resolve({ data: [] as { credential_id: string }[] });
 }
 
-function grantsResult(
-  ids: string[] = [],
-  overrides: Partial<GrantsResult> = {},
-): GrantsResult {
+function grantsResult(overrides: Partial<GrantsResult> = {}): GrantsResult {
   return {
-    data: ids.map((id) => ({ credential_id: id })),
+    data: serverGrants.map((id) => ({ credential_id: id })),
     isPending: false,
     isError: false,
-    refetch: vi.fn(async () => ({
-      data: [...ids, ...grantedByMutation()].map((id) => ({
-        credential_id: id,
-      })),
-    })),
+    isFetching: false,
+    refetch: staleRefetch,
     ...overrides,
   };
 }
 
+/** The backend answers a grant with the expert's whole grant list. */
+function grantResponse(ids: string[]) {
+  return {
+    status: 200 as const,
+    data: ids.map((id) => ({
+      credential_id: id,
+      provider: "github",
+      title: id,
+      type: "oauth2",
+    })),
+    headers: new Headers(),
+  };
+}
+
+function grantAll({ data }: { data: { credential_ids: string[] } }) {
+  serverGrants = [...new Set([...serverGrants, ...data.credential_ids])];
+  return Promise.resolve(grantResponse(serverGrants));
+}
+
+beforeEach(() => {
+  serverGrants = [];
+  mockGrant.mockReset();
+  mockGrant.mockImplementation(grantAll);
+  mockReported.current = undefined;
+  mockGrants.mockImplementation(() => grantsResult());
+});
+
 afterEach(() => {
   cleanup();
-  mockGrant.mockReset();
-  mockReported.current = undefined;
-  mockGrants.mockReturnValue(grantsResult());
+  queryClient.clear();
 });
 
 const savedGithub = {
@@ -114,19 +155,34 @@ const savedGithub = {
   scopes: [],
 };
 
+const savedNotion = {
+  id: "notion-cred",
+  provider: "notion",
+  type: "oauth2",
+  title: "Notion",
+  scopes: [],
+};
+
+function providersFor(entries: Record<string, (typeof savedGithub)[]>) {
+  return Object.fromEntries(
+    Object.entries(entries).map(([provider, savedCredentials]) => [
+      provider,
+      {
+        provider,
+        providerName: provider,
+        savedCredentials,
+        oAuthCallback: vi.fn(),
+        createAPIKeyCredentials: vi.fn(),
+        createUserPasswordCredentials: vi.fn(),
+        createHostScopedCredentials: vi.fn(),
+        deleteCredentials: vi.fn(),
+      },
+    ]),
+  ) as unknown as React.ContextType<typeof CredentialsProvidersContext>;
+}
+
 function providersWithGithub(saved: (typeof savedGithub)[] = [savedGithub]) {
-  return {
-    github: {
-      provider: "github",
-      providerName: "GitHub",
-      savedCredentials: saved,
-      oAuthCallback: vi.fn(),
-      createAPIKeyCredentials: vi.fn(),
-      createUserPasswordCredentials: vi.fn(),
-      createHostScopedCredentials: vi.fn(),
-      deleteCredentials: vi.fn(),
-    },
-  } as unknown as React.ContextType<typeof CredentialsProvidersContext>;
+  return providersFor({ github: saved });
 }
 
 function row(overrides: Partial<Row> = {}): Row {
@@ -162,7 +218,7 @@ function StatefulRow({ current }: { current: Row }) {
 
 describe("ConnectorRow in an expert chat", () => {
   it("restores a persisted expert grant without triggering another run", async () => {
-    mockGrants.mockReturnValue(grantsResult(["spare-cred"]));
+    serverGrants = ["spare-cred"];
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
@@ -181,7 +237,7 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("shows Granted once the expert holds the selected credential", async () => {
-    mockGrants.mockReturnValue(grantsResult(["spare-cred"]));
+    serverGrants = ["spare-cred"];
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
@@ -194,7 +250,7 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("hydrates the first granted account when several of them match", async () => {
-    mockGrants.mockReturnValue(grantsResult(["other-cred", "spare-cred"]));
+    serverGrants = ["other-cred", "spare-cred"];
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
@@ -215,8 +271,8 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("does not show Granted while the grant list is unavailable", () => {
-    mockGrants.mockReturnValue(
-      grantsResult([], { data: undefined, isError: true }),
+    mockGrants.mockImplementation(() =>
+      grantsResult({ data: undefined, isError: true }),
     );
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
@@ -271,7 +327,7 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("preserves the chosen account when multiple matching accounts are granted", () => {
-    mockGrants.mockReturnValue(grantsResult(["spare-cred", "other-cred"]));
+    serverGrants = ["spare-cred", "other-cred"];
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
       selected: { id: "other-cred", provider: "github", type: "oauth2" },
@@ -290,7 +346,7 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("does not hydrate a granted credential lacking the required scopes", () => {
-    mockGrants.mockReturnValue(grantsResult(["spare-cred"]));
+    serverGrants = ["spare-cred"];
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
       schema: {
@@ -324,7 +380,6 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("offers the account's credential in the dialog and grants it", async () => {
-    mockGrant.mockResolvedValue([]);
     const current = row({
       expertGrant: {
         expertId: "expert-a",
@@ -352,7 +407,6 @@ describe("ConnectorRow in an expert chat", () => {
   });
 
   it("grants before telling the chain the row connected", async () => {
-    mockGrant.mockResolvedValue([]);
     const current = row({
       expertGrant: {
         expertId: "expert-a",
@@ -372,11 +426,8 @@ describe("ConnectorRow in an expert chat", () => {
     );
   });
 
-  it("does not connect the row when the refreshed list lacks the grant", async () => {
-    mockGrant.mockResolvedValue([]);
-    mockGrants.mockReturnValue(
-      grantsResult([], { refetch: vi.fn(async () => ({ data: [] })) }),
-    );
+  it("does not connect the row when the returned list omits the credential", async () => {
+    mockGrant.mockResolvedValue(grantResponse([]));
     const current = row({
       expertGrant: {
         expertId: "expert-a",
@@ -468,6 +519,70 @@ describe("ConnectorRow in an expert chat", () => {
       await screen.findByText("Expert is out of credentials seats"),
     ).toBeDefined();
   });
+
+  it("fails a grant it cannot resolve to an account without calling the API", async () => {
+    const current = row({
+      expertGrant: {
+        expertId: "expert-a",
+        credentials: [
+          { id: "ghost-cred", title: "Ghost GitHub", type: "oauth2" },
+        ],
+      },
+    });
+    render(
+      <CredentialsProvidersContext.Provider value={providersWithGithub()}>
+        <ConnectorRow row={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
+    fireEvent.click(screen.getByRole("button", { name: "use-Ghost GitHub" }));
+    expect(
+      await screen.findByText(
+        "That account is missing the access this needs. Try connecting again.",
+      ),
+    ).toBeDefined();
+    expect(mockGrant).not.toHaveBeenCalled();
+    expect(current.select).not.toHaveBeenCalled();
+    expect(current.onConnected).not.toHaveBeenCalled();
+  });
+
+  it("grants two rows back to back without failing the first", async () => {
+    const github = row({
+      expertGrant: {
+        expertId: "expert-a",
+        credentials: [{ id: "spare-cred", title: "GH spare", type: "oauth2" }],
+      },
+    });
+    const notion = row({
+      provider: "notion",
+      displayName: "Notion",
+      schema: {
+        credentials_provider: ["notion"],
+        credentials_types: ["oauth2"],
+      },
+      expertGrant: {
+        expertId: "expert-a",
+        credentials: [{ id: "notion-cred", title: "Notion", type: "oauth2" }],
+      },
+    });
+    render(
+      <CredentialsProvidersContext.Provider
+        value={providersFor({ github: [savedGithub], notion: [savedNotion] })}
+      >
+        <StatefulRow current={github} />
+        <StatefulRow current={notion} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    screen
+      .getAllByRole("button", { name: "Grant access" })
+      .forEach((button) => fireEvent.click(button));
+    fireEvent.click(screen.getByRole("button", { name: "use-GH spare" }));
+    fireEvent.click(screen.getByRole("button", { name: "use-Notion" }));
+    await waitFor(() => expect(screen.getAllByText("Granted")).toHaveLength(2));
+    expect(screen.queryByText("Couldn't grant access. Try again.")).toBeNull();
+    expect(github.onConnected).toHaveBeenCalledTimes(1);
+    expect(notion.onConnected).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("ConnectorRow after a sign-in in an expert chat", () => {
@@ -479,7 +594,6 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
   }
 
   it("grants the credential the sign-in reports without waiting for a refresh", async () => {
-    mockGrant.mockResolvedValue([]);
     mockReported.current = reported(added);
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
@@ -503,8 +617,40 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
     expect(current.onConnected).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the just-granted account while the provider list catches up", async () => {
+    mockReported.current = reported(added);
+    const current = row({
+      expertGrant: { expertId: "expert-a", credentials: [] },
+    });
+    const { rerender } = render(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <StatefulRow current={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    expect(await screen.findByText("Granted")).toBeDefined();
+
+    // Another row granted an account this one also matches, while the
+    // provider list still predates the sign-in.
+    serverGrants = ["old-cred", "new-cred"];
+    rerender(
+      <CredentialsProvidersContext.Provider
+        value={providersWithGithub([existing])}
+      >
+        <StatefulRow current={current} />
+      </CredentialsProvidersContext.Provider>,
+    );
+    await waitFor(() => expect(screen.getByText("Granted")).toBeDefined());
+    expect(current.select).toHaveBeenCalledTimes(1);
+    expect(current.select).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "new-cred" }),
+    );
+  });
+
   it("grants a reported credential when the provider has no accounts yet", async () => {
-    mockGrant.mockResolvedValue([]);
     mockReported.current = reported(added);
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
@@ -526,7 +672,6 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
   });
 
   it("grants a re-authenticated account that kept its id", async () => {
-    mockGrant.mockResolvedValue([]);
     mockReported.current = reported(existing);
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
@@ -577,7 +722,6 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
   });
 
   it("grants the account that appeared after Connect, not a pre-existing one", async () => {
-    mockGrant.mockResolvedValue([]);
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
@@ -638,7 +782,7 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
   });
 
   it("keeps the new account available for a retry when the grant fails", async () => {
-    mockGrant.mockRejectedValueOnce(new Error("nope")).mockResolvedValue([]);
+    mockGrant.mockRejectedValueOnce(new Error("nope"));
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });

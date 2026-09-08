@@ -383,6 +383,33 @@ describe("ConnectCredentialDialog with existing accounts", () => {
     expect(screen.queryByText("Use existing")).toBeNull();
   });
 
+  it("signs into a fresh account on Add new instead of upgrading the offered one", () => {
+    renderDialog({ existing: offer(), credentialID: "cred-1" });
+
+    const beforeAddNew = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(beforeAddNew.credentialID).toBe("cred-1");
+
+    fireEvent.click(screen.getByText("Add new"));
+
+    // buildLoginParams omits credential_id for an undefined target, so the
+    // login asks for a brand-new account rather than re-authing cred-1.
+    const afterAddNew = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(afterAddNew.credentialID).toBeUndefined();
+  });
+
+  it("keeps the upgrade target for the plain connect flow", () => {
+    renderDialog({ credentialID: "cred-1" });
+
+    const args = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(args.credentialID).toBe("cred-1");
+  });
+
   it("returns to the accounts after Add new is cancelled", () => {
     const { onClose, rerender } = renderDialog({ existing: offer() });
 

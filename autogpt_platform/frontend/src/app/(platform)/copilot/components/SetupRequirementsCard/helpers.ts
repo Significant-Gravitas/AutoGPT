@@ -83,7 +83,9 @@ export interface ExpertGrant {
   credentials: { id: string; title: string; type: string }[];
 }
 
-function coerceExpertGrant(raw: unknown): ExpertGrant | undefined {
+/** Reads the wire `expert_grant` block. A candidate needs an id; an untitled
+ *  one is labelled by its id, and a missing type falls back to `api_key`. */
+export function coerceExpertGrant(raw: unknown): ExpertGrant | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const grant = raw as Record<string, unknown>;
   if (typeof grant.expert_id !== "string" || !grant.expert_id) return undefined;

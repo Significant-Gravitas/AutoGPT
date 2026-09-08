@@ -67,7 +67,10 @@ export function ConnectCredentialDialog({
     provider,
     onConnected: handleConnected,
     scopes: schema.credentials_scopes,
-    credentialID,
+    // Add new asks for a second account, not a re-auth: keeping the upgrade
+    // target would sign the user back into the very account they are trying
+    // to add another alongside.
+    credentialID: addingNew ? undefined : credentialID,
   });
 
   const offered = existing?.credentials ?? [];

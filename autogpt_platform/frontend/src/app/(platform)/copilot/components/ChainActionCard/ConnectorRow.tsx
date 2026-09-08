@@ -65,8 +65,20 @@ export function ConnectorRow({ row }: Props) {
   ): Promise<boolean> {
     if (!expertGrant) return false;
     setGrantError(null);
+    // Resolve the account before the POST: validating afterwards tells the
+    // user the grant failed while the expert already holds it.
+    const account =
+      candidate ??
+      allProviders?.[row.provider]?.savedCredentials.find(
+        (saved) => saved.id === credential.id,
+      );
+    if (!account || !grantableAmong(row, [account])) {
+      setGrantError(UNUSABLE_ACCOUNT_ERROR);
+      return false;
+    }
+    let response: Awaited<ReturnType<typeof grantCredentials>>;
     try {
-      await grantCredentials({
+      response = await grantCredentials({
         expertId: expertGrant.expertId,
         data: { credential_ids: [credential.id] },
       });
@@ -76,13 +88,7 @@ export function ConnectorRow({ row }: Props) {
       );
       return false;
     }
-    const isGranted = await grantedCredentials.confirmGrant(credential.id);
-    const account =
-      candidate ??
-      allProviders?.[row.provider]?.savedCredentials.find(
-        (saved) => saved.id === credential.id,
-      );
-    if (!isGranted || !account || !grantableAmong(row, [account])) {
+    if (!grantedCredentials.confirmGrant(credential.id, response)) {
       setGrantError(GRANT_FAILED_ERROR);
       return false;
     }
@@ -107,8 +113,8 @@ export function ConnectorRow({ row }: Props) {
       );
       if (!fresh) return;
       setAwaitingGrant(false);
-      setConnected(fresh);
-      void grant(fresh);
+      setConnected(fresh.grantable);
+      void grant(fresh.grantable, fresh.account);
       return;
     }
     // Cards stream in one commit at a time, so a row's schema can widen after
@@ -289,18 +295,21 @@ function toSavedCredential(
 }
 
 /** The credential that satisfies `row` and did not exist before Connect was
- *  clicked, i.e. the account the user just signed in with. */
+ *  clicked, i.e. the account the user just signed in with, paired with the
+ *  saved account it came from so granting it needs no second lookup — the
+ *  provider list can have moved on again by then. */
 function newlyConnectedCredential(
   row: Row,
   allProviders: CredentialsProvidersContextType | null,
   knownIds: Set<string>,
-): Grantable | null {
+): { grantable: Grantable; account: SavedCredential } | null {
   const provider = allProviders?.[row.provider];
   if (!provider) return null;
-  return grantableAmong(
-    row,
-    provider.savedCredentials.filter((c) => !knownIds.has(c.id)),
-  );
+  const added = provider.savedCredentials.filter((c) => !knownIds.has(c.id));
+  const grantable = grantableAmong(row, added);
+  if (!grantable) return null;
+  const account = added.find((c) => c.id === grantable.id);
+  return account ? { grantable, account } : null;
 }
 
 /** The account a re-auth should upgrade in place. Signing in without it can
