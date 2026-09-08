@@ -3,6 +3,8 @@ Unit tests for the E2E seeder's embedding backfill phase.
 Stubs the search-embedding functions to avoid needing a database or an LLM.
 """
 
+import asyncio
+import time
 from test import e2e_test_data
 from unittest.mock import patch
 
@@ -96,3 +98,47 @@ async def test_returns_on_deadline_instead_of_blocking_the_dump(seeder, monkeypa
     recorder = _Recorder([_stats(500)])
     await _run(seeder, recorder)
     assert recorder.batch_sizes == []
+
+
+async def _hang(*_args, **_kwargs):
+    """Block until cancelled — a helper that never returns on its own."""
+    await asyncio.Event().wait()
+
+
+@pytest.mark.parametrize(
+    "stalled_helper", ["get_embedding_stats", "backfill_all_content_types"]
+)
+async def test_deadline_fires_while_a_helper_hangs(seeder, monkeypatch, stalled_helper):
+    """A stuck call must not outlive the deadline: both awaits are bounded.
+
+    One embedding call is 600s x 3 attempts under the OpenAI client's defaults,
+    so a clock check between the awaits would never be reached.
+    """
+    monkeypatch.setattr(e2e_test_data, "EMBEDDING_BACKFILL_TIMEOUT_SECONDS", 0.25)
+    recorder = _Recorder([_stats(5584)])
+    patches = {
+        "get_openai_client": object(),
+        "get_embedding_stats": recorder.get_stats,
+        "backfill_all_content_types": recorder.backfill,
+        stalled_helper: _hang,
+    }
+    with (
+        patch.object(
+            e2e_test_data,
+            "get_openai_client",
+            return_value=patches.pop("get_openai_client"),
+        ),
+        patch.object(
+            e2e_test_data, "get_embedding_stats", patches["get_embedding_stats"]
+        ),
+        patch.object(
+            e2e_test_data,
+            "backfill_all_content_types",
+            patches["backfill_all_content_types"],
+        ),
+    ):
+        started = time.monotonic()
+        # The outer bound is the assertion: without wait_for inside the loop this
+        # never returns, and the test fails here instead of hanging the suite.
+        await asyncio.wait_for(seeder.backfill_content_embeddings(), timeout=10)
+        assert time.monotonic() - started < 5

@@ -1310,37 +1310,46 @@ class TestDataCreator:
         print("Backfilling content embeddings...")
         deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
         while True:
-            stats = await get_embedding_stats()
-            # On failure get_embedding_stats reports zero missing, which would read
-            # as complete coverage and cache a dump with no embeddings in it.
-            if "error" in stats:
-                print(
-                    "::warning title=e2e-embeddings-unknown::Could not read embedding "
-                    f"stats ({stats['error']}); skipping backfill. The cached dump "
-                    "will be incomplete."
+            try:
+                # Both awaits reach the network, and one stuck embedding call is
+                # 600s x 3 attempts under the OpenAI client's defaults — longer than
+                # the whole deadline. Checking the clock between them bounds nothing.
+                stats = await asyncio.wait_for(
+                    get_embedding_stats(), _seconds_left(deadline)
                 )
-                return
+                # On failure get_embedding_stats reports zero missing, which would
+                # read as complete coverage and cache a dump with no embeddings.
+                if "error" in stats:
+                    print(
+                        "::warning title=e2e-embeddings-unknown::Could not read "
+                        f"embedding stats ({stats['error']}); skipping backfill. "
+                        "The cached dump will be incomplete."
+                    )
+                    return
 
-            totals = stats["totals"]
-            missing = totals["without_embeddings"]
-            if missing == 0:
-                print(
-                    f"✅ Embeddings complete: {totals['total']} items, "
-                    f"{totals['coverage_percent']}% coverage"
+                totals = stats["totals"]
+                missing = totals["without_embeddings"]
+                if missing == 0:
+                    print(
+                        f"✅ Embeddings complete: {totals['total']} items, "
+                        f"{totals['coverage_percent']}% coverage"
+                    )
+                    return
+
+                print(f"   {missing} items without embeddings — backfilling...")
+                result = await asyncio.wait_for(
+                    backfill_all_content_types(EMBEDDING_BACKFILL_BATCH_SIZE),
+                    _seconds_left(deadline),
                 )
-                return
-
-            if time.monotonic() >= deadline:
+            except asyncio.TimeoutError:
                 print(
                     "::warning title=e2e-embeddings-incomplete::Embedding backfill "
-                    f"timed out with {missing} items missing "
-                    f"({totals['coverage_percent']}% coverage). The cached dump will "
-                    "be incomplete and every cache hit will re-run the backfill."
+                    f"did not reach full coverage within "
+                    f"{EMBEDDING_BACKFILL_TIMEOUT_SECONDS:.0f}s. The cached dump "
+                    "will be incomplete and every cache hit will re-run the backfill."
                 )
                 return
 
-            print(f"   {missing} items without embeddings — backfilling...")
-            result = await backfill_all_content_types(EMBEDDING_BACKFILL_BATCH_SIZE)
             if result["totals"]["success"] == 0:
                 print(
                     "::warning title=e2e-embeddings-stalled::Embedding backfill made "
@@ -1348,6 +1357,11 @@ class TestDataCreator:
                     f"{missing} items missing."
                 )
                 return
+
+
+def _seconds_left(deadline: float) -> float:
+    """Remaining budget, floored at 0 so an expired deadline times out at once."""
+    return max(0.0, deadline - time.monotonic())
 
 
 async def main():
