@@ -11,19 +11,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { groupSessionsByDate } from "./helpers";
+import { getNewChatHref, groupSessionsByDate } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
-
-// Fired experts can't be addressed, so their group gets no new-chat entry:
-// the deep link would only fall back to Autopilot.
-function getNewChatHref(
-  expertId: string | null,
-  activeExpertIds: ReadonlySet<string>,
-) {
-  if (!expertId) return "/copilot";
-  if (!activeExpertIds.has(expertId)) return null;
-  return `/copilot?expertId=${encodeURIComponent(expertId)}`;
-}
 
 export function RecentChats() {
   const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);

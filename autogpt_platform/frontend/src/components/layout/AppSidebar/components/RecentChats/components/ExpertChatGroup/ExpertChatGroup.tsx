@@ -28,6 +28,14 @@ import { ReactNode, useState } from "react";
 
 export const EXPERT_GROUP_PREVIEW_COUNT = 10;
 
+// The chevron, the slot the header reserves next to it, and the new-chat link
+// that floats over that slot are all one size.
+const CHEVRON_SIZE_CLASS = "size-5";
+// Where that slot starts, measured in from the header's right edge: the
+// trigger's `px-2` (0.5rem) + the chevron's `size-5` (1.25rem) + the `gap-2`
+// between them (0.5rem) = 2.25rem. Change any of the three and this moves.
+const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
+
 interface Props {
   label: string;
   avatarUrl: string | null;
@@ -56,7 +64,8 @@ export function ExpertChatGroup({
       className="group/expert-group"
     >
       {/* The trigger is itself a button, so the new-chat link sits beside it
-          and floats over a slot the trigger reserves. */}
+          and floats over a slot the trigger reserves before the chevron —
+          long labels then truncate against the link rather than under it. */}
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-zinc-100">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
@@ -72,12 +81,16 @@ export function ExpertChatGroup({
           </Avatar>
           <span className="truncate">{label}</span>
           {newChatHref && (
-            <span aria-hidden className="ml-auto size-5 shrink-0" />
+            <span
+              aria-hidden
+              className={cn("ml-auto shrink-0", CHEVRON_SIZE_CLASS)}
+            />
           )}
           <Icon
             icon={ArrowDown01Icon}
             className={cn(
-              "ease-[cubic-bezier(0.33,1,0.68,1)] size-5 shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none",
+              "ease-[cubic-bezier(0.33,1,0.68,1)] shrink-0 text-zinc-400 transition-transform duration-200 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none",
+              CHEVRON_SIZE_CLASS,
               !newChatHref && "ml-auto",
             )}
           />
@@ -121,7 +134,11 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
         <Link
           href={href}
           aria-label={name}
-          className="absolute right-9 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0"
+          className={cn(
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
+            CHEVRON_SIZE_CLASS,
+            NEW_CHAT_LINK_OFFSET_CLASS,
+          )}
         >
           <NewChatIcon />
         </Link>
