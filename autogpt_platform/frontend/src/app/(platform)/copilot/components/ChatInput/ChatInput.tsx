@@ -94,6 +94,9 @@ interface Props {
   /** Compact composer for side panels: tighter radius, flat shadow, smaller
    *  controls, and no per-message connection chip. */
   variant?: "default" | "compact";
+  /** Expert the chat is scoped to. Workspace-file suggestions and the picker
+   *  then only offer files from that expert's conversations. */
+  expertId?: string | null;
 }
 
 export function ChatInput({
@@ -116,6 +119,7 @@ export function ChatInput({
   voiceToggle,
   voiceBar,
   variant = "default",
+  expertId = null,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -193,6 +197,7 @@ export function ChatInput({
     value,
     setValue,
     addWorkspaceFile: handleWorkspaceFileSelected,
+    expertId,
   });
 
   const [isEnqueueing, setIsEnqueueing] = useState(false);
@@ -486,9 +491,11 @@ export function ChatInput({
       </InputGroup>
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
+          key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
           onConfirm={handleWorkspaceFilesConfirmed}
+          expertId={expertId}
         />
       )}
     </form>

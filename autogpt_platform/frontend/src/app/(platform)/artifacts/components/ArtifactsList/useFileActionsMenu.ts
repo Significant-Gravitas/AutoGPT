@@ -13,6 +13,7 @@ import { deriveFileOrigin, downloadFileBlob } from "./helpers";
 export function useFileActionsMenu(file: WorkspaceFileItem) {
   const origin = deriveFileOrigin(file.path);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -77,6 +78,8 @@ export function useFileActionsMenu(file: WorkspaceFileItem) {
     goHref: origin.href,
     isMoveOpen,
     setIsMoveOpen,
+    isRenameOpen,
+    setIsRenameOpen,
     isDownloading,
     isDeleting,
     handleDownload,
