@@ -22,6 +22,7 @@ from ._test_data import (
 )
 from .models import ErrorResponse, ExecutionStartedResponse, SetupRequirementsResponse
 from .run_agent import RunAgentInput, RunAgentTool
+from .utils import get_or_create_library_agent
 
 # This is so the formatter doesn't remove the fixture imports
 setup_llm_test_data = setup_llm_test_data
@@ -910,7 +911,7 @@ async def test_schedule_prefers_explicit_timezone_over_stored_preference(
 ):
     """The QA repro: AutoPilot asks for a timezone, confirms it back to the
     user, and the schedule must be created in that one — not the profile's."""
-    _, fake_scheduler = await _schedule_with_timezone(
+    _, fake_scheduler, _ = await _schedule_with_timezone(
         setup_test_data,
         stored_timezone="Europe/Amsterdam",
         timezone="Europe/London",
@@ -924,7 +925,7 @@ async def test_schedule_prefers_explicit_timezone_over_stored_preference(
 async def test_schedule_without_explicit_timezone_uses_stored_preference(
     setup_test_data,
 ):
-    _, fake_scheduler = await _schedule_with_timezone(
+    _, fake_scheduler, _ = await _schedule_with_timezone(
         setup_test_data, stored_timezone="Europe/Amsterdam"
     )
 
@@ -936,7 +937,7 @@ async def test_schedule_without_explicit_timezone_uses_stored_preference(
 async def test_schedule_falls_back_to_utc_when_user_has_no_timezone(
     setup_test_data,
 ):
-    _, fake_scheduler = await _schedule_with_timezone(
+    _, fake_scheduler, _ = await _schedule_with_timezone(
         setup_test_data, stored_timezone=USER_TIMEZONE_NOT_SET
     )
 
@@ -948,7 +949,7 @@ async def test_schedule_falls_back_to_utc_when_user_has_no_timezone(
 async def test_schedule_rejects_invalid_explicit_timezone(setup_test_data):
     """An unknown timezone is refused, never silently downgraded to UTC —
     the model has already told the user which timezone it is scheduling in."""
-    response, fake_scheduler = await _schedule_with_timezone(
+    response, fake_scheduler, library_agent_spy = await _schedule_with_timezone(
         setup_test_data,
         stored_timezone="Europe/Amsterdam",
         timezone="Mars/Olympus_Mons",
@@ -960,12 +961,14 @@ async def test_schedule_rejects_invalid_explicit_timezone(setup_test_data):
     assert result_data.get("error") == "invalid_timezone"
     assert "Mars/Olympus_Mons" in result_data["message"]
     assert fake_scheduler.add_execution_schedule.await_count == 0
+    # A rejected schedule must not have added the agent to the user's library.
+    assert library_agent_spy.await_count == 0
 
 
 async def _schedule_with_timezone(
     setup_test_data, *, stored_timezone: str, **run_agent_kwargs
 ):
-    """Schedule an agent and hand back (response, scheduler mock)."""
+    """Schedule an agent and hand back (response, scheduler mock, library-agent spy)."""
     user = setup_test_data["user"]
     store_submission = setup_test_data["store_submission"]
     tool = RunAgentTool()
@@ -983,6 +986,8 @@ async def _schedule_with_timezone(
         input_data={},
     )
 
+    library_agent_spy = AsyncMock(wraps=get_or_create_library_agent)
+
     with (
         patch(
             "backend.copilot.tools.run_agent.get_scheduler_client",
@@ -991,6 +996,10 @@ async def _schedule_with_timezone(
         patch(
             "backend.copilot.tools.run_agent.user_db",
             _fake_user_db(stored_timezone),
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.get_or_create_library_agent",
+            library_agent_spy,
         ),
     ):
         response = await tool.execute(
@@ -1005,7 +1014,7 @@ async def _schedule_with_timezone(
             session=make_session(user_id=user.id),
             **run_agent_kwargs,
         )
-    return response, fake_scheduler
+    return response, fake_scheduler, library_agent_spy
 
 
 def _fake_user_db(stored_timezone: str):

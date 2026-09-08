@@ -1159,12 +1159,9 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Get or create library agent
-        library_agent = await get_or_create_library_agent(graph, user_id)
-        emit_tool_display_name(library_agent.name)
-
         # Precedence mirrors POST /graphs/{graph_id}/schedules: an explicit
         # timezone wins over the user's stored preference, which wins over UTC.
+        # Resolved before the library agent, so a rejected timezone persists nothing.
         if timezone:
             # Never silently downgrade to UTC here — the model has already told
             # the user which timezone it is scheduling in.
@@ -1182,6 +1179,10 @@ class RunAgentTool(BaseTool):
         else:
             user = await user_db().get_user_by_id(user_id)
             user_timezone = get_user_timezone_or_utc(user.timezone)
+
+        # Get or create library agent
+        library_agent = await get_or_create_library_agent(graph, user_id)
+        emit_tool_display_name(library_agent.name)
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise
