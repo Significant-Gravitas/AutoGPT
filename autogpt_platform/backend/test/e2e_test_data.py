@@ -14,7 +14,9 @@ Image/Video URL Domains Used:
 
 import asyncio
 import json
+import os
 import random
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List
@@ -28,6 +30,10 @@ from pydantic import SecretStr
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
 from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.search.embeddings import (
+    backfill_all_content_types,
+    get_embedding_stats,
+)
 from backend.api.features.store.db import (
     create_store_submission,
     review_store_submission,
@@ -40,6 +46,7 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
+from backend.util.clients import get_openai_client
 from backend.util.encryption import JSONCryptor
 from backend.util.json import SafeJson
 
@@ -81,6 +88,13 @@ _DOCKER_TEMPLATE_PATH = Path(
 E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
     _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
 )
+# CI dumps this database for its cache after seeding, so anything left unembedded
+# here is re-embedded on every cache hit. Batch size is concurrency, not a page size.
+EMBEDDING_BACKFILL_BATCH_SIZE = int(os.getenv("E2E_EMBEDDING_BATCH_SIZE", "100"))
+EMBEDDING_BACKFILL_TIMEOUT_SECONDS = float(
+    os.getenv("E2E_EMBEDDING_TIMEOUT_SECONDS", "900")
+)
+
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
     "e2e.qa.auth@example.com",
@@ -1266,6 +1280,8 @@ class TestDataCreator:
         except Exception as e:
             print(f"Error refreshing materialized views: {e}")
 
+        await self.backfill_content_embeddings()
+
         print("E2E test data creation completed successfully!")
 
         # Print summary
@@ -1284,6 +1300,43 @@ class TestDataCreator:
         print(f"   • Top agents (approved): >= {GUARANTEED_TOP_AGENTS}")
         print(f"   • Library agents per user: >= {MIN_AGENTS_PER_USER}")
         print("\n🚀 Your E2E test database is ready to use!")
+
+    async def backfill_content_embeddings(self):
+        """Drive embedding coverage to 100% so the CI cache dump carries it."""
+        if not get_openai_client():
+            print("⏭️  No embedding backend configured — skipping embedding backfill")
+            return
+
+        print("Backfilling content embeddings...")
+        deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
+        while True:
+            totals = (await get_embedding_stats())["totals"]
+            missing = totals["without_embeddings"]
+            if missing == 0:
+                print(
+                    f"✅ Embeddings complete: {totals['total']} items, "
+                    f"{totals['coverage_percent']}% coverage"
+                )
+                return
+
+            if time.monotonic() >= deadline:
+                print(
+                    "::warning title=e2e-embeddings-incomplete::Embedding backfill "
+                    f"timed out with {missing} items missing "
+                    f"({totals['coverage_percent']}% coverage). The cached dump will "
+                    "be incomplete and every cache hit will re-run the backfill."
+                )
+                return
+
+            print(f"   {missing} items without embeddings — backfilling...")
+            result = await backfill_all_content_types(EMBEDDING_BACKFILL_BATCH_SIZE)
+            if result["totals"]["success"] == 0:
+                print(
+                    "::warning title=e2e-embeddings-stalled::Embedding backfill made "
+                    f"no progress ({result['totals']['message']}); giving up with "
+                    f"{missing} items missing."
+                )
+                return
 
 
 async def main():
