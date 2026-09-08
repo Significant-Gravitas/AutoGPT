@@ -211,9 +211,7 @@ def test_gemini_3_8_flash_bills_at_authored_rates():
         "cache_creation": 0.0,
     }
     assert MODEL_METADATA[flash].max_output_tokens == 65536
-    flash_entry = next(
-        m for m in CATALOG.models if m.slug == "google/gemini-3.8-flash"
-    )
+    flash_entry = next(m for m in CATALOG.models if m.slug == "google/gemini-3.8-flash")
     assert flash_entry.price_tier == 1
     assert flash_entry.context_window == 1048576
 
