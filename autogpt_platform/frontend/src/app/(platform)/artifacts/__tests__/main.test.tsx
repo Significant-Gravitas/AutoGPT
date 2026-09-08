@@ -853,3 +853,48 @@ describe("ArtifactsPage - empty state", () => {
     expect(screen.queryByRole("link", { name: /start a task/i })).toBeNull();
   });
 });
+
+describe("ArtifactsPage - rename", () => {
+  test("the row's pencil opens a dialog that patches the file name", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+    let patchedName: string | null = null;
+    server.use(
+      http.patch("/api/proxy/api/workspace/files/f1", async ({ request }) => {
+        const body = (await request.json()) as { name?: string };
+        patchedName = body.name ?? null;
+        return HttpResponse.json(
+          makeFile({ id: "f1", name: body.name ?? "old.txt" }),
+        );
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    expect((input as HTMLInputElement).value).toBe("old.txt");
+    fireEvent.change(input, { target: { value: "new.txt" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(patchedName).toBe("new.txt"));
+  });
+
+  test("rejects a name with a slash before sending anything", async () => {
+    useStorageHandler();
+    useFilesHandler([makeFile({ id: "f1", name: "old.txt" })]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByLabelText("Rename old.txt"));
+    const input = await screen.findByLabelText(/file name/i);
+    fireEvent.change(input, { target: { value: "a/b.txt" } });
+
+    expect(await screen.findByText(/cannot contain slashes/i)).toBeDefined();
+    expect(
+      (screen.getByTestId("rename-file-submit") as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+});

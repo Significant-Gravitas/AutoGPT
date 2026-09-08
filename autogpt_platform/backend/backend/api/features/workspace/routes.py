@@ -13,7 +13,8 @@ import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from prisma.errors import UniqueViolationError
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
@@ -26,6 +27,7 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_total_size,
+    rename_workspace_file,
 )
 from backend.data.workspace_scope import (
     resolve_expert_workspace_scope,
@@ -168,6 +170,18 @@ class ListFilesResponse(BaseModel):
     has_more: bool = False
 
 
+class RenameFileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _plain_file_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\" in name:
+            raise ValueError("File name must be a plain name without slashes")
+        return name
+
+
 # Exact metadata stamped on user uploads by ``upload_file``. Used to split
 # "Uploaded" vs "Generated" on the Artifacts page.
 _UPLOADED_METADATA = {"origin": "user-upload"}
@@ -258,6 +272,36 @@ async def delete_workspace_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return DeleteFileResponse(deleted=True)
+
+
+@router.patch(
+    "/files/{file_id}",
+    summary="Rename a workspace file",
+    operation_id="renameWorkspaceFile",
+    responses={
+        404: {"description": "File not found"},
+        409: {"description": "A file with this name already exists here"},
+    },
+)
+async def rename_workspace_file_route(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+    payload: RenameFileRequest,
+) -> WorkspaceFileItem:
+    """Rename a file; it stays in its folder and conversation."""
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        renamed = await rename_workspace_file(file_id, workspace.id, payload.name)
+    except UniqueViolationError:
+        raise fastapi.HTTPException(
+            status_code=409, detail="A file with this name already exists here"
+        )
+    if renamed is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+    expert_by_session = await _expert_ids_by_session(user_id, [renamed])
+    return _to_file_item(renamed, expert_by_session)
 
 
 @router.post(
@@ -399,6 +443,26 @@ async def _expert_ids_by_session(
     return await get_chat_session_expert_ids(user_id, session_ids)
 
 
+def _to_file_item(
+    f: WorkspaceFile, expert_by_session: dict[str, str | None]
+) -> WorkspaceFileItem:
+    session_id_of_file = _session_id_of(f.path)
+    return WorkspaceFileItem(
+        id=f.id,
+        name=f.name,
+        path=f.path,
+        mime_type=f.mime_type,
+        size_bytes=f.size_bytes,
+        folder_id=f.folder_id,
+        metadata=f.metadata or {},
+        origin=_derive_origin(f.metadata),
+        created_at=f.created_at.isoformat(),
+        expert_id=(
+            expert_by_session.get(session_id_of_file) if session_id_of_file else None
+        ),
+    )
+
+
 @router.get(
     "/files",
     summary="List workspace files",
@@ -535,25 +599,8 @@ async def list_workspace_files(
     page = files[:limit]
     expert_by_session = await _expert_ids_by_session(user_id, page)
 
-    items: list[WorkspaceFileItem] = []
-    for f in page:
-        session_id_of_file = _session_id_of(f.path)
-        items.append(
-            WorkspaceFileItem(
-                id=f.id,
-                name=f.name,
-                path=f.path,
-                mime_type=f.mime_type,
-                size_bytes=f.size_bytes,
-                folder_id=f.folder_id,
-                metadata=f.metadata or {},
-                origin=_derive_origin(f.metadata),
-                created_at=f.created_at.isoformat(),
-                expert_id=(
-                    expert_by_session.get(session_id_of_file)
-                    if session_id_of_file
-                    else None
-                ),
-            )
-        )
-    return ListFilesResponse(files=items, offset=offset, has_more=has_more)
+    return ListFilesResponse(
+        files=[_to_file_item(f, expert_by_session) for f in page],
+        offset=offset,
+        has_more=has_more,
+    )

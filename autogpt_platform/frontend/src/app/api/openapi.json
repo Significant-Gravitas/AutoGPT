@@ -15121,6 +15121,52 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Rename a workspace file",
+        "description": "Rename a file; it stays in its folder and conversation.",
+        "operationId": "renameWorkspaceFile",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RenameFileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFileItem" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "409": { "description": "A file with this name already exists here" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/workspace/files/{file_id}/download": {
@@ -25672,6 +25718,19 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RenameFileRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "RenameFileRequest"
       },
       "RequestTopUp": {
         "properties": {

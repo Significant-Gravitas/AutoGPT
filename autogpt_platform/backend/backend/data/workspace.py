@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import posixpath
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -389,6 +390,33 @@ async def count_workspace_files(
         where_clause["AND"] = [{"OR": _path_prefix_filters(allowed_path_prefixes)}]
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
+
+
+async def rename_workspace_file(
+    file_id: str,
+    workspace_id: str,
+    name: str,
+) -> Optional[WorkspaceFile]:
+    """Rename a file in place: its virtual path keeps its folder and gets the
+    new name; the storage blob is untouched.
+
+    Raises ``UniqueViolationError`` when another file already lives at the
+    resulting path, so the caller can answer with a conflict.
+
+    Returns the updated file, or None when it does not exist in the workspace.
+    """
+    file = await get_workspace_file(file_id, workspace_id)
+    if file is None:
+        return None
+    new_path = posixpath.join(posixpath.dirname(file.path), name)
+    updated = await UserWorkspaceFile.prisma().update(
+        where={"id": file_id},
+        data={"name": name, "path": new_path},
+    )
+    if updated is None:
+        return None
+    logger.info(f"Renamed workspace file {file_id} to {new_path}")
+    return WorkspaceFile.from_db(updated)
 
 
 async def soft_delete_workspace_file(

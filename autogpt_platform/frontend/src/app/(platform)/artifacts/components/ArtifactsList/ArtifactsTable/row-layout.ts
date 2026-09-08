@@ -9,10 +9,10 @@ export const DATE_CELL_CLASS = "hidden truncate sm:block";
 export const SIZE_CELL_CLASS = "hidden tabular-nums md:block";
 export const ACTIONS_CELL_CLASS = "flex min-w-10 justify-end";
 
-// Sized to its content (not stretched across the column) so the hover
-// preview, which anchors to this button, opens right beside the file name.
+// Sized to its content (its wrapper is not stretched across the column) so
+// the hover preview, which anchors to this button, opens beside the name.
 export const NAME_BUTTON_CLASS =
-  "flex min-w-0 max-w-full justify-self-start items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400";
+  "flex min-w-0 items-center gap-4 rounded-xl py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400";
 
 // Rows animate on their own mount (not via the list's orchestration) so a row
 // added by an upload or a refetch is never left in its hidden start state.

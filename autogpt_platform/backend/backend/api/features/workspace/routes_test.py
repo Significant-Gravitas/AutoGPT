@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fastapi
 import fastapi.testclient
 import pytest
+from prisma.errors import UniqueViolationError
 
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
@@ -1268,3 +1269,62 @@ def test_list_files_skips_the_session_lookup_without_session_paths(
     assert response.status_code == 200
     assert response.json()["files"][0]["expert_id"] is None
     mock_expert_ids.assert_not_called()
+
+
+# -- rename_workspace_file tests --
+
+
+def _unique_violation() -> UniqueViolationError:
+    return UniqueViolationError(
+        {"user_facing_error": {"message": "Unique constraint failed: (`path`)"}}
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.return_value = _make_file(
+        id="f1", name="plan.md", path="/sessions/sess-a/plan.md"
+    )
+    mock_expert_ids.return_value = {"sess-a": "expert-a"}
+
+    response = client.patch("/files/f1", json={"name": "  plan.md "})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "plan.md"
+    assert data["path"] == "/sessions/sess-a/plan.md"
+    assert data["expert_id"] == "expert-a"
+    mock_rename.assert_awaited_once_with("f1", "ws-001", "plan.md")
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_not_found(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.return_value = None
+
+    response = client.patch("/files/missing", json={"name": "plan.md"})
+    assert response.status_code == 404
+    assert "File not found" in response.text
+
+
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_conflict(mock_get_workspace, mock_rename):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_rename.side_effect = _unique_violation()
+
+    response = client.patch("/files/f1", json={"name": "taken.md"})
+    assert response.status_code == 409
+    assert "already exists" in response.text
+
+
+@pytest.mark.parametrize("name", ["", "   ", ".", "..", "a/b.txt", "a\\b.txt"])
+@patch("backend.api.features.workspace.routes.rename_workspace_file")
+@patch("backend.api.features.workspace.routes.get_workspace")
+def test_rename_file_rejects_bad_names(mock_get_workspace, mock_rename, name):
+    response = client.patch("/files/f1", json={"name": name})
+    assert response.status_code == 422
+    mock_rename.assert_not_called()
