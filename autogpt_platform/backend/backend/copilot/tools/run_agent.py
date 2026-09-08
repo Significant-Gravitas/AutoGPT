@@ -38,7 +38,7 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
-from .helpers import get_inputs_from_schema
+from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -565,7 +565,7 @@ class RunAgentTool(BaseTool):
                 ),
                 requirements={
                     "credentials": list(credentials_dict.values()),
-                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "inputs": get_picker_inputs_from_schema(graph.input_schema),
                     "execution_modes": self._get_execution_modes(graph),
                 },
             ),
@@ -672,7 +672,7 @@ class RunAgentTool(BaseTool):
                     ),
                     requirements={
                         "credentials": list(requirements_creds_dict.values()),
-                        "inputs": get_inputs_from_schema(graph.input_schema),
+                        "inputs": get_picker_inputs_from_schema(graph.input_schema),
                         "execution_modes": self._get_execution_modes(graph),
                     },
                 ),
