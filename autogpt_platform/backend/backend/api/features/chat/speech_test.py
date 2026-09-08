@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 
@@ -202,6 +203,19 @@ def test_speech_503s_without_a_configured_key(
 
     assert response.status_code == 503
     record_usage.assert_not_awaited()
+
+
+def test_speech_bounds_a_hung_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The client's own 600 s default, across its two retries, is half an hour of
+    # silence on the path voice mode chunks to speak within a second.
+    monkeypatch.setattr(speech_module.settings.secrets, "openai_internal_api_key", "")
+    monkeypatch.setattr(speech_module.settings.secrets, "openai_api_key", "sk-test-key")
+
+    timeout = speech_module._speech_client().timeout
+
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.read is not None and timeout.read <= 60
+    assert timeout.connect is not None and timeout.connect <= 10
 
 
 @pytest.fixture(autouse=True)
