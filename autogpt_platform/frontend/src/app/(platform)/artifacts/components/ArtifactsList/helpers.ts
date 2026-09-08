@@ -292,3 +292,54 @@ export function getPreviewKind(
   }
   return "none";
 }
+
+export function formatDayLabel(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfDay = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+  const dayDiff = Math.round((startOfToday - startOfDay) / 86_400_000);
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+export function formatFullDate(input: string | Date): string {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+// image / pdf / office all get a WebP thumbnail from the preview endpoint.
+export function hasImageThumbnail(kind: PreviewKind): boolean {
+  return kind === "image" || kind === "pdf" || kind === "office";
+}
+
+export function getEmptyMessage(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  hasFolders: boolean;
+}): string {
+  if (opts.hasSearchTerm) return "No files match your search";
+  if (opts.isInFolder) return "This folder is empty";
+  if (opts.hasFolders) return "No files at the root yet";
+  return "No files yet";
+}

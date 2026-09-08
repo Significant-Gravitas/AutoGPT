@@ -1245,6 +1245,8 @@ async def add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
@@ -1269,6 +1271,8 @@ async def add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
             bypass_paywall=bypass_paywall,
         )
     except GraphValidationError:
@@ -1300,6 +1304,8 @@ async def _add_graph_execution(
     team_id: Optional[str] = None,
     *,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
     bypass_paywall: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1346,6 +1352,12 @@ async def _add_graph_execution(
             framework — failing now is preferable to silently giving a
             paywalled user a free run during an outage.
     """
+    if schedule_id and webhook_id:
+        raise ValueError(
+            "A run is started by a schedule or a webhook, not both: "
+            f"schedule #{schedule_id}, webhook #{webhook_id}"
+        )
+
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run agents.")
 
@@ -1500,6 +1512,8 @@ async def _add_graph_execution(
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
+            schedule_id=schedule_id,
+            webhook_id=webhook_id,
         )
 
         logger.info(
@@ -1510,7 +1524,11 @@ async def _add_graph_execution(
     # Generate execution context if it's not provided
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
-        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+        settings = await gdb.get_graph_settings(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_exec.graph_version,
+        )
         workspace = await wdb.get_or_create_workspace(user_id)
 
         execution_context = ExecutionContext(

@@ -213,6 +213,7 @@ async def _execute_graph(**kwargs):
             organization_id=args.organization_id,
             team_id=args.team_id,
             expert_id=args.expert_id,
+            schedule_id=args.schedule_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time

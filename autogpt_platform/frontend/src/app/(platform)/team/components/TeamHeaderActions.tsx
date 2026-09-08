@@ -1,9 +1,11 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { SparklesIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
-import { ACTION_BUTTON_CLASS, OUTLINE_ACTION_BUTTON_CLASS } from "../helpers";
+import {
+  SparklesIcon,
+  UserAdd01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 
 interface Props {
   onNewPod: () => void;
@@ -15,19 +17,26 @@ export function TeamHeaderActions({ onNewPod }: Props) {
       <Button
         as="NextLink"
         href="/raise"
-        variant="primary"
-        size="small"
-        className={ACTION_BUTTON_CLASS}
-        leftIcon={<Icon icon={SparklesIcon} className="size-3.5" />}
+        variant="secondary"
+        size="xs"
+        leadingIcon={SparklesIcon}
       >
-        New Expert
+        Raise expert
+      </Button>
+      <Button
+        as="NextLink"
+        href="/marketplace#experts"
+        variant="primary"
+        size="xs"
+        leadingIcon={UserAdd01Icon}
+      >
+        Hire expert
       </Button>
       <Button
         variant="outline"
-        size="small"
+        size="xs"
         onClick={onNewPod}
-        className={OUTLINE_ACTION_BUTTON_CLASS}
-        leftIcon={<Icon icon={UserGroupIcon} className="size-3.5" />}
+        leadingIcon={UserGroupIcon}
       >
         New Pod
       </Button>

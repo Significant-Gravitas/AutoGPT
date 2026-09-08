@@ -31,6 +31,7 @@ export function CreateScheduleDialog({
 
   return (
     <Dialog
+      variant="compact"
       controlled={{
         isOpen: open,
         set: (next) => {
@@ -43,7 +44,7 @@ export function CreateScheduleDialog({
       <Dialog.Content>
         <div className="flex flex-col">
           {schedulable.length === 0 ? (
-            <Text variant="body" className="text-zinc-600">
+            <Text variant="body" tone="secondary">
               Install a workflow first, then schedule it here.
             </Text>
           ) : (
@@ -63,7 +64,7 @@ export function CreateScheduleDialog({
             </ul>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="small" onClick={onClose}>
+            <Button variant="secondary" size="xs" onClick={onClose}>
               Cancel
             </Button>
           </div>
@@ -96,13 +97,23 @@ function ScheduleWorkflowRow({ workflow, onScheduleCreated }: RowProps) {
         className="shrink-0 text-zinc-500"
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-zinc-900">
+        <Text
+          variant="body-medium"
+          as="span"
+          tone="primary"
+          className="block truncate"
+        >
           {name}
-        </span>
+        </Text>
         {workflow.description ? (
-          <span className="block truncate text-xs text-zinc-500">
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="block truncate"
+          >
             {workflow.description}
-          </span>
+          </Text>
         ) : null}
       </span>
       <Icon

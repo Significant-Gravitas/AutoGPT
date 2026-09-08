@@ -1,46 +1,196 @@
-# AutoGPT Platform Installer
+# AutoGPT Platform Release Installer
 
-The AutoGPT Platform provides easy-to-use installers to help you quickly set up the platform on your system. This page covers how to use the installer scripts for both Linux/macOS and Windows.
+The release installer runs the published AutoGPT Platform appliance as one
+Docker container. It does not clone the repository, build AutoGPT, install
+Docker, elevate privileges, or accept Docker Desktop license terms.
 
-## What the Installer Does
-
-The installer scripts will:
-
-1. Check for required prerequisites (Git, Docker, npm)
-2. Clone the AutoGPT repository
-3. Set up the backend services using Docker
-4. Set up the frontend application
-5. Start both the backend and frontend services
+The appliance exposes one loopback-only port. Application state and generated
+secrets live in a named Docker volume; installer identity and runtime
+configuration live in a dedicated private state directory.
 
 ## Prerequisites
 
-Before running the installer, make sure you have the following installed:
+Before running the installer:
 
-- **Git**: For cloning the repository
-- **Docker**: For running the backend services
-- **Node.js and npm**: For the frontend application
+- Install and start Docker from the
+  [official Docker Engine](https://docs.docker.com/engine/install/) or
+  [Docker Desktop](https://docs.docker.com/desktop/) documentation.
+- Select a local `unix://` Docker endpoint on Linux or macOS. Remote and
+  non-Unix contexts are rejected.
+- Configure the daemon for Linux containers on `amd64` or `arm64`.
+- Allow about 25 GB of free disk; at least 8 GB RAM is recommended.
 
-## Quick One-Liner Installation
+Docker Desktop is a separate product with its own license terms. AutoGPT does
+not install it or grant a Docker license.
 
-For convenience, you can use the following one-liner commands to install AutoGPT Platform:
+## Install (After the Release Gates Pass)
 
-### Linux/macOS
+> [!WARNING]
+> Do not use the hosted command yet. `setup.agpt.co/install.sh` still serves
+> the legacy Compose installer, and the appliance image tags are not public.
+> Maintainers must complete every
+> [release gate](#maintainer-release-gates) before exposing these commands in
+> the README or getting-started guide.
+
+This first appliance-installer release supports Linux and macOS. Windows is
+intentionally withheld until its standard-user filesystem checks and native
+Docker argument handling are validated; use the manual setup guide there.
+
+The command below uses a unique temporary file, executes it only after the HTTPS
+download succeeds, and removes it afterward. Do not stream a network response
+directly into a shell.
+
+### Linux and macOS
 
 ```bash
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+(
+  installer="$(mktemp)" &&
+  trap 'rm -f "$installer"' EXIT &&
+  curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+    -o "$installer" https://setup.agpt.co/install.sh &&
+  bash "$installer"
+)
 ```
 
-### Windows
+### Options
 
-```powershell
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+| Goal | Linux/macOS |
+| --- | --- |
+| Current published appliance | _(no flag)_ |
+| Specific published version | `--release=vX.Y.Z` |
+| Appliance release-tag form | `--release=autogpt-platform-beta-vX.Y.Z` |
+| Hardware and Docker checks only | `--preflight-only` |
+| Print image selection only | `--resolve-only` |
+| Skip RAM/disk checks | `--skip-preflight` |
+| Custom private state directory | `--dir=PATH` |
+
+`--skip-preflight` does not skip the local-endpoint, Linux-container, or
+architecture checks.
+
+The default state directory is `$XDG_CONFIG_HOME/autogpt`, or
+`$HOME/.config/autogpt` when `XDG_CONFIG_HOME` is unset. A custom directory
+must be user-owned and private; the installer rejects symlink paths and shared
+or unsafe locations.
+
+## Artifact and Runtime Contract
+
+With no release flag, the installer pulls
+`significantgravitas/autogpt:latest`. An explicit `vX.Y.Z` selects the matching
+version tag. After pulling, the installer:
+
+1. Requires the expected OCI title and source repository plus a well-formed
+   40-hex source revision label.
+2. Requires a Linux image matching the local daemon's `amd64` or `arm64`
+   architecture.
+3. Resolves exactly one native `RepoDigest` and runs that immutable digest,
+   never the mutable tag.
+4. Creates an installer-owned, labelled `autogpt-platform-data` volume.
+5. Starts `autogpt` with `127.0.0.1:3000`, the private environment file,
+   restart and stop policies, log rotation, shared memory, and file-descriptor
+   limits.
+
+The bootstrap authenticates transport with HTTPS, and the installer pins the
+pulled image by digest after checking its appliance metadata. It does not
+independently verify a publisher signature or protect against compromise of
+the image-publishing credentials. Signed release artifacts are a follow-up,
+not a claim made by this installer.
+
+The installer refuses to adopt an unlabelled container or volume. A rerun is a
+no-op, or starts a stopped container, only when the installer identity,
+environment hash, immutable image digest, process, port, mount, privilege,
+restart, logging, memory, and limit settings all match. Drift fails closed.
+
+If established installer lifecycle state exists but its named volume is
+missing, the installer refuses to create an empty replacement. An interrupted
+first pull has no established marker and can be retried safely. Restore a
+previously established volume or choose a new state directory.
+
+## Runtime Configuration
+
+The private `autogpt.env` initially contains:
+
+```dotenv
+AUTOGPT_PUBLIC_URL=http://localhost:3000
 ```
 
-For a prebuilt, experimental alternative intended for small self-hosted
-installations, see [Run AutoGPT in one Docker container](single-container.md).
-That image is separate from the development-oriented installer described here.
+Add provider keys and other appliance variables there. The installer binds the
+environment file's SHA-256 hash to the container label. To apply a deliberate
+configuration change, stop and remove only the container, then rerun the same
+installer release:
 
-## Manual Installation
+```bash
+docker stop --time 360 autogpt
+docker rm autogpt
+```
+
+Do not remove `autogpt-platform-data`; it contains accounts, agents, generated
+secrets, and application state.
+
+## First Run
+
+After the installer reports a healthy container, open
+[http://localhost:3000](http://localhost:3000). Registration starts open so
+you can create the intended account. Promote it:
+
+```bash
+docker exec autogpt autogpt-admin promote you@example.com
+```
+
+Then set this in `autogpt.env`, recreate the container as described above, and
+verify registration is closed:
+
+```dotenv
+AUTH_ALLOW_NEW_ACCOUNTS=false
+```
+
+Keep the default loopback binding. To serve other machines, place AutoGPT
+behind a TLS reverse proxy and set `AUTOGPT_PUBLIC_URL` to the exact public URL.
+
+## Upgrades
+
+Before an upgrade, back up `autogpt-platform-data`. Stop and remove only the
+`autogpt` container, then rerun the installer with the intended release. The
+installer will reuse the named volume only when its ownership labels and the
+private installer identity still match.
+
+## Maintainer Release Gates
+
+Repository CI cannot prove the public bootstrap handoff. Do not publish or
+announce the installation commands until every external gate below passes:
+
+- Deploy the new repository `install.sh` through the Caddy or object-storage
+  configuration behind `setup.agpt.co`. The endpoint must no longer serve the
+  legacy clone/Compose installer.
+- Publish `significantgravitas/autogpt:vX.Y.Z` and `:latest` only after the
+  multi-architecture workflow smoke-tests and scans both runnable images.
+- Ensure the appliance release's tag commit contains the full installer,
+  publication workflow, and helper, then verify the release-triggered run.
+  Manual development dispatches publish SHA artifacts, not the release channel
+  used by this installer.
+- Verify both public tags expose Linux `amd64` and `arm64` manifests and the
+  expected OCI identity:
+
+  ```bash
+  docker buildx imagetools inspect significantgravitas/autogpt:vX.Y.Z
+  docker buildx imagetools inspect significantgravitas/autogpt:latest
+  ```
+
+- Fetch the hosted installer into a new temporary file from an external
+  machine and compare it with the released repository file. On each supported
+  operating system, perform a clean install against the public image, wait for
+  health, verify the loopback endpoint, rerun to prove exact-contract
+  idempotency, and confirm no mutable tag was used to create the container.
+
+## Installing from source (Compose)
+
+The scripts below are the other supported path: they clone the repository and
+start every service with Docker Compose. Use them on Windows, for development,
+or for a fully offline install with a local LLM. The appliance described above
+is the image documented in
+[Run AutoGPT in one Docker container](single-container.md); these scripts do
+not use it.
+
+### Manual Installation
 
 If you prefer, you can manually download and run the installer scripts:
 
@@ -49,7 +199,7 @@ If you prefer, you can manually download and run the installer scripts:
 
 These scripts are located in the `autogpt_platform/installer/` directory.
 
-## Running fully offline with a local LLM (Ollama)
+### Running fully offline with a local LLM (Ollama)
 
 Both installer scripts accept an opt-in flag that installs
 [Ollama](https://ollama.com), pulls a default chat model, and wires
@@ -58,7 +208,7 @@ is useful for air-gapped or privacy-sensitive deployments — see
 [Running AutoPilot on a self-hosted LLM](copilot-local-llm.md) for the
 full reference.
 
-### Linux / macOS
+#### Linux / macOS
 
 ```bash
 cd autogpt_platform/installer
@@ -68,7 +218,7 @@ cd autogpt_platform/installer
 #   --ollama-host=http://gpu-rig.lab:11434   # use an existing Ollama
 ```
 
-### Windows
+#### Windows
 
 ```cmd
 cd autogpt_platform\installer
@@ -87,26 +237,11 @@ The installer:
 
 Re-running with `--with-ollama` is idempotent — the wiring block is rewritten in place.
 
-## After Installation
-
-Once the installation is complete:
-- The backend services will be running in Docker containers
-- The frontend application will be available at http://localhost:3000
-
-## Stopping the Services
-
-To stop the services, press Ctrl+C in the terminal where the frontend is running, then run:
-
-```bash
-cd AutoGPT/autogpt_platform
-docker compose down
-```
-
 ## Troubleshooting
 
-If you encounter any issues during installation:
-
-1. Make sure all prerequisites are correctly installed
-2. Check that Docker is running
-3. Ensure you have a stable internet connection
-4. Verify you have sufficient permissions to create directories and run Docker
+1. Confirm `docker info` succeeds against a local Linux-container daemon.
+2. If an image pull fails just after release, wait for public manifest
+   publication and retry; the installer never falls back to a source build.
+3. If the installer reports state or runtime drift, preserve the named volume,
+   inspect the existing container, and follow the explicit upgrade procedure.
+4. Check `docker logs --tail 100 autogpt` when health checks fail.
