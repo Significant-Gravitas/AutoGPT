@@ -62,7 +62,7 @@ export function AgentInfoStep({
     isMarketplaceUpdate,
   });
 
-  const { categories } = useStoreCategories();
+  const { categories, isUnavailable, placeholder } = useStoreCategories();
 
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
     React.useState(false);
@@ -263,7 +263,8 @@ export function AgentInfoStep({
                       labelVariant="body"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the agent."
-                      placeholder="Select a category"
+                      placeholder={placeholder}
+                      disabled={isUnavailable}
                       value={field.value}
                       onValueChange={field.onChange}
                       error={form.formState.errors.category?.message}

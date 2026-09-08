@@ -2,11 +2,7 @@ import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplac
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  BookOpen01Icon,
-  CheckmarkBadge01Icon,
-  PlugSocketIcon,
-} from "@hugeicons/core-free-icons";
+import { BookOpen01Icon, PlugSocketIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 
 interface Props {
@@ -20,17 +16,9 @@ export function SkillCard({ skill }: Props) {
       data-testid="skill-card"
       className="group flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)] focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-          <Icon icon={BookOpen01Icon} size={20} />
-        </span>
-        {skill.is_verified ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-            <Icon icon={CheckmarkBadge01Icon} size={13} />
-            Verified
-          </span>
-        ) : null}
-      </div>
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+        <Icon icon={BookOpen01Icon} size={20} />
+      </span>
 
       <div>
         <div className="text-lg font-semibold tracking-[-0.01em] text-zinc-900">

@@ -1,8 +1,8 @@
 """Database access for marketplace skill listings.
 
-Browse is rooted at :class:`SkillListingVersion` rather than the listing so
-verified-first ordering reads its own column; ``ActiveFor`` constrains the row
-to the listing's live version. Install count is displayed but is not a sort
+Browse is rooted at :class:`SkillListingVersion` rather than the listing because
+every filter and the ordering read version columns; ``ActiveFor`` constrains the
+row to the listing's live version. Install count is displayed but is not a sort
 key — a catalogue this size gains nothing from it, and it lives on the listing
 because installs accumulate across versions.
 """
@@ -36,7 +36,7 @@ async def get_marketplace_skills(
     versions = await prisma.models.SkillListingVersion.prisma().find_many(
         where=where,
         include={"ActiveFor": {"include": _LISTING_INCLUDE}},
-        order=[{"isVerified": "desc"}, {"updatedAt": "desc"}],
+        order=[{"updatedAt": "desc"}],
         skip=(page - 1) * page_size,
         take=page_size,
     )

@@ -50,7 +50,6 @@ const brandVoice: MarketplaceSkill = {
   description: "Write in a consistent brand voice.",
   categories: ["content"],
   required_providers: [],
-  is_verified: true,
   install_count: 12,
   creator: null,
   creator_avatar: null,
@@ -95,16 +94,15 @@ describe("Marketplace SkillsSection", () => {
   });
 
   test("shows the compatibility line only for a skill that needs one", async () => {
-    const unverified: MarketplaceSkill = {
+    const withProvider: MarketplaceSkill = {
       ...brandVoice,
       slug: "outreach-playbook",
       name: "Outreach playbook",
       required_providers: ["google"],
-      is_verified: false,
     };
     server.use(
       getGetV2ListMarketplaceSkillsMockHandler200({
-        skills: [brandVoice, unverified],
+        skills: [brandVoice, withProvider],
         pagination: {
           total_items: 2,
           total_pages: 1,
@@ -121,13 +119,10 @@ describe("Marketplace SkillsSection", () => {
       name: /Outreach playbook/,
     });
     expect(outreach.textContent).toContain("Works with Google");
-    // Brand voice needs nothing connected and is verified: one badge, no line.
     const brand = await screen.findByRole("link", {
       name: /Brand voice guide/,
     });
     expect(brand.textContent).not.toContain("Works with");
-    expect(brand.textContent).toContain("Verified");
-    expect(outreach.textContent).not.toContain("Verified");
   });
 
   test("says nothing at all when the marketplace has no skills yet", async () => {

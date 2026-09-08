@@ -21,27 +21,31 @@ export function CategoryFilter({ selected, onSelect }: Props) {
     // Labelled because the hero above carries its own chip row of search
     // terms, and the two overlap on names like "Marketing".
     <div
-      className="mb-8 flex flex-wrap items-center gap-2.5"
+      className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2.5"
       role="group"
       aria-label="Browse by category"
     >
-      <span className="mr-1 text-sm font-medium text-zinc-500">
+      <span className="text-sm font-medium text-zinc-500">
         Browse by category
       </span>
-      <CategoryChip
-        label="All"
-        isSelected={selected === null}
-        onClick={() => onSelect(null)}
-      />
-      {categories.map((category) => (
+      {/* One flex item, so the whole list drops below the label before it
+          breaks within itself. */}
+      <div className="flex flex-wrap gap-2.5">
         <CategoryChip
-          key={category.value}
-          label={category.label}
-          title={category.description}
-          isSelected={selected === category.value}
-          onClick={() => handleClick(category.value)}
+          label="All"
+          isSelected={selected === null}
+          onClick={() => onSelect(null)}
         />
-      ))}
+        {categories.map((category) => (
+          <CategoryChip
+            key={category.value}
+            label={category.label}
+            title={category.description}
+            isSelected={selected === category.value}
+            onClick={() => handleClick(category.value)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

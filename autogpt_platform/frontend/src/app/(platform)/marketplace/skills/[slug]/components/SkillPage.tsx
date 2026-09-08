@@ -4,11 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import {
-  ArrowLeft02Icon,
-  BookOpen01Icon,
-  CheckmarkBadge01Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { InstallSkillPanel } from "./InstallSkillPanel/InstallSkillPanel";
 import { SkillBody } from "./SkillBody";
@@ -59,15 +55,7 @@ export function SkillPage({ slug }: Props) {
             <Icon icon={BookOpen01Icon} size={24} />
           </span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              <Text variant="h2">{skill.name}</Text>
-              {skill.is_verified ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                  <Icon icon={CheckmarkBadge01Icon} size={13} />
-                  Verified
-                </span>
-              ) : null}
-            </div>
+            <Text variant="h2">{skill.name}</Text>
             <Text variant="body" className="!mt-2 !text-zinc-600">
               {skill.description}
             </Text>

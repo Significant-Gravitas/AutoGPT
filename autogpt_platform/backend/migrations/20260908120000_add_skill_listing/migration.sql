@@ -38,7 +38,6 @@ CREATE TABLE "SkillListingVersion" (
     "categories" TEXT[],
     "requiredProviders" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "sourceSkillSlug" TEXT,
-    "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
     "isAvailable" BOOLEAN NOT NULL DEFAULT true,
     "submissionStatus" "SubmissionStatus" NOT NULL DEFAULT 'DRAFT',

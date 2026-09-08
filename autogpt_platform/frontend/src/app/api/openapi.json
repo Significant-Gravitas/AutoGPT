@@ -14514,7 +14514,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List marketplace skills",
-        "description": "Approved skill listings, verified first.",
+        "description": "Approved skill listings, most recently updated first.",
         "operationId": "getV2List marketplace skills",
         "parameters": [
           {
@@ -23586,7 +23586,6 @@
             "type": "array",
             "title": "Required Providers"
           },
-          "is_verified": { "type": "boolean", "title": "Is Verified" },
           "install_count": { "type": "integer", "title": "Install Count" },
           "creator": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23604,7 +23603,6 @@
           "description",
           "categories",
           "required_providers",
-          "is_verified",
           "install_count"
         ],
         "title": "MarketplaceSkill"
@@ -23624,7 +23622,6 @@
             "type": "array",
             "title": "Required Providers"
           },
-          "is_verified": { "type": "boolean", "title": "Is Verified" },
           "install_count": { "type": "integer", "title": "Install Count" },
           "creator": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23657,7 +23654,6 @@
           "description",
           "categories",
           "required_providers",
-          "is_verified",
           "install_count",
           "skill_listing_version_id",
           "body",

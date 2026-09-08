@@ -50,6 +50,16 @@ async def test_classifies_a_listing(monkeypatch):
     assert "Invoice Chaser" in prompt
 
 
+async def test_returns_none_when_the_model_answers_with_no_choices(monkeypatch):
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(choices=[]))
+    monkeypatch.setattr(category_classifier, "get_openai_client", lambda **_: client)
+
+    assert (
+        await classify_category("Invoice Chaser", "Chases invoices", "Emails.") is None
+    )
+
+
 async def test_returns_none_without_a_configured_client(monkeypatch):
     monkeypatch.setattr(category_classifier, "get_openai_client", lambda **_: None)
 

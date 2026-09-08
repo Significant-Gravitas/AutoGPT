@@ -182,17 +182,13 @@ async def _fallback_store_agent_search(
         # No search query — use Prisma for simple filtered listing
         where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
         if featured:
-            # A front-page slot is only ever held by a verified listing.
             where_clause["featured"] = featured
-            where_clause["verified"] = True
         if creators:
             where_clause["creator_username"] = {"in": creators}
         if category_values := category_filter_values(category):
             where_clause["categories"] = {"has_some": category_values}
 
-        # Verified leads every browse ordering, the otherwise-unordered
-        # default included.
-        order_by: list[Any] = [{"verified": "desc"}]
+        order_by = []
         if sorted_by == StoreAgentsSortOptions.RATING:
             order_by.append({"rating": "desc"})
         elif sorted_by == StoreAgentsSortOptions.RUNS:
@@ -217,7 +213,7 @@ async def _fallback_store_agent_search(
     param_idx = 2
 
     if featured:
-        filters.append("sa.featured = true AND sa.verified = true")
+        filters.append("sa.featured = true")
     if creators:
         params.append(creators)
         filters.append(f"sa.creator_username = ANY(${param_idx})")

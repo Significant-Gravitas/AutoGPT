@@ -1,3 +1,5 @@
+import datetime
+
 import prisma.enums
 import prisma.models
 import pytest
@@ -13,7 +15,7 @@ async def _make_listing(
     *,
     approved: bool = True,
     has_approved_version: bool | None = None,
-    verified: bool = False,
+    updated_at: datetime.datetime | None = None,
     available: bool = True,
     categories: list[str] | None = None,
     body: str = "# body\n",
@@ -35,7 +37,6 @@ async def _make_listing(
             "triggers": ["t1"],
             "categories": categories or ["content"],
             "requiredProviders": ["google"],
-            "isVerified": verified,
             "isAvailable": available,
             "submissionStatus": (
                 prisma.enums.SubmissionStatus.APPROVED
@@ -44,6 +45,10 @@ async def _make_listing(
             ),
         }
     )
+    if updated_at is not None:
+        await prisma.models.SkillListingVersion.prisma().update(
+            where={"id": version.id}, data={"updatedAt": updated_at}
+        )
     updated = await prisma.models.SkillListing.prisma().update(
         where={"id": listing.id},
         data={"activeVersionId": version.id},
@@ -62,13 +67,19 @@ async def clean_skill_listings(server: SpinTestServer):
     await prisma.models.SkillListing.prisma().delete_many()
 
 
-async def test_browse_puts_verified_first():
-    await _make_listing("verified-one", verified=True)
-    await _make_listing("plain-one", verified=False)
+async def test_browse_puts_the_most_recently_updated_first():
+    # Created oldest-first, so insertion order alone would fail this.
+    utc = datetime.timezone.utc
+    await _make_listing(
+        "older-one", updated_at=datetime.datetime(2026, 1, 1, tzinfo=utc)
+    )
+    await _make_listing(
+        "newer-one", updated_at=datetime.datetime(2026, 6, 1, tzinfo=utc)
+    )
 
     result = await skill_db.get_marketplace_skills()
 
-    assert [s.slug for s in result.skills] == ["verified-one", "plain-one"]
+    assert [s.slug for s in result.skills] == ["newer-one", "older-one"]
     assert result.pagination.total_items == 2
 
 

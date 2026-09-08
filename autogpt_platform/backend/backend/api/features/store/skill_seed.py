@@ -102,7 +102,6 @@ async def _upsert_version(
         "categories": entry["categories"],
         "requiredProviders": entry["required_providers"],
         "sourceSkillSlug": entry["slug"],
-        "isVerified": True,
         "isAvailable": True,
         "isDeleted": False,
         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,

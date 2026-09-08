@@ -66,6 +66,9 @@ async def classify_category(
         logger.warning("Store category classification failed for %r: %s", name, e)
         return None
 
+    if not response.choices:
+        logger.warning("Store category classification returned no choices for %r", name)
+        return None
     return _parse_category(response.choices[0].message.content or "")
 
 
