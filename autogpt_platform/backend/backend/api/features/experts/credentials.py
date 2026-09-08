@@ -60,11 +60,10 @@ def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
     """
     found: dict[str, str] = {}
     for node in graph.nodes:
-        input_schema = getattr(node.block, "input_schema", None)
-        get_fields = getattr(input_schema, "get_auto_credentials_fields", None)
-        if get_fields is None or not node.input_default:
+        if not node.input_default:
             continue
-        for info in get_fields().values():
+        fields = node.block.input_schema.get_auto_credentials_fields()
+        for info in fields.values():
             value = node.input_default.get(info["field_name"])
             if isinstance(value, dict) and isinstance(
                 value.get("_credentials_id"), str
