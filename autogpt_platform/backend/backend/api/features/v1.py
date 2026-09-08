@@ -128,6 +128,7 @@ from backend.data.onboarding import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.stripe_client import stripe_call
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -994,7 +995,7 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     every GET /credits/subscription page load and reduces quota consumption.
     """
     try:
-        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        price = await stripe_call(stripe.Price.retrieve_async, price_id)
         return price.unit_amount or 0
     except stripe.StripeError:
         logger.warning(
@@ -1643,7 +1644,7 @@ async def stripe_webhook(request: Request):
         if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
             invoice_id = data_object.get("invoice")
             if invoice_id:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
@@ -1697,6 +1698,7 @@ async def get_credit_history(
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
+    cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
@@ -1707,6 +1709,8 @@ async def get_credit_history(
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
     )
 
 

@@ -835,6 +835,7 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,

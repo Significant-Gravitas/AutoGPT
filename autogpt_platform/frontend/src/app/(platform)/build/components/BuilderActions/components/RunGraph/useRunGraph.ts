@@ -86,7 +86,7 @@ export const useRunGraph = () => {
           });
           // Simulate goes through the same mutation as Run; only a real run
           // is an activation.
-          if (!variables?.data?.dry_run) {
+          if (response.status === 200 && !variables?.data?.dry_run) {
             trackAgentRunGoal({ id: graph_id }, "builder");
           }
         },

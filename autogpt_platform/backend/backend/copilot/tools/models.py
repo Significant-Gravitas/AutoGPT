@@ -437,9 +437,13 @@ class SubSessionStatusResponse(ToolResponseBase):
             "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
     )
-    tool_calls: list[dict[str, Any]] | None = Field(
+    sub_tool_call_count: int | None = Field(
         default=None,
-        description="Tool calls made during the sub-AutoPilot run.",
+        description=(
+            "How many tool calls the sub made. The calls themselves are not "
+            "returned; read the sub's transcript at "
+            "``sub_autopilot_session_link``."
+        ),
     )
     sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
         default=None,

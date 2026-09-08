@@ -243,3 +243,9 @@ class TestOrgCreditModelTopUp:
 
         assert result == 500
         mock_prisma.query_raw.assert_called_once()
+        assert mock_prisma.query_raw.call_args.args[1:] == ("org-1", 500)
+        mock_prisma.orgcredittransaction.create.assert_awaited_once()
+        transaction = mock_prisma.orgcredittransaction.create.call_args.kwargs["data"]
+        assert transaction["initiatedByUserId"] == "user-1"
+        assert transaction["orgId"] == "org-1"
+        assert transaction["amount"] == 500

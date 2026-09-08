@@ -11,6 +11,7 @@ from aiohttp import ClientSession
 from backend.copilot.sdk.codex_compat_gateway import (
     CodexAnthropicGateway,
     _safe_tool_name,
+    _serialize_messages,
 )
 from backend.integrations.codex.models import (
     CodexDynamicToolCall,
@@ -797,3 +798,29 @@ async def test_rejects_missing_gateway_capability() -> None:
             payload = await response.json()
         assert response.status == 401
         assert payload["error"]["type"] == "authentication_error"
+
+
+def test_serialize_messages_keeps_inline_system_turns() -> None:
+    serialized = _serialize_messages(
+        [
+            {"role": "user", "content": "hello"},
+            {
+                "role": "system",
+                "content": "<system-reminder>stay on task</system-reminder>",
+            },
+            {"role": "assistant", "content": "sure"},
+        ]
+    )
+    transcript = json.loads(serialized[serialized.index("[") :])
+
+    assert [message["role"] for message in transcript] == [
+        "user",
+        "system",
+        "assistant",
+    ]
+    assert transcript[1]["content"] == "<system-reminder>stay on task</system-reminder>"
+
+
+def test_serialize_messages_rejects_unknown_roles() -> None:
+    with pytest.raises(ValueError):
+        _serialize_messages([{"role": "tool", "content": "result"}])

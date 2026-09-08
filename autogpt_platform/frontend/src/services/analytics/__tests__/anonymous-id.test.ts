@@ -67,13 +67,31 @@ describe("getAnonymousID", () => {
 });
 
 describe("resetAnonymousID", () => {
-  it("forgets the id so the next visitor starts as a new person", () => {
+  it("forgets the id and first landing so the next visitor starts fresh", () => {
     const first = getAnonymousID();
+    captureFirstLanding();
+    expect(readFirstLanding()).not.toBeNull();
 
     resetAnonymousID();
 
-    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(
+      getAnonymousID(),
+    );
+    expect(readFirstLanding()).toBeNull();
     expect(getAnonymousID()).not.toBe(first);
+  });
+
+  it("keeps the replacement identity after the in-memory cache is cleared", () => {
+    window.localStorage.setItem(
+      "ph_phc_test_posthog",
+      JSON.stringify({ $device_id: "old-device" }),
+    );
+    expect(getAnonymousID()).toBe("old-device");
+
+    resetAnonymousID("fresh-device");
+    resetAnonymousIDForTests();
+
+    expect(getAnonymousID()).toBe("fresh-device");
   });
 });
 
