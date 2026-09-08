@@ -820,3 +820,36 @@ describe("ArtifactsPage - expert filter", () => {
     expect(screen.queryByTestId("artifacts-expert-filter")).toBeNull();
   });
 });
+
+describe("ArtifactsPage - empty state", () => {
+  test("offers an upload and a new task when the workspace is empty", async () => {
+    useStorageHandler();
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    expect(
+      screen.getByRole("button", { name: /upload a file/i }),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: /start a task/i })).toBeDefined();
+  });
+
+  test("keeps the search empty state free of calls to action", async () => {
+    useStorageHandler();
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    fireEvent.change(screen.getByPlaceholderText(/search/i), {
+      target: { value: "zzz" },
+    });
+
+    expect(await screen.findByText("No files match your search")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /upload a file/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /start a task/i })).toBeNull();
+  });
+});

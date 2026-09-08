@@ -11,7 +11,7 @@ import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformCh
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
-import { getEmptyMessage } from "./components/ArtifactsList/helpers";
+import { getEmptyState } from "./components/ArtifactsList/helpers";
 import { NewMenu } from "./components/NewMenu/NewMenu";
 import { ExpertFilter } from "./components/ExpertFilter/ExpertFilter";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
@@ -72,7 +72,7 @@ export default function ArtifactsPage() {
     loadMore,
   } = useArtifactsPage();
   const { folders, isLoading: isFoldersLoading } = useArtifactsFolders();
-  const { activeExperts } = useExpertMap();
+  const { activeExperts, expertsById } = useExpertMap();
 
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
@@ -194,11 +194,17 @@ export default function ArtifactsPage() {
           isLoading={isListLoading}
           isError={isError}
           error={error}
-          emptyMessage={getEmptyMessage({
+          emptyState={getEmptyState({
             hasSearchTerm: isSearching,
             isInFolder,
             hasFolders,
-            hasExpertFilter: isFilteringByExpert,
+            folderId: selectedFolderId,
+            expert: expertFilter
+              ? {
+                  id: expertFilter,
+                  name: expertsById.get(expertFilter)?.name ?? null,
+                }
+              : null,
           })}
           compactEmpty={hasFolders}
           hasMore={hasMore}

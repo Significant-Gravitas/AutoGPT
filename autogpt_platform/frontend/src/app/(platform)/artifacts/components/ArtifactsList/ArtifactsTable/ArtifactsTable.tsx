@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { EmptyState } from "../EmptyState";
+import type { EmptyStateContent } from "../helpers";
 import { FileRow } from "./FileRow";
 import { FolderRows } from "./FolderRows";
 import { SkeletonRow } from "./SkeletonRow";
@@ -15,7 +16,7 @@ import { DATE_CELL_CLASS, ROW_GRID_CLASS, SIZE_CELL_CLASS } from "./row-layout";
 interface Props {
   files: WorkspaceFileItem[];
   isLoading: boolean;
-  emptyMessage: string;
+  emptyState: EmptyStateContent;
   compactEmpty: boolean;
   listKey: string;
   showFolders: boolean;
@@ -33,7 +34,7 @@ const LIST_VARIANTS: Variants = {
 export function ArtifactsTable({
   files,
   isLoading,
-  emptyMessage,
+  emptyState,
   compactEmpty,
   listKey,
   showFolders,
@@ -91,7 +92,7 @@ export function ArtifactsTable({
         </motion.ul>
       </TooltipProvider>
       {!isLoading && files.length === 0 ? (
-        <EmptyState message={emptyMessage} compact={compactEmpty} />
+        <EmptyState content={emptyState} compact={compactEmpty} />
       ) : null}
     </div>
   );

@@ -345,3 +345,72 @@ export function getEmptyMessage(opts: {
   if (opts.hasFolders) return "No files at the root yet";
   return "No files yet";
 }
+
+export interface EmptyStateContent {
+  title: string;
+  description: string;
+  showUpload: boolean;
+  uploadFolderId: string | null;
+  chatHref: string | null;
+  chatLabel: string;
+}
+
+export function getEmptyState(opts: {
+  hasSearchTerm: boolean;
+  isInFolder: boolean;
+  hasFolders: boolean;
+  folderId: string | null;
+  expert: { id: string; name: string | null } | null;
+}): EmptyStateContent {
+  const title = getEmptyMessage({
+    hasSearchTerm: opts.hasSearchTerm,
+    isInFolder: opts.isInFolder,
+    hasFolders: opts.hasFolders,
+    hasExpertFilter: opts.expert !== null,
+  });
+  const base: EmptyStateContent = {
+    title,
+    description: "",
+    showUpload: false,
+    uploadFolderId: opts.folderId,
+    chatHref: null,
+    chatLabel: "Start a task",
+  };
+  if (opts.hasSearchTerm) {
+    return {
+      ...base,
+      description: "Try another name, or clear the search to see everything.",
+    };
+  }
+  if (opts.expert) {
+    const name = opts.expert.name;
+    return {
+      ...base,
+      description: `Files ${name ?? "this expert"} creates while working on a task will show up here.`,
+      chatHref: name
+        ? `/copilot?expertId=${encodeURIComponent(opts.expert.id)}`
+        : null,
+      chatLabel: name ? `Chat with ${name}` : base.chatLabel,
+    };
+  }
+  if (opts.isInFolder) {
+    return {
+      ...base,
+      description: "Upload a file here, or drag one in from the list.",
+      showUpload: true,
+    };
+  }
+  if (opts.hasFolders) {
+    return {
+      ...base,
+      description: "Your files live inside the folders above.",
+    };
+  }
+  return {
+    ...base,
+    description:
+      "Files your team generates and files you upload will show up here.",
+    showUpload: true,
+    chatHref: "/copilot",
+  };
+}
