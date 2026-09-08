@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +8,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { cn } from "@/lib/utils";
 import { FilterHorizontalIcon } from "@hugeicons/core-free-icons";
 
 interface Props<T extends string> {
@@ -34,16 +32,15 @@ export function FilterIconMenu<T extends string>({
         <Button
           type="button"
           variant="icon"
-          size="icon"
+          size="icon-xs"
           aria-label={label}
-          className={cn(
-            "h-7 w-7 rounded-md border-zinc-200 p-0",
-            isActive &&
-              "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white",
-          )}
-        >
-          <Icon icon={FilterHorizontalIcon} size={14} />
-        </Button>
+          leadingIcon={FilterHorizontalIcon}
+          className={
+            isActive
+              ? "border-zinc-900 bg-zinc-900 text-white hover:border-zinc-800 hover:bg-zinc-800 hover:text-white"
+              : undefined
+          }
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[11rem]">
         <DropdownMenuRadioGroup

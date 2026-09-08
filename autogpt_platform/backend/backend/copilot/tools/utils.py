@@ -17,6 +17,7 @@ from backend.data.model import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
+from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -563,11 +564,8 @@ async def check_user_has_required_credentials(
     return missing
 
 
-CREDENTIAL_REJECTED_STATUS_CODES = {401, 403}
-
-
 def credential_rejection_status(exc: BaseException) -> int | None:
-    """Auth status code from *exc* or anything it was raised from, else ``None``.
+    """Rejection status from *exc* or anything it was raised from, else ``None``.
 
     Blocks bubble the provider's failure through ``BlockError`` with the
     original exception on ``__cause__``, so the status only survives one

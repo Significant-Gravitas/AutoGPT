@@ -10,8 +10,6 @@ interface Props {
   agent: HomeAgentStatus;
 }
 
-const ACTION_CLASS = "h-7 min-w-0 rounded-md px-2.5 text-xs";
-
 /** One expert with its status and two ways in. The detail line is gone:
  *  anything that needs doing is already spelled out under Needs you. */
 export function AgentRow({ agent }: Props) {
@@ -32,7 +30,8 @@ export function AgentRow({ agent }: Props) {
         <div className="flex items-center gap-2">
           <Text
             variant="body-medium"
-            className="truncate leading-5 text-zinc-900"
+            tone="primary"
+            className="truncate leading-5"
           >
             {agent.expert.name}
           </Text>
@@ -41,7 +40,8 @@ export function AgentRow({ agent }: Props) {
         {secondLine ? (
           <Text
             variant="small"
-            className="truncate tabular-nums leading-4 text-zinc-500"
+            tone="muted"
+            className="truncate tabular-nums leading-4"
             unmask={false}
           >
             {secondLine}
@@ -53,8 +53,7 @@ export function AgentRow({ agent }: Props) {
           as="NextLink"
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="secondary"
-          size="small"
-          className={ACTION_CLASS}
+          size="xs"
           aria-label={`Chat with ${agent.expert.name}`}
         >
           Chat
@@ -63,8 +62,7 @@ export function AgentRow({ agent }: Props) {
           as="NextLink"
           href={`/team/${agent.expert.id}`}
           variant="secondary"
-          size="small"
-          className={ACTION_CLASS}
+          size="xs"
           aria-label={`Manage ${agent.expert.name}`}
         >
           Manage

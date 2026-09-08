@@ -920,15 +920,27 @@ async def test_surface_connect_card_probe_timeout_reports_optimistically_connect
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
-    """HTTP 403 when creds ARE present → still fire setup card, drop the stale row.
+@pytest.mark.parametrize(
+    "status_code, expect_invalidated, expect_connected",
+    [
+        # 401 is the one status that means "this credential was refused".
+        (401, True, False),
+        # A 403 routinely means "valid token, not allowed to call *this*" —
+        # deleting on it forces a re-entry that fails identically, and a bare
+        # Connect button invites re-pasting the token that already works.
+        (403, False, True),
+    ],
+)
+async def test_auth_error_with_stale_creds_fires_setup_and_invalidates(
+    status_code, expect_invalidated, expect_connected
+):
+    """Auth error when creds ARE present → always fire the setup card; drop the
+    row only when the credential itself was refused.
 
     Stored creds whose ``access_token_expires_at`` is in the future locally
-    but which the server has revoked/expired don't get refreshed by
+    but which the server has revoked don't get refreshed by
     ``auto_lookup_mcp_credential`` — they come back live, the request 401s,
-    and the user is stuck.  The fix: on any 401/403, surface the setup card
-    so the user can re-auth, and delete the stale row so the next attempt
-    doesn't loop on the same dead token.
+    and the user is stuck until the dead row goes.
     """
     from backend.util.request import HTTPClientError
 
@@ -950,7 +962,7 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
         ):
             mock_client = AsyncMock()
             mock_client.initialize = AsyncMock(
-                side_effect=HTTPClientError("Forbidden", status_code=403)
+                side_effect=HTTPClientError("Auth error", status_code=status_code)
             )
             with patch(
                 "backend.copilot.tools.run_mcp_tool.MCPClient",
@@ -971,9 +983,15 @@ async def test_auth_error_with_stale_creds_fires_setup_and_invalidates():
                             server_url=_SERVER_URL,
                         )
                         mock_build.assert_called_once()
-                        mock_invalidate.assert_awaited_once_with(
-                            _USER_ID, "stale-cred-id"
+                        assert (
+                            mock_build.call_args.kwargs["connected"] is expect_connected
                         )
+                        if expect_invalidated:
+                            mock_invalidate.assert_awaited_once_with(
+                                _USER_ID, "stale-cred-id"
+                            )
+                        else:
+                            mock_invalidate.assert_not_awaited()
 
     assert response is mock_build.return_value
 

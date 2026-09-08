@@ -120,7 +120,9 @@ def test_credential_rejection_status_reads_through_the_cause_chain():
 @pytest.mark.parametrize(
     "exc, expected",
     [
-        (type("Aiohttp", (Exception,), {"status": 403})(), 403),
+        (type("Aiohttp", (Exception,), {"status": 401})(), 401),
+        # A 403 is a scope decision or a WAF, not a rejected credential.
+        (type("Forbidden", (Exception,), {"status_code": 403})(), None),
         (
             type(
                 "Requests",
@@ -133,7 +135,7 @@ def test_credential_rejection_status_reads_through_the_cause_chain():
         (ValueError("no status anywhere"), None),
     ],
 )
-def test_credential_rejection_status_only_matches_auth_statuses(exc, expected):
+def test_credential_rejection_status_only_matches_rejections(exc, expected):
     from backend.copilot.tools.utils import credential_rejection_status
 
     assert credential_rejection_status(exc) == expected

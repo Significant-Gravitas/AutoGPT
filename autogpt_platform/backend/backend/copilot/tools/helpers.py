@@ -584,7 +584,7 @@ def _build_credential_rejected_card(
 ) -> SetupRequirementsResponse:
     """Setup card for a credential the provider refused mid-execution.
 
-    The rejected row is kept — a 401/403 is not proof the secret is wrong — so
+    The rejected row is kept — a 401 is not proof the secret is wrong — so
     the ``rejection`` field is what stops the card re-offering it as ready.
     """
     missing_creds_dict = build_missing_credentials_from_field_info(

@@ -22,13 +22,17 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
 )
 from backend.copilot.tools.utils import (
-    CREDENTIAL_REJECTED_STATUS_CODES,
     build_missing_credentials_from_field_info,
     sanitize_provider_message,
 )
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, validate_url_host
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    validate_url_host,
+)
 
 from .base import BaseTool
 from .models import (
@@ -252,10 +256,14 @@ class RunMCPToolTool(BaseTool):
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
-                            rejection = _rejection(creds, probe_err)
-                            await invalidate_mcp_credential(user_id, creds.id)
+                        if probe_err.status_code in AUTH_STATUS_CODES:
                             connected = False
+                            if (
+                                probe_err.status_code
+                                in CREDENTIAL_REJECTED_STATUS_CODES
+                            ):
+                                rejection = _rejection(creds, probe_err)
+                                await invalidate_mcp_credential(user_id, creds.id)
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -311,20 +319,28 @@ class RunMCPToolTool(BaseTool):
                 )
 
         except HTTPClientError as e:
-            if e.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
-                # 401/403 → user needs to (re)authenticate.  Fire the setup
-                # card whether or not we have a stored credential row: when
-                # `creds` is None the user has never connected, and when it
-                # is non-None the stored token has been revoked / expired
-                # server-side without us knowing (refresh_if_needed only
-                # refreshes when local `access_token_expires_at` says so).
-                # If we have a stale row, delete it so the next attempt
-                # doesn't loop on the same dead token.
-                rejected = _rejection(creds, e) if creds is not None else None
-                if creds is not None:
+            if e.status_code in AUTH_STATUS_CODES:
+                credential_rejected = e.status_code in CREDENTIAL_REJECTED_STATUS_CODES
+                # Fire the setup card whether or not a credential row exists.
+                rejected = (
+                    _rejection(creds, e)
+                    if creds is not None and credential_rejected
+                    else None
+                )
+                if creds is not None and credential_rejected:
                     await invalidate_mcp_credential(user_id, creds.id)
+                # A 403 over a credential we deliberately kept means "this
+                # token is fine, it just may not call *this* tool". Rendering
+                # a bare Connect button there invites the user to re-paste the
+                # same working token: ``/token``'s probe 403s too, which is
+                # not a rejection, so it stores, returns 2xx and greens the
+                # pill — and the next call 403s again. Reporting it as
+                # connected breaks that loop.
                 return self._build_setup_requirements(
-                    server_url, session_id, rejection=rejected
+                    server_url,
+                    session_id,
+                    connected=creds is not None and not credential_rejected,
+                    rejection=rejected,
                 )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
@@ -351,6 +367,9 @@ class RunMCPToolTool(BaseTool):
                 message="An unexpected error occurred connecting to the MCP server. Please try again.",
                 session_id=session_id,
             )
+        finally:
+            # Release any legacy session; a no-op on stateless servers.
+            await client.close()
 
     async def _discover_tools(
         self,
@@ -430,6 +449,7 @@ class RunMCPToolTool(BaseTool):
         Single-item responses are unwrapped from the list; multiple items are
         returned as a list; empty content returns None.
         """
+        input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
             input_schema = await self._lookup_tool_schema(client, tool_name)
             try:
@@ -445,7 +465,9 @@ class RunMCPToolTool(BaseTool):
                     session_id=session_id,
                 )
 
-        result = await client.call_tool(tool_name, tool_arguments)
+        result = await client.call_tool(
+            tool_name, tool_arguments, input_schema=input_schema
+        )
 
         if result.is_error:
             error_text = " ".join(

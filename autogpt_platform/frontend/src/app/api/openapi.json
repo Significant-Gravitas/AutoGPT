@@ -4711,6 +4711,49 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postChatSynthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -5690,6 +5733,15 @@
               "default": 100,
               "title": "Transaction Count Limit"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
           }
         ],
         "responses": {
@@ -6465,6 +6517,52 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/ExpertAvatarUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/budget": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Budget",
+        "operationId": "update_expert_budget",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertBudgetUpdate" }
             }
           }
         },
@@ -17258,6 +17356,14 @@
             "type": "integer",
             "title": "Cost Cents",
             "default": 0
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           }
         },
         "type": "object",
@@ -18630,8 +18736,61 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditHistoryCharge": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "amount": { "type": "integer", "title": "Amount" },
+          "charge_type": {
+            "type": "string",
+            "enum": ["usage", "execution_fee", "adjustment", "transaction"],
+            "title": "Charge Type"
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name"
+          },
+          "node_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Execution Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "posted_at", "amount", "charge_type"],
+        "title": "CreditHistoryCharge"
+      },
+      "CreditHistoryRelatedExecution": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id"],
+        "title": "CreditHistoryRelatedExecution"
+      },
       "CreditTransactionItem": {
         "properties": {
+          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -18671,7 +18830,103 @@
             "title": "Usage Start Time",
             "default": "9999-12-31T23:59:59.999999Z"
           },
-          "user_id": { "type": "string", "title": "User Id" }
+          "user_id": { "type": "string", "title": "User Id" },
+          "activity_type": {
+            "type": "string",
+            "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
+            "title": "Activity Type",
+            "default": "other"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Execution Started At"
+          },
+          "execution_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Status"
+          },
+          "execution_graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Execution Graph Version"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "conversation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Title"
+          },
+          "parent_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Execution Id"
+          },
+          "parent_agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Agent Name"
+          },
+          "parent_library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Library Agent Id"
+          },
+          "related_executions": {
+            "items": {
+              "$ref": "#/components/schemas/CreditHistoryRelatedExecution"
+            },
+            "type": "array",
+            "title": "Related Executions"
+          },
+          "related_executions_has_more": {
+            "type": "boolean",
+            "title": "Related Executions Has More",
+            "default": false
+          },
+          "usage_charge_amount": {
+            "type": "integer",
+            "title": "Usage Charge Amount",
+            "default": 0
+          },
+          "usage_fee_amount": {
+            "type": "integer",
+            "title": "Usage Fee Amount",
+            "default": 0
+          },
+          "usage_adjustment_amount": {
+            "type": "integer",
+            "title": "Usage Adjustment Amount",
+            "default": 0
+          },
+          "charges": {
+            "items": { "$ref": "#/components/schemas/CreditHistoryCharge" },
+            "type": "array",
+            "title": "Charges"
+          },
+          "charges_total_count": {
+            "type": "integer",
+            "title": "Charges Total Count",
+            "default": 0
+          },
+          "charges_truncated": {
+            "type": "boolean",
+            "title": "Charges Truncated",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["user_id"],
@@ -19829,6 +20084,20 @@
         "title": "ExpertAvatarUpdate",
         "description": "Swap an expert's picture. ``None`` clears it back to the generated marble."
       },
+      "ExpertBudgetUpdate": {
+        "properties": {
+          "weekly_budget": {
+            "anyOf": [
+              { "type": "integer", "maximum": 1000000.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Weekly Budget"
+          }
+        },
+        "type": "object",
+        "title": "ExpertBudgetUpdate",
+        "description": "Set an expert's weekly spend cap in credits (100 = $1).\n\n``None`` falls back to the platform default; ``0`` disables the cap."
+      },
       "ExpertCredentialRef": {
         "properties": {
           "credential_id": { "type": "string", "title": "Credential Id" },
@@ -19921,6 +20190,12 @@
             "title": "Output Key"
           },
           "needs_review": { "type": "boolean", "title": "Needs Review" },
+          "source": {
+            "type": "string",
+            "enum": ["scheduled", "trigger", "manual"],
+            "title": "Source",
+            "default": "manual"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -20603,6 +20878,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20784,6 +21067,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20888,6 +21179,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           },
           "stats": {
             "anyOf": [
@@ -21368,6 +21667,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -21552,6 +21855,12 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["schedule", "webhook", "manual"],
+            "title": "Trigger",
+            "default": "manual"
           }
         },
         "type": "object",
@@ -21778,6 +22087,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -21840,6 +22153,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -22780,6 +23097,11 @@
             "type": "string",
             "title": "State Token",
             "description": "State token for CSRF verification"
+          },
+          "iss": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Iss",
+            "description": "Issuer identifier from the authorization response (RFC 9207). Must match the authorization server discovered at login; required when that server advertises `authorization_response_iss_parameter_supported`."
           }
         },
         "type": "object",
@@ -26447,6 +26769,27 @@
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
       },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -27156,6 +27499,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [
@@ -28392,6 +28741,17 @@
               { "type": "null" }
             ],
             "title": "Next Transaction Time"
+          },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor"
+          },
+          "snapshot_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Snapshot At"
           }
         },
         "type": "object",
