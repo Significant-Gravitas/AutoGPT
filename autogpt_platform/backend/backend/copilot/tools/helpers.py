@@ -213,8 +213,12 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
+
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
 
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
@@ -293,6 +297,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
