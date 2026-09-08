@@ -122,17 +122,20 @@ export default function ArtifactsPage() {
           </Text>
         </motion.div>
         <motion.div
-          className="flex items-center gap-3"
+          className="flex flex-col gap-3 md:items-end"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.08 }}
         >
-          <ArtifactsSearchBar
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-          />
-          <NewMenu selectedFolderId={selectedFolderId} />
+          <StorageUsage />
+          <div className="flex items-center gap-3">
+            <ArtifactsSearchBar
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+            />
+            <NewMenu selectedFolderId={selectedFolderId} />
+          </div>
         </motion.div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -198,15 +201,6 @@ export default function ArtifactsPage() {
           showFolders={showFolders}
           onSelectFolder={setSelectedFolderId}
         />
-      </motion.div>
-      <motion.div
-        className="w-full pt-4 md:w-2/5"
-        variants={variants}
-        initial="hidden"
-        animate="show"
-        transition={{ delay: reduceMotion ? 0 : 0.32 }}
-      >
-        <StorageUsage />
       </motion.div>
     </main>
   );
