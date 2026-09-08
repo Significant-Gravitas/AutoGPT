@@ -36,9 +36,9 @@ flag environment variables. The stack mounts `/run/autogpt-codex` as a
 memory-backed temporary filesystem for REST, executor, and Copilot executor
 processes.
 
-Open `http://localhost:3000`, then open **Settings > Integrations** and connect
-**Codex**. In the sign-in window, open the ChatGPT verification page and enter
-the one-time code.
+Open `http://localhost:3000`, then open **Settings > Integrations**, choose
+**OpenAI**, select **ChatGPT**, and click **Sign in with ChatGPT**. In the sign-in
+window, open the ChatGPT verification page and enter the one-time code.
 
 ### Test the Code Generation block
 
@@ -59,9 +59,9 @@ independently of public API model names.
    automatically and no connection selector is shown. If multiple subscription
    transports are connected, choose the desired connection before sending the
    first message.
-3. Choose Fast or Thinking and Balanced or Advanced as usual, then send the
-   message. Text and permitted AutoGPT tool calls stream through the existing
-   AutoPilot event surface.
+3. Choose Balanced or Advanced as available, then send the message. Text and
+   permitted AutoGPT tool calls stream through the existing AutoPilot event
+   surface.
 
 The route and credential are stored on the new session and are immutable for
 that session. Start another task to use a different connected subscription
@@ -70,15 +70,16 @@ queued turn; queued messages carry only the credential ID, never the OAuth
 tokens. A missing, revoked, or busy Codex credential fails visibly. There is no
 silent fallback to an AutoGPT-funded model or another user's credential.
 
-The mode and model controls select a Codex route from the shared model catalog,
-then validate it against the models advertised by the connected account. The
-preview maps Fast/Balanced to GPT-5.6 Luna, Fast/Advanced and Thinking/Balanced
-to GPT-5.6 Terra, and Thinking/Advanced to GPT-5.6 Sol when the account exposes
-them. It otherwise uses the visible account default. File attachments,
-agent-building tools, and SDK sub-sessions use the same Claude Agent SDK path as
-platform-funded AutoPilot. Builder-panel-bound sessions remain platform-funded
-in this preview because their persistent session is created without an AI
-connection selector.
+The visible model tier and the server-selected execution path select a Codex
+route from the shared model catalog, then validate it against the models
+advertised by the connected account. On the fast execution path, Balanced maps
+to GPT-5.6 Luna and Advanced maps to GPT-5.6 Terra. On the Claude Agent SDK path,
+Balanced maps to GPT-5.6 Terra and Advanced maps to GPT-5.6 Sol. If the account
+does not expose the mapped model, the transport uses the visible account
+default. File attachments, agent-building tools, and SDK sub-sessions use the
+same Claude Agent SDK path as platform-funded AutoPilot. Builder-panel-bound
+sessions remain platform-funded in this preview because their persistent
+session is created without an AI connection selector.
 
 The Copilot executor keeps one exclusive credential lease and one Codex runtime
 per connected account, then multiplexes overlapping chats onto separate Codex
