@@ -359,10 +359,9 @@ class ChatConfig(BaseSettings):
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     daily_cost_limit_microdollars: int = Field(
-        default=2_000_000,
+        default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
-        "Held at two fifths of the weekly limit. 0 means no spend allowed "
-        "(will block); there is no unlimited tier.",
+        "0 means no spend allowed (will block); there is no unlimited tier.",
     )
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
