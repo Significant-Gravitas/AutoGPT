@@ -26,8 +26,8 @@ describe("avatar config codec", () => {
 
   test("falls back per field on junk input", () => {
     expect(decodeConfig(null)).toEqual(DEFAULT_CONFIG);
-    expect(decodeConfig("egg.neon.glasses")).toEqual({
-      shape: "egg",
+    expect(decodeConfig("dome.neon.glasses")).toEqual({
+      shape: "dome",
       color: DEFAULT_CONFIG.color,
       accessory: "glasses",
     });
