@@ -503,14 +503,14 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
     expect(current.onConnected).toHaveBeenCalledTimes(1);
   });
 
-  it("grants a reported credential before the provider list has loaded", async () => {
+  it("grants a reported credential when the provider has no accounts yet", async () => {
     mockGrant.mockResolvedValue([]);
     mockReported.current = reported(added);
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
     render(
-      <CredentialsProvidersContext.Provider value={null}>
+      <CredentialsProvidersContext.Provider value={{}}>
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
@@ -606,7 +606,7 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
     expect(mockGrant).toHaveBeenCalledTimes(1);
   });
 
-  it("grants nothing when the accounts only loaded after Connect was clicked", async () => {
+  it("keeps Connect disabled until the accounts have loaded", async () => {
     const current = row({
       expertGrant: { expertId: "expert-a", credentials: [] },
     });
@@ -615,8 +615,10 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
         <ConnectorRow row={current} />
       </CredentialsProvidersContext.Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    fireEvent.click(screen.getByRole("button", { name: "finish sign-in" }));
+    const connect = screen.getByRole("button", { name: "Connect" });
+    expect(connect.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(connect);
+    expect(screen.queryByRole("button", { name: "finish sign-in" })).toBeNull();
     rerender(
       <CredentialsProvidersContext.Provider
         value={providersWithGithub([existing])}
@@ -626,8 +628,10 @@ describe("ConnectorRow after a sign-in in an expert chat", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByText("This expert needs its own access"),
-      ).toBeDefined(),
+        screen
+          .getByRole("button", { name: "Connect" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
     );
     expect(mockGrant).not.toHaveBeenCalled();
     expect(current.select).not.toHaveBeenCalled();

@@ -146,8 +146,11 @@ export function ConnectorRow({ row }: Props) {
     : Boolean(row.selected);
 
   function openDialog() {
-    const saved = allProviders?.[row.provider]?.savedCredentials;
-    knownIds.current = saved ? new Set(saved.map((c) => c.id)) : null;
+    knownIds.current = allProviders
+      ? new Set(
+          allProviders[row.provider]?.savedCredentials.map((c) => c.id) ?? [],
+        )
+      : null;
     setGrantError(null);
     setAwaitingGrant(false);
     setDialogOpen(true);
@@ -191,7 +194,10 @@ export function ConnectorRow({ row }: Props) {
           size="small"
           className="shrink-0"
           disabled={
-            isGranting || Boolean(expertGrant && grantedCredentials.isPending)
+            isGranting ||
+            Boolean(
+              expertGrant && (grantedCredentials.isPending || !allProviders),
+            )
           }
           onClick={openDialog}
         >
