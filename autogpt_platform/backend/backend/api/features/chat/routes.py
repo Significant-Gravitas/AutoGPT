@@ -266,6 +266,12 @@ class StreamChatRequest(BaseModel):
     message: str = Field(max_length=64_000)
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    voice: bool = Field(
+        default=False,
+        description="Voice mode is waiting on speech. Adds one line asking the "
+        "reply to open with a spoken acknowledgement before any tool call; "
+        "text turns never pay for it.",
+    )
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
@@ -1751,6 +1757,7 @@ async def stream_chat_post(
             message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
             context=request.context,
+            voice=request.voice,
             file_ids=sanitized_file_ids,
             organization_id=turn_org_id,
             team_id=turn_team_id,

@@ -29,6 +29,8 @@ import { useConnectedProvidersStore } from "@/app/(platform)/copilot/connectedPr
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
 import { ToolChain } from "../ToolChain";
+import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsContext";
+import type { PendingQuestions } from "../../QuestionDock/helpers";
 
 // CredentialsProvider only fetches for a signed-in user; the shared setup
 // signs everyone out.
@@ -244,6 +246,54 @@ describe("copilot Connect card, cards that owe more than a credential", () => {
     // way forward at all, which is worse than sending the wrong account.
     // The Proceed button is the positive signal that the card has finished
     // reacting, so it has to come before the negative assertion.
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("offers no Proceed for a connected MCP row, which builds no message", async () => {
+    savedCredentials = [
+      {
+        id: "cred-mcp",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Notion",
+        host: "https://mcp.notion.com/mcp",
+        scopes: [],
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[mcpPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await screen.findByText("Plug in what this needs");
+    // The MCP entry's buildMessage returns null, so a Proceed here would draft
+    // an empty message and do nothing at all.
+    expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+  });
+
+  it("gives a Proceed to a card whose rows an earlier card already satisfied", async () => {
+    // connect_integration returns a card whether or not the user is already
+    // connected, so this lands whenever the assistant offers a provider they
+    // have. There is no sign-in to trigger the send and nothing to click.
+    savedCredentials = [oauthCredential("cred-existing", [REQUIRED_SCOPE])];
+    useConnectedProvidersStore
+      .getState()
+      .markConnected({ sessionID: SESSION_ID, providers: ["github"] });
+
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[setupRequirementsPart()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
     await screen.findByRole("button", { name: "Proceed" });
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -524,6 +574,204 @@ describe("copilot Connect card, already satisfied", () => {
   });
 });
 
+describe("copilot Connect card, one tool needing several providers", () => {
+  beforeEach(mockTwoProviderBackend);
+
+  afterEach(resetStores);
+
+  it("sends once, after the second provider is connected", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    await connectRemainingProvider();
+    // The first account alone must not start the turn: the other row is still
+    // visibly unconnected, and the tool needs both.
+    await waitFor(() => expect(savedCredentials).toHaveLength(1));
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+  });
+
+  it("sends once whichever provider the user connects first", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    // Same assertion from the other end: the order is the user's, the single
+    // turn is not.
+    const buttons = screen.getAllByRole("button", { name: "Connect" });
+    await connectRemainingProvider(buttons.length - 1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not send when the user starts typing an input", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[partWithInputs()]} isStreaming={false} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox"), "h");
+
+    // An input counts as complete on any non-empty value, so readiness alone
+    // would fire the turn mid-word with `{"url":"h"}`.
+    await waitFor(() =>
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("h"),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+    await screen.findByRole("button", { name: "Proceed" });
+  });
+
+  it("does not send when the user starts typing a clarifying answer", async () => {
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [{ question: "Which region?", keyword: "region" }],
+    };
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <PendingQuestionsContext.Provider value={pending}>
+            <ToolChain
+              parts={[setupRequirementsPart(), questionPart(pending.questions)]}
+              isStreaming={false}
+            />
+          </PendingQuestionsContext.Provider>
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await completeConnectFlow();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox"), "W");
+
+    // Answers are complete on the first character too, and the dock's own
+    // "add answers" review step would never run.
+    await waitFor(() =>
+      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("W"),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("offers one Proceed when a card also collects inputs", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[partWithInputs(), slackRequirementsPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    await connectRemainingProvider();
+
+    // Connecting every account does not finish a chain that also owes inputs;
+    // the user completes it through the chain's single Proceed.
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("stays silent and names what is left when the user connects one and stops", async () => {
+    const { onSend } = renderTwoProviderChain();
+
+    await connectRemainingProvider();
+
+    await screen.findByText(/Still to connect:/);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilot Connect card, a card that arrives after the first connection", () => {
+  beforeEach(mockTwoProviderBackend);
+
+  afterEach(resetStores);
+
+  it("waits for a tool that is still running, then sends once", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), pendingSlackCallPart()]}
+            isStreaming={true}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+
+    // The running tool has not said what it needs yet, so sending here spends
+    // the chain's one turn before that card exists.
+    await screen.findByText("Connected");
+    expect(onSend).not.toHaveBeenCalled();
+
+    rerender(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), slackRequirementsPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+  });
+
+  it("gives a card that lands after the send a Proceed to continue from", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain parts={[setupRequirementsPart()]} isStreaming={true} />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), slackRequirementsPart()]}
+            isStreaming={true}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+    await connectRemainingProvider();
+
+    // The chain's single send is spent, so without a button this card is
+    // connected with nothing to press.
+    await screen.findByRole("button", { name: "Proceed" });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+});
+
 function renderChain() {
   const onSend = vi.fn();
   const utils = render(
@@ -668,6 +916,60 @@ function triggerPart(): MessagePart {
     toolCallId: "call-setup_agent_webhook_trigger",
   } as unknown as MessagePart;
 }
+function renderTwoProviderChain() {
+  const onSend = vi.fn();
+  const utils = render(
+    <CredentialsProvider>
+      <CopilotChatActionsProvider onSend={onSend}>
+        <ToolChain
+          parts={[setupRequirementsPart(), slackRequirementsPart()]}
+          isStreaming={false}
+        />
+      </CopilotChatActionsProvider>
+    </CredentialsProvider>,
+  );
+  return { onSend, ...utils };
+}
+
+/** Connects one row by position. The list shrinks as rows resolve, so index 0
+ *  is "the next one still unconnected". */
+async function connectRemainingProvider(index = 0) {
+  const user = userEvent.setup();
+  const buttons = await screen.findAllByRole("button", { name: "Connect" });
+  await user.click(buttons[index]);
+  await user.click(await screen.findByText("OAuth"));
+  await user.click(await screen.findByRole("button", { name: "Continue" }));
+}
+
+function questionPart(questions: PendingQuestions["questions"]): MessagePart {
+  return {
+    type: "tool-ask_question",
+    toolCallId: "call-ask_question",
+    state: "output-available",
+    input: {},
+    output: { type: "agent_builder_clarification_needed", questions },
+  } as unknown as MessagePart;
+}
+function mcpPart(): MessagePart {
+  return {
+    type: "tool-run_mcp_tool",
+    toolCallId: "call-run_mcp_tool",
+    state: "output-available",
+    input: { server_url: "https://mcp.notion.com/mcp" },
+    output: {
+      type: "setup_requirements",
+      message: "Connect Notion to continue.",
+      session_id: SESSION_ID,
+      setup_info: {
+        agent_id: "https://mcp.notion.com/mcp",
+        agent_name: "notion.com",
+        requirements: {},
+        user_readiness: { has_all_credentials: true },
+      },
+    },
+  } as unknown as MessagePart;
+}
+
 function widerScopePart(): MessagePart {
   const base = setupRequirementsPart() as unknown as Record<string, unknown>;
   const output = base.output as Record<string, unknown>;
@@ -691,5 +993,52 @@ function widerScopePart(): MessagePart {
         },
       },
     },
+  } as unknown as MessagePart;
+}
+
+function mockTwoProviderBackend() {
+  savedCredentials = [];
+  server.use(
+    http.get("*/api/integrations/providers", () =>
+      HttpResponse.json([
+        { name: "github", description: "Repositories" },
+        { name: "slack", description: "Messages" },
+      ]),
+    ),
+    http.get("*/api/integrations/providers/system", () =>
+      HttpResponse.json([]),
+    ),
+    http.get("*/api/integrations/credentials", () =>
+      HttpResponse.json(savedCredentials),
+    ),
+    http.get("*/api/integrations/:provider/login", () =>
+      HttpResponse.json({
+        login_url: "https://example.com/oauth/authorize",
+        state_token: "state-token",
+      }),
+    ),
+    http.post("*/api/integrations/:provider/callback", ({ params }) => {
+      const provider = String(params.provider);
+      const stored = {
+        id: `cred-${provider}`,
+        provider,
+        type: "oauth2",
+        title: provider,
+        scopes: provider === "github" ? [REQUIRED_SCOPE] : ["chat:write"],
+      };
+      savedCredentials = [...savedCredentials, stored];
+      return HttpResponse.json(stored);
+    }),
+  );
+}
+
+/** The Slack tool call before its result arrives, under the id its setup card
+ *  later lands on. */
+function pendingSlackCallPart(): MessagePart {
+  return {
+    type: "tool-run_block",
+    toolCallId: "call-run_block-slack",
+    state: "input-available",
+    input: { block_name: "SlackPostMessageBlock" },
   } as unknown as MessagePart;
 }

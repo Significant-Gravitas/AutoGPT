@@ -1,6 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  cleanup,
+  render as baseRender,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
@@ -194,6 +199,26 @@ describe("ToolChain", () => {
 
     expect(screen.getAllByText("Thinking…").length).toBeGreaterThan(0);
     expect(screen.getByText("Weighing the trade-offs")).toBeDefined();
+  });
+
+  it("renders the canonical agent name in both the live heading and its row", () => {
+    const { container } = render(
+      <ToolChain
+        parts={[
+          toolPart("run_agent", "input-available", {
+            title: "Daily briefing",
+            input: { library_agent_id: "b71fd24c-7623-4a73-a000-000000000000" },
+          }),
+        ]}
+        isStreaming
+      />,
+    );
+
+    expect(getChainHeader(/running agent "Daily briefing"/i)).toBeDefined();
+    expect(screen.getAllByText('Running agent "Daily briefing"…')).toHaveLength(
+      2,
+    );
+    expect(container.textContent).not.toContain("b71fd24c");
   });
 
   it("renders the provider icon when the tool output names a provider", async () => {
@@ -448,3 +473,22 @@ describe("ToolChain", () => {
     expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
   });
 });
+
+// ToolChain sends the chain's follow-up turn itself, so it needs the actions
+// provider its production parents always supply.
+function render(ui: React.ReactElement) {
+  const { rerender, ...rest } = baseRender(
+    <CopilotChatActionsProvider onSend={vi.fn()}>
+      {ui}
+    </CopilotChatActionsProvider>,
+  );
+  return {
+    ...rest,
+    rerender: (next: React.ReactElement) =>
+      rerender(
+        <CopilotChatActionsProvider onSend={vi.fn()}>
+          {next}
+        </CopilotChatActionsProvider>,
+      ),
+  };
+}

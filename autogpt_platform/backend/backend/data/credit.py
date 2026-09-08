@@ -2,7 +2,6 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -25,11 +24,11 @@ from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.credit_history import get_credit_history
 from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
-    CreditTransactionItem,
     RefundRequest,
     TopUpType,
     TransactionHistory,
@@ -165,6 +164,8 @@ class UserCreditBase(ABC):
         transaction_count_limit: int,
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
+        cursor: str | None = None,
+        viewer_organization_id: str | None = None,
     ) -> TransactionHistory:
         """
         Get the credit transactions for the user.
@@ -1316,61 +1317,16 @@ class UserCredit(UserCreditBase):
         transaction_count_limit: int | None = 100,
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
+        cursor: str | None = None,
+        viewer_organization_id: str | None = None,
     ) -> TransactionHistory:
-        transactions_filter: CreditTransactionWhereInput = {
-            "userId": user_id,
-            "isActive": True,
-        }
-        if transaction_time_ceiling:
-            transaction_time_ceiling = transaction_time_ceiling.replace(
-                tzinfo=timezone.utc
-            )
-            transactions_filter["createdAt"] = {"lt": transaction_time_ceiling}
-        if transaction_type:
-            transactions_filter["type"] = CreditTransactionType[transaction_type]
-        transactions = await CreditTransaction.prisma().find_many(
-            where=transactions_filter,
-            order={"createdAt": "desc"},
-            take=transaction_count_limit,
-        )
-
-        grouped_transactions: dict[str, CreditTransactionItem] = defaultdict(
-            lambda: CreditTransactionItem(user_id=user_id)
-        )
-        tx_time = None
-        for t in transactions:
-            metadata = (
-                UsageTransactionMetadata.model_validate(t.metadata)
-                if t.metadata
-                else UsageTransactionMetadata()
-            )
-            tx_time = t.createdAt.replace(tzinfo=timezone.utc)
-
-            if t.type == CreditTransactionType.USAGE and metadata.graph_exec_id:
-                gt = grouped_transactions[metadata.graph_exec_id]
-                gid = metadata.graph_id[:8] if metadata.graph_id else "UNKNOWN"
-                gt.description = f"Graph #{gid} Execution"
-
-                gt.usage_node_count += 1
-                gt.usage_start_time = min(gt.usage_start_time, tx_time)
-                gt.usage_execution_id = metadata.graph_exec_id
-                gt.usage_graph_id = metadata.graph_id
-            else:
-                gt = grouped_transactions[t.transactionKey]
-                gt.description = f"{t.type} Transaction"
-                gt.transaction_key = t.transactionKey
-
-            gt.amount += t.amount
-            gt.transaction_type = t.type
-
-            if tx_time > gt.transaction_time:
-                gt.transaction_time = tx_time
-
-        return TransactionHistory(
-            transactions=list(grouped_transactions.values()),
-            next_transaction_time=(
-                tx_time if len(transactions) == transaction_count_limit else None
-            ),
+        return await get_credit_history(
+            user_id=user_id,
+            transaction_count_limit=transaction_count_limit,
+            transaction_time_ceiling=transaction_time_ceiling,
+            transaction_type=transaction_type,
+            cursor=cursor,
+            viewer_organization_id=viewer_organization_id,
         )
 
     async def get_refund_requests(

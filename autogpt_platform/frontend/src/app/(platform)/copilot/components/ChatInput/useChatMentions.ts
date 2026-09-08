@@ -5,6 +5,7 @@ import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKey
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { KeyboardEvent } from "react";
 import { useState } from "react";
+import { isKey } from "@/lib/keyboard";
 
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
@@ -92,29 +93,28 @@ export function useChatMentions({
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): boolean {
     if (!isOpen) return false;
-    if (e.key === "Escape") {
+    if (isKey(e, "Escape")) {
       e.preventDefault();
       close();
       return true;
     }
     if (files.length === 0) return false;
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        moveHighlight(1);
-        return true;
-      case "ArrowUp":
-        e.preventDefault();
-        moveHighlight(-1);
-        return true;
-      case "Enter":
-      case "Tab":
-        e.preventDefault();
-        accept(files[highlightedIndex]);
-        return true;
-      default:
-        return false;
+    if (isKey(e, "ArrowDown")) {
+      e.preventDefault();
+      moveHighlight(1);
+      return true;
     }
+    if (isKey(e, "ArrowUp")) {
+      e.preventDefault();
+      moveHighlight(-1);
+      return true;
+    }
+    if (isKey(e, "Enter", "Tab")) {
+      e.preventDefault();
+      accept(files[highlightedIndex]);
+      return true;
+    }
+    return false;
   }
 
   return {
