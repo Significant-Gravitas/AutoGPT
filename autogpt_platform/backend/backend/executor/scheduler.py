@@ -2217,14 +2217,15 @@ class Scheduler(AppService):
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
-    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)``. APScheduler
-    # has no SQL-level user_id / kind filter — it loads every row and
-    # unpickles each ``job.kwargs`` in Python.  The /library page now
-    # fires THREE separate calls into this method on cold load (existing
-    # graph schedules + new copilot followups + briefing-pill counts),
-    # so we memoise the unfiltered list for a few seconds.  Mutations
-    # (`add_*_schedule`, `delete_schedule`) clear the cache so user-visible
-    # latency on writes is unchanged.
+    # Process-wide cache for ``scheduler.get_jobs(EXECUTION)`` — the fully
+    # unfiltered row set, including paused schedules and already-fired
+    # one-shot jobs. APScheduler has no SQL-level user_id / kind filter
+    # either way — it loads every row and unpickles each ``job.kwargs`` in
+    # Python — so this is now only worth paying for on the rare
+    # ``include_paused=True`` lifecycle lookups; see the sibling
+    # ``_get_active_jobs_cached`` below for the path everything else takes.
+    # Mutations (`add_*_schedule`, `delete_schedule`) clear both caches so
+    # user-visible latency on writes is unchanged.
     _JOBS_CACHE_TTL_S = 5.0
     _jobs_cache: list[JobObj] | None = None
     _jobs_cache_expires_at: float = 0.0
