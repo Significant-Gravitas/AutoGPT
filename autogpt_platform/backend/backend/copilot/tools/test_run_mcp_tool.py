@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.blocks.mcp.helpers import server_host
+from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.data.model import OAuth2Credentials
 
@@ -1196,6 +1196,11 @@ async def test_build_setup_requirements_returns_setup_response():
     assert isinstance(result, SetupRequirementsResponse)
     assert result.setup_info.agent_id == _SERVER_URL
     assert "sign in" in result.message.lower()
+    missing = result.setup_info.user_readiness.missing_credentials
+    assert all(
+        entry["discriminator_values"] == [normalize_mcp_url(_SERVER_URL)]
+        for entry in missing.values()
+    )
 
 
 # ---------------------------------------------------------------------------

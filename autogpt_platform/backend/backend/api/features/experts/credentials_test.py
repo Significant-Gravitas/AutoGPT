@@ -11,6 +11,7 @@ from backend.api.features.experts.credentials import (
     _derive_from_workflows,
     _to_refs,
     filter_credentials_for_expert,
+    settle_credential_seed,
 )
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.executor.utils import _enforce_expert_credential_scope
@@ -226,7 +227,10 @@ async def test_derivation_includes_picker_credentials_the_user_owns(
         },
     )
     mocker.patch(
-        "backend.data.graph.get_graph", return_value=SimpleNamespace(nodes=[node])
+        "backend.data.graph.get_graph",
+        return_value=SimpleNamespace(
+            nodes=[], sub_graphs=[SimpleNamespace(nodes=[node])]
+        ),
     )
     mocker.patch(
         "backend.copilot.tools.utils.match_user_credentials_to_graph",
@@ -250,3 +254,70 @@ async def test_derivation_includes_picker_credentials_the_user_owns(
 
     assert derived == {"cred-drive": "google"}
     assert is_complete is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_credential_read_leaves_the_seed_pending(
+    mocker: pytest_mock.MockFixture,
+):
+    node = SimpleNamespace(
+        block=SimpleNamespace(
+            input_schema=SimpleNamespace(
+                get_auto_credentials_fields=lambda: {
+                    "credentials": {
+                        "field_name": "sheet",
+                        "config": {"provider": "google"},
+                    }
+                }
+            )
+        ),
+        input_default={"sheet": {"_credentials_id": "cred-drive"}},
+    )
+    mocker.patch(
+        "backend.data.graph.get_graph",
+        return_value=SimpleNamespace(nodes=[node], sub_graphs=[]),
+    )
+    mocker.patch(
+        "backend.copilot.tools.utils.match_user_credentials_to_graph",
+        AsyncMock(return_value=({}, {})),
+    )
+    mocker.patch(
+        "backend.api.features.experts.credentials._user_credentials",
+        AsyncMock(side_effect=RuntimeError("redis is down")),
+    )
+    expert = SimpleNamespace(
+        id="expert-1",
+        Workflows=[
+            SimpleNamespace(
+                id="wf-1",
+                LibraryAgent=SimpleNamespace(agentGraphId="g1", agentGraphVersion=1),
+            )
+        ],
+    )
+
+    derived, is_complete = await _derive_from_workflows("user-1", expert)  # type: ignore[arg-type]
+
+    assert derived == {}
+    assert is_complete is False
+
+
+@pytest.mark.asyncio
+async def test_settling_the_seed_stamps_even_when_derivation_was_incomplete(
+    mocker: pytest_mock.MockFixture,
+):
+    expert = SimpleNamespace(id="expert-1", Workflows=[], credentialsSeededAt=None)
+    mocker.patch(
+        "backend.api.features.experts.credentials._owned_expert",
+        AsyncMock(return_value=expert),
+    )
+    seed = mocker.patch(
+        "backend.api.features.experts.credentials._seed_if_needed", AsyncMock()
+    )
+    stamp = mocker.patch(
+        "backend.api.features.experts.credentials._stamp_seeded", AsyncMock()
+    )
+
+    await settle_credential_seed("user-1", "expert-1")
+
+    seed.assert_awaited_once_with("user-1", expert)
+    stamp.assert_awaited_once_with("expert-1")

@@ -147,7 +147,7 @@ async def settle_expert_grants(user_id: str, session: ChatSession) -> None:
     """
     if session.expert_id is None:
         return
-    await experts_db().expert_allowed_credential_ids(user_id, session.expert_id)
+    await experts_db().settle_credential_seed(user_id, session.expert_id)
 
 
 async def install_saved_agent(

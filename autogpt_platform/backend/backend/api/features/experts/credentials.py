@@ -59,18 +59,19 @@ def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
     explicit credential fields, yet the executor holds them to the same grants.
     """
     found: dict[str, str] = {}
-    for node in graph.nodes:
-        if not node.input_default:
-            continue
-        fields = node.block.input_schema.get_auto_credentials_fields()
-        for info in fields.values():
-            value = node.input_default.get(info["field_name"])
-            if isinstance(value, dict) and isinstance(
-                value.get("_credentials_id"), str
-            ):
-                found[value["_credentials_id"]] = str(
-                    info.get("config", {}).get("provider", "unknown")
-                )
+    for part in [graph, *graph.sub_graphs]:
+        for node in part.nodes:
+            if not node.input_default:
+                continue
+            fields = node.block.input_schema.get_auto_credentials_fields()
+            for info in fields.values():
+                value = node.input_default.get(info["field_name"])
+                if isinstance(value, dict) and isinstance(
+                    value.get("_credentials_id"), str
+                ):
+                    found[value["_credentials_id"]] = str(
+                        info.get("config", {}).get("provider", "unknown")
+                    )
     return found
 
 
@@ -107,6 +108,9 @@ async def _derive_from_workflows(
             if graph is None:
                 continue
             matched, _ = await match_user_credentials_to_graph(user_id, graph)
+            pickers = _picker_credential_ids(graph)
+            if pickers and owned_ids is None:
+                owned_ids = {c.id for c in await _user_credentials(user_id)}
         except Exception:
             logger.warning(
                 f"Could not derive credentials for workflow #{workflow.id} on "
@@ -118,10 +122,10 @@ async def _derive_from_workflows(
         for meta in matched.values():
             if not is_system_credential(meta.id):
                 derived[meta.id] = str(meta.provider)
-        for credential_id, provider in _picker_credential_ids(graph).items():
-            if owned_ids is None:
-                owned_ids = {c.id for c in await _user_credentials(user_id)}
-            if credential_id in owned_ids and not is_system_credential(credential_id):
+        for credential_id, provider in pickers.items():
+            if credential_id in (owned_ids or set()) and not is_system_credential(
+                credential_id
+            ):
                 derived.setdefault(credential_id, provider)
     return derived, is_complete
 
@@ -266,6 +270,19 @@ async def revoke_expert_credential(
     # next read would re-derive exactly the credential just revoked.
     await _stamp_seeded(expert_id)
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
+
+
+async def settle_credential_seed(user_id: str, expert_id: str) -> None:
+    """Freeze the allow-list before the expert changes its own workflows.
+
+    Seeding derives grants from installed workflows, so an install made from
+    the expert's own session must not be able to feed it. Stamped even when a
+    workflow failed to derive: a missing grant is visible and fixable, while a
+    self-granted one is not.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    await _seed_if_needed(user_id, expert)
+    await _stamp_seeded(expert.id)
 
 
 async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:

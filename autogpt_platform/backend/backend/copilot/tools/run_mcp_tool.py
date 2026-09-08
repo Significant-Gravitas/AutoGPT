@@ -574,7 +574,7 @@ class RunMCPToolTool(BaseTool):
         # can match the credential to the correct OAuth provider/server.
         for field_info in credentials_fields_info.values():
             if field_info.discriminator == "server_url":
-                field_info.discriminator_values.add(server_url)
+                field_info.discriminator_values.add(normalize_mcp_url(server_url))
 
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, matched_keys=set()

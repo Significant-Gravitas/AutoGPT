@@ -35,6 +35,7 @@ def experts():
     )
     db.install_workflow = AsyncMock()
     db.expert_allowed_credential_ids = AsyncMock(return_value=["granted-cred"])
+    db.settle_credential_seed = AsyncMock()
     with patch(f"{_PATH}.experts_db", return_value=db):
         yield db
 
@@ -257,9 +258,7 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
 
 async def test_agent_built_by_expert_settles_grants_before_install(experts):
     order: list[str] = []
-    experts.expert_allowed_credential_ids.side_effect = (
-        lambda *_: order.append("settle") or []
-    )
+    experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
     experts.install_workflow.side_effect = lambda *_, **__: order.append("install")
     await install_saved_agent("user-1", _expert_session(), _saved())
     assert order == ["settle", "install"]
