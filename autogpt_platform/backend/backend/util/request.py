@@ -3,6 +3,7 @@ import ipaddress
 import re
 import socket
 import ssl
+from collections.abc import Iterable
 from io import BytesIO
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
@@ -98,7 +99,30 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+# Lower-cased: HTTP header names are case-insensitive, so a caller passing
+# ``{"authorization": ...}`` must be stripped just like ``{"Authorization": ...}``.
 SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
+def _drop_headers(headers: dict, names: Iterable[str]) -> None:
+    """Remove every key in *names* from *headers*, matching case-insensitively.
+
+    *names* is lower-cased here rather than by the caller: ``drop_headers`` is
+    public on :meth:`Requests.request`, so a caller passing ``{"Authorization"}``
+    would otherwise get a silent no-op and send the header anyway.
+    """
+    lowered = {n.lower() for n in names}
+    for key in [k for k in headers if k.lower() in lowered]:
+        headers.pop(key, None)
+
+
+def _is_cross_origin(old_url: URL, new_url: URL) -> bool:
+    """Whether a hop from *old_url* to *new_url* leaves the origin."""
+    return (
+        (old_url.scheme != new_url.scheme)
+        or (old_url.hostname != new_url.hostname)
+        or (old_url.port != new_url.port)
+    )
 
 
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
@@ -106,15 +130,8 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
     if the scheme/host/port of new_url differ from old_url.
     """
-    if (
-        (old_url.scheme != new_url.scheme)
-        or (old_url.hostname != new_url.hostname)
-        or (old_url.port != new_url.port)
-    ):
-        # Header names are case-insensitive, and callers do send e.g.
-        # ``authorization``; matching on the exact key would miss those.
-        for name in [n for n in headers if n.lower() in SENSITIVE_HEADERS]:
-            headers.pop(name)
+    if _is_cross_origin(old_url, new_url):
+        _drop_headers(headers, SENSITIVE_HEADERS)
     return headers
 
 
@@ -451,6 +468,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         retry_kwargs: dict[str, Any] = {
@@ -474,6 +492,7 @@ class Requests:
                 json=json,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
+                drop_headers=drop_headers,
                 **kwargs,
             )
 
@@ -490,6 +509,7 @@ class Requests:
         json: Any | None = None,
         allow_redirects: bool = True,
         max_redirects: int = 10,
+        drop_headers: frozenset[str] = frozenset(),
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -554,6 +574,11 @@ class Requests:
         if self.extra_headers is not None:
             req_headers.update(self.extra_headers)
 
+        # A cross-origin redirect already stripped these; the merge above would
+        # put them straight back, so a 302 to an attacker-controlled host would
+        # replay the caller's bearer token. Drop them again, for every hop.
+        _drop_headers(req_headers, drop_headers)
+
         # Set default User-Agent if not provided
         if "User-Agent" not in req_headers and "user-agent" not in req_headers:
             req_headers["User-Agent"] = DEFAULT_USER_AGENT
@@ -605,8 +630,22 @@ class Requests:
                     redirect_url = urlparse(urljoin(parsed_url.geturl(), location))
                     # Carry forward the same headers but update Host
                     new_headers = _remove_insecure_headers(
-                        req_headers, parsed_url, redirect_url
+                        dict(req_headers), parsed_url, redirect_url
                     )
+
+                    # ``auth=`` and ``cookies=`` are not headers at this point
+                    # — aiohttp builds ``Authorization`` and ``Cookie`` from
+                    # them per request, downstream of the strip above — so the
+                    # header dance cannot see either, and both would be
+                    # regenerated for the new origin. Drop them with the
+                    # headers they stand in for. Same-origin hops keep them:
+                    # ``_remove_insecure_headers`` keeps the header spellings
+                    # there too, and an authenticated same-origin redirect is
+                    # a normal flow.
+                    redirect_kwargs = dict(kwargs)
+                    if _is_cross_origin(parsed_url, redirect_url):
+                        redirect_kwargs.pop("auth", None)
+                        redirect_kwargs.pop("cookies", None)
 
                     return await self.request(
                         method,
@@ -617,7 +656,9 @@ class Requests:
                         files=files,
                         data=data,
                         json=json,
-                        **kwargs,
+                        drop_headers=drop_headers
+                        | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        **redirect_kwargs,
                     )
 
                 # Reset response URL to original host for clarity

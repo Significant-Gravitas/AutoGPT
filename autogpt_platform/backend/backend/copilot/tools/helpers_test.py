@@ -1895,3 +1895,58 @@ class TestPickerInputs:
         by_name = {i["name"]: i for i in inputs}
         assert by_name["spreadsheet"]["value"] == picked
         assert "term" not in by_name
+
+
+class TestExecuteBlockExpertFileScope:
+    """A ``workspace://`` block input is a second door into the workspace, so
+    the run it belongs to must carry the session's expert."""
+
+    async def test_expert_block_run_cannot_read_another_sessions_file(self):
+        result = await _store_workspace_file("/sessions/personal/private.txt")
+        assert isinstance(result, ErrorResponse)
+        assert "outside this expert's scope" in result.message
+
+    async def test_expert_block_run_reads_its_own_session_file(self):
+        result = await _store_workspace_file(f"/sessions/{_SESSION}/notes.txt")
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+async def _store_workspace_file(path: str):
+    """Run FileStoreBlock on ``workspace://<path>`` in an expert session."""
+    from backend.blocks.basic import FileStoreBlock
+    from backend.data.workspace_scope import WorkspaceScope
+    from backend.util.workspace_test import _make_workspace_file
+
+    scope_db = MagicMock()
+    scope_db.resolve_expert_workspace_scope = AsyncMock(
+        return_value=WorkspaceScope(expert_id="expert-a")
+    )
+    files = MagicMock()
+    files.get_workspace_file_by_path = AsyncMock(
+        return_value=_make_workspace_file(path=path)
+    )
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"secret"
+    credit_patch, _ = _patch_credit_db()
+
+    with (
+        _patch_workspace(),
+        credit_patch,
+        patch("backend.data.db_accessors.workspace_db", return_value=scope_db),
+        patch("backend.util.workspace.workspace_db", return_value=files),
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.get_cloud_storage_handler", AsyncMock()),
+    ):
+        return await execute_block(
+            block=FileStoreBlock(),
+            block_id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            input_data={"file_in": f"workspace://{path}", "base_64": True},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-scope",
+            matched_credentials={},
+            dry_run=False,
+            expert_id="expert-a",
+        )
