@@ -208,6 +208,7 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -294,6 +295,7 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
 
