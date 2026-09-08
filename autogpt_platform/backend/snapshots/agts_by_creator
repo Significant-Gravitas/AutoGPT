@@ -10,7 +10,8 @@
       "description": "Creator agent description",
       "runs": 50,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     }
   ],
   "pagination": {

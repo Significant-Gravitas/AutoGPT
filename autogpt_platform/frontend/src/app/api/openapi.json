@@ -26834,7 +26834,12 @@
           "description": { "type": "string", "title": "Description" },
           "runs": { "type": "integer", "title": "Runs" },
           "rating": { "type": "number", "title": "Rating" },
-          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" }
+          "agent_graph_id": { "type": "string", "title": "Agent Graph Id" },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          }
         },
         "type": "object",
         "required": [

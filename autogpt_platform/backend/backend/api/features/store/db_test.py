@@ -1241,6 +1241,41 @@ async def test_featured_listings_must_also_be_verified(store_agent_query):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("verified", [True, False])
+async def test_browse_reports_each_listings_verified_state(mocker, verified):
+    row = prisma.models.StoreAgent(
+        listing_id="test-id",
+        listing_version_id="version123",
+        slug="test-agent",
+        agent_name="Test Agent",
+        agent_video=None,
+        agent_image=["image.jpg"],
+        featured=False,
+        verified=verified,
+        creator_username="creator",
+        creator_avatar="avatar.jpg",
+        sub_heading="Test heading",
+        description="Test description",
+        categories=[],
+        runs=10,
+        rating=4.5,
+        versions=["1.0"],
+        graph_id="test-graph-id",
+        graph_versions=["1"],
+        updated_at=datetime.now(),
+        is_available=True,
+        use_for_onboarding=False,
+    )
+    mock = mocker.patch("prisma.models.StoreAgent.prisma")
+    mock.return_value.find_many = AsyncMock(return_value=[row])
+    mock.return_value.count = AsyncMock(return_value=1)
+
+    result = await db.get_store_agents()
+
+    assert result.agents[0].verified is verified
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_category_filter_matches_the_canonical_value_and_its_aliases(
     store_agent_query,
 ):

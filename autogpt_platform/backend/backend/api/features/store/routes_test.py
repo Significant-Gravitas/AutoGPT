@@ -113,6 +113,7 @@ def test_get_agents_featured(
                 runs=100,
                 rating=4.5,
                 agent_graph_id="test-graph-1",
+                verified=True,
             )
         ],
         pagination=store_model.Pagination(

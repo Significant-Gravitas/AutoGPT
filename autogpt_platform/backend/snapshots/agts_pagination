@@ -10,7 +10,8 @@
       "description": "Agent 0 description",
       "runs": 0,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     },
     {
       "slug": "agent-1",
@@ -22,7 +23,8 @@
       "description": "Agent 1 description",
       "runs": 10,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     },
     {
       "slug": "agent-2",
@@ -34,7 +36,8 @@
       "description": "Agent 2 description",
       "runs": 20,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     },
     {
       "slug": "agent-3",
@@ -46,7 +49,8 @@
       "description": "Agent 3 description",
       "runs": 30,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     },
     {
       "slug": "agent-4",
@@ -58,7 +62,8 @@
       "description": "Agent 4 description",
       "runs": 40,
       "rating": 4.0,
-      "agent_graph_id": "test-graph-2"
+      "agent_graph_id": "test-graph-2",
+      "verified": false
     }
   ],
   "pagination": {

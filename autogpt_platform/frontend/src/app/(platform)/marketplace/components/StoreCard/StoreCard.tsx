@@ -5,7 +5,10 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import { useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
@@ -24,6 +27,7 @@ interface Props {
   creatorSlug?: string;
   agentSlug?: string;
   agentGraphID?: string;
+  verified?: boolean;
 }
 
 export function StoreCard({
@@ -39,6 +43,7 @@ export function StoreCard({
   creatorSlug,
   agentSlug,
   agentGraphID,
+  verified = false,
 }: Props) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -83,6 +88,9 @@ export function StoreCard({
       </div>
 
       <div className="mt-4 flex w-full flex-1 flex-col">
+        <div className="mb-2">
+          <VerificationBadge verified={verified} />
+        </div>
         <h3
           className="line-clamp-1 font-sans text-lg font-semibold tracking-[-0.01em] text-zinc-900"
           title={agentName}
@@ -138,5 +146,22 @@ export function StoreCard({
         </div>
       )}
     </div>
+  );
+}
+
+function VerificationBadge({ verified }: { verified: boolean }) {
+  if (!verified) {
+    return (
+      <Badge variant="info" size="small" className="rounded-full">
+        Community
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="success" size="small" className="rounded-full">
+      <Icon icon={CheckmarkBadge01Icon} size={12} />
+      Verified
+    </Badge>
   );
 }

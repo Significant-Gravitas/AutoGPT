@@ -94,6 +94,7 @@ export function AgentsSection({
                         creatorSlug={agent.creator}
                         agentSlug={agent.slug}
                         agentGraphID={agent.agent_graph_id}
+                        verified={agent.verified}
                         onClick={() =>
                           handleCardClick(agent.creator, agent.slug)
                         }
@@ -121,6 +122,7 @@ export function AgentsSection({
                   creatorSlug={agent.creator}
                   agentSlug={agent.slug}
                   agentGraphID={agent.agent_graph_id}
+                  verified={agent.verified}
                   onClick={() => handleCardClick(agent.creator, agent.slug)}
                 />
               ))}

@@ -121,6 +121,7 @@ async def get_store_agents(
                             runs=agent["runs"],
                             rating=agent["rating"],
                             agent_graph_id=agent.get("graph_id", ""),
+                            verified=agent.get("verified", False),
                         )
                         store_agents.append(store_agent)
                     except Exception as e:
@@ -277,6 +278,7 @@ async def _fallback_store_agent_search(
                     runs=row["runs"],
                     rating=row["rating"],
                     agent_graph_id=row.get("graph_id", ""),
+                    verified=row.get("verified", False),
                 )
             )
         except Exception as e:

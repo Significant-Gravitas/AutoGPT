@@ -10,7 +10,8 @@
       "description": "Category agent description",
       "runs": 60,
       "rating": 4.1,
-      "agent_graph_id": "test-graph-category"
+      "agent_graph_id": "test-graph-category",
+      "verified": false
     }
   ],
   "pagination": {
