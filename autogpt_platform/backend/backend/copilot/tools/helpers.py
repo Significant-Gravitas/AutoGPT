@@ -215,6 +215,7 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -295,6 +296,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -370,6 +372,7 @@ async def execute_block(
                 input_data=input_data,
                 creds_manager=creds_manager,
                 user_id=user_id,
+                expert_id=expert_id,
             )
         except MissingAutoCredentialsError as e:
             await _release_credential_leases(credential_leases)

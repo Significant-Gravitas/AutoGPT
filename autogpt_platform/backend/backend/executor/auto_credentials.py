@@ -11,6 +11,8 @@ from typing import Any
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.blocks._base import BlockSchema
+from backend.data.db_accessors import experts_db
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 logger = logging.getLogger(__name__)
@@ -30,8 +32,12 @@ async def acquire_auto_credentials(
     input_data: dict[str, Any],
     creds_manager: IntegrationCredentialsManager,
     user_id: str,
+    expert_id: str | None = None,
 ) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
     """Resolve ``auto_credentials`` from ``GoogleDriveFileField``-style inputs.
+
+    ``expert_id`` restricts the picker credentials to that expert's grants, the
+    same allow-list the explicit credential fields are held to.
 
     Returns:
         (extra_exec_kwargs, locks): kwargs to inject into block execution,
@@ -45,6 +51,7 @@ async def acquire_auto_credentials(
     """
     extra_exec_kwargs: dict[str, Any] = {}
     locks: list[AsyncRedisLock] = []
+    allowed: set[str] | None = None
 
     try:
         for kwarg_name, info in input_model.get_auto_credentials_fields().items():
@@ -68,6 +75,20 @@ async def acquire_auto_credentials(
                             f"builder and re-select the file."
                         )
                     file_name = field_data.get("name", "selected file")
+                    if expert_id is not None and not is_system_credential(cred_id):
+                        if allowed is None:
+                            allowed = set(
+                                await experts_db().expert_allowed_credential_ids(
+                                    user_id, expert_id
+                                )
+                            )
+                        if cred_id not in allowed:
+                            raise ValueError(
+                                f"{provider.capitalize()} credentials for "
+                                f"'{file_name}' in field '{field_name}' have "
+                                f"not been granted to this expert. Grant them "
+                                f"on the expert's Integrations page."
+                            )
                     try:
                         credentials, lock = await creds_manager.acquire(
                             user_id, cred_id

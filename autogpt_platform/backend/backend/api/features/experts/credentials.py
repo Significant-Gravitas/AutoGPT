@@ -14,6 +14,7 @@ or no expert could run a single LLM block.
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import prisma.models
 
@@ -21,6 +22,9 @@ from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
 from backend.util.exceptions import ExpertNotFoundError
+
+if TYPE_CHECKING:
+    from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,29 @@ async def _user_credentials(user_id: str) -> list[Credentials]:
     return await IntegrationCredentialsManager().store.get_all_creds(user_id)
 
 
+def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
+    """Credential id → provider for picker-populated fields (``_credentials_id``).
+
+    These never appear in ``match_user_credentials_to_graph``, which only sees
+    explicit credential fields, yet the executor holds them to the same grants.
+    """
+    found: dict[str, str] = {}
+    for node in graph.nodes:
+        input_schema = getattr(node.block, "input_schema", None)
+        get_fields = getattr(input_schema, "get_auto_credentials_fields", None)
+        if get_fields is None or not node.input_default:
+            continue
+        for info in get_fields().values():
+            value = node.input_default.get(info["field_name"])
+            if isinstance(value, dict) and isinstance(
+                value.get("_credentials_id"), str
+            ):
+                found[value["_credentials_id"]] = str(
+                    info.get("config", {}).get("provider", "unknown")
+                )
+    return found
+
+
 async def _derive_from_workflows(
     user_id: str, expert: prisma.models.Expert
 ) -> tuple[dict[str, str], bool]:
@@ -64,6 +91,7 @@ async def _derive_from_workflows(
 
     derived: dict[str, str] = {}
     is_complete = True
+    owned_ids: set[str] | None = None
     for workflow in expert.Workflows or []:
         library_agent = workflow.LibraryAgent
         if library_agent is None:
@@ -91,6 +119,11 @@ async def _derive_from_workflows(
         for meta in matched.values():
             if not is_system_credential(meta.id):
                 derived[meta.id] = str(meta.provider)
+        for credential_id, provider in _picker_credential_ids(graph).items():
+            if owned_ids is None:
+                owned_ids = {c.id for c in await _user_credentials(user_id)}
+            if credential_id in owned_ids and not is_system_credential(credential_id):
+                derived.setdefault(credential_id, provider)
     return derived, is_complete
 
 

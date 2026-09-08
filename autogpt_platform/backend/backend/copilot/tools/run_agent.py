@@ -542,11 +542,13 @@ class RunAgentTool(BaseTool):
             trigger_info=trigger_info,
         )
 
-    def _build_setup_requirements_from_validation_error(
+    async def _build_setup_requirements_from_validation_error(
         self,
         graph: GraphModel,
         error: GraphValidationError,
         session_id: str,
+        user_id: str,
+        expert_id: str | None,
     ) -> SetupRequirementsResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
@@ -566,7 +568,9 @@ class RunAgentTool(BaseTool):
         # creds are now invalid, so narrowing to `error.node_errors` would
         # leak the stale mapping. Passing ``None`` means no field is
         # treated as "already connected".
-        credentials_dict = build_missing_credentials_from_graph(graph, None)
+        credentials_dict = await annotate_expert_grants(
+            user_id, expert_id, build_missing_credentials_from_graph(graph, None)
+        )
         return SetupRequirementsResponse(
             message=(
                 f"Agent '{graph.name}' has credentials that are missing or "
@@ -592,13 +596,14 @@ class RunAgentTool(BaseTool):
             graph_version=graph.version,
         )
 
-    def _handle_graph_validation_race(
+    async def _handle_graph_validation_race(
         self,
         error: GraphValidationError,
         graph: GraphModel,
         user_id: str,
         session_id: str,
         action_verb: str,
+        expert_id: str | None = None,
     ) -> ToolResponseBase:
         """Handle a ``GraphValidationError`` that slipped past the prereq check.
 
@@ -613,10 +618,12 @@ class RunAgentTool(BaseTool):
             graph.id,
             {node_id: list(fields) for node_id, fields in error.node_errors.items()},
         )
-        creds_setup = self._build_setup_requirements_from_validation_error(
+        creds_setup = await self._build_setup_requirements_from_validation_error(
             graph=graph,
             error=error,
             session_id=session_id,
+            user_id=user_id,
+            expert_id=expert_id,
         )
         if creds_setup is not None:
             return creds_setup
@@ -949,12 +956,13 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
             )
         except GraphValidationError as e:
-            return self._handle_graph_validation_race(
+            return await self._handle_graph_validation_race(
                 error=e,
                 graph=graph,
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="running",
+                expert_id=session.expert_id,
             )
 
         # Track successful run (dry runs don't count against the session limit)
@@ -1239,12 +1247,13 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
             )
         except GraphValidationError as e:
-            return self._handle_graph_validation_race(
+            return await self._handle_graph_validation_race(
                 error=e,
                 graph=graph,
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="scheduling",
+                expert_id=session.expert_id,
             )
 
         # Convert next_run_time to user timezone for display

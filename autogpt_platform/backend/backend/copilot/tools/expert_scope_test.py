@@ -253,3 +253,13 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)
     grant = annotated["mcp_credentials"]["expert_grant"]
     assert [c["id"] for c in grant["credentials"]] == ["right-server"]
+
+
+async def test_agent_built_by_expert_settles_grants_before_install(experts):
+    order: list[str] = []
+    experts.expert_allowed_credential_ids.side_effect = (
+        lambda *_: order.append("settle") or []
+    )
+    experts.install_workflow.side_effect = lambda *_, **__: order.append("install")
+    await install_saved_agent("user-1", _expert_session(), _saved())
+    assert order == ["settle", "install"]
