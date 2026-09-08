@@ -46,6 +46,7 @@ def experts():
         )
     )
     db.install_workflow = AsyncMock(return_value=_ref())
+    db.settle_credential_seed = AsyncMock()
     db.remove_workflow = AsyncMock()
     db.grant_expert_credentials = AsyncMock(return_value=[_cred()])
     db.revoke_expert_credential = AsyncMock(return_value=[])
@@ -242,3 +243,33 @@ async def test_grant_request_fails_when_it_cannot_be_recorded(experts):
     assert isinstance(result, ErrorResponse)
     assert result.error == "request_not_recorded"
     assert session.metadata.pending_question is None
+
+
+async def test_expert_cannot_grant_itself(experts):
+    result = await GrantExpertCredentialTool()._execute(
+        "user-1", _session("expert-a"), expert_id="expert-a", credential_id="cred-1"
+    )
+    assert isinstance(result, ErrorResponse) and result.error == "access_denied"
+    experts.grant_expert_credentials.assert_not_awaited()
+
+
+async def test_expert_install_settles_its_grants_before_the_workflow_lands(experts):
+    order: list[str] = []
+    experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
+    experts.install_workflow.side_effect = lambda *_, **__: (
+        order.append("install") or _ref()
+    )
+    result = await InstallExpertWorkflowTool()._execute(
+        "user-1", _session("expert-a"), library_agent_id="lib-1"
+    )
+    assert isinstance(result, ExpertWorkflowResponse)
+    assert order == ["settle", "install"]
+    experts.settle_credential_seed.assert_awaited_once_with("user-1", "expert-a")
+
+
+async def test_autopilot_install_does_not_touch_the_experts_grants(experts):
+    result = await InstallExpertWorkflowTool()._execute(
+        "user-1", _session(None), expert_id="expert-a", library_agent_id="lib-1"
+    )
+    assert isinstance(result, ExpertWorkflowResponse)
+    experts.settle_credential_seed.assert_not_awaited()

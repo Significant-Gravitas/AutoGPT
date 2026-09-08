@@ -11,6 +11,7 @@ from backend.api.features.experts.credentials import (
     _derive_from_workflows,
     _to_refs,
     filter_credentials_for_expert,
+    settle_credential_seed,
 )
 from backend.data.model import APIKeyCredentials, CredentialsMetaInput
 from backend.executor.utils import _enforce_expert_credential_scope
@@ -201,3 +202,25 @@ async def test_a_run_with_no_credentials_skips_the_lookup_entirely(
     await _enforce_expert_credential_scope("user-1", "expert-1", None)
 
     accessor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_settling_the_seed_stamps_even_when_derivation_was_incomplete(
+    mocker: pytest_mock.MockFixture,
+):
+    expert = SimpleNamespace(id="expert-1", Workflows=[], credentialsSeededAt=None)
+    mocker.patch(
+        "backend.api.features.experts.credentials._owned_expert",
+        AsyncMock(return_value=expert),
+    )
+    seed = mocker.patch(
+        "backend.api.features.experts.credentials._seed_if_needed", AsyncMock()
+    )
+    stamp = mocker.patch(
+        "backend.api.features.experts.credentials._stamp_seeded", AsyncMock()
+    )
+
+    await settle_credential_seed("user-1", "expert-1")
+
+    seed.assert_awaited_once_with("user-1", expert)
+    stamp.assert_awaited_once_with("expert-1")

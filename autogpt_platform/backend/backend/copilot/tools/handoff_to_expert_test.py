@@ -676,14 +676,15 @@ class TestExpertToolGate:
     experts_enabled=False for user_id=None)."""
 
     def test_flag_off_disables_every_team_group(self) -> None:
-        assert expert_tool_disabled_groups(experts_enabled=False, expert_id=None) == [
-            "experts",
-            "expert_admin",
-            "delegation",
-        ]
-        assert expert_tool_disabled_groups(
-            experts_enabled=False, expert_id="expert-a"
-        ) == ["experts", "expert_admin", "delegation"]
+        expected = ["experts", "expert_admin", "delegation", "expert_resources"]
+        assert (
+            expert_tool_disabled_groups(experts_enabled=False, expert_id=None)
+            == expected
+        )
+        assert (
+            expert_tool_disabled_groups(experts_enabled=False, expert_id="expert-a")
+            == expected
+        )
 
     def test_plain_session_loses_expert_session_tools(self) -> None:
         assert expert_tool_disabled_groups(experts_enabled=True, expert_id=None) == [
