@@ -14,6 +14,9 @@ from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.workspace_scope import (
+    resolve_expert_workspace_scope as resolve_expert_workspace_scope,
+)
 from backend.util.json import SafeJson
 
 _UUID_RE = re.compile(
@@ -262,6 +265,7 @@ async def list_workspace_files(
     metadata_not_equals: Optional[dict] = None,
     folder_id: Optional[str] = None,
     root_only: bool = False,
+    allowed_path_prefixes: Optional[list[str]] = None,
 ) -> list[WorkspaceFile]:
     """
     List files in a workspace.
@@ -288,10 +292,16 @@ async def list_workspace_files(
         folder_id: If set, only return files in this folder.
         root_only: If True, only return root-level files (folderId IS NULL).
             Ignored when ``folder_id`` is set.
+        allowed_path_prefixes: When set, only files whose path starts with
+            one of these prefixes are returned (ANDed with ``path_prefix``).
+            An empty list matches nothing. Used to apply an expert session's
+            resolved scope inside the query so pagination stays correct.
 
     Returns:
         List of WorkspaceFile instances
     """
+    if allowed_path_prefixes is not None and not allowed_path_prefixes:
+        return []
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
 
     if not include_deleted:
@@ -326,6 +336,9 @@ async def list_workspace_files(
     if name_contains:
         where_clause["name"] = {"contains": name_contains, "mode": "insensitive"}
 
+    if allowed_path_prefixes:
+        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
+
     files = await UserWorkspaceFile.prisma().find_many(
         where=where_clause,
         order={"createdAt": "desc"},
@@ -335,10 +348,17 @@ async def list_workspace_files(
     return [WorkspaceFile.from_db(f) for f in files]
 
 
+def _path_prefix_filters(prefixes: list[str]) -> list[UserWorkspaceFileWhereInput]:
+    return [
+        {"path": {"startswith": p if p.startswith("/") else f"/{p}"}} for p in prefixes
+    ]
+
+
 async def count_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
     include_deleted: bool = False,
+    allowed_path_prefixes: Optional[list[str]] = None,
 ) -> int:
     """
     Count files in a workspace.
@@ -347,10 +367,13 @@ async def count_workspace_files(
         workspace_id: The workspace ID
         path_prefix: Optional path prefix to filter (e.g., "/sessions/abc123/")
         include_deleted: Whether to include soft-deleted files
+        allowed_path_prefixes: See :func:`list_workspace_files`.
 
     Returns:
         Number of files
     """
+    if allowed_path_prefixes is not None and not allowed_path_prefixes:
+        return 0
     where_clause: UserWorkspaceFileWhereInput = {"workspaceId": workspace_id}
     if not include_deleted:
         where_clause["isDeleted"] = False
@@ -360,6 +383,9 @@ async def count_workspace_files(
         if not path_prefix.startswith("/"):
             path_prefix = f"/{path_prefix}"
         where_clause["path"] = {"startswith": path_prefix}
+
+    if allowed_path_prefixes:
+        where_clause["OR"] = _path_prefix_filters(allowed_path_prefixes)
 
     return await UserWorkspaceFile.prisma().count(where=where_clause)
 
