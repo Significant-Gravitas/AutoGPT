@@ -99,6 +99,7 @@ interface BodyProps {
 
 function ChatPanelBody({ target, identity, chat }: BodyProps) {
   const {
+    draft,
     sessionId,
     messages,
     status,
@@ -151,10 +152,11 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             </div>
           </div>
         )}
-        <div className="shrink-0 px-3 pb-5 pt-2">
+        <div className="shrink-0 px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2">
           <ChatInput
             inputId="expert-chat-input"
             variant="compact"
+            draft={draft}
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
             isStreaming={isStreaming}

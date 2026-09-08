@@ -45,12 +45,12 @@ export function MemoryChatPanel({
   const isStreaming = status === "streaming" || status === "submitted";
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end">
+    <div className="pointer-events-none fixed inset-0 z-50 flex flex-col items-stretch sm:bottom-4 sm:left-auto sm:right-4 sm:top-auto sm:items-end">
       <CopilotChatActionsProvider onSend={onSend}>
         <div
           role="complementary"
           aria-label="Memory chat panel"
-          className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl sm:h-[75vh]"
+          className="pointer-events-auto flex h-dvh max-h-none w-full max-w-none flex-col overflow-hidden bg-white sm:h-[75vh] sm:max-h-[calc(100dvh-6rem)] sm:w-[26rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-xl sm:border sm:border-zinc-200 sm:shadow-2xl"
         >
           <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
             <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export function MemoryChatPanel({
                     queuedMessages={queuedMessages}
                   />
                 </div>
-                <div className="relative shrink-0 border-t border-zinc-100 bg-white px-3 pb-2 pt-2">
+                <div className="relative shrink-0 border-t border-zinc-100 bg-white px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
                   <ChatInput
                     inputId="memory-chat-input"
                     onSend={onSend}

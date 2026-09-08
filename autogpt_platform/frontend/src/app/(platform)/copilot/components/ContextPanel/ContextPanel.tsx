@@ -53,7 +53,7 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       >
         <SheetContent
           side="right"
-          className="flex w-full flex-col p-0 sm:max-w-full"
+          className="flex w-full flex-col p-0 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:max-w-xl"
         >
           <SheetHeader className="mt-12 p-2 text-left">
             <SheetTitle className="text-sm font-medium text-zinc-900">

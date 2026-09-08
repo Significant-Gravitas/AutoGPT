@@ -19,6 +19,7 @@ interface Props {
 }
 
 export function SoulDrawer({ expert, onClose }: Props) {
+  const editor = useSoulDrawer({ expert, onClose });
   return (
     <ExpertSidePanel
       identity={
@@ -29,7 +30,9 @@ export function SoulDrawer({ expert, onClose }: Props) {
       closeLabel="Close Soul panel"
       onClose={onClose}
     >
-      {expert ? <SoulPanelBody expert={expert} onClose={onClose} /> : null}
+      {expert ? (
+        <SoulPanelBody expert={expert} onClose={onClose} editor={editor} />
+      ) : null}
     </ExpertSidePanel>
   );
 }
@@ -37,13 +40,11 @@ export function SoulDrawer({ expert, onClose }: Props) {
 interface BodyProps {
   expert: Expert;
   onClose: () => void;
+  editor: ReturnType<typeof useSoulDrawer>;
 }
 
-function SoulPanelBody({ expert, onClose }: BodyProps) {
-  const { soul, updateField, save, isPending, canSave } = useSoulDrawer({
-    expert,
-    onClose,
-  });
+function SoulPanelBody({ expert, onClose, editor }: BodyProps) {
+  const { soul, updateField, save, isPending, canSave } = editor;
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
     null,
   );

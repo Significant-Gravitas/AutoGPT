@@ -142,7 +142,7 @@ export function ExpertConnectServiceDialog({
                       </Text>
                     </div>
                     {isLoading ? (
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {[0, 1, 2, 3].map((row) => (
                           <Skeleton
                             key={row}
@@ -202,7 +202,7 @@ export function ExpertConnectServiceDialog({
                           <div className="relative">
                             <ul
                               ref={attachList}
-                              className="grid grid-cols-2 gap-2 overflow-y-auto pr-1"
+                              className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
                               aria-label="Services"
                             >
                               {providers.map((provider) => (

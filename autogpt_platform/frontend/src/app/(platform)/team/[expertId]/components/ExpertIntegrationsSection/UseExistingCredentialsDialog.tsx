@@ -189,7 +189,7 @@ export function UseExistingCredentialsDialog({
                 <div className="relative">
                   <ul
                     ref={attachList}
-                    className="grid grid-cols-2 gap-2 overflow-y-auto pr-1"
+                    className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
                     aria-label="Existing connections"
                   >
                     {groups.map((group) => (

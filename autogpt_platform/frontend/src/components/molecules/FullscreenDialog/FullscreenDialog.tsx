@@ -20,7 +20,7 @@ export function FullscreenDialog({ title, onClose, children }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background" />
         <Dialog.Content
-          className="fixed inset-0 z-50 flex flex-col bg-background"
+          className="fixed inset-0 z-50 flex flex-col bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]"
           aria-describedby={undefined}
           onOpenAutoFocus={() => {
             previousFocus.current =

@@ -1,6 +1,7 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import type { useChatInputDraft } from "./useChatInputDraft";
 
 interface Args {
   onSend: (message: string) => void;
@@ -8,6 +9,7 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  draft?: Pick<ReturnType<typeof useChatInputDraft>, "value" | "setValue">;
 }
 
 export function useChatInput({
@@ -15,8 +17,11 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  draft,
 }: Args) {
-  const [value, setValue] = useState("");
+  const [localValue, setLocalValue] = useState("");
+  const value = draft?.value ?? localValue;
+  const setValue = draft?.setValue ?? setLocalValue;
   const [isSending, setIsSending] = useState(false);
   // Synchronous guard against double-submit — refs update immediately,
   // unlike state which batches and can leave a gap for a second call.
@@ -39,7 +44,7 @@ export function useChatInput({
       ) as HTMLTextAreaElement | null;
       textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt, inputId],
+    [initialPrompt, setInitialPrompt, inputId, setValue],
   );
 
   useEffect(

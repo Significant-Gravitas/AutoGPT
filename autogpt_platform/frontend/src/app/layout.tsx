@@ -1,5 +1,5 @@
 import { fonts } from "@/components/styles/fonts";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import React from "react";
 
 import "./globals.css";
@@ -24,6 +24,10 @@ const faviconPath = isDev
   : isLocal
     ? "/favicon-local.ico"
     : "/favicon.ico";
+
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
+};
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",

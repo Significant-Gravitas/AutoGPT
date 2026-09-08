@@ -26,7 +26,7 @@ export function ShareHeader({ title, subtitle, actions }: Props) {
     <header
       className={
         "grid shrink-0 grid-cols-[1fr_auto] grid-rows-[auto_auto] gap-x-4 " +
-        "gap-y-2 border-b border-border bg-background px-4 py-3 " +
+        "gap-y-2 border-b border-border bg-background px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] " +
         "[grid-template-areas:'logo_logo'_'title_actions'] " +
         "sm:grid-cols-[1fr_auto_1fr] sm:grid-rows-1 " +
         "sm:items-center sm:[grid-template-areas:'title_logo_actions']"

@@ -44,6 +44,7 @@ export function ShareActions() {
       <Button
         size="small"
         variant="secondary"
+        className="min-w-0 sm:min-w-[5.5rem]"
         onClick={handleCopy}
         leftIcon={
           copied ? (
@@ -59,7 +60,13 @@ export function ShareActions() {
           CTA — flickering it in then out on hydration looks broken to
           signed-in users opening their own share. */}
       {!isUserLoading && !isLoggedIn && (
-        <Button size="small" variant="primary" as="NextLink" href="/signup">
+        <Button
+          size="small"
+          variant="primary"
+          as="NextLink"
+          href="/signup"
+          className="min-w-0 sm:min-w-[5.5rem]"
+        >
           Sign up
         </Button>
       )}
