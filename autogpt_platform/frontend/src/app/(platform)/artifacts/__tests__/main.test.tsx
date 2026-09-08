@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -30,6 +30,12 @@ const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   uploadFileDirectMock.mockReset();
+});
+
+// The generated default answers with random experts, which would render
+// random filter tabs; tests that care register their own roster.
+beforeEach(() => {
+  server.use(getListExpertIdentitiesMockHandler([]));
 });
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
