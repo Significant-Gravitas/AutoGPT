@@ -120,13 +120,20 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
 async def _expert_workspace_scope(
     execution_context: "ExecutionContext",
 ) -> "WorkspaceScope | None":
-    """Confine expert-attributed runs to the expert's own files.
+    """Confine blocks an expert runs from its chat to the expert's own files.
 
-    Mirrors the copilot tools: a run started by an expert can only resolve
-    ``workspace://`` references inside that expert's conversations. Runs
-    without expert attribution keep the owner's full workspace.
+    Mirrors the copilot tools: a block run inside an expert's conversation can
+    only resolve ``workspace://`` references inside that expert's
+    conversations. Expert-attributed runs without a session (schedules,
+    webhooks, presets) write their outputs at the workspace root, so they
+    keep the owner's full workspace until they get a folder of their own.
+    Runs without expert attribution keep it too.
     """
-    if not execution_context.expert_id or not execution_context.user_id:
+    if (
+        not execution_context.expert_id
+        or not execution_context.session_id
+        or not execution_context.user_id
+    ):
         return None
     # Import here to avoid circular import (see store_media_file)
     from backend.data.db_accessors import workspace_db
@@ -134,9 +141,7 @@ async def _expert_workspace_scope(
     scope = await workspace_db().resolve_expert_workspace_scope(
         execution_context.user_id, execution_context.expert_id
     )
-    if execution_context.session_id:
-        scope = scope.with_session(execution_context.session_id)
-    return scope
+    return scope.with_session(execution_context.session_id)
 
 
 async def store_media_file(

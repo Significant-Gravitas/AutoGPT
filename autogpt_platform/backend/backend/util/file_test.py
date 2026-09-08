@@ -503,8 +503,9 @@ class TestResolveMediaContent:
 
 
 class TestStoreMediaFileExpertScope:
-    """Runs started by an expert resolve ``workspace://`` refs inside the
-    expert's own conversations only; owner runs keep the full workspace."""
+    """Blocks an expert runs from its chat resolve ``workspace://`` refs inside
+    the expert's own conversations only; session-less and owner runs keep the
+    full workspace."""
 
     @pytest.mark.asyncio
     async def test_expert_run_confines_workspace_refs_to_the_expert(self):
@@ -543,6 +544,38 @@ class TestStoreMediaFileExpertScope:
         manager_cls.assert_called_once_with(
             "user-1", "ws-1", "sess-1", scope=scope.with_session("sess-1")
         )
+
+    @pytest.mark.asyncio
+    async def test_expert_run_without_a_session_keeps_the_full_workspace(self):
+        """Scheduled, webhook and preset runs of an expert's workflow have no
+        chat session and write at the workspace root, so they stay unscoped."""
+        ctx = ExecutionContext(
+            user_id="user-1",
+            graph_exec_id="exec-1",
+            workspace_id="ws-1",
+            expert_id="expert-a",
+        )
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(side_effect=RuntimeError("stop"))
+        with (
+            patch(
+                "backend.util.file.get_cloud_storage_handler",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.data.db_accessors.workspace_db") as workspace_db,
+            patch(
+                "backend.util.workspace.WorkspaceManager", return_value=manager
+            ) as manager_cls,
+            pytest.raises(RuntimeError, match="stop"),
+        ):
+            await store_media_file(
+                MediaFileType("workspace://any-file"),
+                ctx,
+                return_format="for_local_processing",
+            )
+
+        workspace_db.assert_not_called()
+        manager_cls.assert_called_once_with("user-1", "ws-1", None, scope=None)
 
     @pytest.mark.asyncio
     async def test_owner_run_keeps_the_full_workspace(self):
