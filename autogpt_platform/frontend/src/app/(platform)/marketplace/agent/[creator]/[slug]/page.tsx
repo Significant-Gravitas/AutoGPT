@@ -5,10 +5,12 @@ import {
   prefetchGetV2ListStoreAgentsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { getServerUser } from "@/lib/auth/server/getServerUser";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { MainAgentPage } from "../../../components/MainAgentPage/MainAgentPage";
 
 export const dynamic = "force-dynamic";
@@ -21,13 +23,21 @@ export async function generateMetadata({
   params: Promise<MarketplaceAgentPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const { data: creator_agent } = await getV2GetSpecificAgent(
-    params.creator,
-    params.slug,
-  );
+
+  let creator_agent: StoreAgentDetails;
+  try {
+    const { data } = await getV2GetSpecificAgent(params.creator, params.slug);
+    creator_agent = data as StoreAgentDetails;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
+
   return {
-    title: `${(creator_agent as StoreAgentDetails).agent_name} - AutoGPT Marketplace`,
-    description: (creator_agent as StoreAgentDetails).description,
+    title: `${creator_agent.agent_name} - AutoGPT Marketplace`,
+    description: creator_agent.description,
   };
 }
 
@@ -51,14 +61,25 @@ export default async function MarketplaceAgentPage({
   ]);
 
   const { user } = await getServerUser();
-  const { data: creator_agent, status } = await getV2GetSpecificAgent(
-    creator_lower,
-    params.slug,
-  ); // Already cached in above prefetch
-  if (status === 200 && user && creator_agent.active_version_id) {
+
+  let agentData: StoreAgentDetails | undefined;
+  try {
+    const { data, status } = await getV2GetSpecificAgent(
+      creator_lower,
+      params.slug,
+    ); // Already cached in above prefetch
+    if (status === 200) agentData = data as StoreAgentDetails;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      notFound();
+    }
+    throw error;
+  }
+
+  if (user && agentData?.active_version_id) {
     await prefetchGetV2GetAgentByStoreIdQuery(
       queryClient,
-      creator_agent.active_version_id,
+      agentData.active_version_id,
       {
         query: {
           enabled: true,
