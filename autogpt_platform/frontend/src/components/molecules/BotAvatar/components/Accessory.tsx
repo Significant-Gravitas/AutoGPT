@@ -186,8 +186,8 @@ export function Accessory({
       );
     }
     case "cap": {
-      const capLat = surfacePointAt(cx, top + 19, body).lat;
-      const capRadius = 1.12;
+      const capLat = Math.min(eyeLat + 0.62, 1.15);
+      const capRadius = 1.1;
       const ring: Vec3[] = Array.from({ length: 49 }, (_, index) =>
         fromSurface(-Math.PI + (2 * Math.PI * index) / 48, capLat, capRadius),
       );
@@ -195,12 +195,15 @@ export function Accessory({
         .map((point) => rotate(point, pose))
         .filter((point) => point[2] >= 0.02)
         .map((point) => toScreen(point, body));
-      const brim: Vec3[] = [
-        fromSurface(0.4, capLat - 0.04, 1.06),
-        ...[0.4, 0.62, 0.84, 1.06, 1.28, 1.5].map((lon) =>
-          fromSurface(lon, capLat - 0.2, 1.62),
-        ),
-        fromSurface(1.5, capLat - 0.04, 1.06),
+      const billLat = capLat - 0.08;
+      const bill: Vec3[] = [
+        fromSurface(0.25, billLat, 1.04),
+        fromSurface(0.55, billLat - 0.05, 1.32),
+        fromSurface(0.8, billLat - 0.1, 1.52),
+        fromSurface(1.05, billLat - 0.12, 1.58),
+        fromSurface(1.3, billLat - 0.1, 1.5),
+        fromSurface(1.5, billLat - 0.05, 1.28),
+        fromSurface(1.55, billLat, 1.04),
       ];
       const dome =
         front.length > 2 && layer === "front"
@@ -213,38 +216,33 @@ export function Accessory({
           : null;
       return (
         <g>
-          <Slab points={brim} />
+          <Slab points={bill} />
           {dome ? (
             <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
           ) : null}
-          <Disc
-            center={[0, capRadius + 0.02, 0]}
-            normal={[0, 1, 0]}
-            minDepth={0.5}
-          >
-            <circle r={2.6} fill={deep} {...edge} />
-          </Disc>
+          <Strand
+            points={[
+              [0, capRadius - 0.02, 0],
+              [0, capRadius + 0.05, 0],
+            ]}
+            width={3.5}
+          />
         </g>
       );
     }
     case "pen": {
-      const root = fromSurface(1.35, -0.12, 0.96);
-      const tip = fromSurface(0.92, 1.0, 1.72);
-      const along = (t: number): Vec3 => [
-        root[0] + (tip[0] - root[0]) * t,
-        root[1] + (tip[1] - root[1]) * t,
-        root[2] + (tip[2] - root[2]) * t,
-      ];
+      const along = (t: number): Vec3 =>
+        fromSurface(1.28 - 0.72 * t, -0.05 + 1.05 * t, 1.06 + 0.26 * t);
+      const segment = (from: number, to: number, steps = 6): Vec3[] =>
+        Array.from({ length: steps + 1 }, (_, index) =>
+          along(from + ((to - from) * index) / steps),
+        );
       return (
         <g>
-          <Strand points={[root, along(0.84)]} width={7} />
-          <Strand points={[along(0.7), along(0.78)]} width={7} color="#fff" />
-          <Strand
-            points={[along(0.84), along(0.95)]}
-            width={5}
-            color="#F4E3B4"
-          />
-          <Strand points={[along(0.95), tip]} width={2.6} color={INK} />
+          <Strand points={segment(0, 0.8)} width={7} />
+          <Strand points={segment(0.62, 0.72, 2)} width={7} color="#fff" />
+          <Strand points={segment(0.8, 0.93, 2)} width={5.2} color="#F4E3B4" />
+          <Strand points={segment(0.93, 1, 2)} width={2.6} color={INK} />
         </g>
       );
     }
