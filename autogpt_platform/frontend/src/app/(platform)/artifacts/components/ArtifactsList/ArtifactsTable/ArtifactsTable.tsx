@@ -66,11 +66,8 @@ export function ArtifactsTable({
         <span aria-hidden className="min-w-10" />
       </div>
       <TooltipProvider delayDuration={450} skipDelayDuration={300}>
-        {/* Rows that mount after the list's stagger has already played would
-            stay in their hidden start state, so the list remounts once the
-            files are in and animates them together. */}
         <motion.ul
-          key={`${listKey}|${isLoading ? "loading" : "ready"}`}
+          key={listKey}
           className="divide-y divide-zinc-100"
           data-testid="artifacts-list"
           variants={reduceMotion ? undefined : LIST_VARIANTS}
@@ -88,8 +85,13 @@ export function ArtifactsTable({
               ))}
             </li>
           ) : (
-            files.map((file) => (
-              <FileRow key={file.id} file={file} onOpen={onOpen} />
+            files.map((file, index) => (
+              <FileRow
+                key={file.id}
+                file={file}
+                onOpen={onOpen}
+                index={index}
+              />
             ))
           )}
         </motion.ul>

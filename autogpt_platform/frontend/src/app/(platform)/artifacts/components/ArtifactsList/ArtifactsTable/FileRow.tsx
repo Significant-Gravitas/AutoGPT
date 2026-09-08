@@ -29,6 +29,8 @@ import {
 interface Props {
   file: WorkspaceFileItem;
   onOpen: (file: WorkspaceFileItem) => void;
+  /** Position in the list; drives the small entrance stagger. */
+  index?: number;
 }
 
 // Long enough that skimming down the list doesn't flash previews; short
@@ -36,13 +38,16 @@ interface Props {
 // provider's skip delay opens the next preview immediately.
 const PREVIEW_DELAY_MS = 450;
 
-export function FileRow({ file, onOpen }: Props) {
+export function FileRow({ file, onOpen, index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
   const { handleDragStart, handleDragEnd } = useFileDrag(file.id, file.name);
 
   return (
     <motion.li
       variants={reduceMotion ? REDUCED_ROW_VARIANTS : ROW_VARIANTS}
+      custom={index}
+      initial={reduceMotion ? false : "hidden"}
+      animate="show"
       className={cn(
         ROW_GRID_CLASS,
         "group cursor-pointer px-2 transition-colors has-[[data-state=open]]:bg-zinc-50 hover:bg-zinc-50",

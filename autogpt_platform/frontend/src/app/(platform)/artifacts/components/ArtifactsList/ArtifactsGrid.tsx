@@ -60,8 +60,8 @@ export function ArtifactsGrid({
       initial={reduceMotion ? false : "hidden"}
       animate={reduceMotion ? undefined : "show"}
     >
-      {files.map((file) => (
-        <ArtifactCard key={file.id} file={file} onOpen={onOpen} />
+      {files.map((file, index) => (
+        <ArtifactCard key={file.id} file={file} onOpen={onOpen} index={index} />
       ))}
     </motion.ul>
   );
