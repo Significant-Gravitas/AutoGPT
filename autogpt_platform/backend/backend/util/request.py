@@ -44,6 +44,16 @@ DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravi
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
 
+# Statuses meaning the request was not authenticated or not authorised. Both
+# warrant asking the user to (re)connect, so they gate the setup-card paths.
+AUTH_STATUS_CODES: set[int] = {401, 403}
+
+# Only 401 unambiguously means "this credential was rejected". A bare 403 is
+# routinely a scope decision or a WAF blocking our egress IP, both with a
+# perfectly valid token — so anything destructive or blocking keys off this
+# narrower set, never AUTH_STATUS_CODES.
+CREDENTIAL_REJECTED_STATUS_CODES: set[int] = {401}
+
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [
     # --8<-- [start:BLOCKED_IP_NETWORKS]
@@ -88,6 +98,9 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+
+
 def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
     """
     Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
@@ -98,9 +111,10 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
         or (old_url.hostname != new_url.hostname)
         or (old_url.port != new_url.port)
     ):
-        headers.pop("Authorization", None)
-        headers.pop("Proxy-Authorization", None)
-        headers.pop("Cookie", None)
+        # Header names are case-insensitive, and callers do send e.g.
+        # ``authorization``; matching on the exact key would miss those.
+        for name in [n for n in headers if n.lower() in SENSITIVE_HEADERS]:
+            headers.pop(name)
     return headers
 
 

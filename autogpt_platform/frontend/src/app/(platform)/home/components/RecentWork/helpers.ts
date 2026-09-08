@@ -1,6 +1,5 @@
 import {
   File01Icon,
-  FlowIcon,
   PlugIcon,
   RepeatIcon,
   Robot01Icon,
@@ -21,7 +20,6 @@ export function getWorkItemIcon(
 }
 
 export function getActorIcon(kind: HomeWorkActorKind): IconSvgElement {
-  if (kind === "workflow") return FlowIcon;
   if (kind === "autopilot") return SparklesIcon;
   return Robot01Icon;
 }
@@ -42,10 +40,29 @@ export function getRunTriggerLabel(
   return "Manual run";
 }
 
-export function getActorKindLabel(kind: HomeWorkActorKind): string {
-  if (kind === "workflow") return "Workflow";
-  if (kind === "autopilot") return "Autopilot";
-  return "Expert";
+type ActorChip = { label: string; className: string };
+
+// The chip is the fastest way to tell the two halves of the card apart, so
+// each kind gets its own colour and a matching glow.
+const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
+  expert: {
+    label: "Expert",
+    className:
+      "border-blue-200 bg-blue-50 text-blue-700 shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
+  },
+  workflow: {
+    label: "Workflow",
+    className:
+      "border-yellow-200 bg-yellow-50 text-yellow-700 shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
+  },
+  autopilot: {
+    label: "Autopilot",
+    className: "border-zinc-200 bg-white text-zinc-500",
+  },
+};
+
+export function getActorChip(kind: HomeWorkActorKind): ActorChip {
+  return ACTOR_CHIPS[kind] ?? ACTOR_CHIPS.autopilot;
 }
 
 // The feed spans a week, so the weekday is load-bearing: "Mon 10:45" vs

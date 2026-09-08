@@ -1,7 +1,14 @@
+from urllib.parse import urlparse
+
 import pytest
 from aiohttp import web
 
-from backend.util.request import _is_ip_blocked, pin_url, validate_url_host
+from backend.util.request import (
+    _is_ip_blocked,
+    _remove_insecure_headers,
+    pin_url,
+    validate_url_host,
+)
 
 
 @pytest.mark.parametrize(
@@ -244,3 +251,39 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.parametrize(
+    "header_name",
+    [
+        "Authorization",
+        "authorization",
+        "AUTHORIZATION",
+        "Proxy-Authorization",
+        "proxy-authorization",
+        "PROXY-AUTHORIZATION",
+        "Cookie",
+        "cookie",
+        "CoOkIe",
+    ],
+)
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+        ("http://example.com/b", True),
+        ("https://example.com:8443/b", True),
+    ],
+)
+def test_sensitive_headers_are_stripped_regardless_of_case(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers, urlparse("https://example.com/a"), urlparse(new_url)
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"

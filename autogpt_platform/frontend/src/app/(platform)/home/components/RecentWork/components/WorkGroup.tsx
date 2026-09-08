@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatGroupCounts, getActorKindLabel } from "../helpers";
+import { cn } from "@/lib/utils";
+import { formatGroupCounts, getActorChip } from "../helpers";
 import { ActorMark } from "./ActorMark";
 import { OutcomeRow } from "./OutcomeRow";
 import { WorkItemRow } from "./WorkItemRow";
@@ -15,6 +16,7 @@ interface Props {
 
 export function WorkGroup({ group, timezone }: Props) {
   const { actor } = group;
+  const chip = getActorChip(actor.kind);
   const runs = group.runs ?? [];
   const items = group.items ?? [];
   const header = (
@@ -26,10 +28,12 @@ export function WorkGroup({ group, timezone }: Props) {
       <Text
         variant="small-medium"
         as="span"
-        tone="muted"
-        className="shrink-0 rounded-full border border-zinc-200 bg-white px-1.5 uppercase leading-4 tracking-[0.04em]"
+        className={cn(
+          "shrink-0 rounded-full border px-1.5 uppercase leading-4 tracking-[0.04em]",
+          chip.className,
+        )}
       >
-        {getActorKindLabel(actor.kind)}
+        {chip.label}
       </Text>
       <Text
         variant="small"
@@ -52,7 +56,7 @@ export function WorkGroup({ group, timezone }: Props) {
 
   return (
     <article aria-label={actor.name}>
-      <div className="bg-zinc-50/80 px-4 py-2">
+      <div className="bg-zinc-100/80 px-4 py-2">
         {actor.link ? (
           <Link
             href={actor.link}
