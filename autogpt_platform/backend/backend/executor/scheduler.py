@@ -217,6 +217,7 @@ async def _execute_graph(**kwargs):
             expert_id=args.expert_id,
             trigger=ExecutionTrigger.SCHEDULE,
             trigger_ref=args.schedule_id,
+            schedule_id=args.schedule_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         product_analytics.track_schedule_fired(

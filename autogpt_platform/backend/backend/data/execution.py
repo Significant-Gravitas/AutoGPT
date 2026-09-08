@@ -242,6 +242,10 @@ class GraphExecutionMeta(BaseDbModel):
     # rows created before the columns existed.
     trigger_source: Optional[str] = None
     trigger_ref: Optional[str] = None
+    # What started this run, when it was not a person: the scheduler job or
+    # the webhook that fired. Soft references; either may be gone by now.
+    schedule_id: Optional[str] = None
+    webhook_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -396,6 +400,8 @@ class GraphExecutionMeta(BaseDbModel):
             expert_id=_graph_exec.expertId,
             trigger_source=_graph_exec.triggerSource,
             trigger_ref=_graph_exec.triggerRef,
+            schedule_id=_graph_exec.scheduleId,
+            webhook_id=_graph_exec.webhookId,
         )
 
 
@@ -951,6 +957,8 @@ async def create_graph_execution(
     expert_id: Optional[str] = None,
     trigger_source: Optional[ExecutionTrigger] = None,
     trigger_ref: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -1007,6 +1015,8 @@ async def create_graph_execution(
             **({"expertId": expert_id} if expert_id else {}),
             **({"triggerSource": trigger_source.value} if trigger_source else {}),
             **({"triggerRef": trigger_ref} if trigger_ref else {}),
+            **({"scheduleId": schedule_id} if schedule_id else {}),
+            **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),

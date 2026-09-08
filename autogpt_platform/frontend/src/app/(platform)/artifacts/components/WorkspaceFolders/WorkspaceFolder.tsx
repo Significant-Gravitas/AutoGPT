@@ -11,6 +11,7 @@ import {
   PencilIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   id: string;
@@ -64,7 +65,7 @@ export function WorkspaceFolder({
       data-folder-id={id}
       onClick={onClick}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (isKey(e, "Enter", " ")) {
           e.preventDefault();
           onClick();
         }

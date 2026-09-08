@@ -49,7 +49,9 @@ export const useRunInputDialog = ({
           setQueryStates({
             flowExecutionID: id,
           });
-          trackAgentRunGoal({ id: graph_id }, "builder");
+          if (response.status === 200) {
+            trackAgentRunGoal({ id: graph_id }, "builder");
+          }
         },
         onError: (error) => {
           if (error instanceof ApiError && error.isGraphValidationError()) {

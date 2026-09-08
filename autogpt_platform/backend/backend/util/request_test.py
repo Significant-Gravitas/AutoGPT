@@ -1,7 +1,14 @@
+from urllib.parse import urlparse
+
 import pytest
 from aiohttp import web
 
-from backend.util.request import _is_ip_blocked, pin_url, validate_url_host
+from backend.util.request import (
+    _is_ip_blocked,
+    _remove_insecure_headers,
+    pin_url,
+    validate_url_host,
+)
 
 
 @pytest.mark.parametrize(
@@ -244,3 +251,335 @@ async def test_ipv4_mapped_ipv6_bypass(
     else:
         url, _, ip_addresses = await validate_url_host(raw_url)
         assert ip_addresses  # Should have resolved IPs
+
+
+@pytest.mark.parametrize(
+    "header_name",
+    [
+        "Authorization",
+        "authorization",
+        "AUTHORIZATION",
+        "Proxy-Authorization",
+        "proxy-authorization",
+        "PROXY-AUTHORIZATION",
+        "Cookie",
+        "cookie",
+        "CoOkIe",
+    ],
+)
+@pytest.mark.parametrize(
+    "new_url, expect_stripped",
+    [
+        ("https://example.com/b", False),
+        ("https://other.example.com/b", True),
+        ("http://example.com/b", True),
+        ("https://example.com:8443/b", True),
+    ],
+)
+def test_sensitive_headers_are_stripped_regardless_of_case(
+    header_name: str, new_url: str, expect_stripped: bool
+):
+    headers = {header_name: "secret", "X-Keep": "kept"}
+
+    result = _remove_insecure_headers(
+        headers, urlparse("https://example.com/a"), urlparse(new_url)
+    )
+
+    assert (header_name not in result) is expect_stripped
+    assert result["X-Keep"] == "kept"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header_name", ["Authorization", "authorization"])
+async def test_authorization_is_not_replayed_across_a_cross_origin_redirect(
+    header_name: str,
+):
+    """A redirect to a different origin must not carry the caller's bearer token.
+
+    ``_remove_insecure_headers`` strips it for the next hop, but the recursive
+    call re-merged ``extra_headers`` afterwards and put it straight back — so
+    a hostile MCP server could harvest a token just by answering 302.
+
+    Header names are case-insensitive over the wire, so the lower-cased spelling
+    has to be stripped too: matching on the exact key would let a caller passing
+    ``{"authorization": ...}`` leak.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # aiohttp matches header names case-insensitively.
+        seen["authorization"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    attacker_site = aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0)
+    await attacker_site.start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned so the test can't pass by ``extra_headers`` never being
+        # attached in the first place.
+        seen["origin_authorization"] = _request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(
+            f"http://127.0.0.1:{attacker_port}/collect",
+        )
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/mcp", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    origin_site = aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0)
+    await origin_site.start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            extra_headers={header_name: "Bearer dft_secret_token"},
+        )
+        await requests.get(f"http://127.0.0.1:{origin_port}/mcp")
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_authorization"] == "Bearer dft_secret_token"
+    assert seen["authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_basic_auth_is_not_replayed_across_a_cross_origin_redirect():
+    """``auth=`` has to be dropped with the header it generates.
+
+    aiohttp synthesises ``Authorization`` from ``auth=`` itself, downstream of
+    the header strip, so ``auth`` never appears in the dict ``_drop_headers``
+    sees. Dropping only the header would still hand BasicAuth to the redirect
+    target.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    await aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned, so the test cannot pass by ``auth`` never being applied.
+        seen["origin_authorization"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{attacker_port}/collect")
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    await aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start", auth=("user", "pass")
+        )
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    # "user:pass" base64-encoded — proves auth was applied on the first hop.
+    assert seen["origin_authorization"] == "Basic dXNlcjpwYXNz"
+    assert seen["authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_authorization_stays_dropped_across_a_three_hop_redirect_chain():
+    """A→B→C: the drop set has to accumulate, not be rebuilt per hop.
+
+    At hop 2 the header is already gone from ``req_headers``, so the
+    set-difference term ``req_headers.keys() - new_headers.keys()`` is empty
+    and contributes nothing. Only the union with the incoming ``drop_headers``
+    keeps ``extra_headers`` from re-injecting the token for hop 3 — which is
+    why rebuilding the set each hop passes a 2-hop test and still leaks here.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def final(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop3"] = request.headers.get("Authorization")
+        return aiohttp_web.json_response({"ok": True})
+
+    hop3 = aiohttp_web.Application()
+    hop3.router.add_get("/collect", final)
+    hop3_runner = aiohttp_web.AppRunner(hop3)
+    await hop3_runner.setup()
+    await aiohttp_web.TCPSite(hop3_runner, "127.0.0.1", 0).start()
+    hop3_port = hop3_runner.addresses[0][1]
+
+    async def bounce(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop2"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{hop3_port}/collect")
+
+    hop2 = aiohttp_web.Application()
+    hop2.router.add_get("/bounce", bounce)
+    hop2_runner = aiohttp_web.AppRunner(hop2)
+    await hop2_runner.setup()
+    await aiohttp_web.TCPSite(hop2_runner, "127.0.0.1", 0).start()
+    hop2_port = hop2_runner.addresses[0][1]
+
+    async def start(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["hop1"] = request.headers.get("Authorization")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{hop2_port}/bounce")
+
+    hop1 = aiohttp_web.Application()
+    hop1.router.add_get("/start", start)
+    hop1_runner = aiohttp_web.AppRunner(hop1)
+    await hop1_runner.setup()
+    await aiohttp_web.TCPSite(hop1_runner, "127.0.0.1", 0).start()
+    hop1_port = hop1_runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            extra_headers={"Authorization": "Bearer dft_secret_token"},
+        )
+        await requests.get(f"http://127.0.0.1:{hop1_port}/start")
+    finally:
+        await hop1_runner.cleanup()
+        await hop2_runner.cleanup()
+        await hop3_runner.cleanup()
+
+    assert seen["hop1"] == "Bearer dft_secret_token"
+    assert seen["hop2"] is None
+    assert seen["hop3"] is None
+
+
+def test_drop_headers_lower_cases_the_names_it_is_given():
+    """``drop_headers`` is public, so a capitalised name must not be a no-op.
+
+    Callers reach it through ``get``/``post``/…, where writing
+    ``frozenset({"Authorization"})`` is the natural spelling. Requiring
+    pre-lower-cased input made that silently send the header anyway.
+    """
+    from backend.util.request import _drop_headers
+
+    headers = {"Authorization": "Bearer t", "X-Keep": "1"}
+    _drop_headers(headers, frozenset({"Authorization"}))
+    assert headers == {"X-Keep": "1"}
+
+    headers = {"authorization": "Bearer t", "X-Keep": "1"}
+    _drop_headers(headers, frozenset({"AUTHORIZATION"}))
+    assert headers == {"X-Keep": "1"}
+
+
+@pytest.mark.asyncio
+async def test_cookies_kwarg_is_not_replayed_across_a_cross_origin_redirect():
+    """``cookies=`` is the sibling of ``auth=``: same mechanism, same hole.
+
+    aiohttp synthesises the ``Cookie`` header from it downstream of
+    ``_remove_insecure_headers``, so it rides ``**kwargs`` into the new origin
+    even though ``cookie`` is in ``SENSITIVE_HEADERS`` — only the header
+    spelling was covered.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def collect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    attacker = aiohttp_web.Application()
+    attacker.router.add_get("/collect", collect)
+    attacker_runner = aiohttp_web.AppRunner(attacker)
+    await attacker_runner.setup()
+    await aiohttp_web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+    attacker_port = attacker_runner.addresses[0][1]
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Pinned, so the test cannot pass by the cookie never being applied.
+        seen["origin_cookie"] = request.headers.get("Cookie")
+        raise aiohttp_web.HTTPFound(f"http://127.0.0.1:{attacker_port}/collect")
+
+    origin = aiohttp_web.Application()
+    origin.router.add_get("/start", redirect)
+    origin_runner = aiohttp_web.AppRunner(origin)
+    await origin_runner.setup()
+    await aiohttp_web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+    origin_port = origin_runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{origin_port}/start",
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await origin_runner.cleanup()
+        await attacker_runner.cleanup()
+
+    assert seen["origin_cookie"] == "session=secret_session_value"
+    assert seen["cookie"] is None
+
+
+@pytest.mark.asyncio
+async def test_credentials_survive_a_same_origin_redirect():
+    """The cross-origin guard has to be a guard, not an unconditional drop.
+
+    Dropping ``auth=``/``cookies=`` on *every* hop would also break ordinary
+    authenticated same-origin redirects, and nothing else in the suite would
+    notice: every other test here crosses an origin.
+    """
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    seen: dict[str, str | None] = {}
+
+    async def final(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        seen["authorization"] = request.headers.get("Authorization")
+        seen["cookie"] = request.headers.get("Cookie")
+        return aiohttp_web.json_response({"ok": True})
+
+    async def redirect(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        # Same scheme, host and port — only the path changes.
+        raise aiohttp_web.HTTPFound("/final")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/start", redirect)
+    app.router.add_get("/final", final)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    await aiohttp_web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"])
+        await requests.get(
+            f"http://127.0.0.1:{port}/start",
+            auth=("user", "pass"),
+            cookies={"session": "secret_session_value"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert seen["authorization"] == "Basic dXNlcjpwYXNz"
+    assert seen["cookie"] == "session=secret_session_value"
