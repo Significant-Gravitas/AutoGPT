@@ -179,21 +179,6 @@ describe("MCPSetupCard", () => {
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
-  it("keeps Connected across a background refetch of the shared credentials key", () => {
-    // ``useGetV1ListCredentials`` has an app-wide key: window focus and any
-    // credential mutation refetch it.  Guarding on ``isFetching`` would flip
-    // a live card to a bare Connect button on every tab-back; the discriminating
-    // case is an empty persisted snapshot with a genuinely live credential.
-    setMockLiveCreds(
-      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
-      {
-        fetchedAfterMount: true,
-      },
-    );
-    render(<MCPSetupCard output={makeSetupOutput(undefined, false)} />);
-    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
-  });
-
   it("matches live creds across a trailing slash on the server URL", () => {
     // Card was emitted with no trailing slash; stored cred has one.
     // The frontend ``normalizeMcpUrl`` mirrors the backend so they match.

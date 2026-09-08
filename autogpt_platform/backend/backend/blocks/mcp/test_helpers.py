@@ -245,18 +245,6 @@ async def test_a_manual_credential_outranks_a_surviving_oauth_row():
 _SERVER_URL = "https://mcp.example.com/mcp"
 
 
-def _static_token_credential() -> OAuth2Credentials:
-    """An MCP credential exactly as ``POST /mcp/token`` stores it: a static
-    bearer token with no expiry, no refresh token, and no OAuth metadata."""
-    return OAuth2Credentials(
-        provider="mcp",
-        title="MCP: mcp.example.com",
-        access_token=SecretStr("dft_static_token"),
-        scopes=[],
-        metadata={"mcp_server_url": _SERVER_URL},
-    )
-
-
 def _oauth_credential() -> OAuth2Credentials:
     """A real OAuth MCP credential: expired access token, good refresh token."""
     return OAuth2Credentials(
@@ -288,19 +276,6 @@ def _real_manager_over(creds: list[OAuth2Credentials]):
     )
 
 
-async def test_auto_lookup_resolves_static_token_credential():
-    """Regression for SECRT-2592.
-
-    Resolving a manually-entered API token used to raise inside the real
-    refresh path (``create_mcp_oauth_handler`` has no ``mcp_token_url`` to work
-    with), and the blanket ``except`` reported that as ``None`` — so the agent
-    said "not connected" while the UI still showed a green Connected pill.
-    """
-    cred = _static_token_credential()
-    with _real_manager_over([cred]):
-        assert await auto_lookup_mcp_credential("user-1", _SERVER_URL) is cred
-
-
 async def test_auto_lookup_returns_none_when_a_real_refresh_fails():
     """A transient outage at the provider's token endpoint must not hand back
     the stale access token.
@@ -317,23 +292,5 @@ async def test_auto_lookup_returns_none_when_a_real_refresh_fails():
             new_callable=AsyncMock,
             side_effect=RuntimeError("token endpoint 503"),
         ),
-    ):
-        assert await auto_lookup_mcp_credential("user-1", _SERVER_URL) is None
-
-
-async def test_auto_lookup_returns_none_for_unmatched_server():
-    with _real_manager_over([_static_token_credential()]):
-        assert (
-            await auto_lookup_mcp_credential("user-1", "https://other.example.com/mcp")
-            is None
-        )
-
-
-async def test_auto_lookup_returns_none_when_store_fails():
-    store = MagicMock()
-    store.get_creds_by_provider = AsyncMock(side_effect=RuntimeError("db down"))
-    with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsStore",
-        return_value=store,
     ):
         assert await auto_lookup_mcp_credential("user-1", _SERVER_URL) is None

@@ -1,16 +1,20 @@
-"""End-to-end regression for manually-entered MCP API tokens (SECRT-2592).
+"""Round-trip regression for MCP server-URL normalization (SECRT-2592).
 
-The pieces of this path were each covered in isolation and each behaved
-correctly on its own terms, yet composing them produced a server the UI
-called "Connected" and the agent called unconnected.  So this test walks
-the whole path with only the database faked:
+``/mcp/token`` writes ``metadata["mcp_server_url"]`` from the URL the user
+typed; every lookup path re-derives that key from the same user input. If the
+two sides ever normalize differently, the row is stored under a key no lookup
+produces — 2xx, a green pill, and an agent that reports the server as not
+connected. That is the contradiction this PR removes, and it is not visible
+from either side alone, so this walks the whole path with only the database
+faked:
 
     POST /mcp/token → credential store → auto_lookup_mcp_credential
-                    → run_mcp_tool → MCPClient(auth_token=...)
+                    → run_mcp_tool → MCPClient(authorization=...)
 
-Nothing in between is stubbed — in particular ``auto_lookup_mcp_credential``
-and ``IntegrationCredentialsManager.refresh_if_needed`` run for real, which
-is precisely where the token used to be dropped.
+Nothing in between is stubbed. The behaviours these tests used to also cover —
+the token reaching the client, the connect card, 401 invalidation, 403
+retention, per-user isolation — landed on ``dev`` in #14075 or are covered by
+``test_run_mcp_tool.py``, so only the normalization round trips remain here.
 """
 
 import contextlib
@@ -24,10 +28,8 @@ from autogpt_libs.auth import get_user_id
 
 from backend.api.features.mcp.routes import router
 from backend.data.model import Credentials
-from backend.util.request import HTTPClientError
 
 from ._test_data import make_session
-from .models import MCPToolsDiscoveredResponse, SetupRequirementsResponse
 from .run_mcp_tool import RunMCPToolTool
 
 _USER_ID = "test-user-mcp-manual-token"
@@ -160,47 +162,6 @@ async def _store_token(client) -> None:
     assert response.status_code == 200, response.text
 
 
-async def test_stored_token_reaches_the_mcp_client(client, store):
-    """The token the user pasted must be the token the MCP server receives."""
-    await _store_token(client)
-    assert len(store.rows) == 1
-
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.MCPClient",
-        return_value=_mcp_client([_tool("get_analytics")]),
-    ) as MockClient:
-        response = await RunMCPToolTool()._execute(
-            user_id=_USER_ID,
-            session=make_session(_USER_ID),
-            server_url=_SERVER_URL,
-        )
-
-    assert isinstance(response, MCPToolsDiscoveredResponse)
-    MockClient.assert_called_once_with(_SERVER_URL, authorization=_AUTHORIZATION)
-
-
-async def test_connect_card_reports_connected_after_storing_a_token(client, store):
-    """The agent's view and the UI's green pill must agree.
-
-    ``surface_connect_card`` reporting "not connected" over a credential the
-    user just stored is the contradiction this ticket is about.
-    """
-    await _store_token(client)
-
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.MCPClient", return_value=_mcp_client()
-    ):
-        response = await RunMCPToolTool()._execute(
-            user_id=_USER_ID,
-            session=make_session(_USER_ID),
-            server_url=_SERVER_URL,
-            surface_connect_card=True,
-        )
-
-    assert isinstance(response, SetupRequirementsResponse)
-    assert response.setup_info.user_readiness.has_all_credentials is True
-
-
 async def test_trailing_slash_variant_still_resolves(client, store):
     """The card and the agent can disagree on the trailing slash; the stored
     credential has to be found either way."""
@@ -245,68 +206,3 @@ async def test_scheme_less_server_url_resolves_after_storing(client, store):
         )
 
     assert MockClient.call_args.kwargs["authorization"] == _AUTHORIZATION
-
-
-async def test_dead_token_is_invalidated_on_401(client, store):
-    """The self-healing path this PR unblocks.
-
-    Before the fix the lookup returned ``None``, so ``creds is not None`` was
-    never true and the dead row survived every retry — which is why the UI
-    could keep showing Connected forever.
-    """
-    await _store_token(client)
-    assert len(store.rows) == 1
-
-    dead = _mcp_client()
-    dead.initialize = AsyncMock(
-        side_effect=HTTPClientError("HTTP 401", status_code=401)
-    )
-    with patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=dead):
-        response = await RunMCPToolTool()._execute(
-            user_id=_USER_ID,
-            session=make_session(_USER_ID),
-            server_url=_SERVER_URL,
-            tool_name="get_analytics",
-        )
-
-    assert isinstance(response, SetupRequirementsResponse)
-    assert store.rows == []
-
-
-async def test_scope_level_403_keeps_the_credential(client, store):
-    """A 403 is routinely "this token may not call *that tool*". Deleting on
-    it forces a re-entry that fails identically."""
-    await _store_token(client)
-
-    forbidden = _mcp_client()
-    forbidden.initialize = AsyncMock(
-        side_effect=HTTPClientError("HTTP 403", status_code=403)
-    )
-    with patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=forbidden):
-        await RunMCPToolTool()._execute(
-            user_id=_USER_ID,
-            session=make_session(_USER_ID),
-            server_url=_SERVER_URL,
-            tool_name="get_analytics",
-        )
-
-    assert len(store.rows) == 1
-
-
-async def test_another_users_token_is_not_resolved(client, store):
-    """Credential lookup is scoped to the owner."""
-    await _store_token(client)
-
-    with patch(
-        "backend.copilot.tools.run_mcp_tool.MCPClient",
-        return_value=_mcp_client([_tool("get_analytics")]),
-    ) as MockClient:
-        await RunMCPToolTool()._execute(
-            user_id="a-different-user",
-            session=make_session("a-different-user"),
-            server_url=_SERVER_URL,
-        )
-
-    # No credential resolved: the client is built without an Authorization
-    # header at all rather than with an empty one.
-    assert MockClient.call_args.kwargs.get("authorization") is None
