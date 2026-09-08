@@ -13,7 +13,12 @@ def store():
 
 @store.command(name="backfill-categories")
 @click.option("--apply", is_flag=True, help="Write the results. Without it, dry run.")
-@click.option("--limit", type=int, default=None, help="Classify at most N listings.")
+@click.option(
+    "--limit",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Classify at most N listings.",
+)
 @click.option(
     "--concurrency", type=int, default=5, help="Classifier calls in flight at once."
 )

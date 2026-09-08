@@ -66,7 +66,11 @@ export const useEditAgentForm = ({
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { categories } = useStoreCategories();
+  const {
+    categories,
+    isUnavailable: categoriesUnavailable,
+    placeholder: categoryPlaceholder,
+  } = useStoreCategories();
 
   const form = useForm<EditAgentFormData>({
     resolver: zodResolver(editAgentSchema),
@@ -158,5 +162,7 @@ export const useEditAgentForm = ({
     handleFormSubmit,
     handleImagesChange,
     categoryOptions,
+    categoriesUnavailable,
+    categoryPlaceholder,
   };
 };
