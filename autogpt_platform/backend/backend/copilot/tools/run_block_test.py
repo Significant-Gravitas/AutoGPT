@@ -1242,6 +1242,70 @@ class TestExecuteBlockUserTimezoneAccessor:
         assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
 
 
+class TestExecuteBlockExpertAttribution:
+    """A block run from an expert chat must carry the expert on its execution
+    context, so ``workspace://`` inputs resolve inside that expert's scope."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_id_is_plumbed_into_the_execution_context(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="scope-block-id",
+            name="Scope Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-scope")
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.user_db", return_value=rpc_client),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="scope-block-id",
+                input_data={},
+                user_id="u-scope",
+                session_id="s-scope",
+                node_exec_id="n-scope",
+                matched_credentials={},
+                dry_run=False,
+                expert_id="expert-a",
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.expert_id == "expert-a"  # type: ignore[attr-defined]
+        assert ctx.session_id == "s-scope"  # type: ignore[attr-defined]
+
+
 class _StubCreditDB:
     async def get_credits(self, _user_id: str) -> int:
         return 10_000
