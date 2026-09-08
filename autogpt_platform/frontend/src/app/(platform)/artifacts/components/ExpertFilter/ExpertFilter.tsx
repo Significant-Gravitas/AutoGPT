@@ -31,31 +31,33 @@ export function ExpertFilter({ experts, value, onChange }: Props) {
 
   return (
     <LayoutGroup id="artifacts-expert-filter">
-      <div
-        role="tablist"
-        aria-label="Filter by expert"
-        className="flex flex-wrap items-center gap-1"
-        data-testid="artifacts-expert-filter"
-      >
-        <Text variant="small" as="span" className="px-2 text-zinc-500">
+      <div className="flex flex-col gap-1">
+        <Text variant="small" as="span" className="pl-4 text-zinc-500">
           From
         </Text>
-        <ExpertTab
-          label="Everyone"
-          active={value === null}
-          onClick={() => onChange(null)}
-          testId="artifacts-expert-filter-everyone"
-        />
-        {experts.map((expert) => (
+        <div
+          role="tablist"
+          aria-label="Filter by expert"
+          className="flex flex-wrap items-center gap-1"
+          data-testid="artifacts-expert-filter"
+        >
           <ExpertTab
-            key={expert.id}
-            label={expert.name}
-            avatarUrl={expert.avatarUrl}
-            active={value === expert.id}
-            onClick={() => onChange(expert.id)}
-            testId={`artifacts-expert-filter-${expert.id}`}
+            label="Everyone"
+            active={value === null}
+            onClick={() => onChange(null)}
+            testId="artifacts-expert-filter-everyone"
           />
-        ))}
+          {experts.map((expert) => (
+            <ExpertTab
+              key={expert.id}
+              label={expert.name}
+              avatarUrl={expert.avatarUrl}
+              active={value === expert.id}
+              onClick={() => onChange(expert.id)}
+              testId={`artifacts-expert-filter-${expert.id}`}
+            />
+          ))}
+        </div>
       </div>
     </LayoutGroup>
   );

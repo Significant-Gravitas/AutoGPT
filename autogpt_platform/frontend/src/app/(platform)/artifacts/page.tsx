@@ -104,15 +104,27 @@ export default function ArtifactsPage() {
 
   return (
     <main className={showNewLayout ? NEW_LAYOUT_MAIN : CLASSIC_MAIN}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      {/* Under the new layout the chrome's inset header owns the title row and
+          shows storage usage beside it (see InsetHeaderActions). */}
+      {!showNewLayout ? (
         <motion.div
-          className="flex flex-col gap-1"
+          className="flex items-center justify-between gap-4"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: 0 }}
         >
-          {!showNewLayout && <Text variant="h3">Files</Text>}
+          <Text variant="h3">Files</Text>
+          <StorageUsage />
+        </motion.div>
+      ) : null}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <motion.div
+          variants={variants}
+          initial="hidden"
+          animate="show"
+          transition={{ delay: 0 }}
+        >
           <Text
             variant={showNewLayout ? "large" : "body"}
             className="max-w-prose text-zinc-600"
@@ -122,20 +134,17 @@ export default function ArtifactsPage() {
           </Text>
         </motion.div>
         <motion.div
-          className="flex flex-col gap-3 md:items-end"
+          className="flex items-center gap-3"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.08 }}
         >
-          <StorageUsage />
-          <div className="flex items-center gap-3">
-            <ArtifactsSearchBar
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-            />
-            <NewMenu selectedFolderId={selectedFolderId} />
-          </div>
+          <ArtifactsSearchBar
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+          />
+          <NewMenu selectedFolderId={selectedFolderId} />
         </motion.div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
