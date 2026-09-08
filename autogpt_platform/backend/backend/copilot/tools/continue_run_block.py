@@ -129,7 +129,7 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
-            user_id, block, input_data
+            user_id, block, input_data, session.expert_id
         )
         if missing_creds:
             return ErrorResponse(

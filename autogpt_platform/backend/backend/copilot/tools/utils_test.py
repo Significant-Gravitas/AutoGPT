@@ -3,8 +3,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
-from backend.data.model import CredentialsFieldInfo
+from backend.blocks.http import SendAuthenticatedWebRequestBlock
+from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
 
 
 def _make_regular_field() -> CredentialsFieldInfo:
@@ -74,3 +76,56 @@ async def test_match_user_credentials_excludes_auto_creds():
     assert len(matched) == 0
     assert len(missing) == 1
     assert "github_api_key" in missing[0]
+
+
+async def test_a_block_run_in_an_expert_session_uses_only_a_granted_credential():
+    matched, missing = await _resolve_for("expert-a", ["granted-cred"])
+    assert matched["credentials"].id == "granted-cred"
+    assert missing == []
+
+
+async def test_an_ungranted_credential_surfaces_as_missing_not_as_a_match():
+    matched, missing = await _resolve_for("expert-a", [])
+    assert matched == {}
+    assert len(missing) == 1
+
+
+async def test_a_plain_session_keeps_every_account_credential():
+    matched, _ = await _resolve_for(None, [])
+    assert matched["credentials"].id == "ungranted-cred"
+
+
+def _host_cred(cred_id: str) -> HostScopedCredentials:
+    return HostScopedCredentials(
+        id=cred_id,
+        provider="http",
+        host="api.example.com",
+        headers={"Authorization": SecretStr("Bearer token")},
+        title=cred_id,
+    )
+
+
+async def _resolve_for(expert_id: str | None, allowed: list[str]):
+    """Resolve an authenticated-request block against two account credentials
+    for the same host, only one of which the expert has been granted."""
+    from backend.copilot.tools.helpers import resolve_block_credentials
+
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    with (
+        patch(
+            "backend.copilot.tools.utils.IntegrationCredentialsManager"
+        ) as MockCredsMgr,
+        patch("backend.data.db_accessors.experts_db", return_value=experts),
+    ):
+        MockCredsMgr.return_value.store = AsyncMock()
+        MockCredsMgr.return_value.store.get_all_creds.return_value = [
+            _host_cred("ungranted-cred"),
+            _host_cred("granted-cred"),
+        ]
+        return await resolve_block_credentials(
+            "test-user",
+            SendAuthenticatedWebRequestBlock(),
+            {"url": "https://api.example.com/v1/data"},
+            expert_id,
+        )

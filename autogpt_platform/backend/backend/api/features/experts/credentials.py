@@ -236,6 +236,19 @@ async def revoke_expert_credential(
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
 
 
+async def settle_credential_seed(user_id: str, expert_id: str) -> None:
+    """Freeze the allow-list before the expert changes its own workflows.
+
+    Seeding derives grants from installed workflows, so an install made from
+    the expert's own session must not be able to feed it. Stamped even when a
+    workflow failed to derive: a missing grant is visible and fixable, while a
+    self-granted one is not.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    await _seed_if_needed(user_id, expert)
+    await _stamp_seeded(expert.id)
+
+
 async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:
     """The credential ids *expert_id* may use. Enforcement's source of truth.
 

@@ -16,7 +16,7 @@ from backend.data.db_accessors import chat_db, experts_db
 from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 from .base import BaseTool
-from .expert_scope import resolve_target_expert
+from .expert_scope import resolve_target_expert, settle_expert_grants
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 from .utils import fetch_graph_from_store_slug
 
@@ -119,6 +119,7 @@ class InstallExpertWorkflowTool(BaseTool):
                         message=f"Marketplace agent '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
+            await settle_expert_grants(user_id, session)
             ref: ExpertWorkflowRef = await experts_db().install_workflow(
                 user_id,
                 target,
@@ -331,6 +332,15 @@ async def _change_grant(
     session_id = session.session_id
     if not user_id:
         return ErrorResponse(message="Authentication required", session_id=session_id)
+    if session.expert_id is not None:
+        return ErrorResponse(
+            message=(
+                "An expert cannot change credential grants. Use "
+                "request_credential_grant to ask the user for access."
+            ),
+            error="access_denied",
+            session_id=session_id,
+        )
     target = await resolve_target_expert(user_id, session, expert_id.strip() or None)
     if isinstance(target, ErrorResponse):
         return target
