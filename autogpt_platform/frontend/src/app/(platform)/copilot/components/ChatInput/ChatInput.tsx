@@ -476,6 +476,7 @@ export function ChatInput({
       </InputGroup>
       {showWorkspaceFiles && (
         <WorkspaceFilePicker
+          key={expertId ?? "everyone"}
           isOpen={isPickerOpen}
           onClose={() => setIsPickerOpen(false)}
           onConfirm={handleWorkspaceFilesConfirmed}

@@ -403,6 +403,7 @@ async def _expert_ids_by_session(
     "/files",
     summary="List workspace files",
     operation_id="listWorkspaceFiles",
+    responses={400: {"description": "Conflicting filters"}},
 )
 async def list_workspace_files(
     user_id: Annotated[str, fastapi.Security(get_user_id)],

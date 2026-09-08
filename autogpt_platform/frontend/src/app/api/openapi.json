@@ -15007,6 +15007,7 @@
               }
             }
           },
+          "400": { "description": "Conflicting filters" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },

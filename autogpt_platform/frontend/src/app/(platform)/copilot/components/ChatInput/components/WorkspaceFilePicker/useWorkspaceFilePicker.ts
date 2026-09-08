@@ -1,11 +1,7 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import {
-  type InfiniteData,
-  keepPreviousData,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -52,7 +48,12 @@ export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
-    placeholderData: keepPreviousData,
+    // Keep the previous page while a search refines the same expert's list,
+    // but never show one expert's files while another's request is pending.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2].expertId === (expertId ?? null)
+        ? previousData
+        : undefined,
     enabled,
   });
 

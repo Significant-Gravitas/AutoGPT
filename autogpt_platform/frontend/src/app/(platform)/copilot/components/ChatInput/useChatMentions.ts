@@ -2,7 +2,7 @@ import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKeyboardNav";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { KeyboardEvent } from "react";
 import { useState } from "react";
 import { isKey } from "@/lib/keyboard";
@@ -53,7 +53,7 @@ export function useChatMentions({
       "workspace-files",
       debouncedQuery,
       expertId ?? null,
-    ],
+    ] as const,
     queryFn: () =>
       listWorkspaceFiles({
         limit: MENTION_RESULT_LIMIT,
@@ -61,7 +61,12 @@ export function useChatMentions({
         expert_id: expertId ?? undefined,
       }),
     enabled: isOpen,
-    placeholderData: keepPreviousData,
+    // Keep results while the same expert's query refines; drop them when the
+    // chat switches expert so no foreign file can be picked mid-request.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[3] === (expertId ?? null)
+        ? previousData
+        : undefined,
   });
 
   const files =

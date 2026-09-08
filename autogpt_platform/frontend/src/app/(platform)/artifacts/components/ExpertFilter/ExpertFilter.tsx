@@ -23,7 +23,9 @@ const snappySpring: Transition = {
 };
 
 export function ExpertFilter({ experts, value, onChange }: Props) {
-  if (experts.length === 0) return null;
+  // Keep the control while a selection exists so a filter on an expert who
+  // has since been fired can still be cleared.
+  if (experts.length === 0 && value === null) return null;
 
   return (
     <LayoutGroup id="artifacts-expert-filter">

@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceFilePicker } from "../WorkspaceFilePicker";
 
@@ -39,6 +44,39 @@ describe("WorkspaceFilePicker", () => {
     await screen.findByText("alpha.txt");
     expect(mockListWorkspaceFiles).toHaveBeenCalledWith(
       expect.objectContaining({ expert_id: "expert-a" }),
+    );
+  });
+
+  it("drops the previous expert's files while the next expert's listing is pending", async () => {
+    mockListWorkspaceFiles.mockResolvedValueOnce({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+    const { rerender } = render(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        expertId="expert-a"
+      />,
+    );
+    await screen.findByText("alpha.txt");
+
+    // Expert B's request never settles within the test: A's file must not
+    // stay on screen as a placeholder in the meantime.
+    mockListWorkspaceFiles.mockReturnValue(new Promise(() => {}));
+    rerender(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        expertId="expert-b"
+      />,
+    );
+
+    await waitFor(() => expect(screen.queryByText("alpha.txt")).toBeNull());
+    expect(mockListWorkspaceFiles).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expert_id: "expert-b" }),
     );
   });
 
