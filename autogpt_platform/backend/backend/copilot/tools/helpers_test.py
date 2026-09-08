@@ -1,7 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1848,7 +1848,7 @@ class TestRequireLibraryCheck:
 class TestPickerInputs:
     """Setup cards carry only picker-backed inputs; the rest is asked in chat."""
 
-    _schema = {
+    _schema: ClassVar[dict[str, Any]] = {
         "properties": {
             "term": {"type": "string"},
             "limit": {"type": "integer", "default": 10, "advanced": True},
