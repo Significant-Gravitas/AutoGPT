@@ -165,6 +165,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs()
     await backend.data.org_migration.run_migration()
 
     # Guarded, unlike its neighbours above: this backfill only corrects what

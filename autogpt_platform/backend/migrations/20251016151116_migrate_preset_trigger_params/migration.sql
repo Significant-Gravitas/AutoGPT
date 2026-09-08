@@ -11,9 +11,12 @@
 BEGIN;
 SET LOCAL statement_timeout = '10min';
 
--- Find all graphs with webhook trigger nodes (triggered graphs)
--- NOTE: Must check graph structure, not just preset.webhookId, because
--- presets can be auto-disabled (webhookId = NULL) while still being triggered presets
+-- Find all graphs with webhook trigger nodes (triggered graphs).
+-- This id list is the set of webhook blocks as of this migration; a block added
+-- later can never appear here, because an applied migration cannot be re-run.
+-- So this is the bulk fast path only — `migrate_flat_triggered_preset_inputs()`
+-- (integrations/webhooks/utils.py) runs on every REST boot, derives the block
+-- set from `get_webhook_block_ids()`, and converts whatever this misses.
 WITH triggered_graphs AS (
     SELECT DISTINCT
         an."agentGraphId" as graph_id,
@@ -23,6 +26,7 @@ WITH triggered_graphs AS (
     FROM "AgentNode" an
     WHERE an."agentBlockId" IN (
         'd0180ce6-ccb9-48c7-8256-b39e93e62801', -- Airtable Webhook Trigger block
+        '9c2e7b41-3d68-4a05-8f1c-6b4d0e9a2f37', -- AllQuiet Incident Trigger block
         '9464a020-ed1d-49e1-990f-7f2ac924a2b7', -- Compass AI Trigger block
         'd0204ed8-8b81-408d-8b8d-ed087a546228', -- Exa Webset Webhook block
         '8fa8c167-2002-47ce-aba8-97572fc5d387', -- Generic Webhook Trigger block
@@ -32,6 +36,7 @@ WITH triggered_graphs AS (
         '2052dd1b-74e1-46ac-9c87-c7a0e057b60b', -- GitHub Release Trigger block
         '551e0a35-100b-49b7-89b8-3031322239b6', -- GitHub Star Trigger block
         '8a74c2ad-0104-4640-962f-26c6b69e58cd', -- Slant3D Order Webhook block
+        'bc05f7ef-ba6f-4cb7-a899-3913b745ed11', -- Stripe Subscription Trigger block
         '82525328-9368-4966-8f0c-cd78e80181fd', -- Telegram Message Reaction Trigger block
         '4435e4e0-df6e-4301-8f35-ad70b12fc9ec'  -- Telegram Message Trigger block
     )
@@ -40,7 +45,10 @@ WITH triggered_graphs AS (
 -- Find presets that are actually webhook-triggered. Require a non-null
 -- webhookId so we only wrap genuine triggered presets: a run-template preset
 -- (real graph inputs, no webhook) can live on a graph that merely contains a
--- webhook node, and wrapping+stripping its inputs would corrupt it.
+-- webhook node, and wrapping+stripping its inputs would corrupt it. SQL cannot
+-- tell the two apart once the webhook is detached, so detached triggered
+-- presets are deliberately left to the boot backfill, which compares the
+-- preset's input names against the trigger block's config schema.
 triggered_presets AS (
     SELECT
         ap."id" as preset_id,

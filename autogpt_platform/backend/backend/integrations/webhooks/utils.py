@@ -160,7 +160,10 @@ async def migrate_legacy_triggered_graphs():
     from prisma.models import AgentGraph
 
     from backend.api.features.library.db import create_preset
-    from backend.api.features.library.model import LibraryAgentPresetCreatable
+    from backend.api.features.library.model import (
+        LibraryAgentPresetCreatable,
+        node_input_mask_key,
+    )
     from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
     from backend.data.model import is_credentials_field_name
 
@@ -190,10 +193,15 @@ async def migrate_legacy_triggered_graphs():
                 for field_name, creds_meta in trigger_node.input_default.items()
                 if is_credentials_field_name(field_name)
             }
+            # The node's inputs are the trigger config, so they belong under the
+            # per-node mask key, not flat: `_execute_webhook_preset_trigger`
+            # forwards whatever is left at the top level as graph inputs.
             preset_inputs = {
-                field_name: value
-                for field_name, value in trigger_node.input_default.items()
-                if not is_credentials_field_name(field_name)
+                node_input_mask_key(trigger_node.id): {
+                    field_name: value
+                    for field_name, value in trigger_node.input_default.items()
+                    if not is_credentials_field_name(field_name)
+                }
             }
 
             # Create a triggered preset for the graph, attaching the graph
@@ -221,3 +229,102 @@ async def migrate_legacy_triggered_graphs():
             continue
 
     logger.info(f"Migrated {n_migrated_webhooks} node triggers to triggered presets")
+
+
+async def migrate_flat_triggered_preset_inputs():
+    """Nest legacy flat trigger configs under their per-node input mask key.
+
+    Mops up what the `migrate_preset_trigger_params` SQL migration cannot: its
+    trigger-block list is fixed when the migration is written, and it skips
+    presets whose webhook was detached. Derives the block set from the registry
+    instead, so a trigger block added after that migration needs no new one.
+    """
+    from prisma.models import AgentNodeExecutionInputOutput, AgentPreset
+
+    from backend.api.features.library.model import (
+        NODE_INPUT_MASK_PREFIX,
+        node_input_mask_key,
+    )
+    from backend.blocks import get_webhook_block_ids
+    from backend.data.db import transaction
+    from backend.data.graph import get_graph
+    from backend.data.model import is_credentials_field_name
+    from backend.util.json import SafeJson
+
+    unwrapped_presets = await AgentPreset.prisma().find_many(
+        where={
+            "isDeleted": False,
+            "AgentGraph": {
+                "is": {
+                    "Nodes": {
+                        "some": {"agentBlockId": {"in": [*get_webhook_block_ids()]}}
+                    }
+                }
+            },
+            "InputPresets": {"none": {"name": {"startswith": NODE_INPUT_MASK_PREFIX}}},
+        },
+        include={"InputPresets": True},
+    )
+
+    n_migrated = 0
+
+    for preset in unwrapped_presets:
+        try:
+            graph = await get_graph(
+                preset.agentGraphId,
+                version=preset.agentGraphVersion,
+                user_id=preset.userId,
+            )
+            if not graph or not (trigger_node := graph.webhook_input_node):
+                continue
+
+            config_rows = [
+                row
+                for row in (preset.InputPresets or [])
+                if not is_credentials_field_name(row.name)
+            ]
+            if not _holds_flat_trigger_config(preset, config_rows, graph):
+                continue
+
+            async with transaction() as tx:
+                await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
+                    where={"id": {"in": [row.id for row in config_rows]}}
+                )
+                await AgentNodeExecutionInputOutput.prisma(tx).create(
+                    data={
+                        "name": node_input_mask_key(trigger_node.id),
+                        "data": SafeJson({row.name: row.data for row in config_rows}),
+                        "agentPresetId": preset.id,
+                    }
+                )
+
+            n_migrated += 1
+        except Exception as e:
+            logger.error(f"Failed to wrap trigger config of preset #{preset.id}: {e}")
+            continue
+
+    if n_migrated:
+        logger.info(
+            f"Wrapped trigger config of {n_migrated} legacy triggered preset(s)"
+        )
+
+
+def _holds_flat_trigger_config(preset, config_rows, graph) -> bool:
+    """Whether a mask-less preset's inputs are a legacy flat trigger config.
+
+    A run-template preset (real graph inputs, no webhook) can live on a graph
+    that merely contains a trigger node, and folding its inputs into the mask
+    would corrupt it. An attached preset is triggered by definition; a detached
+    one is recognised by holding an input only the trigger block declares.
+    """
+    if preset.webhookId:
+        return True
+
+    trigger_info = graph.trigger_setup_info
+    if not trigger_info:
+        return False
+
+    input_names = {row.name for row in config_rows}
+    trigger_fields = set(trigger_info.config_schema.get("properties", {}))
+    graph_fields = set(graph.input_schema.get("properties", {}))
+    return bool(input_names & (trigger_fields - graph_fields))

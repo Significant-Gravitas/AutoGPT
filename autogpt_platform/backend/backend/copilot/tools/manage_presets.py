@@ -267,10 +267,11 @@ class UpdatePresetTool(BaseTool):
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
-            "resume it (is_active=false/true), or reconfigure its inputs. For a "
-            "webhook trigger, 'inputs' is the trigger block's config (e.g. repo, "
-            "events) and changing it re-registers the webhook with the preset's "
-            "existing credentials. Find preset_id via list_presets."
+            "resume it (is_active=false/true), or change its inputs. 'inputs' "
+            "are the agent's own graph inputs; a webhook trigger's config (e.g. "
+            "repo, events) is 'trigger_config', and changing it re-registers the "
+            "webhook with the preset's existing credentials. Find preset_id via "
+            "list_presets."
         )
 
     @property
@@ -298,10 +299,17 @@ class UpdatePresetTool(BaseTool):
                 "inputs": {
                     "type": "object",
                     "description": (
-                        "Inputs to change, merged over the preset's current "
-                        "inputs. For a webhook trigger these are the trigger "
-                        "block's config (e.g. repo, events); changing them "
-                        "re-registers the webhook."
+                        "Graph inputs to change, merged over the preset's "
+                        "current ones. Not the trigger config."
+                    ),
+                    "additionalProperties": True,
+                },
+                "trigger_config": {
+                    "type": "object",
+                    "description": (
+                        "Webhook trigger config fields to change (e.g. repo, "
+                        "events), merged over the current config. Changing "
+                        "these re-registers the webhook."
                     ),
                     "additionalProperties": True,
                 },
@@ -342,26 +350,29 @@ class UpdatePresetTool(BaseTool):
         merged_inputs = None
         credentials = None
         new_inputs = kwargs.get("inputs")
-        if new_inputs:
-            # Reconfigure: merge over current inputs and reuse the stored
-            # credentials so the webhook can be re-registered.
-            # The trigger config is stored nested under a per-node
-            # `_node_input_mask_{node_id}` key. The model supplies flat trigger
-            # fields (repo/events/...), so merge them into that sub-dict rather
-            # than at the top level — otherwise update_triggered_preset reads the
-            # stale config and the reconfiguration is silently dropped.
+        new_trigger_config = kwargs.get("trigger_config")
+        if new_inputs or new_trigger_config:
+            # A triggered preset stores its trigger config nested under a
+            # per-node `_node_input_mask_{node_id}` key, alongside the graph's
+            # own inputs. Keep the two apart: merging graph inputs into the mask
+            # pollutes the trigger config and leaves the graph input unchanged.
             mask_key = next(
                 (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
                 None,
             )
+            if new_trigger_config and not mask_key:
+                return ErrorResponse(
+                    message="This preset has no webhook trigger to configure.",
+                    error="preset_update_failed",
+                    session_id=session_id,
+                )
+            merged_inputs = {**current.inputs, **(new_inputs or {})}
             if mask_key:
-                current_config = current.inputs.get(mask_key) or {}
-                merged_inputs = {
-                    **current.inputs,
-                    mask_key: {**current_config, **new_inputs},
+                merged_inputs[mask_key] = {
+                    **(current.inputs.get(mask_key) or {}),
+                    **(new_trigger_config or {}),
                 }
-            else:
-                merged_inputs = {**current.inputs, **new_inputs}
+            # Reuse the stored credentials so the webhook can be re-registered.
             credentials = current.credentials
 
         try:

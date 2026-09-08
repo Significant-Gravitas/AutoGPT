@@ -230,6 +230,35 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+
+            # Validate the same way setup does, before any webhook is
+            # registered. Regular graph inputs are editable on a triggered
+            # preset, so without this a user can clear a required input, get a
+            # 200 + re-registered webhook, and have every later delivery die
+            # inside the executor's catch-all where nobody sees it.
+            graph_inputs = {
+                key: value
+                for key, value in inputs.items()
+                if key != node_input_mask_key(trigger_node.id)
+            }
+            try:
+                await validate_and_construct_node_execution_input(
+                    graph_id=graph.id,
+                    user_id=user_id,
+                    graph_inputs=graph_inputs,
+                    graph_version=graph.version,
+                    graph_credentials_inputs=credentials,
+                    nodes_input_masks={
+                        trigger_node.id: {
+                            **trigger_config_with_credentials,
+                            "payload": {},
+                        }
+                    },
+                    dry_run=True,
+                )
+            except ValueError as e:
+                raise InvalidInputError(f"Invalid preset inputs: {e}")
+
             if current.expert_id:
                 organization_id, team_id = await _resolve_private_expert_tenancy(
                     user_id,

@@ -81,6 +81,20 @@ export function useSelectedTriggerView({ triggerId, graphId }: Args) {
   function handleSaveChanges() {
     if (!query.data) return;
 
+    // Without a mask key there is nowhere to put the trigger config: the key
+    // carries the trigger node's id, which the API never sends to the client.
+    // Saving anyway would drop the edit and still report success.
+    if (!maskKey && Object.keys(triggerConfig).length > 0) {
+      toast({
+        title: "Failed to update trigger",
+        description:
+          "This trigger's configuration is stored in an outdated format. " +
+          "Delete the trigger and set it up again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const updateData: LibraryAgentPresetUpdatable = {};
     if (name !== (query.data.name || "")) {
       updateData.name = name;
