@@ -2,10 +2,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from click.testing import CliRunner
 
 from backend.api.features.store import category_classifier
 from backend.api.features.store.categories import StoreCategory
-from backend.cli.store import _run_backfill
+from backend.cli.store import _run_backfill, backfill_categories
 
 
 def _version(id: str, name: str, categories: list[str]):
@@ -107,3 +108,12 @@ async def test_limit_caps_the_classifier_but_not_the_folds(backfill):
 
     assert backfill.classify_calls == ["One"]
     assert backfill.writes == [("v1", ["sales"]), ("v3", ["content"])]
+
+
+def test_a_negative_limit_is_rejected():
+    result = CliRunner().invoke(backfill_categories, ["--limit", "-1"])
+
+    # Click's usage-error code: rejected before the command body runs, so the
+    # backfill never reaches the database.
+    assert result.exit_code == 2
+    assert "is not in the range" in result.output

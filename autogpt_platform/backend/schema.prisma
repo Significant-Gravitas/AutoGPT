@@ -1743,7 +1743,6 @@ view StoreAgent {
   agent_image       String[]
 
   featured           Boolean  @default(false)
-  verified           Boolean  @default(false)
   creator_username   String?
   creator_avatar     String?
   sub_heading        String
@@ -1928,9 +1927,6 @@ model StoreListingVersion {
   categories         String[]
 
   isFeatured Boolean @default(false)
-  // Granted only after the compatibility checks and editorial review pass;
-  // a listing must be verified before it can hold a front-page slot.
-  isVerified Boolean @default(false)
 
   isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired

@@ -2,7 +2,7 @@ import { useGetV2ListStoreCategories } from "@/app/api/__generated__/endpoints/s
 import { StoreCategoryInfo } from "@/app/api/__generated__/models/storeCategoryInfo";
 
 export function useStoreCategories() {
-  const { data, isLoading } = useGetV2ListStoreCategories({
+  const { data, isLoading, isError } = useGetV2ListStoreCategories({
     query: {
       // The canonical set only changes with a deploy.
       staleTime: Infinity,
@@ -10,5 +10,16 @@ export function useStoreCategories() {
     },
   });
 
-  return { categories: data ?? [], isLoading };
+  return {
+    categories: data ?? [],
+    isLoading,
+    isUnavailable: isLoading || isError,
+    // The two publish forms render the same required select; keeping the copy
+    // here is what stops them drifting apart.
+    placeholder: isLoading
+      ? "Loading categories…"
+      : isError
+        ? "Categories unavailable"
+        : "Select a category",
+  };
 }

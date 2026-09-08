@@ -151,7 +151,7 @@ async def hybrid_search(
     where_parts = ["sa.is_available = true"]
 
     if featured:
-        where_parts.append("sa.featured = true AND sa.verified = true")
+        where_parts.append("sa.featured = true")
 
     if creators:
         params.append(creators)
