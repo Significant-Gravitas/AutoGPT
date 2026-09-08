@@ -1372,6 +1372,13 @@ class TestRegressionSchedules:
         other_job.name = "other-job"
 
         scheduler.scheduler.get_jobs = MagicMock(return_value=[owned_job, other_job])
+        # get_graph_execution_schedules (include_paused=False) reads the
+        # active-jobs path, which queries the jobstore directly rather than
+        # going through scheduler.get_jobs — see Scheduler._get_active_jobs_cached.
+        scheduler._execution_jobstore = MagicMock()
+        scheduler._execution_jobstore._get_jobs = MagicMock(
+            return_value=[owned_job, other_job]
+        )
 
         results = scheduler.get_graph_execution_schedules(user_id=USER_ID)
 
