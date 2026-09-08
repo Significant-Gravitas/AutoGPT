@@ -151,6 +151,7 @@ class ContinueRunBlockTool(BaseTool):
             dry_run=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
         # Delete review record after successful execution (one-time use)
