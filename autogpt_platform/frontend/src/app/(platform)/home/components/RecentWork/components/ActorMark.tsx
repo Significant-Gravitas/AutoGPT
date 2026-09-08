@@ -1,6 +1,7 @@
 import type { HomeWorkActor } from "@/app/api/__generated__/models/homeWorkActor";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { WorkflowAvatar } from "@/components/molecules/WorkflowAvatar/WorkflowAvatar";
 import { getActorIcon } from "../helpers";
 
 interface Props {
@@ -15,6 +16,11 @@ export function ActorMark({ actor }: Props) {
         avatarUrl={actor.expert.avatar_url}
         size={18}
       />
+    );
+  }
+  if (actor.kind === "workflow") {
+    return (
+      <WorkflowAvatar name={actor.name} imageUrl={actor.image_url} size={18} />
     );
   }
   return (

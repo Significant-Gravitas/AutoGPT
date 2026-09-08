@@ -226,6 +226,9 @@ async def execute_block(
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
+
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
 
@@ -303,6 +306,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -478,7 +482,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
-                            expert_id=expert_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
 
@@ -538,7 +542,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
-                            expert_id=expert_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
         finally:
@@ -988,14 +992,18 @@ async def check_spend_approval(
     )
 
 
-async def metered_expert_id(user_id: str, session: ChatSession) -> str | None:
+async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
     """The expert whose spend counters a chat block charge lands on; None
-    keeps the pre-SECRT-2599 behaviour of not counting chat block spend."""
-    if session.expert_id is None:
+    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
+
+    Narrower than the scope id ``execute_block`` takes: the flag gates who
+    gets metered, never whose file scope a ``workspace://`` input resolves in.
+    """
+    if expert_id is None:
         return None
     if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
         return None
-    return session.expert_id
+    return expert_id
 
 
 def _resolve_discriminated_credentials(

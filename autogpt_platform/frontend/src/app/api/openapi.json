@@ -4711,6 +4711,49 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postChatSynthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -14896,7 +14939,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14982,6 +15025,20 @@
               "title": "Root Only"
             },
             "description": "Only return root-level files (not in any folder)."
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "title": "Expert Id"
+            },
+            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
           }
         ],
         "responses": {
@@ -14993,6 +15050,7 @@
               }
             }
           },
+          "400": { "description": "Conflicting filters" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -15097,6 +15155,52 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Rename a workspace file",
+        "description": "Rename a file; it stays in its folder and conversation.",
+        "operationId": "renameWorkspaceFile",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RenameFileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFileItem" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "409": { "description": "A file with this name already exists here" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -21598,6 +21702,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -22014,6 +22122,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -22076,6 +22188,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23016,6 +23132,11 @@
             "type": "string",
             "title": "State Token",
             "description": "State token for CSRF verification"
+          },
+          "iss": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Iss",
+            "description": "Issuer identifier from the authorization response (RFC 9207). Must match the authorization server discovered at login; required when that server advertises `authorization_response_iss_parameter_supported`."
           }
         },
         "type": "object",
@@ -25641,6 +25762,19 @@
         ],
         "title": "RefundRequest"
       },
+      "RenameFileRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "RenameFileRequest"
+      },
       "RequestTopUp": {
         "properties": {
           "credit_amount": { "type": "integer", "title": "Credit Amount" }
@@ -26677,6 +26811,27 @@
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
       },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -27386,6 +27541,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [
@@ -30290,7 +30451,11 @@
             "enum": ["uploaded", "generated"],
             "title": "Origin"
           },
-          "created_at": { "type": "string", "title": "Created At" }
+          "created_at": { "type": "string", "title": "Created At" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          }
         },
         "type": "object",
         "required": [

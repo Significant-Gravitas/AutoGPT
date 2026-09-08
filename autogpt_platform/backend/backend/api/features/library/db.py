@@ -484,6 +484,7 @@ async def get_library_agent_refs_by_graph_ids(
             id=agent.id,
             graph_id=agent.agentGraphId,
             name=agent.name or "",
+            image_url=agent.imageUrl,
             is_deleted=agent.isDeleted,
         )
         for agent in agents

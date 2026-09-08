@@ -16,7 +16,6 @@ from .helpers import (
     check_hitl_review,
     check_spend_approval,
     execute_block,
-    metered_expert_id,
     prepare_block_for_execution,
 )
 from .models import (
@@ -210,6 +209,7 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -301,7 +301,7 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
-            expert_id=await metered_expert_id(user_id, session),
+            expert_id=session.expert_id,
         )
 
 
