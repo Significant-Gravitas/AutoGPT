@@ -3,7 +3,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import MarketplaceExpertPage from "../[expertId]/page";
+import { ExpertPage as MarketplaceExpertPage } from "../[expertId]/components/ExpertPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockParams = vi.hoisted(() => ({ expertId: "template-maria" }));
