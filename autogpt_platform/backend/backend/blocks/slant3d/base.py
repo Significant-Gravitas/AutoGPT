@@ -1,7 +1,13 @@
-from urllib.parse import quote, unquote, urlparse
+from pathlib import Path
+from urllib.parse import quote
+
+import aiofiles
 
 from backend.blocks._base import Block
+from backend.data.execution import ExecutionContext
+from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 from ._api import CustomerDetails, OrderItem, Profile
 
@@ -72,9 +78,24 @@ class Slant3DBlockBase(Block):
             )
         return matches[0]["publicId"]
 
-    async def _upload_file(self, file_url: str, platform_id: str, api_key: str) -> str:
-        source = await Requests(retry_max_attempts=3).get(file_url)
-        name = unquote(urlparse(file_url).path.rsplit("/", 1)[-1]) or "model.stl"
+    async def _upload_file(
+        self,
+        file_url: MediaFileType,
+        platform_id: str,
+        api_key: str,
+        *,
+        execution_context: ExecutionContext,
+    ) -> str:
+        local_path = await store_media_file(
+            file=file_url,
+            execution_context=execution_context,
+            return_format="for_local_processing",
+        )
+        assert execution_context.graph_exec_id
+        path = Path(get_exec_file_path(execution_context.graph_exec_id, local_path))
+        async with aiofiles.open(path, "rb") as source:
+            content = await source.read()
+        name = path.name
         upload = await self._make_request(
             "POST",
             "files/direct-upload",
@@ -84,7 +105,7 @@ class Slant3DBlockBase(Block):
         data = upload["data"]
         await Requests(retry_max_attempts=1).put(
             data["presignedUrl"],
-            data=source.content,
+            data=content,
             headers={"Content-Type": "application/octet-stream"},
         )
         confirmed = await self._make_request(
@@ -102,6 +123,8 @@ class Slant3DBlockBase(Block):
         items: list[OrderItem],
         api_key: str,
         platform_id: str = "",
+        *,
+        execution_context: ExecutionContext,
     ) -> dict:
         platform_id = await self._resolve_platform_id(platform_id, api_key)
         return {
@@ -121,20 +144,27 @@ class Slant3DBlockBase(Block):
                 },
             },
             "items": [
-                await self._format_order_item(item, platform_id, api_key)
+                await self._format_order_item(
+                    item, platform_id, api_key, execution_context=execution_context
+                )
                 for item in items
             ],
             "metadata": {"orderNumber": order_number},
         }
 
     async def _format_order_item(
-        self, item: OrderItem, platform_id: str, api_key: str
+        self,
+        item: OrderItem,
+        platform_id: str,
+        api_key: str,
+        *,
+        execution_context: ExecutionContext,
     ) -> dict:
         filament_id = item.filament_id or await self._resolve_filament_id(
             item.profile, item.color, api_key
         )
         file_id = item.file_id or await self._upload_file(
-            item.file_url, platform_id, api_key
+            item.file_url, platform_id, api_key, execution_context=execution_context
         )
         return {
             "type": "PRINT",

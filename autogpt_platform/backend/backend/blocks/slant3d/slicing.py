@@ -3,7 +3,9 @@ from urllib.parse import quote
 from pydantic import model_validator
 
 from backend.blocks._base import BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
+from backend.util.type import MediaFileType
 
 from ._api import (
     TEST_CREDENTIALS,
@@ -17,9 +19,9 @@ from .base import Slant3DBlockBase
 class Slant3DSlicerBlock(Slant3DBlockBase):
     class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
-        file_url: str = SchemaField(
-            default="",
-            description="Public STL URL to upload; ignored when file_id is set",
+        file_url: MediaFileType = SchemaField(
+            default=MediaFileType(""),
+            description="STL file URL, workspace file, or data URI; ignored when file_id is set",
         )
         file_id: str = SchemaField(
             default="", description="Previously uploaded Slant3D public file service ID"
@@ -76,7 +78,12 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
         file_id = input_data.file_id
@@ -84,7 +91,12 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
             platform_id = await self._resolve_platform_id(
                 input_data.platform_id, api_key
             )
-            file_id = await self._upload_file(input_data.file_url, platform_id, api_key)
+            file_id = await self._upload_file(
+                input_data.file_url,
+                platform_id,
+                api_key,
+                execution_context=execution_context,
+            )
         options: dict[str, str | int] = {"quantity": input_data.quantity}
         if input_data.filament_id:
             options["filamentId"] = input_data.filament_id

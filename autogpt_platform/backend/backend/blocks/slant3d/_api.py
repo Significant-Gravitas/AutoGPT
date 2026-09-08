@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from backend.util.type import MediaFileType
 
 Slant3DCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.SLANT3D], Literal["api_key"]
@@ -56,8 +57,9 @@ class Profile(Enum):
 
 
 class OrderItem(BaseModel):
-    file_url: str = Field(
-        default="", description="Public STL URL; ignored when file_id is set"
+    file_url: MediaFileType = Field(
+        default=MediaFileType(""),
+        description="STL file URL, workspace file, or data URI; ignored when file_id is set",
     )
     file_id: str = Field(
         default="", description="Uploaded Slant3D public file service ID"

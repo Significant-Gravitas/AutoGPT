@@ -10,7 +10,7 @@ Create and process a print order, charging the Slant3D account payment method
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uploads and confirms any public STL URLs, creates a draft, then processes it to charge the Slant3D account payment method and start production. Each item can reuse a file_id instead of uploading again. Provide customer shipping details, a positive quantity, and a filament public ID. Legacy color/profile values are accepted only when they identify one available filament.
+This block loads STL URLs, workspace attachments, or data URIs through the shared media loader and confirms their upload, creates a draft, then processes it to charge the Slant3D account payment method and start production. Each item can reuse a file_id instead of uploading again. Provide customer shipping details, a positive quantity, and a filament public ID. Legacy color/profile values are accepted only when they identify one available filament.
 
 Set platform_id, or omit it when the account has exactly one enabled platform. The block returns the public order ID for tracking. Use Estimate Order first when the customer needs to approve a quote.
 <!-- END MANUAL -->

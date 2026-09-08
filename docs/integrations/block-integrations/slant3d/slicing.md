@@ -10,7 +10,7 @@ Upload or reuse an STL file and estimate its printing cost
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uploads a public STL URL using Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply file_id to reuse an existing upload. Set platform_id, or omit it when the account has exactly one enabled platform.
+This block loads an STL URL, workspace attachment, or data URI through the shared media loader, then uploads it using Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply file_id to reuse an existing upload. Set platform_id, or omit it when the account has exactly one enabled platform.
 
 The price is in USD for the requested quantity and excludes shipping. filament_id selects a public filament ID; omitting it uses Slant3D's default black PLA. The returned file_id can be reused in order items.
 <!-- END MANUAL -->
@@ -19,7 +19,7 @@ The price is in USD for the requested quantity and excludes shipping. filament_i
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| file_url | Public STL URL to upload; ignored when file_id is set | str | No |
+| file_url | STL file URL, workspace file, or data URI; ignored when file_id is set | str (file) | No |
 | file_id | Previously uploaded Slant3D public file service ID | str | No |
 | platform_id | Platform ID for uploads; may be omitted with one enabled platform | str | No |
 | filament_id | Filament public ID; defaults to Slant3D's PLA Black | str | No |

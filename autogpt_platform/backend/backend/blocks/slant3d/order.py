@@ -1,4 +1,5 @@
 from backend.blocks._base import BlockOutput, BlockSchemaOutput
+from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 
 from ._api import TEST_CREDENTIALS
@@ -31,7 +32,12 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
         order_data = await self._format_order_data(
@@ -40,6 +46,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
             input_data.items,
             api_key,
             input_data.platform_id,
+            execution_context=execution_context,
         )
         result = await self._make_request("POST", "orders", api_key, json=order_data)
         order_id = result["data"]["order"]["publicId"]
@@ -82,7 +89,12 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
         order_data = await self._format_order_data(
@@ -91,6 +103,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             input_data.items,
             api_key,
             input_data.platform_id,
+            execution_context=execution_context,
         )
         result = await self._make_request("POST", "orders", api_key, json=order_data)
         draft = result["data"]
@@ -127,7 +140,12 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
+        **kwargs,
     ) -> BlockOutput:
         api_key = credentials.api_key.get_secret_value()
         order_data = await self._format_order_data(
@@ -136,6 +154,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
             input_data.items,
             api_key,
             input_data.platform_id,
+            execution_context=execution_context,
         )
         result = await self._make_request("POST", "orders", api_key, json=order_data)
         yield "shipping_cost", float(result["data"]["totals"]["deliveryCost"])

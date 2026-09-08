@@ -7,7 +7,7 @@ These blocks use the [Slant3D v2 API](https://slant3dapi.com/documentation/intro
 1. Connect a Slant3D v2 API key and create a platform in the Slant3D dashboard. Order drafts require a payment method on the Slant3D account, but do not charge it.
 2. Supply `platform_id` for orders and file uploads. It can be omitted when the account has exactly one enabled platform.
 3. Get filaments and use a filament's `publicId` as `filament_id`. Filters support PLA, PETG, OPM, and color names. Existing color/profile inputs still work when they identify exactly one available filament.
-4. Use the Slicer block to upload a public STL URL and estimate its cost. Its `file_id` output can be reused in order items. Order items also accept public `file_url` inputs, uploading and confirming each file before drafting.
+4. Use the Slicer block to upload an STL URL, workspace attachment, or data URI and estimate its cost. Its `file_id` output can be reused in order items. Order items also accept these formats in `file_url`, uploading and confirming each file before drafting.
 5. Estimate Order and Estimate Shipping create uncharged drafts and return `order_id`. Pass that ID to Process Order to charge the account's payment method and submit the draft to production. Create Order combines drafting and processing.
 
 ## Compatibility

@@ -8,6 +8,7 @@ from backend.blocks.slant3d.order import (
     Slant3DCreateOrderBlock,
     Slant3DEstimateOrderBlock,
 )
+from backend.data.execution import ExecutionContext
 
 CUSTOMER = {
     "name": "John Doe",
@@ -29,6 +30,9 @@ DRAFT = {
     "order": {"publicId": "SLANT_123", "status": "DRAFT"},
     "totals": {"printingCost": 3.75, "deliveryCost": 5.56, "totalCost": 9.31},
 }
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(user_id="user-1", graph_exec_id="run-1")
 
 
 async def test_v2_auth_and_response_envelope():
@@ -54,7 +58,9 @@ async def test_estimate_uses_draft_totals_without_processing():
             [
                 output
                 async for output in block.run(
-                    block.Input(**ORDER_INPUT), credentials=TEST_CREDENTIALS
+                    block.Input(**ORDER_INPUT),
+                    credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -109,7 +115,9 @@ async def test_create_drafts_then_processes_order():
             [
                 output
                 async for output in block.run(
-                    block.Input(**ORDER_INPUT), credentials=TEST_CREDENTIALS
+                    block.Input(**ORDER_INPUT),
+                    credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -169,7 +177,9 @@ async def test_platform_selection_is_unambiguous(platforms, expected):
                 await block._resolve_platform_id("", "key")
 
 
-async def test_upload_confirms_exact_placeholder_without_forwarding_api_key():
+async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(tmp_path):
+    source = tmp_path / "model.stl"
+    source.write_bytes(b"STL bytes")
     block = Slant3DFilamentBlock()
     placeholder = {
         "publicFileServiceId": "file-1",
@@ -190,17 +200,24 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key():
                 {"data": {"publicFileServiceId": "file-1"}},
             ]
         ),
-    ) as api, patch("backend.blocks.slant3d.base.Requests") as requests:
-        requests.return_value.get = AsyncMock(return_value=Mock(content=b"STL bytes"))
+    ) as api, patch("backend.blocks.slant3d.base.Requests") as requests, patch(
+        "backend.blocks.slant3d.base.store_media_file",
+        AsyncMock(return_value=str(source)),
+    ) as media:
         requests.return_value.put = AsyncMock()
         assert (
             await block._upload_file(
-                "https://files.example.com/model.stl?download=1", "platform-1", "secret"
+                "https://files.example.com/model.stl?download=1",
+                "platform-1",
+                "secret",
+                execution_context=TEST_EXECUTION_CONTEXT,
             )
             == "file-1"
         )
-    requests.return_value.get.assert_awaited_once_with(
-        "https://files.example.com/model.stl?download=1"
+    media.assert_awaited_once_with(
+        file="https://files.example.com/model.stl?download=1",
+        execution_context=TEST_EXECUTION_CONTEXT,
+        return_format="for_local_processing",
     )
     requests.return_value.put.assert_awaited_once_with(
         "https://upload.example.com/object",
@@ -215,7 +232,9 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key():
     assert api.await_args_list[1].kwargs["json"]["filePlaceholder"] is placeholder
 
 
-async def test_failed_upload_is_not_confirmed():
+async def test_failed_upload_is_not_confirmed(tmp_path):
+    source = tmp_path / "model.stl"
+    source.write_bytes(b"STL bytes")
     block = Slant3DFilamentBlock()
     with patch.object(
         block,
@@ -228,11 +247,17 @@ async def test_failed_upload_is_not_confirmed():
                 }
             }
         ),
-    ) as api, patch("backend.blocks.slant3d.base.Requests") as requests:
-        requests.return_value.get = AsyncMock(return_value=Mock(content=b"STL"))
+    ) as api, patch("backend.blocks.slant3d.base.Requests") as requests, patch(
+        "backend.blocks.slant3d.base.store_media_file",
+        AsyncMock(return_value=str(source)),
+    ) as media:
         requests.return_value.put = AsyncMock(side_effect=RuntimeError("Upload failed"))
         with pytest.raises(RuntimeError, match="Upload failed"):
             await block._upload_file(
-                "https://example.com/model.stl", "platform-1", "key"
+                "https://example.com/model.stl",
+                "platform-1",
+                "key",
+                execution_context=TEST_EXECUTION_CONTEXT,
             )
+    media.assert_awaited_once()
     api.assert_awaited_once()

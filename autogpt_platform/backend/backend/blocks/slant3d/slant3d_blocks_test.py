@@ -22,6 +22,9 @@ from backend.blocks.slant3d.order_status import (
     Slant3DTrackingBlock,
 )
 from backend.blocks.slant3d.slicing import Slant3DSlicerBlock
+from backend.data.execution import ExecutionContext
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(user_id="user-1", graph_exec_id="run-1")
 
 
 async def test_filament_filters_and_legacy_output_fields():
@@ -39,6 +42,7 @@ async def test_filament_filters_and_legacy_output_fields():
                         colors=["black", "blue"],
                     ),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -104,10 +108,15 @@ async def test_legacy_url_items_are_uploaded_and_use_numeric_quantity():
     ) as filament, patch.object(
         block, "_upload_file", AsyncMock(return_value="file-1")
     ) as upload:
-        result = await block._format_order_item(item, "platform-1", "key")
+        result = await block._format_order_item(
+            item, "platform-1", "key", execution_context=TEST_EXECUTION_CONTEXT
+        )
     filament.assert_awaited_once_with(Profile.PLA, "black", "key")
     upload.assert_awaited_once_with(
-        "https://example.com/model.stl", "platform-1", "key"
+        "https://example.com/model.stl",
+        "platform-1",
+        "key",
+        execution_context=TEST_EXECUTION_CONTEXT,
     )
     assert result == {
         "type": "PRINT",
@@ -128,7 +137,9 @@ async def test_order_processing_failure_identifies_draft_and_does_not_retry():
             _ = [
                 out
                 async for out in block.run(
-                    block.Input(**TEST_ORDER_INPUT), credentials=TEST_CREDENTIALS
+                    block.Input(**TEST_ORDER_INPUT),
+                    credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
     assert request.await_count == 2
@@ -143,7 +154,9 @@ async def test_shipping_estimate_does_not_process_order():
             [
                 out
                 async for out in block.run(
-                    block.Input(**TEST_ORDER_INPUT), credentials=TEST_CREDENTIALS
+                    block.Input(**TEST_ORDER_INPUT),
+                    credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -174,6 +187,7 @@ async def test_get_orders_fetches_every_page():
                 async for out in block.run(
                     block.Input(credentials=TEST_CREDENTIALS_INPUT),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -204,6 +218,7 @@ async def test_tracking_reads_fulfillment(fulfillment, tracking):
                         credentials=TEST_CREDENTIALS_INPUT, order_id="SLANT_123"
                     ),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -226,6 +241,7 @@ async def test_cancellation_reads_envelope_message():
                         credentials=TEST_CREDENTIALS_INPUT, order_id="SLANT_123"
                     ),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -248,6 +264,7 @@ async def test_process_existing_draft_is_sensitive_and_does_not_create_another()
                         credentials=TEST_CREDENTIALS_INPUT, order_id="SLANT_123"
                     ),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
@@ -286,6 +303,7 @@ async def test_slicer_upload_or_reuse_and_quantity(use_existing):
                         **inputs
                     ),
                     credentials=TEST_CREDENTIALS,
+                    execution_context=TEST_EXECUTION_CONTEXT,
                 )
             ]
         )
