@@ -72,14 +72,18 @@ silent fallback to an AutoGPT-funded model or another user's credential.
 
 The visible model tier and the server-selected execution path select a Codex
 route from the shared model catalog, then validate it against the models
-advertised by the connected account. On the fast execution path, Balanced maps
-to GPT-5.6 Luna and Advanced maps to GPT-5.6 Terra. On the Claude Agent SDK path,
-Balanced maps to GPT-5.6 Terra and Advanced maps to GPT-5.6 Sol. If the account
-does not expose the mapped model, the transport uses the visible account
-default. File attachments, agent-building tools, and SDK sub-sessions use the
-same Claude Agent SDK path as platform-funded AutoPilot. Builder-panel-bound
-sessions remain platform-funded in this preview because their persistent
-session is created without an AI connection selector.
+advertised by the connected account.
+
+| Execution path | Balanced | Advanced |
+| --- | --- | --- |
+| Fast | GPT-5.6 Luna | GPT-5.6 Terra |
+| Claude Agent SDK | GPT-5.6 Terra | GPT-5.6 Sol |
+
+If the account does not expose the mapped model, the transport uses the visible
+account default. File attachments, agent-building tools, and SDK sub-sessions
+use the same Claude Agent SDK path as platform-funded AutoPilot.
+Builder-panel-bound sessions remain platform-funded in this preview because
+their persistent session is created without an AI connection selector.
 
 The Copilot executor keeps one exclusive credential lease and one Codex runtime
 per connected account, then multiplexes overlapping chats onto separate Codex

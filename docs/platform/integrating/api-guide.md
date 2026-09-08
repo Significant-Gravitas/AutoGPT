@@ -48,7 +48,7 @@ When using OAuth, request only the scopes your application needs:
 | `IDENTITY` | Read user ID, e-mail, and timezone |
 | `EXECUTE_GRAPH` | Run agents |
 | `READ_GRAPH` | Read agent run results |
-| `WRITE_GRAPH` | Create agent graphs |
+| `WRITE_GRAPH` | Create and update agent graphs |
 | `EXECUTE_BLOCK` | Run individual blocks |
 | `READ_BLOCK` | Read block definitions |
 | `READ_STORE` | Access the agent store |
