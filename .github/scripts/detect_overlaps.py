@@ -1169,8 +1169,17 @@ def query_open_prs(owner: str, repo: str, base_branch: str) -> list[dict]:
 
 
 def get_pr_diff(pr_number: int) -> str:
-    """Get the diff for a PR."""
-    result = run_gh(["pr", "diff", str(pr_number)])
+    """Get the diff for a PR, or empty when GitHub will not serve one."""
+    # `gh pr diff` 406s above 300 files; one oversized unrelated PR must not
+    # abort the whole report.
+    result = run_gh(["pr", "diff", str(pr_number)], check=False)
+    if result.returncode != 0:
+        print(
+            f"Warning: no diff for PR #{pr_number}, reporting file overlap only: "
+            f"{result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return ""
     return result.stdout
 
 
