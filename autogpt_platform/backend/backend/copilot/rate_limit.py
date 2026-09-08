@@ -100,8 +100,8 @@ class SubscriptionTier(str, Enum):
 
 # Default multiplier applied to the base cost limits (from LD / config) for each
 # tier. Used as the fallback when the LD flag ``copilot-tier-multipliers`` is
-# unset or unparseable — see ``get_tier_multipliers``.  BUSINESS matches
-# ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier. Float-typed
+# unset or unparseable — see ``get_tier_multipliers``.  PRO and MAX are the two
+# self-serve plans; their multipliers set what those plans allow. Float-typed
 # so LD-provided fractional multipliers (e.g. 8.5×) compose naturally; the
 # eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
 # downstream microdollar math integer.
@@ -111,12 +111,12 @@ _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
     # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
     # before any business logic runs. This is the backend half of the
     # paywall (the frontend modal nudges UI users; this gate enforces
-    # server-side regardless of client). BASIC stays as a future paid-tier
-    # option; for now it falls back to the same baseline as paid tiers.
+    # server-side regardless of client). BASIC is not sold today and stays on
+    # the base limits.
     SubscriptionTier.NO_TIER: 0.0,
     SubscriptionTier.BASIC: 1.0,
-    SubscriptionTier.PRO: 5.0,
-    SubscriptionTier.MAX: 20.0,
+    SubscriptionTier.PRO: 1.25,
+    SubscriptionTier.MAX: 10.6667,
     SubscriptionTier.BUSINESS: 60.0,
     SubscriptionTier.ENTERPRISE: 60.0,
 }
