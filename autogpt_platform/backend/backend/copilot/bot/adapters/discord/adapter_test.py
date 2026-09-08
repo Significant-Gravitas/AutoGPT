@@ -15,6 +15,7 @@ from backend.copilot.bot.adapters.discord.adapter import (
     _mention_queries,
     _resolve_mentions,
 )
+from backend.copilot.bot.turn_stream import _clarification_message
 
 
 def _bare_adapter(bot_id: int | None = 1000) -> tuple[DiscordAdapter, MagicMock]:
@@ -354,6 +355,27 @@ class TestSendMethods:
         assert kwargs["tts"] is False
         # Default empty mentionable_users → AllowedMentions.none()
         assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
+
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self):
+        """SECRT-2604: an ask_question payload must reach Discord as a plain
+        text message with the numbered options intact, unmangled by the
+        adapter's real send path (channel.send)."""
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await adapter.send_message("123", text)
+
+        sent = channel.send.await_args.args[0]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
 
     @pytest.mark.asyncio
     async def test_send_message_silently_drops_when_channel_missing(self):

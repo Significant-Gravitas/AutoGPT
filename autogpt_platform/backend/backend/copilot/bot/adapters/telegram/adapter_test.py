@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
 from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
+from backend.copilot.bot.turn_stream import _clarification_message
 
 from .adapter import (
     TelegramAdapter,
@@ -258,6 +259,22 @@ class TestAnalytics:
 
 
 class TestOutbound:
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self):
+        """SECRT-2604: an ask_question payload must reach Telegram as a
+        plain text message with the numbered options intact, unmangled by
+        the adapter's real send path (sendMessage + HTML conversion)."""
+        a = _adapter()
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await a.send_message("-100555|7", text)
+        sent = a._client.call.call_args.kwargs["text"]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
     @pytest.mark.asyncio
     async def test_send_message_renders_html_and_threads(self):
         a = _adapter()

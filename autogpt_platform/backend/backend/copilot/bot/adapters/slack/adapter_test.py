@@ -8,6 +8,7 @@ import pytest
 from slack_sdk.errors import SlackApiError
 
 from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.turn_stream import _clarification_message
 from backend.data.bot_installs import BotInstallCredentials
 
 from . import config
@@ -483,6 +484,21 @@ class TestUninstall:
 
 
 class TestOutbound:
+    @pytest.mark.asyncio
+    async def test_send_message_delivers_clarification_question(self, adapter):
+        """SECRT-2604: an ask_question payload must reach Slack as a plain
+        text message with the numbered options intact, unmangled by the
+        adapter's real send path (chat_postMessage + mrkdwn conversion)."""
+        text = _clarification_message(
+            {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+        )
+        await adapter.send_message("T1|C1|", text)
+        sent = adapter._clients["T1"].chat_postMessage.await_args.kwargs["text"]
+        assert "Which region?" in sent
+        assert "1. US" in sent
+        assert "2. EU" in sent
+        assert "Reply with a number" in sent
+
     @pytest.mark.asyncio
     async def test_send_message_renders_mrkdwn_and_mentions_and_threads(self, adapter):
         await adapter.send_message("T1|C1|1.2", "**hi** @Bently", (("Bently", "U9"),))

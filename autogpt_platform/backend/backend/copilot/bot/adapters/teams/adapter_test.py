@@ -15,6 +15,7 @@ from backend.copilot.bot.adapters.teams.adapter import (
     _inbound_files,
 )
 from backend.copilot.bot.adapters.teams.text import mention_entities, to_teams_markdown
+from backend.copilot.bot.turn_stream import _clarification_message
 from backend.util.settings import AppEnvironment
 
 _APP_ID = "11111111-2222-3333-4444-555555555555"
@@ -385,6 +386,24 @@ async def test_create_thread_rules(app_id, conversation_id, expected):
 
 
 # ── Sending ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_send_message_delivers_clarification_question(app_id):
+    """SECRT-2604: an ask_question payload must reach Teams as a plain text
+    activity with the numbered options intact, unmangled by the adapter's
+    real send path (send_activity + Teams markdown downgrade)."""
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    text = _clarification_message(
+        {"questions": [{"question": "Which region?", "options": ["US", "EU"]}]}
+    )
+    await adapter.send_message("a:chat", text)
+    activity = adapter._client.send_activity.await_args.args[2]
+    assert "Which region?" in activity["text"]
+    assert "1. US" in activity["text"]
+    assert "2. EU" in activity["text"]
+    assert "Reply with a number" in activity["text"]
 
 
 @pytest.mark.asyncio
