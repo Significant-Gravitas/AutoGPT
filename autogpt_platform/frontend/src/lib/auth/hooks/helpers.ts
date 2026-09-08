@@ -6,7 +6,6 @@ import {
   validateSession as validateSessionAction,
 } from "../actions";
 import {
-  clearWebSocketDisconnectIntent,
   getRedirectPath,
   isLogoutEvent,
   setWebSocketDisconnectIntent,
@@ -33,7 +32,6 @@ export async function fetchUser(): Promise<FetchUserResult> {
       };
     }
 
-    clearWebSocketDisconnectIntent();
     return {
       user,
       hasLoadedUser: true,
@@ -77,7 +75,6 @@ export async function validateSession(
 
     if (result.user) {
       const shouldUpdateUser = params.currentUser?.id !== result.user.id;
-      clearWebSocketDisconnectIntent();
       return {
         isValid: true,
         user: result.user,
@@ -106,13 +103,7 @@ interface RefreshSessionResult {
 }
 
 export async function refreshSession(): Promise<RefreshSessionResult> {
-  const result = await refreshSessionAction();
-
-  if (result.user) {
-    clearWebSocketDisconnectIntent();
-  }
-
-  return result;
+  return refreshSessionAction();
 }
 
 interface StorageEventHandlerParams {

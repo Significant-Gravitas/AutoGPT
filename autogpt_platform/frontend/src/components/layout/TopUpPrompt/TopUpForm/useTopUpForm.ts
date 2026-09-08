@@ -1,5 +1,4 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
-import useCredits from "@/hooks/useCredits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -12,9 +11,10 @@ const topUpSchema = z.object({
     .min(5, "Top-ups start at $5. Please enter a higher amount."),
 });
 
-export function useTopUpForm() {
+export function useTopUpForm(
+  requestTopUp: (creditAmount: number) => Promise<void>,
+) {
   const toastOnFail = useToastOnFail();
-  const { requestTopUp } = useCredits();
 
   const [isLoading, setIsLoading] = useState(false);
 

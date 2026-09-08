@@ -3,8 +3,39 @@ import {
   RefundRequest,
   TransactionHistory,
 } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
+
+const EMPTY_TRANSACTION_HISTORY: TransactionHistory = {
+  transactions: [],
+  next_transaction_time: null,
+};
+const EMPTY_REFUND_REQUESTS: RefundRequest[] = [];
+
+interface BillingState {
+  identityScope: symbol;
+  credits: number | null;
+  autoTopUpConfig: { amount: number; threshold: number } | null;
+  transactionHistory: TransactionHistory;
+  refundRequests: RefundRequest[];
+}
+
+function emptyBillingState(identityScope: symbol): BillingState {
+  return {
+    identityScope,
+    credits: null,
+    autoTopUpConfig: null,
+    transactionHistory: EMPTY_TRANSACTION_HISTORY,
+    refundRequests: EMPTY_REFUND_REQUESTS,
+  };
+}
 
 export default function useCredits({
   identityKey,
@@ -22,40 +53,88 @@ export default function useCredits({
   credits: number | null;
   fetchCredits: () => void;
   requestTopUp: (credit_amount: number) => Promise<void>;
-  refundTopUp: (transaction_key: string, reason: string) => Promise<number>;
+  openBillingPortal: () => Promise<void>;
+  refundTopUp: (
+    transaction_key: string,
+    reason: string,
+  ) => Promise<number | null>;
   autoTopUpConfig: { amount: number; threshold: number } | null;
   fetchAutoTopUpConfig: () => void;
-  updateAutoTopUpConfig: (amount: number, threshold: number) => Promise<void>;
+  updateAutoTopUpConfig: (
+    amount: number,
+    threshold: number,
+  ) => Promise<boolean>;
   transactionHistory: TransactionHistory;
   fetchTransactionHistory: () => void;
   refundRequests: RefundRequest[];
   fetchRefundRequests: () => void;
   formatCredits: (credit: number | null) => string;
 } {
-  const [credits, setCredits] = useState<number | null>(null);
-  const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
-    amount: number;
-    threshold: number;
-  } | null>(null);
-  const identityKeyRef = useRef(identityKey);
-  const [stateIdentityKey, setStateIdentityKey] = useState(identityKey);
+  const scopedIdentityKey = identityKey ?? null;
+  const identityScopeRef = useRef({
+    identityKey: scopedIdentityKey,
+    token: Symbol(),
+  });
+  if (identityScopeRef.current.identityKey !== scopedIdentityKey) {
+    identityScopeRef.current = {
+      identityKey: scopedIdentityKey,
+      token: Symbol(),
+    };
+  }
+  const identityScope = identityScopeRef.current.token;
+  const [billingState, setBillingState] = useState(() =>
+    emptyBillingState(identityScope),
+  );
+
+  useLayoutEffect(() => {
+    identityScopeRef.current = {
+      identityKey: scopedIdentityKey,
+      token: identityScope,
+    };
+    return () => {
+      if (identityScopeRef.current.token !== identityScope) return;
+      identityScopeRef.current = { identityKey: null, token: Symbol() };
+    };
+  }, [identityScope, scopedIdentityKey]);
 
   useEffect(() => {
-    identityKeyRef.current = identityKey;
-    setStateIdentityKey(identityKey);
-    setCredits(null);
-    setAutoTopUpConfig(null);
-  }, [identityKey]);
+    setBillingState((current) =>
+      current.identityScope === identityScope
+        ? current
+        : emptyBillingState(identityScope),
+    );
+  }, [identityScope]);
+
+  const isCurrentIdentity = billingState.identityScope === identityScope;
+  const credits = isCurrentIdentity ? billingState.credits : null;
+  const autoTopUpConfig = isCurrentIdentity
+    ? billingState.autoTopUpConfig
+    : null;
+  const transactionHistory = isCurrentIdentity
+    ? billingState.transactionHistory
+    : EMPTY_TRANSACTION_HISTORY;
+  const refundRequests = isCurrentIdentity
+    ? billingState.refundRequests
+    : EMPTY_REFUND_REQUESTS;
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
 
   const fetchCredits = useCallback(async () => {
-    const requestIdentityKey = identityKey;
+    const requestScope = identityScope;
+    if (
+      scopedIdentityKey === null ||
+      identityScopeRef.current.token !== requestScope
+    ) {
+      return;
+    }
     const response = await api.getUserCredit();
-    if (identityKeyRef.current !== requestIdentityKey) return;
-    setCredits(response.credits ?? null);
-  }, [api, identityKey]);
+    setBillingState((current) =>
+      current.identityScope === requestScope
+        ? { ...current, credits: response.credits ?? null }
+        : current,
+    );
+  }, [api, scopedIdentityKey, identityScope]);
 
   useEffect(() => {
     if (!fetchInitialCredits) return;
@@ -63,11 +142,20 @@ export default function useCredits({
   }, [fetchCredits, fetchInitialCredits]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
-    const requestIdentityKey = identityKey;
+    const requestScope = identityScope;
+    if (
+      scopedIdentityKey === null ||
+      identityScopeRef.current.token !== requestScope
+    ) {
+      return;
+    }
     const response = await api.getAutoTopUpConfig();
-    if (identityKeyRef.current !== requestIdentityKey) return;
-    setAutoTopUpConfig(response);
-  }, [api, identityKey]);
+    setBillingState((current) =>
+      current.identityScope === requestScope
+        ? { ...current, autoTopUpConfig: response }
+        : current,
+    );
+  }, [api, scopedIdentityKey, identityScope]);
 
   useEffect(() => {
     if (!fetchInitialAutoTopUpConfig) return;
@@ -76,64 +164,146 @@ export default function useCredits({
 
   const updateAutoTopUpConfig = useCallback(
     async (amount: number, threshold: number) => {
-      await api.setAutoTopUpConfig({ amount, threshold });
+      if (scopedIdentityKey === null) {
+        throw new Error("Authentication required");
+      }
+      const requestScope = identityScope;
+      if (identityScopeRef.current.token !== requestScope) return false;
+      try {
+        await api.setAutoTopUpConfig({ amount, threshold });
+      } catch (error) {
+        if (identityScopeRef.current.token !== requestScope) return false;
+        throw error;
+      }
+      if (identityScopeRef.current.token !== requestScope) return false;
       fetchAutoTopUpConfig();
+      return true;
     },
-    [api, fetchAutoTopUpConfig],
+    [api, fetchAutoTopUpConfig, scopedIdentityKey, identityScope],
   );
 
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
-      const response = await api.requestTopUp(credit_amount);
+      if (scopedIdentityKey === null) {
+        throw new Error("Authentication required");
+      }
+      const requestScope = identityScope;
+      if (identityScopeRef.current.token !== requestScope) return;
+      let response: { checkout_url: string };
+      try {
+        response = await api.requestTopUp(credit_amount);
+      } catch (error) {
+        if (identityScopeRef.current.token !== requestScope) return;
+        throw error;
+      }
+      if (identityScopeRef.current.token !== requestScope) return;
       router.push(response.checkout_url);
     },
-    [api, router],
+    [api, scopedIdentityKey, identityScope, router],
   );
+
+  const openBillingPortal = useCallback(async () => {
+    if (scopedIdentityKey === null) {
+      throw new Error("Authentication required");
+    }
+    const requestScope = identityScope;
+    if (identityScopeRef.current.token !== requestScope) return;
+    let response: { url: string };
+    try {
+      response = await api.getUserPaymentPortalLink();
+    } catch (error) {
+      if (identityScopeRef.current.token !== requestScope) return;
+      throw error;
+    }
+    if (identityScopeRef.current.token !== requestScope) return;
+    router.push(response.url);
+  }, [api, scopedIdentityKey, identityScope, router]);
 
   const refundTopUp = useCallback(
     async (transaction_key: string, reason: string) => {
-      const refunded_amount = await api.refundTopUp(transaction_key, reason);
-      await fetchCredits();
-      setTransactionHistory(await api.getTransactionHistory());
-      return refunded_amount;
+      if (scopedIdentityKey === null) {
+        throw new Error("Authentication required");
+      }
+      const requestScope = identityScope;
+      if (identityScopeRef.current.token !== requestScope) return null;
+      try {
+        const refundedAmount = await api.refundTopUp(transaction_key, reason);
+        if (identityScopeRef.current.token !== requestScope) return null;
+        await fetchCredits();
+        if (identityScopeRef.current.token !== requestScope) return null;
+        const response = await api.getTransactionHistory();
+        if (identityScopeRef.current.token !== requestScope) return null;
+        setBillingState((current) =>
+          current.identityScope === requestScope
+            ? { ...current, transactionHistory: response }
+            : current,
+        );
+        return refundedAmount;
+      } catch (error) {
+        if (identityScopeRef.current.token !== requestScope) return null;
+        throw error;
+      }
     },
-    [api, fetchCredits],
+    [api, fetchCredits, scopedIdentityKey, identityScope],
   );
 
-  const [transactionHistory, setTransactionHistory] =
-    useState<TransactionHistory>({
-      transactions: [],
-      next_transaction_time: null,
-    });
+  const fetchTransactionHistoryPage = useCallback(
+    async (nextTransactionTime: Date | null, replace: boolean) => {
+      const requestScope = identityScope;
+      if (
+        scopedIdentityKey === null ||
+        identityScopeRef.current.token !== requestScope
+      ) {
+        return;
+      }
+      const response = await api.getTransactionHistory(nextTransactionTime, 20);
+      setBillingState((current) =>
+        current.identityScope === requestScope
+          ? {
+              ...current,
+              transactionHistory: {
+                transactions: replace
+                  ? response.transactions
+                  : [
+                      ...current.transactionHistory.transactions,
+                      ...response.transactions,
+                    ],
+                next_transaction_time: response.next_transaction_time,
+              },
+            }
+          : current,
+      );
+    },
+    [api, scopedIdentityKey, identityScope],
+  );
 
   const fetchTransactionHistory = useCallback(async () => {
-    const response = await api.getTransactionHistory(
+    await fetchTransactionHistoryPage(
       transactionHistory.next_transaction_time,
-      20,
+      false,
     );
-    setTransactionHistory({
-      transactions: [
-        ...transactionHistory.transactions,
-        ...response.transactions,
-      ],
-      next_transaction_time: response.next_transaction_time,
-    });
-  }, [api, transactionHistory]);
+  }, [fetchTransactionHistoryPage, transactionHistory.next_transaction_time]);
 
   useEffect(() => {
     if (!fetchInitialTransactionHistory) return;
-    fetchTransactionHistory();
-    // Note: We only need to fetch transaction history once.
-    // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchInitialTransactionHistory]);
-
-  const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
+    fetchTransactionHistoryPage(null, true);
+  }, [fetchInitialTransactionHistory, fetchTransactionHistoryPage]);
 
   const fetchRefundRequests = useCallback(async () => {
+    const requestScope = identityScope;
+    if (
+      scopedIdentityKey === null ||
+      identityScopeRef.current.token !== requestScope
+    ) {
+      return;
+    }
     const response = await api.getRefundRequests();
-    setRefundRequests(response);
-  }, [api]);
+    setBillingState((current) =>
+      current.identityScope === requestScope
+        ? { ...current, refundRequests: response }
+        : current,
+    );
+  }, [api, scopedIdentityKey, identityScope]);
 
   useEffect(() => {
     if (!fetchInitialRefundRequests) return;
@@ -150,11 +320,12 @@ export default function useCredits({
   }, []);
 
   return {
-    credits: stateIdentityKey === identityKey ? credits : null,
+    credits,
     fetchCredits,
     requestTopUp,
+    openBillingPortal,
     refundTopUp,
-    autoTopUpConfig: stateIdentityKey === identityKey ? autoTopUpConfig : null,
+    autoTopUpConfig,
     fetchAutoTopUpConfig,
     updateAutoTopUpConfig,
     transactionHistory,

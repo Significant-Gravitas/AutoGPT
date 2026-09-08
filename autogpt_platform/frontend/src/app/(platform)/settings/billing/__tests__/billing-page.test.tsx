@@ -10,6 +10,7 @@ import SettingsBillingPage from "../page";
 // Allow per-test override of the search params Next.js exposes to the page.
 const mockSearchParams = { current: new URLSearchParams() };
 const mockRouterReplace = vi.fn();
+const authState = vi.hoisted(() => ({ userId: "user-a" as string | null }));
 vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
   return {
@@ -27,8 +28,17 @@ vi.mock("next/navigation", async (importOriginal) => {
     useParams: () => ({}),
   };
 });
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: (
+    selector: (state: { user: { id: string } | null }) => unknown,
+  ) => selector({ user: authState.userId ? { id: authState.userId } : null }),
+}));
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: authState.userId !== null }),
+}));
 
 afterEach(() => {
+  authState.userId = "user-a";
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
 });
@@ -134,6 +144,33 @@ describe("Settings billing page (integration)", () => {
     // Cancel branch must NOT fulfill — webhook is the source of truth and
     // the user explicitly aborted the checkout.
     expect(fulfillCalled).toBe(false);
+  });
+
+  it("waits for the first authenticated identity before fulfilling a topup", async () => {
+    useDefaultBillingHandlers();
+    let fulfillCalls = 0;
+    server.use(
+      http.patch("*/api/credits", () => {
+        fulfillCalls += 1;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    authState.userId = null;
+
+    const view = render(<SettingsBillingPage />);
+    expect(fulfillCalls).toBe(0);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+
+    authState.userId = "user-a";
+    view.rerender(<SettingsBillingPage />);
+    await waitFor(() => expect(fulfillCalls).toBe(1));
+
+    authState.userId = "user-b";
+    view.rerender(<SettingsBillingPage />);
+    await Promise.resolve();
+
+    expect(fulfillCalls).toBe(1);
   });
 
   it("clears the ?subscription=success query after a Stripe redirect", async () => {

@@ -16,6 +16,7 @@ import {
   getGetSubscriptionStatusQueryKey,
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
@@ -40,6 +41,7 @@ export default function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
@@ -60,6 +62,7 @@ export default function SettingsBillingPage() {
   useEffect(
     function handleTopupRedirect() {
       if (!topupStatus) return;
+      if (topupStatus === "success" && identityKey === null) return;
       // Stripe re-renders the page after redirect — guard so we don't
       // fire fulfillCheckout twice or stack duplicate toasts.
       if (handledTopupRef.current === topupStatus) return;
@@ -85,7 +88,7 @@ export default function SettingsBillingPage() {
 
       router.replace("/settings/billing");
     },
-    [topupStatus, fulfillCheckout, router],
+    [topupStatus, fulfillCheckout, identityKey, router],
   );
 
   useEffect(
