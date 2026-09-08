@@ -798,7 +798,9 @@ class MCPClient:
                 retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
                 extra_headers=headers,
             )
-            await requests.delete(self.server_url)
+            await requests.delete(
+                self.server_url, allow_redirects=self.follow_redirects
+            )
         except Exception:
             pass
         finally:
