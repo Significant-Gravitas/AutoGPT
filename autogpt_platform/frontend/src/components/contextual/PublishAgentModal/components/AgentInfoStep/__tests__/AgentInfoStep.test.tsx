@@ -61,11 +61,13 @@ describe("AgentInfoStep", () => {
     );
     render(<AgentInfoStep {...baseProps} />);
 
-    // The accordion holding the field opens on a timer after mount.
-    const category = await screen.findByRole("combobox", { name: /category/i });
+    // The field is disabled while loading too, so wait for the copy that only
+    // the error state renders before asserting on it. The accordion holding it
+    // opens on a timer after mount.
+    expect(await screen.findByText("Categories unavailable")).toBeDefined();
 
+    const category = screen.getByRole("combobox", { name: /category/i });
     expect(category.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Categories unavailable")).toBeDefined();
   });
 
   it("mounts cleanly when the submissions API would error (handler installed)", async () => {

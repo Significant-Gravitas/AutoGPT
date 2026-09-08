@@ -68,15 +68,17 @@ describe("EditAgentModal", () => {
       <EditAgentModal
         isOpen={true}
         onClose={() => {}}
-        submission={makeSubmission()}
+        // No stored category, so the field shows the placeholder rather than a
+        // value: the error copy is the only thing that separates the failed
+        // state from the loading one, which disables the field too.
+        submission={{ ...makeSubmission(), categories: [] }}
         onSuccess={() => {}}
       />,
     );
 
-    const category = await screen.findByRole("combobox", { name: /category/i });
+    expect(await screen.findByText("Categories unavailable")).toBeDefined();
 
-    // Disabled rather than empty, so a failed request cannot silently drop the
-    // category the listing already has.
+    const category = screen.getByRole("combobox", { name: /category/i });
     expect(category.hasAttribute("disabled")).toBe(true);
   });
 
