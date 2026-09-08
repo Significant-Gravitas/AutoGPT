@@ -267,11 +267,10 @@ class UpdatePresetTool(BaseTool):
     def description(self) -> str:
         return (
             "Update a preset by preset_id: rename, change description, pause or "
-            "resume it (is_active=false/true), or change its inputs. 'inputs' "
-            "are the agent's own graph inputs; a webhook trigger's config (e.g. "
-            "repo, events) is 'trigger_config', and changing it re-registers the "
-            "webhook with the preset's existing credentials. Find preset_id via "
-            "list_presets."
+            "resume it (is_active=false/true), or change its inputs. 'inputs' are "
+            "the agent's graph inputs; a webhook trigger's config is "
+            "'trigger_config', and changing that re-registers the webhook. Find "
+            "preset_id via list_presets."
         )
 
     @property
@@ -299,17 +298,16 @@ class UpdatePresetTool(BaseTool):
                 "inputs": {
                     "type": "object",
                     "description": (
-                        "Graph inputs to change, merged over the preset's "
-                        "current ones. Not the trigger config."
+                        "Graph inputs to change, merged over the current ones. "
+                        "Not the trigger config."
                     ),
                     "additionalProperties": True,
                 },
                 "trigger_config": {
                     "type": "object",
                     "description": (
-                        "Webhook trigger config fields to change (e.g. repo, "
-                        "events), merged over the current config. Changing "
-                        "these re-registers the webhook."
+                        "Trigger config fields to change (e.g. repo, events), "
+                        "merged over the current config."
                     ),
                     "additionalProperties": True,
                 },

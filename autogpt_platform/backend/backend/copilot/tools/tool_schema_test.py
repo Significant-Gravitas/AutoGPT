@@ -112,7 +112,13 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-_CHAR_BUDGET = 61_000
+# Bumped 61_000 -> 62_000 for presets that carry graph inputs alongside a
+# trigger: setup_agent_webhook_trigger gains `constant_inputs` and
+# update_preset gains `trigger_config`, which is what stops the model routing
+# graph inputs into the trigger config. Both tools' wording was trimmed by 303
+# chars first, so the bump pays only for the new parameters. Merged registry
+# measures 61162 chars; ~840 headroom.
+_CHAR_BUDGET = 62_000
 
 
 @pytest.fixture(scope="module")

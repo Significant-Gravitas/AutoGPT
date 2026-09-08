@@ -105,12 +105,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
     def description(self) -> str:
         return (
             "Set up a webhook trigger for an agent with a webhook trigger block. "
-            "This is the ONLY way to configure such a trigger: pass the trigger "
-            "block's config as 'trigger_config' — never configure it by editing "
-            "the agent's graph. If credentials are needed it returns a setup card; "
-            "after the user proceeds, call again with the 'credentials' they selected. "
-            "On success the result card shows any webhook URL with a copy button — "
-            "don't reprint the URL; point the user to the card."
+            "The ONLY way to configure one: pass the block's config as "
+            "'trigger_config', never by editing the agent's graph. If credentials "
+            "are needed it returns a setup card; call again with the 'credentials' "
+            "the user picked. The result card shows any webhook URL with a copy "
+            "button — point the user there instead of reprinting it."
         )
 
     @property
@@ -145,30 +144,28 @@ class SetupAgentWebhookTriggerTool(BaseTool):
                 "trigger_config": {
                     "type": "object",
                     "description": (
-                        "Trigger block config inputs (from "
-                        "trigger_setup_info.config_schema), e.g. repo + events; "
-                        "omit credential fields. Set config HERE, not by editing "
-                        "the trigger node. Usually empty for generic webhooks."
+                        "Trigger block config from "
+                        "trigger_setup_info.config_schema, e.g. repo + events. "
+                        "Set it here, never by editing the trigger node. No "
+                        "credential fields. Usually empty for generic webhooks."
                     ),
                     "additionalProperties": True,
                 },
                 "constant_inputs": {
                     "type": "object",
                     "description": (
-                        "Regular graph input values (from the agent's "
-                        "input_schema) for agents that have input nodes "
-                        "alongside the trigger block. Ask the user for any "
-                        "required inputs and pass them here; omit trigger config "
-                        "(use trigger_config) and credential fields."
+                        "Graph input values from the agent's input_schema, for "
+                        "agents with input nodes beside the trigger block. Ask "
+                        "the user for required ones. Not trigger config (use "
+                        "trigger_config) or credentials."
                     ),
                     "additionalProperties": True,
                 },
                 "credentials": {
                     "type": "object",
                     "description": (
-                        "Credential selection {field_name: credential_id} the "
-                        "user made in the setup card. Pass when re-calling after "
-                        "the card; omit on the first call."
+                        "Credential selection {field_name: credential_id} from "
+                        "the setup card. Pass only when re-calling after it."
                     ),
                     "additionalProperties": {"type": "string"},
                 },
