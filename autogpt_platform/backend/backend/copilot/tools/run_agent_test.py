@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 from backend.data.execution import ExecutionStatus
+from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.exceptions import (
@@ -901,6 +902,118 @@ async def test_run_agent_schedule_structural_error_returns_error_response(
     # user should see the validation error, not the credential setup card.
     assert result_data.get("error") == "graph_validation_failed"
     assert result_data.get("type") != "setup_requirements"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_prefers_explicit_timezone_over_stored_preference(
+    setup_test_data,
+):
+    """The QA repro: AutoPilot asks for a timezone, confirms it back to the
+    user, and the schedule must be created in that one — not the profile's."""
+    _, fake_scheduler = await _schedule_with_timezone(
+        setup_test_data,
+        stored_timezone="Europe/Amsterdam",
+        timezone="Europe/London",
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "Europe/London"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_without_explicit_timezone_uses_stored_preference(
+    setup_test_data,
+):
+    _, fake_scheduler = await _schedule_with_timezone(
+        setup_test_data, stored_timezone="Europe/Amsterdam"
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "Europe/Amsterdam"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_falls_back_to_utc_when_user_has_no_timezone(
+    setup_test_data,
+):
+    _, fake_scheduler = await _schedule_with_timezone(
+        setup_test_data, stored_timezone=USER_TIMEZONE_NOT_SET
+    )
+
+    kwargs = fake_scheduler.add_execution_schedule.await_args.kwargs
+    assert kwargs["user_timezone"] == "UTC"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_rejects_invalid_explicit_timezone(setup_test_data):
+    """An unknown timezone is refused, never silently downgraded to UTC —
+    the model has already told the user which timezone it is scheduling in."""
+    response, fake_scheduler = await _schedule_with_timezone(
+        setup_test_data,
+        stored_timezone="Europe/Amsterdam",
+        timezone="Mars/Olympus_Mons",
+    )
+
+    assert response is not None
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
+    assert result_data.get("error") == "invalid_timezone"
+    assert "Mars/Olympus_Mons" in result_data["message"]
+    assert fake_scheduler.add_execution_schedule.await_count == 0
+
+
+async def _schedule_with_timezone(
+    setup_test_data, *, stored_timezone: str, **run_agent_kwargs
+):
+    """Schedule an agent and hand back (response, scheduler mock)."""
+    user = setup_test_data["user"]
+    store_submission = setup_test_data["store_submission"]
+    tool = RunAgentTool()
+
+    fake_scheduler = AsyncMock()
+    fake_scheduler.add_execution_schedule.return_value = GraphExecutionJobInfo(
+        id=str(uuid.uuid4()),
+        name="My Schedule",
+        next_run_time="",
+        timezone="UTC",
+        user_id=user.id,
+        graph_id=str(uuid.uuid4()),
+        graph_version=1,
+        cron="0 10 * * *",
+        input_data={},
+    )
+
+    with (
+        patch(
+            "backend.copilot.tools.run_agent.get_scheduler_client",
+            return_value=fake_scheduler,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.user_db",
+            _fake_user_db(stored_timezone),
+        ),
+    ):
+        response = await tool.execute(
+            user_id=user.id,
+            session_id=str(uuid.uuid4()),
+            tool_call_id=str(uuid.uuid4()),
+            username_agent_slug=(f"{user.email.split('@')[0]}/{store_submission.slug}"),
+            inputs={"test_input": "value"},
+            schedule_name="My Schedule",
+            cron="0 10 * * *",
+            dry_run=False,
+            session=make_session(user_id=user.id),
+            **run_agent_kwargs,
+        )
+    return response, fake_scheduler
+
+
+def _fake_user_db(stored_timezone: str):
+    """Stub ``user_db()`` so the stored timezone under test is exact,
+    independent of whatever the shared fixture user happens to carry."""
+    fake = MagicMock()
+    fake.get_user_by_id = AsyncMock(return_value=MagicMock(timezone=stored_timezone))
+    return MagicMock(return_value=fake)
 
 
 @pytest.mark.asyncio(loop_scope="session")
