@@ -441,9 +441,9 @@ class ChatConfig(BaseSettings):
         le=1_000_000,
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="Context window the SDK subprocess is held to, in tokens "
-        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
-        "raise it on a route that really serves 1M; Moonshot routes cap it at "
-        "the SKU's catalog window, Anthropic routes take it as given.",
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). "
+        "Moonshot routes use the lower of this and the SKU's catalog window; "
+        "Anthropic routes take it as given.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
