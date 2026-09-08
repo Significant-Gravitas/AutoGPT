@@ -17,7 +17,6 @@ const outreach = {
   description: "Run cold outreach that gets replies.",
   categories: ["sales"],
   required_providers: ["google"],
-  is_verified: true,
   install_count: 3,
   creator: null,
   creator_avatar: null,

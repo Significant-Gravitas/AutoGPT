@@ -20,7 +20,6 @@ class MarketplaceSkill(pydantic.BaseModel):
     description: str
     categories: list[str]
     required_providers: list[str]
-    is_verified: bool
     install_count: int
     creator: str | None = None
     creator_avatar: str | None = None
@@ -35,7 +34,6 @@ class MarketplaceSkill(pydantic.BaseModel):
             description=version.description,
             categories=list(version.categories),
             required_providers=list(version.requiredProviders),
-            is_verified=version.isVerified,
             install_count=listing.installCount,
             creator=profile.username if profile else None,
             creator_avatar=profile.avatarUrl if profile else None,

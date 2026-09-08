@@ -22,7 +22,7 @@ async def list_marketplace_skills(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ) -> skill_model.MarketplaceSkillsResponse:
-    """Approved skill listings, verified first."""
+    """Approved skill listings, most recently updated first."""
     return await skill_db.get_marketplace_skills(
         category=category,
         search_query=search_query,

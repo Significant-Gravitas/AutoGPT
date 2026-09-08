@@ -2039,7 +2039,6 @@ model SkillListingVersion {
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
 
-  isVerified  Boolean @default(false)
   isDeleted   Boolean @default(false)
   isAvailable Boolean @default(true)
 
