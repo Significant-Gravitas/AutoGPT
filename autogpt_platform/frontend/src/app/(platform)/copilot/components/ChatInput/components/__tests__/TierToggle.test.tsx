@@ -53,9 +53,11 @@ it("does not intercept navigation keys on an upgrade link or select the locked t
       onSelect={onSelect}
       advancedUpgrade={
         <MaxUpgradeCard
-          label="Advanced"
-          name="Advanced"
-          reason="Max required"
+          advanced={{
+            label: "Advanced",
+            name: "Advanced",
+            reason: "Max required",
+          }}
           href="/settings/billing"
         />
       }

@@ -85,6 +85,36 @@ export function ConnectionPicker({
   const advancedLock = tierLock(active, "advanced");
   const showMaxUpgrade =
     active?.auth_method === "deployment" && Boolean(advancedLock);
+  const chatGPTUpgrade = offers.find(
+    (offer) =>
+      offer.provider_family === "openai" &&
+      offer.auth_method === "chatgpt_oauth" &&
+      offer.state === "locked" &&
+      !offer.selectable &&
+      !offer.credential_id &&
+      offer.lock_reason &&
+      offer.unlock_href === "/settings/billing",
+  );
+  const connectionOffers = offers.filter((offer) => offer !== chatGPTUpgrade);
+  const inlineUpgrade = showTiers && showMaxUpgrade;
+  const upgradeHref =
+    (inlineUpgrade && advancedLock?.href) || chatGPTUpgrade?.unlock_href;
+  const upgradeCard = upgradeHref ? (
+    <MaxUpgradeCard
+      href={upgradeHref}
+      advanced={
+        inlineUpgrade && advancedLock
+          ? {
+              label: tierLabel(active, "advanced"),
+              name: tierName(active, "advanced"),
+              model: tierModel(active, "advanced"),
+              reason: advancedLock.reason,
+            }
+          : undefined
+      }
+      chatGPTReason={chatGPTUpgrade?.lock_reason ?? undefined}
+    />
+  ) : null;
 
   if (isLoading && offers.length === 0) return null;
 
@@ -126,13 +156,14 @@ export function ConnectionPicker({
     offers.length === 1 && Boolean(offers[0]?.lock_reason);
   if (
     !showTiers &&
+    !chatGPTUpgrade &&
     !onlyOfferIsLocked &&
     (connectionLocked || offers.length === 1)
   ) {
     return null;
   }
 
-  const connectionOptions = offers.map((offer) => ({
+  const connectionOptions = connectionOffers.map((offer) => ({
     value: offer.offer_id,
     disabled: !isSelectable(offer),
   }));
@@ -160,8 +191,9 @@ export function ConnectionPicker({
   // different: the explanation and unlock link are the entire reason the chip
   // remains visible.
   const showsConnections =
+    connectionOffers.length > 0 &&
     (!connectionLocked || onlyOfferIsLocked) &&
-    (offers.length > 1 || onlyOfferIsLocked);
+    (connectionOffers.length > 1 || Boolean(connectionOffers[0]?.lock_reason));
 
   // Naming only the tier, the chip folds down to its glyph among the other
   // quiet icons on the composer's right; the tier and its model wait in the
@@ -226,7 +258,7 @@ export function ConnectionPicker({
         align="end"
         className={cn(
           "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
-          showMaxUpgrade && "bg-white",
+          upgradeCard && "bg-popover text-popover-foreground",
         )}
       >
         {showsConnections && (
@@ -250,14 +282,14 @@ export function ConnectionPicker({
                 );
                 if (to === null) return;
                 event.preventDefault();
-                const target = offers.find((o) => o.offer_id === to);
+                const target = connectionOffers.find((o) => o.offer_id === to);
                 if (target) chooseConnection(target);
                 event.currentTarget
                   .querySelector<HTMLElement>(`[data-offer="${to}"]`)
                   ?.focus();
               }}
             >
-              {offers.map((offer) => (
+              {connectionOffers.map((offer) => (
                 <ChoiceRow
                   key={offer.offer_id}
                   offerId={offer.offer_id}
@@ -308,17 +340,7 @@ export function ConnectionPicker({
               <TierToggle
                 value={tier}
                 onSelect={setTier}
-                advancedUpgrade={
-                  showMaxUpgrade && advancedLock?.href ? (
-                    <MaxUpgradeCard
-                      label={tierLabel(active, "advanced")}
-                      name={tierName(active, "advanced")}
-                      model={tierModel(active, "advanced")}
-                      reason={advancedLock.reason}
-                      href={advancedLock.href}
-                    />
-                  ) : undefined
-                }
+                advancedUpgrade={inlineUpgrade ? upgradeCard : undefined}
                 segments={TIERS.map((candidate) => ({
                   tier: candidate,
                   label: tierLabel(active, candidate),
@@ -330,6 +352,8 @@ export function ConnectionPicker({
             </div>
           </>
         )}
+
+        {!inlineUpgrade && upgradeCard}
 
         {canConnectChatGPT && (
           <div

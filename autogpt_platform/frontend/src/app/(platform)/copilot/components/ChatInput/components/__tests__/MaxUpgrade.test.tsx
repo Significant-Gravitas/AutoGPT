@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotUIStore } from "../../../../store";
 import { ConnectionPicker } from "../ConnectionPicker/ConnectionPicker";
 import {
+  availableDeploymentOffer,
   mockMaxUpgrade,
   deploymentOffer,
   openPicker,
@@ -19,9 +20,11 @@ beforeEach(() => {
 });
 
 describe("contextual Max upsell", () => {
-  it("links the locked server model to existing billing without fetching or showing prices", async () => {
+  it("preserves the locked server tier name and model while linking to billing without fetching prices", async () => {
     const billingRequest = vi.fn(() => HttpResponse.error());
-    mockMaxUpgrade();
+    const deployment = deploymentOffer();
+    deployment.tiers[1].label = "Server reasoning";
+    mockMaxUpgrade([deployment]);
     server.use(http.all("*/api/credits/*", billingRequest));
     render(<ConnectionPicker />);
     await openPicker();
@@ -31,8 +34,11 @@ describe("contextual Max upsell", () => {
     expect(screen.getByText("opus-server").isConnected).toBe(true);
     const group = screen.getByRole("radiogroup", { name: "Model tier" });
     const advanced = within(group).getByRole("radio", {
-      name: /Advanced.*opus-server/,
+      name: /Server reasoning.*opus-server/,
     });
+    expect(within(advanced).getByText("Server reasoning").isConnected).toBe(
+      true,
+    );
     expect(advanced.getAttribute("aria-disabled")).toBe("true");
     expect(advanced.getAttribute("aria-checked")).toBe("false");
     expect(advanced.getAttribute("tabindex")).toBe("-1");
@@ -53,7 +59,7 @@ describe("contextual Max upsell", () => {
     expect(useCopilotUIStore.getState().copilotLlmModel).toBe("standard");
   });
 
-  it("preserves the ChatGPT connection entry below the Max offer", async () => {
+  it("does not infer a ChatGPT plan lock from an Advanced-only lock", async () => {
     mockMaxUpgrade();
     render(<ConnectionPicker />);
     await openPicker();
@@ -67,46 +73,32 @@ describe("contextual Max upsell", () => {
       true,
     );
     expect(connect.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByText("Connect ChatGPT")).toBeNull();
+    expect(screen.queryByText("Use your existing ChatGPT plan.")).toBeNull();
     expect(
       upgrade.compareDocumentPosition(connect) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("retains the ChatGPT plan gate alongside the Advanced upsell", async () => {
-    mockMaxUpgrade([
-      deploymentOffer(),
-      deploymentOffer({
-        offer_id: "codex:locked",
-        provider_family: "openai",
-        display_name: "ChatGPT",
-        auth_method: "chatgpt_oauth",
-        state: "locked",
-        selectable: false,
-        is_default: false,
-        tiers: [],
-        lock_reason: "A Max plan or higher is required to use ChatGPT.",
-        unlock_href: "/settings/billing",
-      }),
-    ]);
+  it("keeps Advanced and the normal connection action available when the server permits them", async () => {
+    mockMaxUpgrade([availableDeploymentOffer()]);
     render(<ConnectionPicker />);
     await openPicker();
 
-    expect(
-      (
-        await screen.findByRole("link", { name: "Upgrade to Max" })
-      ).getAttribute("href"),
-    ).toBe("/settings/billing");
-    expect(
-      screen.getByText("A Max plan or higher is required to use ChatGPT.")
-        .isConnected,
-    ).toBe(true);
-    expect(
-      screen.getByRole("link", { name: "See plans" }).getAttribute("href"),
-    ).toBe("/settings/billing");
-    expect(
-      screen.queryByRole("button", { name: "Connect a ChatGPT subscription" }),
-    ).toBeNull();
+    const advanced = await screen.findByRole("radio", {
+      name: "Advanced · opus-server",
+    });
+    await userEvent.click(advanced);
+
+    expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
+    expect(advanced.getAttribute("aria-checked")).toBe("true");
+    const connect = screen.getByRole("button", {
+      name: "Connect a ChatGPT subscription",
+    });
+    expect(connect.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("link", { name: "Upgrade to Max" })).toBeNull();
+    expect(screen.queryByText("Connect ChatGPT")).toBeNull();
   });
 
   it("keeps a connected provider's available Advanced tier selectable", async () => {

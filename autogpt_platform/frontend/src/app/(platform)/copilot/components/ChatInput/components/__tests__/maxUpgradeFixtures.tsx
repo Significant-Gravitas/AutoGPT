@@ -46,3 +46,31 @@ export function deploymentOffer(
 export function mockMaxUpgrade(offers = [deploymentOffer()]) {
   server.use(getGetV2ListChatConnectionsMockHandler200({ offers }));
 }
+
+export function availableDeploymentOffer(): AIConnectionOffer {
+  return deploymentOffer({
+    tiers: deploymentOffer().tiers.map((tier) => ({
+      ...tier,
+      selectable: true,
+      lock_reason: null,
+    })),
+  });
+}
+
+export function lockedChatGPTOffer(): AIConnectionOffer {
+  return deploymentOffer({
+    offer_id: "codex:locked",
+    provider_family: "openai",
+    display_name: "ChatGPT",
+    auth_method: "chatgpt_oauth",
+    backed_by_label: "Your ChatGPT plan",
+    description:
+      "Run chats on a ChatGPT plan you already pay for, spending no AutoGPT credits.",
+    state: "locked",
+    selectable: false,
+    is_default: false,
+    tiers: [],
+    lock_reason: "A Max plan or higher is required to use ChatGPT.",
+    unlock_href: "/settings/billing",
+  });
+}

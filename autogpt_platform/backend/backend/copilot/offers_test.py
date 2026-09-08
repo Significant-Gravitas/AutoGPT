@@ -290,14 +290,12 @@ def _upsell(
     mocker: pytest_mock.MockerFixture,
     *,
     entitled: bool = False,
-    flag: bool = True,
 ) -> None:
     mocker.patch.object(
         offers,
         "has_codex_access",
         new=AsyncMock(return_value=entitled),
     )
-    mocker.patch.object(offers, "is_feature_enabled", new=AsyncMock(return_value=flag))
 
 
 def _locked(offer_list: list) -> list:
@@ -375,13 +373,22 @@ async def test_entitlement_outage_does_not_show_a_false_upsell(
 
 
 @pytest.mark.asyncio
-async def test_the_upsell_stays_off_until_its_cohort_is_opened(
+async def test_chatgpt_plan_lock_is_visible_with_upsell_flag_off(
     mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _mock_transports(mocker, [_transport("platform", None)])
-    _upsell(mocker, flag=False)
+    _upsell(mocker)
+    monkeypatch.setenv("FORCE_FLAG_CHAT_CONNECTION_UPSELL", "false")
 
-    assert _locked(await get_connection_offers("user")) == []
+    locked = _locked(await get_connection_offers("user"))
+
+    assert len(locked) == 1
+    assert locked[0].provider_family == "openai"
+    assert locked[0].selectable is False
+    assert locked[0].credential_id is None
+    assert locked[0].lock_reason
+    assert locked[0].unlock_href == "/settings/billing"
 
 
 @pytest.mark.asyncio
