@@ -9,7 +9,11 @@ from .recent_work import _MAX_ITEMS_PER_GROUP, _MAX_RUNS_PER_GROUP, compose_rece
 
 NOW = datetime(2026, 8, 28, 9, 0, tzinfo=timezone.utc)
 AGENTS = {
-    "graph-notes": AgentRef(name="Release Note Generator", library_agent_id="lib-1")
+    "graph-notes": AgentRef(
+        name="Release Note Generator",
+        library_agent_id="lib-1",
+        image_url="https://example.com/release-notes.png",
+    )
 }
 
 
@@ -42,6 +46,8 @@ def _execution(
     status: ExecutionStatus = ExecutionStatus.COMPLETED,
     minutes_ago: int = 0,
     expert_id: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
     activity_status: str | None = "I generated release notes.",
 ) -> GraphExecutionMeta:
     ended_at = NOW - timedelta(minutes=minutes_ago)
@@ -58,6 +64,8 @@ def _execution(
         started_at=ended_at - timedelta(minutes=1),
         ended_at=ended_at,
         expert_id=expert_id,
+        schedule_id=schedule_id,
+        webhook_id=webhook_id,
         stats=GraphExecutionMeta.Stats(
             activity_status=activity_status, error=None, duration=60.0, cost=7
         ),
@@ -141,6 +149,7 @@ def test_groups_runs_and_deliverables_under_the_actor_that_did_them() -> None:
     assert maria_group.items[0].link == "/copilot?sessionId=s1"
 
     assert notes_group.actor.kind == "workflow"
+    assert notes_group.actor.image_url == "https://example.com/release-notes.png"
     assert notes_group.actor.link == "/library/agents/lib-1"
     assert [run.id for run in notes_group.runs] == ["run-notes"]
     assert [item.id for item in notes_group.items] == ["e2"]
@@ -269,6 +278,22 @@ def test_counts_the_weeks_runs_and_orders_groups_by_latest_activity() -> None:
     ]
     # Failures lead within a group so they get looked at first.
     assert [run.id for run in work.groups[1].runs] == ["failed", "done"]
+
+
+def test_a_run_says_what_started_it() -> None:
+    executions = [
+        _execution(exec_id="cron", schedule_id="sched-1", minutes_ago=5),
+        _execution(exec_id="hook", webhook_id="hook-1", minutes_ago=8),
+        _execution(exec_id="hand", minutes_ago=10),
+    ]
+
+    work = _compose(executions)
+
+    assert {run.id: run.trigger for run in work.groups[0].runs} == {
+        "cron": "schedule",
+        "hook": "webhook",
+        "hand": "manual",
+    }
 
 
 def test_deliverables_older_than_the_window_are_left_out() -> None:

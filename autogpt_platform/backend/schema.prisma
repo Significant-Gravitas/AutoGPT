@@ -1269,6 +1269,11 @@ model AgentGraphExecution {
   // What started the run, for that source: schedule id, webhook id, chat
   // session id, API key id, or the UI surface for manual runs.
   triggerRef    String?
+  // What started this run, when it was not a person: the scheduler job or
+  // the webhook that fired. Soft references, since jobs live in
+  // APScheduler's own store and webhooks are cleaned up independently.
+  scheduleId String?
+  webhookId  String?
 
   inputs           Json?
   credentialInputs Json?

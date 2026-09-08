@@ -12,12 +12,14 @@ import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
   getListWorkspaceFilesMockHandler401,
+  getListWorkspaceFoldersMockHandler,
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
-const { setFlagStatusMock } = vi.hoisted(() => {
+const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
   return {
     setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
+    uploadFileDirectMock: vi.fn(),
   };
 });
 
@@ -25,6 +27,7 @@ const { setFlagStatusMock } = vi.hoisted(() => {
 // flag overrides must persist across renders; restore the default afterward.
 afterEach(() => {
   setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+  uploadFileDirectMock.mockReset();
 });
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
@@ -34,6 +37,12 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   },
   useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
+}));
+
+// Uploads go straight to the backend (not through the MSW-mocked proxy), so
+// the direct-upload helper is stubbed here.
+vi.mock("@/lib/direct-upload", () => ({
+  uploadFileDirect: uploadFileDirectMock,
 }));
 
 const notFoundMock = vi.hoisted(() => vi.fn());
@@ -94,16 +103,26 @@ function useStorageHandler(usedBytes = 0, limitBytes = 1_000_000_000) {
   );
 }
 
+function useFilesHandler(files: WorkspaceFileItem[]) {
+  server.use(
+    getListWorkspaceFilesMockHandler({
+      files,
+      offset: 0,
+      has_more: false,
+    }),
+  );
+}
+
+// The row's name button is the tooltip trigger; focusing it opens the large
+// preview without waiting for the hover delay.
+async function openHoverPreview() {
+  fireEvent.focus(await screen.findByTestId("artifacts-card-open"));
+}
+
 describe("ArtifactsPage - basic rendering", () => {
   test("renders the page header", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [],
-        offset: 0,
-        has_more: false,
-      }),
-    );
+    useFilesHandler([]);
 
     render(<ArtifactsPage />);
 
@@ -114,13 +133,8 @@ describe("ArtifactsPage - basic rendering", () => {
 
   test("shows the empty state when the workspace has no files", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [],
-        offset: 0,
-        has_more: false,
-      }),
-    );
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
 
     render(<ArtifactsPage />);
 
@@ -128,28 +142,94 @@ describe("ArtifactsPage - basic rendering", () => {
     expect(screen.getByText(/no files yet/i)).toBeDefined();
   });
 
-  test("renders one card per file with name + type label", async () => {
+  test("shows a quiet hint instead of the empty state when only folders exist", async () => {
     useStorageHandler();
+    useFilesHandler([]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "f1",
-            name: "report.pdf",
-            mime_type: "application/pdf",
-          }),
-          makeFile({ id: "f2", name: "data.csv", mime_type: "text/csv" }),
+      getListWorkspaceFoldersMockHandler({
+        folders: [
+          {
+            id: "fld-1",
+            workspace_id: "ws-1",
+            name: "Reports",
+            file_count: 2,
+            created_at: "2026-05-01T00:00:00Z" as unknown as Date,
+            updated_at: "2026-05-01T00:00:00Z" as unknown as Date,
+          },
         ],
-        offset: 0,
-        has_more: false,
       }),
     );
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByTestId("workspace-folder")).toBeDefined();
+    expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
+    expect(screen.queryByText(/^no files yet$/i)).toBeNull();
+  });
+
+  test("waits for folders before choosing an empty state", async () => {
+    useStorageHandler();
+    let filesServed = false;
+    // Hold the folders response until the test releases it, so the
+    // "files empty, folders unknown" state can be asserted deterministically.
+    let releaseFolders = () => {};
+    const foldersReady = new Promise<void>((resolve) => {
+      releaseFolders = resolve;
+    });
+    server.use(
+      http.get("/api/proxy/api/workspace/files", () => {
+        filesServed = true;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+      http.get("/api/proxy/api/workspace/folders", async () => {
+        await foldersReady;
+        return HttpResponse.json({
+          folders: [
+            {
+              id: "fld-1",
+              workspace_id: "ws-1",
+              name: "Reports",
+              file_count: 2,
+              created_at: "2026-05-01T00:00:00Z",
+              updated_at: "2026-05-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    await waitFor(() => expect(filesServed).toBe(true));
+    // Files are known to be empty, but folders are still loading: no empty
+    // state yet, only skeleton rows.
+    expect(screen.getByTestId("artifacts-loading")).toBeDefined();
+    expect(screen.queryByTestId("artifacts-empty")).toBeNull();
+
+    releaseFolders();
+
+    expect(await screen.findByText(/no files at the root yet/i)).toBeDefined();
+  });
+
+  test("renders one row per file with name, date and size columns", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({
+        id: "f1",
+        name: "report.pdf",
+        mime_type: "application/pdf",
+        size_bytes: 2_516_582,
+      }),
+      makeFile({ id: "f2", name: "data.csv", mime_type: "text/csv" }),
+    ]);
 
     render(<ArtifactsPage />);
 
     expect(await screen.findByText("report.pdf")).toBeDefined();
     expect(screen.getByText("data.csv")).toBeDefined();
     expect(screen.getAllByTestId("artifacts-list-item").length).toBe(2);
+    expect(screen.getByText("Modified")).toBeDefined();
+    expect(screen.getByText("2.4 MB")).toBeDefined();
   });
 
   test("renders the error card when the API fails", async () => {
@@ -162,19 +242,30 @@ describe("ArtifactsPage - basic rendering", () => {
   });
 });
 
-describe("ArtifactsPage - search filter", () => {
-  test("typing in the search bar narrows the visible cards", async () => {
+describe("ArtifactsPage - layout toggle", () => {
+  test("defaults to the list and switches to the card grid", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "f1", name: "alpha.txt" }),
-          makeFile({ id: "f2", name: "beta.txt" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
-    );
+    useFilesHandler([makeFile({ id: "f1", name: "alpha.txt" })]);
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByTestId("artifacts-table")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("artifacts-view-grid"));
+
+    expect(await screen.findByTestId("artifacts-grid")).toBeDefined();
+    expect(screen.queryByTestId("artifacts-table")).toBeNull();
+    expect(screen.getByText("alpha.txt")).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - search filter", () => {
+  test("typing in the search bar narrows the visible rows", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "f1", name: "alpha.txt" }),
+      makeFile({ id: "f2", name: "beta.txt" }),
+    ]);
 
     render(<ArtifactsPage />);
 
@@ -184,13 +275,7 @@ describe("ArtifactsPage - search filter", () => {
     const search = screen.getByPlaceholderText(/search/i);
 
     // Second handler returns only beta — the debounce + refetch should show it.
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [makeFile({ id: "f2", name: "beta.txt" })],
-        offset: 0,
-        has_more: false,
-      }),
-    );
+    useFilesHandler([makeFile({ id: "f2", name: "beta.txt" })]);
 
     fireEvent.change(search, { target: { value: "beta" } });
 
@@ -248,22 +333,118 @@ describe("ArtifactsPage - feature flag gating", () => {
   });
 });
 
-describe("ArtifactsPage - card menu", () => {
-  test("renders the card actions menu trigger and origin link", async () => {
+describe("ArtifactsPage - new menu", () => {
+  test("offers upload and new-folder actions", async () => {
     useStorageHandler();
+    useFilesHandler([]);
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    // Radix DropdownMenu opens on pointerdown, not click, under happy-dom.
+    fireEvent.pointerDown(screen.getByTestId("artifacts-new-menu"), {
+      button: 0,
+    });
+
+    expect(await screen.findByTestId("artifacts-upload-file")).toBeDefined();
+    expect(screen.getByTestId("create-folder-button")).toBeDefined();
+  });
+
+  test("uploading a file posts it and refreshes the list", async () => {
+    useStorageHandler();
+    uploadFileDirectMock.mockResolvedValue({
+      file_id: "new-1",
+      name: "up.txt",
+      path: "/up.txt",
+      mime_type: "text/plain",
+      size_bytes: 3,
+    });
+    let listCalls = 0;
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "with-menu",
-            name: "menu-target.txt",
-            path: "/sessions/sess-xyz/menu-target.txt",
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+      http.get("/api/proxy/api/workspace/files", () => {
+        listCalls += 1;
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
       }),
     );
+
+    render(<ArtifactsPage />);
+
+    await screen.findByTestId("artifacts-empty");
+    const file = new File(["abc"], "up.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByTestId("artifacts-upload-input"), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() =>
+      expect(uploadFileDirectMock).toHaveBeenCalledWith(file),
+    );
+    await waitFor(() => expect(listCalls).toBeGreaterThan(1));
+  });
+
+  test("uploading inside a folder moves the new file into it", async () => {
+    useStorageHandler();
+    uploadFileDirectMock.mockResolvedValue({
+      file_id: "new-1",
+      name: "up.txt",
+      path: "/up.txt",
+      mime_type: "text/plain",
+      size_bytes: 3,
+    });
+    let movedTo: string | null | undefined;
+    server.use(
+      http.get("/api/proxy/api/workspace/folders", () =>
+        HttpResponse.json({
+          folders: [
+            {
+              id: "fld-1",
+              workspace_id: "ws-1",
+              name: "Reports",
+              file_count: 0,
+              created_at: "2026-05-01T00:00:00Z",
+              updated_at: "2026-05-01T00:00:00Z",
+            },
+          ],
+        }),
+      ),
+      http.get("/api/proxy/api/workspace/files", () =>
+        HttpResponse.json({ files: [], offset: 0, has_more: false }),
+      ),
+      http.post(
+        "/api/proxy/api/workspace/folders/files/bulk-move",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            file_ids: string[];
+            folder_id: string | null;
+          };
+          movedTo = body.folder_id;
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("workspace-folder"));
+    await screen.findByTestId("folder-breadcrumb");
+
+    fireEvent.change(screen.getByTestId("artifacts-upload-input"), {
+      target: { files: [new File(["abc"], "up.txt", { type: "text/plain" })] },
+    });
+
+    await waitFor(() => expect(movedTo).toBe("fld-1"));
+  });
+});
+
+describe("ArtifactsPage - row menu", () => {
+  test("renders the row actions menu trigger", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({
+        id: "with-menu",
+        name: "menu-target.txt",
+        path: "/sessions/sess-xyz/menu-target.txt",
+      }),
+    ]);
 
     render(<ArtifactsPage />);
 
@@ -271,14 +452,10 @@ describe("ArtifactsPage - card menu", () => {
     expect(screen.getByTestId("artifacts-card-menu")).toBeDefined();
   });
 
-  test("clicking the card opens the file viewer modal", async () => {
+  test("clicking the row opens the file viewer modal", async () => {
     useStorageHandler();
+    useFilesHandler([makeFile({ id: "open-me", name: "open-me.txt" })]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [makeFile({ id: "open-me", name: "open-me.txt" })],
-        offset: 0,
-        has_more: false,
-      }),
       http.get("/api/proxy/api/workspace/files/open-me/download", () =>
         HttpResponse.text("hello world"),
       ),
@@ -293,59 +470,66 @@ describe("ArtifactsPage - card menu", () => {
   });
 });
 
-describe("ArtifactsPage - rich previews", () => {
-  test("image cards request the resized preview endpoint", async () => {
+describe("ArtifactsPage - previews", () => {
+  test("image rows show a small thumbnail and a large hover preview", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "img1", name: "pic.png", mime_type: "image/png" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
-    );
+    useFilesHandler([
+      makeFile({ id: "img1", name: "pic.png", mime_type: "image/png" }),
+    ]);
 
     render(<ArtifactsPage />);
 
-    const img = (await screen.findByAltText("pic.png")) as HTMLImageElement;
-    expect(img.getAttribute("src")).toContain(
-      "/api/proxy/api/workspace/files/img1/preview?w=400",
+    await screen.findByText("pic.png");
+    const thumbnail = screen
+      .getByTestId("artifacts-thumbnail")
+      .querySelector("img");
+    expect(thumbnail?.getAttribute("src")).toContain(
+      "/api/proxy/api/workspace/files/img1/preview?w=96",
     );
+
+    await openHoverPreview();
+
+    const preview = (await screen.findByAltText("pic.png")) as HTMLImageElement;
+    expect(preview.getAttribute("src")).toContain("/preview?w=800");
+    expect(screen.getByTestId("artifacts-preview-card")).toBeDefined();
   });
 
-  test("pdf cards render an image from the preview endpoint", async () => {
+  test("pdf rows preview through the image endpoint", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "pdf1",
-            name: "report.pdf",
-            mime_type: "application/pdf",
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+    useFilesHandler([
+      makeFile({
+        id: "pdf1",
+        name: "report.pdf",
+        mime_type: "application/pdf",
       }),
-    );
+    ]);
 
     render(<ArtifactsPage />);
+
+    await openHoverPreview();
 
     const img = (await screen.findByAltText("report.pdf")) as HTMLImageElement;
-    expect(img.getAttribute("src")).toContain("/preview?w=400");
+    expect(img.getAttribute("src")).toContain("/preview?w=800");
   });
 
-  test("csv cards render a table from the byte-capped preview", async () => {
+  test("text rows fall back to a type icon instead of a thumbnail", async () => {
     useStorageHandler();
+    useFilesHandler([makeFile({ id: "txt1", name: "notes.txt" })]);
+
+    render(<ArtifactsPage />);
+
+    await screen.findByText("notes.txt");
+    expect(
+      screen.getByTestId("artifacts-thumbnail").querySelector("img"),
+    ).toBeNull();
+  });
+
+  test("csv previews render a table from the byte-capped preview", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "csv1", name: "data.csv", mime_type: "text/csv" }),
+    ]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "csv1", name: "data.csv", mime_type: "text/csv" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
       http.get("/api/proxy/api/workspace/files/csv1/preview", () =>
         HttpResponse.text("name,age\nAda,36\nBob,40\n"),
       ),
@@ -353,25 +537,23 @@ describe("ArtifactsPage - rich previews", () => {
 
     render(<ArtifactsPage />);
 
+    await openHoverPreview();
+
     expect(await screen.findByText("name")).toBeDefined();
     expect(await screen.findByText("Ada")).toBeDefined();
   });
 
-  test("ics cards render the event summary", async () => {
+  test("ics previews render the event summary", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "ics1",
-            name: "meeting.ics",
-            mime_type: "text/calendar",
-            size_bytes: 400,
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+    useFilesHandler([
+      makeFile({
+        id: "ics1",
+        name: "meeting.ics",
+        mime_type: "text/calendar",
+        size_bytes: 400,
       }),
+    ]);
+    server.use(
       http.get("/api/proxy/api/workspace/files/ics1/preview", () =>
         HttpResponse.text(
           "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Launch sync\nDTSTART:20260615T130000Z\nLOCATION:Room 4\nEND:VEVENT\nEND:VCALENDAR",
@@ -381,24 +563,22 @@ describe("ArtifactsPage - rich previews", () => {
 
     render(<ArtifactsPage />);
 
+    await openHoverPreview();
+
     expect(await screen.findByText("Launch sync")).toBeDefined();
   });
 
-  test("vcard cards render the contact name", async () => {
+  test("vcard previews render the contact name", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "vcf1",
-            name: "ada.vcf",
-            mime_type: "text/vcard",
-            size_bytes: 300,
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+    useFilesHandler([
+      makeFile({
+        id: "vcf1",
+        name: "ada.vcf",
+        mime_type: "text/vcard",
+        size_bytes: 300,
       }),
+    ]);
+    server.use(
       http.get("/api/proxy/api/workspace/files/vcf1/preview", () =>
         HttpResponse.text(
           "BEGIN:VCARD\nFN:Ada Lovelace\nORG:Analytical Engine\nEND:VCARD",
@@ -408,19 +588,17 @@ describe("ArtifactsPage - rich previews", () => {
 
     render(<ArtifactsPage />);
 
+    await openHoverPreview();
+
     expect(await screen.findByText("Ada Lovelace")).toBeDefined();
   });
 
-  test("markdown cards render their formatted content", async () => {
+  test("markdown previews render their formatted content", async () => {
     useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "md1", name: "notes.md", mime_type: "text/markdown" }),
+    ]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "md1", name: "notes.md", mime_type: "text/markdown" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
       http.get("/api/proxy/api/workspace/files/md1/preview", () =>
         HttpResponse.text("# Heading One\n\nbody paragraph"),
       ),
@@ -428,22 +606,36 @@ describe("ArtifactsPage - rich previews", () => {
 
     render(<ArtifactsPage />);
 
+    await openHoverPreview();
+
     expect(await screen.findByText("Heading One")).toBeDefined();
     expect(await screen.findByText("body paragraph")).toBeDefined();
+  });
+
+  test("grid cards request the card-sized preview", async () => {
+    useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "img1", name: "pic.png", mime_type: "image/png" }),
+    ]);
+
+    render(<ArtifactsPage />);
+
+    fireEvent.click(await screen.findByTestId("artifacts-view-grid"));
+
+    const img = (await screen.findByAltText("pic.png")) as HTMLImageElement;
+    expect(img.getAttribute("src")).toContain(
+      "/api/proxy/api/workspace/files/img1/preview?w=400",
+    );
   });
 });
 
 describe("ArtifactsPage - file viewer modal", () => {
   test("opening a markdown file shows a Source toggle that flips to Preview", async () => {
     useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "md2", name: "doc.md", mime_type: "text/markdown" }),
+    ]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "md2", name: "doc.md", mime_type: "text/markdown" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
       http.get("/api/proxy/api/workspace/files/md2/preview", () =>
         HttpResponse.text("# Title"),
       ),
@@ -469,19 +661,13 @@ describe("ArtifactsPage - file viewer modal", () => {
 
   test("opening a non-previewable file shows the download-only message", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "zip1",
-            name: "archive.zip",
-            mime_type: "application/zip",
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+    useFilesHandler([
+      makeFile({
+        id: "zip1",
+        name: "archive.zip",
+        mime_type: "application/zip",
       }),
-    );
+    ]);
 
     render(<ArtifactsPage />);
 
@@ -492,19 +678,15 @@ describe("ArtifactsPage - file viewer modal", () => {
 
   test("opening an uploaded file resolves its source ref", async () => {
     useStorageHandler();
-    server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({
-            id: "up1",
-            name: "uploaded.md",
-            mime_type: "text/markdown",
-            origin: "uploaded",
-          }),
-        ],
-        offset: 0,
-        has_more: false,
+    useFilesHandler([
+      makeFile({
+        id: "up1",
+        name: "uploaded.md",
+        mime_type: "text/markdown",
+        origin: "uploaded",
       }),
+    ]);
+    server.use(
       http.get("/api/proxy/api/workspace/files/up1/preview", () =>
         HttpResponse.text("# uploaded"),
       ),
@@ -521,14 +703,10 @@ describe("ArtifactsPage - file viewer modal", () => {
 
   test("the viewer download button recovers after a failed fetch", async () => {
     useStorageHandler();
+    useFilesHandler([
+      makeFile({ id: "dl1", name: "doc.md", mime_type: "text/markdown" }),
+    ]);
     server.use(
-      getListWorkspaceFilesMockHandler({
-        files: [
-          makeFile({ id: "dl1", name: "doc.md", mime_type: "text/markdown" }),
-        ],
-        offset: 0,
-        has_more: false,
-      }),
       http.get("/api/proxy/api/workspace/files/dl1/preview", () =>
         HttpResponse.text("# doc"),
       ),

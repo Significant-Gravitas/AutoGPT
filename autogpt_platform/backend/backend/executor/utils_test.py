@@ -449,6 +449,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         expert_id=None,
         trigger_source=ExecutionTrigger.MANUAL,
         trigger_ref=None,
+        schedule_id=None,
+        webhook_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -1920,6 +1922,19 @@ def test_make_node_credentials_input_map_excludes_auto_creds(
 
 
 # ============================================================================
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_a_run_with_two_triggers():
+    """A run is started by a schedule or a webhook, never both; recording
+    both would let the home card report the schedule and hide the webhook."""
+    with pytest.raises(ValueError, match="schedule or a webhook"):
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            schedule_id="sched-1",
+            webhook_id="hook-1",
+        )
+
+
 # Admin-bypass paywall: requeue stuck executions for users on NO_TIER must
 # not be blocked by the paywall gate (Sentry bug prediction: admin recovery
 # would otherwise raise UserPaywalledError on the original user's behalf).
