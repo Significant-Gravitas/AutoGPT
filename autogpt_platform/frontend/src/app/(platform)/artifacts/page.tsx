@@ -148,7 +148,7 @@ export default function ArtifactsPage() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <motion.div
-          className="flex flex-wrap items-center gap-x-6 gap-y-2"
+          className="flex flex-wrap items-center gap-x-32 gap-y-2"
           variants={variants}
           initial="hidden"
           animate="show"
