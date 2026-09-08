@@ -287,6 +287,19 @@ class TestOutbound:
         assert kwargs["text"] == "<b>bold</b> &amp; plain"
 
     @pytest.mark.asyncio
+    async def test_send_choice_buttons_sends_inline_keyboard(self):
+        a = _adapter()
+        sent = await a.send_choice_buttons(
+            "-100555|7", "Which region?", ["US", "EU"], "abcdef012345"
+        )
+        assert sent is True
+        assert a.supports_choice_buttons is True
+        kwargs = a._client.call.call_args.kwargs
+        assert kwargs["chat_id"] == "-100555"
+        rows = kwargs["reply_markup"]["inline_keyboard"]
+        assert rows[0][0]["callback_data"] == "qans:abcdef012345:0"
+
+    @pytest.mark.asyncio
     async def test_send_link_prefers_login_url_for_https(self):
         # Telegram attaches a signed identity when the user taps a login_url
         # button — the /link page verifies it for seamless linking.
@@ -478,3 +491,73 @@ class TestProactiveChunking:
             html.unescape(re.sub(r"<[^>]+>", "", c.kwargs["text"])) for c in calls
         )
         assert joined.count("Tom") == 200  # nothing dropped across the chunks
+
+
+class TestChoiceCallbackQuery:
+    @pytest.mark.asyncio
+    async def test_click_resolves_updates_message_and_dispatches(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:1",
+            "from": {"id": 42, "username": "bently"},
+            "message": {
+                "message_id": 9,
+                "chat": {"id": 42, "type": "private"},
+            },
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value="EU"),
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        calls = {c.args[0]: c.kwargs for c in a._client.call.call_args_list}
+        assert calls["answerCallbackQuery"]["callback_query_id"] == "cbq1"
+        assert calls["editMessageText"]["text"] == "✅ You answered: EU"
+        a._on_message_callback.assert_awaited_once()
+        ctx, dispatched_adapter = a._on_message_callback.await_args.args
+        assert dispatched_adapter is a
+        assert ctx.text == "EU"
+        assert ctx.platform == "telegram"
+        assert ctx.channel_type == "dm"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_shows_alert_and_does_not_dispatch(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {
+            "id": "cbq1",
+            "data": "qans:abcdef012345:0",
+            "from": {"id": 42},
+            "message": {"message_id": 9, "chat": {"id": 42, "type": "private"}},
+        }
+        with patch(
+            f"{_ADAPTER}.choices.resolve_choice", new=AsyncMock(return_value=None)
+        ):
+            await a._dispatch_callback_query(callback_query)
+
+        answer_calls = [
+            c
+            for c in a._client.call.call_args_list
+            if c.args == ("answerCallbackQuery",)
+        ]
+        assert len(answer_calls) == 1
+        assert answer_calls[0].kwargs["show_alert"] is True
+        edit_calls = [
+            c for c in a._client.call.call_args_list if c.args == ("editMessageText",)
+        ]
+        assert edit_calls == []
+        a._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_callback_data_acks_without_dispatching(self):
+        a = _adapter()
+        a._on_message_callback = AsyncMock()
+        callback_query = {"id": "cbq1", "data": "not-a-choice-callback"}
+
+        await a._dispatch_callback_query(callback_query)
+
+        assert a._client.call.call_args.args == ("answerCallbackQuery",)
+        a._on_message_callback.assert_not_awaited()

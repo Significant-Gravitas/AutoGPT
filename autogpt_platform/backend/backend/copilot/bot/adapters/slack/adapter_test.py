@@ -35,6 +35,7 @@ def _mock_client() -> MagicMock:
     client.token = "xoxb-test"
     client.chat_postMessage = AsyncMock(return_value={"ts": "111.222"})
     client.chat_postEphemeral = AsyncMock()
+    client.chat_update = AsyncMock()
     client.chat_getPermalink = AsyncMock(return_value={"permalink": "https://x/p"})
     client.files_upload_v2 = AsyncMock()
     client.conversations_info = AsyncMock(return_value={"ok": True})
@@ -481,6 +482,85 @@ class TestUninstall:
         revoke.assert_awaited_once()
         assert "T5" not in adapter._clients
         assert "T5" not in adapter._bot_user_ids
+
+
+class TestChoiceButtons:
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_posts_blocks(self, adapter):
+        sent = await adapter.send_choice_buttons(
+            "T1|C1|", "Which region?", ["US", "EU"], "abcdef012345"
+        )
+        assert sent is True
+        assert adapter.supports_choice_buttons is True
+        kwargs = adapter._clients["T1"].chat_postMessage.await_args.kwargs
+        assert kwargs["blocks"][1]["elements"][0]["action_id"] == "qans:abcdef012345:0"
+
+    @pytest.mark.asyncio
+    async def test_block_action_click_resolves_updates_message_and_dispatches(
+        self, adapter
+    ):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "message": {"ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:1"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value="EU"),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        update_kwargs = adapter._clients["T1"].chat_update.await_args.kwargs
+        assert update_kwargs["text"] == "✅ You answered: EU"
+        adapter._on_message_callback.assert_awaited_once()
+        ctx, dispatched_adapter = adapter._on_message_callback.await_args.args
+        assert dispatched_adapter is adapter
+        assert ctx.text == "EU"
+        assert ctx.platform == "slack"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_sends_ephemeral_notice_and_does_not_dispatch(
+        self, adapter
+    ):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "actions": [{"action_id": "qans:abcdef012345:0"}],
+        }
+        with patch(
+            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
+            new=AsyncMock(return_value=None),
+        ):
+            await adapter._dispatch_block_action(payload)
+
+        adapter._clients["T1"].chat_postEphemeral.assert_awaited_once()
+        assert (
+            "expired"
+            in adapter._clients["T1"].chat_postEphemeral.await_args.kwargs["text"]
+        )
+        adapter._clients["T1"].chat_update.assert_not_awaited()
+        adapter._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_action_id_is_a_no_op(self, adapter):
+        adapter._on_message_callback = AsyncMock()
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "actions": [{"action_id": "not-a-choice-action"}],
+        }
+        await adapter._dispatch_block_action(payload)
+        adapter._on_message_callback.assert_not_awaited()
 
 
 class TestOutbound:

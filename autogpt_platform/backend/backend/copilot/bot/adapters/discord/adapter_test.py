@@ -378,6 +378,38 @@ class TestSendMethods:
         assert "Reply with a number" in sent
 
     @pytest.mark.asyncio
+    async def test_send_choice_buttons_sends_one_button_per_option(self):
+        adapter, client = _bare_adapter()
+        adapter._on_message_callback = AsyncMock()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        sent = await adapter.send_choice_buttons(
+            "123", "❓ Which region?", ["US", "EU"], "tok"
+        )
+
+        assert sent is True
+        assert adapter.supports_choice_buttons is True
+        channel.send.assert_awaited_once()
+        args, kwargs = channel.send.await_args
+        assert args == ("❓ Which region?",)
+        view = kwargs["view"]
+        assert [b.label for b in view.children] == ["US", "EU"]
+
+    @pytest.mark.asyncio
+    async def test_send_choice_buttons_returns_false_without_message_callback(self):
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        client.get_channel.return_value = channel
+
+        sent = await adapter.send_choice_buttons("123", "❓ Q?", ["US"], "tok")
+
+        assert sent is False
+        channel.send.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_send_message_silently_drops_when_channel_missing(self):
         adapter, client = _bare_adapter()
         client.get_channel.return_value = None

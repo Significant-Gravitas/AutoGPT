@@ -407,6 +407,85 @@ async def test_send_message_delivers_clarification_question(app_id):
 
 
 @pytest.mark.asyncio
+async def test_send_choice_buttons_posts_adaptive_card(app_id):
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+
+    sent = await adapter.send_choice_buttons(
+        "a:chat", "Which region?", ["US", "EU"], "abcdef012345"
+    )
+
+    assert sent is True
+    assert adapter.supports_choice_buttons is True
+    activity = adapter._client.send_activity.await_args.args[2]
+    card = activity["attachments"][0]["content"]
+    assert [a["title"] for a in card["actions"]] == ["US", "EU"]
+    assert card["actions"][0]["data"] == {
+        "qans_token": "abcdef012345",
+        "qans_index": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_choice_click_resolves_posts_confirmation_and_dispatches(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(
+        text="",
+        value={"qans_token": "abcdef012345", "qans_index": 1},
+    )
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value="EU"),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    posted = [c.args[2] for c in adapter._client.send_activity.await_args_list]
+    assert any("You answered: EU" in a.get("text", "") for a in posted)
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, dispatched_adapter = adapter._on_message_callback.await_args.args
+    assert dispatched_adapter is adapter
+    assert ctx.text == "EU"
+    assert ctx.platform == "teams"
+
+
+@pytest.mark.asyncio
+async def test_choice_click_expired_token_posts_notice_and_does_not_dispatch(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._client.send_activity = AsyncMock(return_value="activity-9")
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="", value={"qans_token": "abcdef012345", "qans_index": 0})
+
+    with patch(
+        "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
+        new=AsyncMock(return_value=None),
+    ):
+        await adapter._dispatch_activity(activity)
+
+    posted = [c.args[2] for c in adapter._client.send_activity.await_args_list]
+    assert any("expired" in a.get("text", "") for a in posted)
+    adapter._on_message_callback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_activity_without_choice_value_is_not_treated_as_a_click(app_id):
+    api = MagicMock()
+    adapter = TeamsAdapter(api)
+    adapter._on_message_callback = AsyncMock()
+    activity = _activity(text="hello")  # no "value" field at all
+
+    await adapter._dispatch_activity(activity)
+
+    adapter._on_message_callback.assert_awaited_once()
+    ctx, _ = adapter._on_message_callback.await_args.args
+    assert ctx.text == "hello"
+
+
+@pytest.mark.asyncio
 async def test_send_message_posts_markdown_activity(app_id):
     adapter = TeamsAdapter(MagicMock())
     adapter._client.send_activity = AsyncMock(return_value="activity-9")

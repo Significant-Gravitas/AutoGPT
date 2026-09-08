@@ -72,6 +72,8 @@ def _adapter() -> MagicMock:
     adapter.stop_typing = AsyncMock()
     adapter.supports_stream_drafts = False
     adapter.send_stream_draft = AsyncMock(return_value=False)
+    adapter.supports_choice_buttons = False
+    adapter.send_choice_buttons = AsyncMock(return_value=False)
     adapter.create_thread = AsyncMock(return_value="thread-new")
     adapter.rename_thread = AsyncMock(return_value=True)
     return adapter

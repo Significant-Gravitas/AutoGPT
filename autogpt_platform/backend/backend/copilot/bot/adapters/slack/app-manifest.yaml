@@ -60,6 +60,9 @@ oauth_config:
       - team:read           # workspace metadata for SERVER linking
 
 settings:
+  interactivity:
+    is_enabled: true
+    request_url: <BASE_URL>/api/copilot-webhooks/slack/interactive
   event_subscriptions:
     request_url: <BASE_URL>/api/copilot-webhooks/slack/events
     bot_events:

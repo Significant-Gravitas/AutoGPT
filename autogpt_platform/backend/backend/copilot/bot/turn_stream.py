@@ -23,7 +23,7 @@ from backend.platform_linking.models import TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
-from . import sessions
+from . import choices, sessions
 from .adapters.base import (
     FileAttachment,
     MessageContext,
@@ -249,15 +249,7 @@ class TurnStreamer:
                     sent_any_content = True
                 buffer = ""
             sent_any_content = True
-            # ask_question allows up to 10 questions of 25 options each, so
-            # the rendered text can exceed a platform's message cap (Discord
-            # 2000 chars) — split it the same way proactive posts do rather
-            # than risk send_message raising on an oversized single message.
-            message = _clarification_message(clarification_output)
-            for chunk in iter_chunks(message, adapter.chunk_flush_at):
-                await adapter.send_message(
-                    target_id, chunk, mentionable_users=ctx.mentionable_users
-                )
+            await _send_clarification(adapter, target_id, ctx, clarification_output)
 
         started_at = time.monotonic()
         reply_chars = 0
@@ -581,13 +573,77 @@ def _setup_required_message(setup_output: dict[str, Any]) -> str:
     )
 
 
+# Discord ActionRows/Slack actions blocks/Telegram inline keyboards/Teams
+# Adaptive Cards all stay readable well under this; past it a tap-target
+# picker turns into a wall of buttons, so plain numbered text reads better.
+MAX_NATIVE_CHOICE_OPTIONS = 10
+
+
+async def _send_clarification(
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    clarification_output: dict[str, Any],
+) -> None:
+    """Send each question as native choice buttons/select where the adapter
+    supports it and the option count fits; batch everything else (free-text
+    questions, too many options, unsupported adapters) as the existing
+    numbered-text rendering, chunked to the adapter's message cap.
+    """
+    text_only: list[Any] = []
+    for question in clarification_output.get("questions") or []:
+        if not isinstance(question, dict):
+            text_only.append(question)
+            continue
+        text = str(question.get("question") or "").strip()
+        options = _question_options(question)
+        fits_native = (
+            adapter.supports_choice_buttons
+            and text
+            and options
+            and len(options) <= MAX_NATIVE_CHOICE_OPTIONS
+        )
+        if not fits_native:
+            text_only.append(question)
+            continue
+        token = await choices.store_choice(adapter.platform_name, options)
+        sent = await adapter.send_choice_buttons(
+            target_id,
+            f"❓ {text}",
+            options,
+            token,
+            mentionable_users=ctx.mentionable_users,
+        )
+        if not sent:
+            await choices.clear_choice(adapter.platform_name, token)
+            text_only.append(question)
+
+    if not text_only:
+        return
+    message = _clarification_message({**clarification_output, "questions": text_only})
+    for chunk in iter_chunks(message, adapter.chunk_flush_at):
+        await adapter.send_message(
+            target_id, chunk, mentionable_users=ctx.mentionable_users
+        )
+
+
+def _question_options(question: dict[str, Any]) -> list[str]:
+    return [
+        str(option).strip()
+        for option in question.get("options") or []
+        if str(option).strip()
+    ]
+
+
 def _clarification_message(clarification_output: dict[str, Any]) -> str:
     """Render an ask_question payload as plain text with numbered options.
 
-    No platform-specific interactive UI yet — every adapter already supports
+    Used for questions ``_send_clarification`` couldn't render as native
+    choice buttons/select (free-text questions, too many options, or an
+    adapter without native support) -- every adapter already supports
     ``send_message``, and a typed reply (a number or free text) flows into
-    the session exactly like a normal chat message, so this alone fixes the
-    question going unanswered on every bot platform.
+    the session exactly like a normal chat message, so this is always a
+    working fallback.
     """
     blocks: list[str] = []
     for question in clarification_output.get("questions") or []:
@@ -596,11 +652,7 @@ def _clarification_message(clarification_output: dict[str, Any]) -> str:
         text = str(question.get("question") or "").strip()
         if not text:
             continue
-        options = [
-            str(option).strip()
-            for option in question.get("options") or []
-            if str(option).strip()
-        ]
+        options = _question_options(question)
         block = f"❓ {text}"
         if options:
             numbered = "\n".join(f"{i}. {o}" for i, o in enumerate(options, 1))

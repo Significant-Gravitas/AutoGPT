@@ -23,6 +23,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 
+from backend.copilot.bot import choices
 from backend.copilot.bot.adapters.base import (
     ChannelInfo,
     ChannelType,
@@ -40,13 +41,15 @@ from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
-from . import commands, config
+from . import choice_ui, commands, config
 from .api_client import TelegramClient
 from .targets import decode_target as _decode_target
 from .targets import encode_target as _encode_target
 from .text import to_html
 
 logger = logging.getLogger(__name__)
+
+_EXPIRED_NOTICE = "This question has expired — type your answer instead."
 
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
@@ -140,6 +143,10 @@ class TelegramAdapter(WebhookAdapter):
         if membership:
             self._track_membership_change(membership)
             return
+        callback_query = update.get("callback_query")
+        if callback_query:
+            await self._dispatch_callback_query(callback_query)
+            return
         message = update.get("message")
         if not message:
             return  # Edits, reactions, other member updates — not conversation input.
@@ -179,6 +186,56 @@ class TelegramAdapter(WebhookAdapter):
             )
         except Exception:
             logger.debug("Telegram reaction ack failed", exc_info=True)
+
+    async def _dispatch_callback_query(self, callback_query: dict[str, Any]) -> None:
+        """Resolve a clicked ask_question choice button and feed the answer
+        back through the normal message pipeline, exactly like a typed
+        reply."""
+        query_id = callback_query.get("id")
+        parsed = choice_ui.parse_callback_data(callback_query.get("data") or "")
+        if parsed is None:
+            if query_id:
+                await self._answer_callback_query(query_id)
+            return
+        token, index = parsed
+        option = await choices.resolve_choice("telegram", token, index)
+        if option is None:
+            if query_id:
+                await self._answer_callback_query(
+                    query_id, text=_EXPIRED_NOTICE, show_alert=True
+                )
+            return
+        if query_id:
+            await self._answer_callback_query(query_id)
+        message = callback_query.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        message_id = message.get("message_id")
+        if chat_id and message_id is not None:
+            try:
+                await self._client.call(
+                    "editMessageText",
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"✅ You answered: {option}",
+                )
+            except Exception:
+                logger.debug(
+                    "Telegram editMessageText after choice click failed",
+                    exc_info=True,
+                )
+        if self._on_message_callback is None:
+            return
+        ctx = _context_from_callback_query(callback_query, option)
+        if ctx is not None:
+            await self._on_message_callback(ctx, self)
+
+    async def _answer_callback_query(self, query_id: str, **kwargs: Any) -> None:
+        try:
+            await self._client.call(
+                "answerCallbackQuery", callback_query_id=query_id, **kwargs
+            )
+        except Exception:
+            logger.debug("Telegram answerCallbackQuery failed", exc_info=True)
 
     def _track_membership_change(self, membership: dict[str, Any]) -> None:
         """Keep the admin server roster current: the bot being added to /
@@ -382,6 +439,29 @@ class TelegramAdapter(WebhookAdapter):
             params["text"] += html.escape(f"\n\n{link_label}: {link_url}")
             await self._client.call("sendMessage", **params)
 
+    @property
+    def supports_choice_buttons(self) -> bool:
+        return True
+
+    async def send_choice_buttons(
+        self,
+        channel_id: str,
+        text: str,
+        options: list[str],
+        token: str,
+        mentionable_users: tuple[tuple[str, str], ...] = (),
+    ) -> bool:
+        chat_id, thread_id = _decode_target(channel_id)
+        await self._client.call(
+            "sendMessage",
+            chat_id=chat_id,
+            text=self.localize_markup(text),
+            parse_mode="HTML",
+            message_thread_id=thread_id,
+            reply_markup=choice_ui.choice_keyboard(token, options),
+        )
+        return True
+
     async def send_file(self, channel_id: str, text: str, file: FileAttachment) -> None:
         chat_id, thread_id = _decode_target(channel_id)
         # Images render inline as photos; everything else arrives as a document.
@@ -552,6 +632,31 @@ def _verify_secret(request: Request, _body: bytes) -> bool:
     expected = config.get_webhook_secret()
     provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
     return bool(expected) and hmac.compare_digest(provided, expected)
+
+
+def _context_from_callback_query(
+    callback_query: dict[str, Any], option: str
+) -> Optional[MessageContext]:
+    message = callback_query.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = str(chat.get("id", ""))
+    sender = callback_query.get("from") or {}
+    user_id = sender.get("id")
+    if not chat_id or user_id is None:
+        return None
+    is_private = chat.get("type") == "private"
+    target_id = _encode_target(chat_id, message.get("message_thread_id"))
+    return MessageContext(
+        platform="telegram",
+        channel_type="dm" if is_private else "channel",
+        server_id=None if is_private else chat_id,
+        channel_id=target_id,
+        message_id=str(message.get("message_id", "")),
+        user_id=str(user_id),
+        username=sender.get("username") or sender.get("first_name") or "unknown",
+        text=option,
+        bot_mentioned=True,
+    )
 
 
 def _collect_mentionable_users(message: dict[str, Any]) -> tuple[tuple[str, str], ...]:
