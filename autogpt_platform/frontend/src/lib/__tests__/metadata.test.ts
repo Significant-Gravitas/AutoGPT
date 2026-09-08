@@ -95,4 +95,18 @@ describe("getSiteUrl", () => {
 
     expect(getSiteUrl()).toBe("http://localhost:3000");
   });
+
+  test("skips a configured origin that is not a valid URL", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "platform.agpt.co");
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
+  });
+
+  test("always returns an origin new URL() accepts", () => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "not a url");
+    vi.stubEnv("VERCEL_URL", "also not a url");
+
+    expect(() => new URL(getSiteUrl())).not.toThrow();
+  });
 });

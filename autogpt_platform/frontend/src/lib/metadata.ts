@@ -46,14 +46,29 @@ export function buildPageMetadata({
   };
 }
 
+// Falls back rather than returning a value `new URL()` would reject: the root
+// layout builds metadataBase from this, so a bad origin here fails the build.
 export function getSiteUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;
-  if (configured) return configured;
-
-  // Next falls back to VERCEL_URL when metadataBase is unset, which is a
-  // per-deployment hostname; making it explicit keeps the two in step.
   const vercel = process.env.VERCEL_URL;
-  if (vercel) return `https://${vercel}`;
 
-  return "http://localhost:3000";
+  return (
+    firstValidOrigin([
+      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL,
+      vercel ? `https://${vercel}` : undefined,
+    ]) ?? "http://localhost:3000"
+  );
+}
+
+function firstValidOrigin(
+  candidates: (string | undefined)[],
+): string | undefined {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return new URL(candidate).toString().replace(/\/$/, "");
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
