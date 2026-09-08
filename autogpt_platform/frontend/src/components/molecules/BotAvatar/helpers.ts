@@ -1,4 +1,13 @@
-export type ShapeId = "round" | "dome" | "squircle" | "tall" | "wide" | "bean";
+export type ShapeId =
+  | "round"
+  | "dome"
+  | "squircle"
+  | "wide"
+  | "bean"
+  | "egg"
+  | "pebble"
+  | "pear"
+  | "cloud";
 export type ColorId =
   | "lavender"
   | "plum"
@@ -12,8 +21,6 @@ export type AccessoryId =
   | "none"
   | "glasses"
   | "headset"
-  | "cap"
-  | "pen"
   | "star"
   | "bow"
   | "badge"
@@ -103,13 +110,6 @@ export const SHAPES: ShapeOption[] = [
     anchors: { cx: 60, eyeY: 62, eyeGap: 26, top: 24, bottom: 104, width: 80 },
   },
   {
-    id: "tall",
-    label: "Tall",
-    hint: "tallest in a row",
-    path: "M60,12 C84,12 88,24 88,44 L88,80 C88,100 82,110 60,110 C38,110 32,100 32,80 L32,44 C32,24 36,12 60,12 Z",
-    anchors: { cx: 60, eyeY: 54, eyeGap: 20, top: 12, bottom: 110, width: 56 },
-  },
-  {
     id: "wide",
     label: "Wide",
     hint: "low and wide",
@@ -122,6 +122,34 @@ export const SHAPES: ShapeOption[] = [
     hint: "lively, off-centre",
     path: "M34,40 C36,22 56,16 72,22 C92,30 102,50 98,72 C94,94 76,108 54,104 C32,100 20,80 26,60 C28,52 33,48 34,40 Z",
     anchors: { cx: 62, eyeY: 58, eyeGap: 24, top: 18, bottom: 106, width: 76 },
+  },
+  {
+    id: "egg",
+    label: "Egg",
+    hint: "narrow crown, calm",
+    path: "M60,16 C82,16 96,42 96,68 C96,92 80,108 60,108 C40,108 24,92 24,68 C24,42 38,16 60,16 Z",
+    anchors: { cx: 60, eyeY: 60, eyeGap: 22, top: 16, bottom: 108, width: 72 },
+  },
+  {
+    id: "pebble",
+    label: "Pebble",
+    hint: "settled, grounded",
+    path: "M56,26 C80,20 104,38 102,66 C100,90 84,106 58,106 C32,106 14,92 16,66 C18,44 34,30 56,26 Z",
+    anchors: { cx: 59, eyeY: 62, eyeGap: 26, top: 24, bottom: 106, width: 86 },
+  },
+  {
+    id: "pear",
+    label: "Pear",
+    hint: "small head, big heart",
+    path: "M60,18 C75,18 84,30 84,46 C84,60 102,68 102,86 C102,102 84,108 60,108 C36,108 18,102 18,86 C18,68 36,60 36,46 C36,30 45,18 60,18 Z",
+    anchors: { cx: 60, eyeY: 58, eyeGap: 20, top: 20, bottom: 108, width: 84 },
+  },
+  {
+    id: "cloud",
+    label: "Cloud",
+    hint: "soft, drifting",
+    path: "M34,58 C24,42 42,26 56,36 C62,18 88,18 92,40 C108,38 114,64 98,72 C108,88 92,102 72,96 C58,106 38,102 32,90 C12,90 12,62 34,58 Z",
+    anchors: { cx: 61, eyeY: 62, eyeGap: 24, top: 26, bottom: 100, width: 92 },
   },
 ];
 
@@ -204,8 +232,6 @@ export const ACCESSORIES: AccessoryOption[] = [
   { id: "none", label: "None", hint: "plain" },
   { id: "glasses", label: "Glasses", hint: "research, review" },
   { id: "headset", label: "Headset", hint: "support, ops" },
-  { id: "cap", label: "Cap", hint: "sales, field" },
-  { id: "pen", label: "Pen", hint: "writing, content" },
   { id: "star", label: "Star pin", hint: "a raised favourite" },
   { id: "bow", label: "Bow", hint: "marketing, events" },
   { id: "badge", label: "Badge", hint: "finance, admin" },

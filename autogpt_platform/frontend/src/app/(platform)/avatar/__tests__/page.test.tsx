@@ -47,12 +47,12 @@ describe("AvatarPage", () => {
       "round.lavender.none",
     );
 
-    await user.click(pickerRadio("Shape", "Tall"));
+    await user.click(pickerRadio("Shape", "Egg"));
     await user.click(pickerRadio("Colour", "Mint"));
     await user.click(pickerRadio("Accessory", "Headset"));
 
-    expect(stageAvatar().getAttribute("data-avatar")).toBe("tall.mint.headset");
-    expect(pickerRadio("Shape", "Tall").getAttribute("aria-checked")).toBe(
+    expect(stageAvatar().getAttribute("data-avatar")).toBe("egg.mint.headset");
+    expect(pickerRadio("Shape", "Egg").getAttribute("aria-checked")).toBe(
       "true",
     );
     expect(pickerRadio("Shape", "Round").getAttribute("aria-checked")).toBe(
@@ -82,7 +82,7 @@ describe("AvatarPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Shuffle" }));
     expect(stageAvatar().getAttribute("data-avatar")).toBe(
-      "bean.butter.headband",
+      "cloud.butter.headband",
     );
 
     await user.click(pickerRadio("Status", "Working"));

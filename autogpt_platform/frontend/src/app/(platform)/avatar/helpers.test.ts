@@ -26,8 +26,8 @@ describe("avatar config codec", () => {
 
   test("falls back per field on junk input", () => {
     expect(decodeConfig(null)).toEqual(DEFAULT_CONFIG);
-    expect(decodeConfig("tall.neon.glasses")).toEqual({
-      shape: "tall",
+    expect(decodeConfig("egg.neon.glasses")).toEqual({
+      shape: "egg",
       color: DEFAULT_CONFIG.color,
       accessory: "glasses",
     });
@@ -54,8 +54,8 @@ describe("avatar config codec", () => {
 describe("export helpers", () => {
   test("filename encodes the config", () => {
     expect(
-      exportFilename({ shape: "dome", color: "sky", accessory: "cap" }, "png"),
-    ).toBe("expert-avatar-dome-sky-cap.png");
+      exportFilename({ shape: "dome", color: "sky", accessory: "bow" }, "png"),
+    ).toBe("expert-avatar-dome-sky-bow.png");
   });
 
   test("serialized svg is standalone and export sized", () => {
@@ -71,7 +71,7 @@ describe("export helpers", () => {
 
 describe("expert avatar resolution", () => {
   test("a generated avatar url round-trips and an upload does not parse", () => {
-    const config = { shape: "wide", color: "coral", accessory: "cap" } as const;
+    const config = { shape: "wide", color: "coral", accessory: "bow" } as const;
     expect(parseAvatarUrl(avatarUrlFor(config))).toEqual(config);
     expect(parseAvatarUrl("https://cdn.example/otto.png")).toBeNull();
     expect(parseAvatarUrl("/avatars/cube.neon.hat.svg")).toBeNull();

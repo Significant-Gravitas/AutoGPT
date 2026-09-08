@@ -6,7 +6,17 @@ lists and the name hash mirror ``components/molecules/BotAvatar/helpers.ts``
 so a name seeds the same look on both sides.
 """
 
-AVATAR_SHAPES = ["round", "dome", "squircle", "tall", "wide", "bean"]
+AVATAR_SHAPES = [
+    "round",
+    "dome",
+    "squircle",
+    "wide",
+    "bean",
+    "egg",
+    "pebble",
+    "pear",
+    "cloud",
+]
 AVATAR_COLORS = [
     "lavender",
     "plum",
@@ -21,8 +31,6 @@ AVATAR_ACCESSORIES = [
     "none",
     "glasses",
     "headset",
-    "cap",
-    "pen",
     "star",
     "bow",
     "badge",

@@ -151,8 +151,8 @@ class RaiseExpertTool(BaseTool):
                     "description": (
                         "The one accessory that says what they do: glasses "
                         "for research and review, headset for support and ops, "
-                        "cap for sales and field work, pen for writing, badge "
-                        "for finance and admin, bow for marketing and events, "
+                        "badge for finance and admin, bow for marketing and "
+                        "events, "
                         "star for a favourite, crown for a pod lead, propeller "
                         "for experiments, ears for a curious scout, flower for "
                         "people and community, bowtie for formal or legal work, "

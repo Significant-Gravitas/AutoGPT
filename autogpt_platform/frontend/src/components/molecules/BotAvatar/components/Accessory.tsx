@@ -185,67 +185,6 @@ export function Accessory({
         </g>
       );
     }
-    case "cap": {
-      const capLat = Math.min(eyeLat + 0.62, 1.15);
-      const capRadius = 1.1;
-      const ring: Vec3[] = Array.from({ length: 49 }, (_, index) =>
-        fromSurface(-Math.PI + (2 * Math.PI * index) / 48, capLat, capRadius),
-      );
-      const front = ring
-        .map((point) => rotate(point, pose))
-        .filter((point) => point[2] >= 0.02)
-        .map((point) => toScreen(point, body));
-      const billLat = capLat - 0.08;
-      const bill: Vec3[] = [
-        fromSurface(0.25, billLat, 1.04),
-        fromSurface(0.55, billLat - 0.05, 1.32),
-        fromSurface(0.8, billLat - 0.1, 1.52),
-        fromSurface(1.05, billLat - 0.12, 1.58),
-        fromSurface(1.3, billLat - 0.1, 1.5),
-        fromSurface(1.5, billLat - 0.05, 1.28),
-        fromSurface(1.55, billLat, 1.04),
-      ];
-      const dome =
-        front.length > 2 && layer === "front"
-          ? `M${front[0].x},${front[0].y} ${front
-              .slice(1)
-              .map((point) => `L${point.x},${point.y}`)
-              .join(
-                " ",
-              )} A${body.rx * capRadius},${body.ry * capRadius} 0 0 0 ${front[0].x},${front[0].y} Z`
-          : null;
-      return (
-        <g>
-          <Slab points={bill} />
-          {dome ? (
-            <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
-          ) : null}
-          <Strand
-            points={[
-              [0, capRadius - 0.02, 0],
-              [0, capRadius + 0.05, 0],
-            ]}
-            width={3.5}
-          />
-        </g>
-      );
-    }
-    case "pen": {
-      const along = (t: number): Vec3 =>
-        fromSurface(1.28 - 0.72 * t, -0.05 + 1.05 * t, 1.06 + 0.26 * t);
-      const segment = (from: number, to: number, steps = 6): Vec3[] =>
-        Array.from({ length: steps + 1 }, (_, index) =>
-          along(from + ((to - from) * index) / steps),
-        );
-      return (
-        <g>
-          <Strand points={segment(0, 0.8)} width={7} />
-          <Strand points={segment(0.62, 0.72, 2)} width={7} color="#fff" />
-          <Strand points={segment(0.8, 0.93, 2)} width={5.2} color="#F4E3B4" />
-          <Strand points={segment(0.93, 1, 2)} width={2.6} color={INK} />
-        </g>
-      );
-    }
     case "star": {
       const center = fromSurface(0.85, -0.7, 1.01);
       return (
