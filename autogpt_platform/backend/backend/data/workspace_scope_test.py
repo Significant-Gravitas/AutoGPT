@@ -1,7 +1,11 @@
 import pytest
 
 from backend.data import workspace as workspace_module
-from backend.data.workspace_scope import WorkspaceScope, resolve_expert_workspace_scope
+from backend.data.workspace_scope import (
+    WorkspaceScope,
+    _NoGrants,
+    resolve_expert_workspace_scope,
+)
 
 SCOPE = WorkspaceScope(
     expert_id="expert-a",
@@ -51,6 +55,13 @@ def test_delegated_sessions_are_read_only(path: str):
 def test_everything_else_is_denied(path: str):
     assert not SCOPE.allows_path(path)
     assert not SCOPE.allows_path(path, write=True)
+
+
+def test_a_missing_expert_keeps_its_own_turn_but_loses_its_skills_folder():
+    scope = _NoGrants(expert_id="expert-a").with_session("live")
+    assert scope.allows_path("/sessions/live/tool-output.json", write=True)
+    assert not scope.allows_path("/experts/expert-a/skills/mine/SKILL.md")
+    assert not scope.allows_path("/experts/expert-a/skills/mine/SKILL.md", write=True)
 
 
 def test_resolver_is_reachable_through_the_direct_db_accessor():

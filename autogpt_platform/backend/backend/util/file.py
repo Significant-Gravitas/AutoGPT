@@ -153,14 +153,19 @@ async def store_media_file(
     if not user_id:
         raise ValueError("execution_context.user_id is required")
 
-    # Create workspace_manager if we have workspace_id (with session scoping)
     # Import here to avoid circular import (file.py → workspace.py → data → blocks → file.py)
+    from backend.copilot.context import current_workspace_scope
     from backend.util.workspace import WorkspaceManager
 
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
+        # A block input names a workspace file, so this manager needs the same
+        # expert grants as the session's own file tools.
         workspace_manager = WorkspaceManager(
-            user_id, execution_context.workspace_id, execution_context.session_id
+            user_id,
+            execution_context.workspace_id,
+            execution_context.session_id,
+            scope=await current_workspace_scope(user_id),
         )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))
