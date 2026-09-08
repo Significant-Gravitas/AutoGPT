@@ -428,6 +428,7 @@ async def enqueue_conversation_turn(
         finding = _distill_finding(assistant_msg)
         if finding:
             envelope = MemoryEnvelope(
+                user=user_display_name,
                 content=finding,
                 source_kind=SourceKind.assistant_derived,
                 memory_kind=MemoryKind.finding,

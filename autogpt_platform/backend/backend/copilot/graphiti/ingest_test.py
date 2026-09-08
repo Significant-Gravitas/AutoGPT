@@ -1,6 +1,7 @@
 """Tests for Graphiti ingestion queue and worker logic."""
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -636,6 +637,13 @@ class TestDerivedFindingLane:
             )
             # Should have 2 items: user episode + derived finding
             assert q.qsize() == 2
+
+        q.get_nowait()
+        finding_payload = q.get_nowait()
+        # CUSTOM_EXTRACTION_INSTRUCTIONS tells the extractor to always make an
+        # entity of the envelope's "user"; a null one leaves the finding with
+        # nothing to attach to.
+        assert json.loads(finding_payload["episode_body"])["user"] == "Alice"
 
     @pytest.mark.asyncio
     async def test_short_assistant_msg_skips_finding(self) -> None:
