@@ -36,3 +36,25 @@ export const Canceled: Story = {
     trial: { ...meta.args.trial, active: false, status: "canceled" },
   },
 };
+
+export const IntroductoryOfferUsed: Story = {
+  args: {
+    trial: {
+      ...meta.args.trial,
+      active: false,
+      status: "canceled",
+      rejection_reason: "intro_offer_already_used",
+    },
+  },
+};
+
+export const CardVerificationFailed: Story = {
+  args: {
+    trial: {
+      ...meta.args.trial,
+      active: false,
+      status: "canceled",
+      rejection_reason: "card_verification_failed",
+    },
+  },
+};

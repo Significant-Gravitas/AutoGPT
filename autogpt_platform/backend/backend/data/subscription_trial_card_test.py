@@ -46,7 +46,7 @@ async def test_trial_accepts_customer_invoice_default(
             {
                 "id": "pm_valid",
                 "type": "card",
-                "card": {"exp_month": 12, "exp_year": 2034},
+                "card": {"exp_month": 12, "exp_year": 2034, "fingerprint": "fp_valid"},
             },
             SubscriptionTier.TRIAL,
         ),

@@ -92,6 +92,21 @@ async def test_status_never_exposes_internal_spend_or_stripe_identifiers(trial):
 
 
 @pytest.mark.asyncio
+async def test_status_exposes_safe_rejection_reason(trial):
+    trial = trial.model_copy(
+        update={"status": "canceled", "rejection_reason": "intro_offer_already_used"}
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.model_dump().get("rejection_reason") == "intro_offer_already_used"
+
+
+@pytest.mark.asyncio
 async def test_checkout_uses_authenticated_identity_and_server_return_urls(trial):
     app = FastAPI()
     app.include_router(routes.router)

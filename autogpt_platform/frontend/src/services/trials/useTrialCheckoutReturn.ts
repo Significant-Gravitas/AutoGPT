@@ -36,7 +36,11 @@ export function useTrialCheckoutReturn() {
           throw new Error("Could not confirm your trial.");
         if (!(await updateTrialStatusCache({ queryClient, userID, response })))
           return;
-        if (!response.data.active && !response.data.converted)
+        if (
+          !response.data.active &&
+          !response.data.converted &&
+          response.data.status !== "canceled"
+        )
           throw new Error(
             "Your trial is not active. Review your card setup and try again.",
           );

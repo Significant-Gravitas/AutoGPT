@@ -67,6 +67,10 @@ class SubscriptionItems(BaseModel):
     has_more: bool = False
 
 
+class CancellationDetails(BaseModel):
+    comment: str | None = None
+
+
 class SubscriptionSnapshot(BaseModel):
     id: str
     customer: str
@@ -76,6 +80,7 @@ class SubscriptionSnapshot(BaseModel):
     trial_end: int | None = None
     ended_at: int | None = None
     cancel_at_period_end: bool = False
+    cancellation_details: CancellationDetails | None = None
     default_payment_method: PaymentMethod | None = None
     default_source: str | dict | None = None
     customer_default_payment_method: PaymentMethod | None = None

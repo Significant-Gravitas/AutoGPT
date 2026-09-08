@@ -15,6 +15,7 @@ from backend.data.subscription_trial_payment import (
     SubscriptionSnapshot as SubscriptionSnapshot,
 )
 from backend.data.subscription_trial_payment import get_customer_default_payment_method
+from backend.data.subscription_trial_rejection import TrialRejectionReason
 
 
 async def reconcile_trial_subscription(
@@ -63,24 +64,40 @@ async def _reconcile_locked(
     checkout_complete = trial.consumed_at is not None or await _completed_card_checkout(
         trial, snapshot.id, tx
     )
+    rejection_reason = (
+        trial.rejection_reason
+        or TrialRejectionReason.from_stripe_comment(
+            snapshot.cancellation_details.comment
+            if snapshot.cancellation_details
+            else None
+        )
+    )
     if (
         checkout_complete
         and snapshot.status == "trialing"
         and trial.converted_at is None
     ):
         method = snapshot.effective_payment_method()
-        duplicate = snapshot.has_verified_card(
-            now
-        ) and not await claim_trial_identities(
-            trial, method.card.fingerprint if method and method.card else None, tx
-        )
-        if snapshot.cancel_at_period_end or duplicate:
+        fingerprint = method.card.fingerprint if method and method.card else None
+        if snapshot.has_verified_card(now):
+            if not fingerprint:
+                rejection_reason = TrialRejectionReason.CARD_VERIFICATION_FAILED
+            elif not await claim_trial_identities(trial, fingerprint, tx):
+                rejection_reason = TrialRejectionReason.INTRO_OFFER_ALREADY_USED
+        if snapshot.cancel_at_period_end or rejection_reason:
+            cancel_params: stripe.Subscription.CancelParams = {
+                "invoice_now": False,
+                "prorate": False,
+                "expand": ["default_payment_method", "latest_invoice"],
+            }
+            if rejection_reason:
+                cancel_params["cancellation_details"] = {
+                    "comment": rejection_reason.stripe_comment
+                }
             raw = await stripe_call(
                 stripe.Subscription.cancel_async,
                 snapshot.id,
-                invoice_now=False,
-                prorate=False,
-                expand=["default_payment_method", "latest_invoice"],
+                **cancel_params,
             )
             snapshot = SubscriptionSnapshot.model_validate(raw)
             if snapshot.id != subscription_id or snapshot.status != "canceled":
@@ -98,7 +115,9 @@ async def _reconcile_locked(
         if checkout_complete
         else SubscriptionTier.NO_TIER
     )
-    await _save_snapshot(trial, snapshot, tier, now, tx, checkout_complete)
+    await _save_snapshot(
+        trial, snapshot, tier, now, tx, checkout_complete, rejection_reason
+    )
     if trial.converted_at:
         return dict(raw), None
     if tier == SubscriptionTier.NO_TIER:
@@ -198,6 +217,7 @@ async def _save_snapshot(
     now: datetime,
     tx: Prisma,
     checkout_complete: bool,
+    rejection_reason: TrialRejectionReason | None = None,
 ) -> None:
     verified_at = (
         (trial.card_verified_at or now)
@@ -218,6 +238,7 @@ async def _save_snapshot(
         where={"userId": trial.user_id},
         data={
             "stripeSubscriptionId": snapshot.id,
+            "rejectionReason": rejection_reason,
             "status": (
                 "checkout_pending"
                 if not checkout_complete

@@ -22,6 +22,7 @@ from backend.data.subscription_trial_checkout import (
     resolve_trial_price,
 )
 from backend.data.subscription_trial_config import AcceptedTrialOffer, get_trial_offer
+from backend.data.subscription_trial_rejection import TrialRejectionReason
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
 
@@ -52,6 +53,7 @@ class TrialStatusResponse(BaseModel):
     eligible: bool = False
     offer: TrialOfferResponse | None = None
     status: str | None = None
+    rejection_reason: TrialRejectionReason | None = None
     ends_at: datetime | None = None
     cancel_at_period_end: bool = False
     allowance_used_percent: float | None = None
@@ -81,6 +83,7 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
+            rejection_reason=trial.rejection_reason,
             ends_at=trial.ends_at,
             cancel_at_period_end=trial.cancel_at_period_end,
             active=trial.active,

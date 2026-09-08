@@ -220,6 +220,7 @@ model SubscriptionTrial {
   checkoutCancelUrl         String
   checkoutMetadata          Json                        @default("{}")
   status                    String                      @default("checkout_pending")
+  rejectionReason           String?
   cardVerifiedAt            DateTime?
   startedAt                 DateTime?
   endsAt                    DateTime?

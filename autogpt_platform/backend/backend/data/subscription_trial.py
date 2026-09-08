@@ -8,6 +8,7 @@ from prisma.types import SubscriptionTrialWhereInput
 from pydantic import BaseModel, TypeAdapter
 
 from backend.data.subscription_trial_config import AcceptedTrialOffer, trial_is_active
+from backend.data.subscription_trial_rejection import TrialRejectionReason
 from backend.util.json import SafeJson
 
 
@@ -23,6 +24,7 @@ class TrialState(BaseModel):
     cancel_url: str
     checkout_metadata: dict[str, str]
     status: str
+    rejection_reason: TrialRejectionReason | None = None
     card_verified_at: datetime | None
     started_at: datetime | None
     ends_at: datetime | None
@@ -57,6 +59,11 @@ class TrialState(BaseModel):
                 row.checkoutMetadata
             ),
             status=row.status,
+            rejection_reason=(
+                TrialRejectionReason(row.rejectionReason)
+                if row.rejectionReason
+                else None
+            ),
             card_verified_at=row.cardVerifiedAt,
             started_at=row.startedAt,
             ends_at=row.endsAt,

@@ -2,6 +2,7 @@ import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialSt
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
+import { TrialRejection } from "./TrialRejection";
 
 interface Props {
   trial: TrialStatusResponse;
@@ -11,6 +12,8 @@ interface Props {
 
 export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
   if (!trial.offer) return null;
+  if (trial.status === "canceled" && trial.rejection_reason)
+    return <TrialRejection reason={trial.rejection_reason} />;
   const end = formatTrialEnd(trial.ends_at);
   return (
     <div className="flex flex-col gap-3">

@@ -28622,6 +28622,11 @@
         ],
         "title": "TrialOfferResponse"
       },
+      "TrialRejectionReason": {
+        "type": "string",
+        "enum": ["intro_offer_already_used", "card_verification_failed"],
+        "title": "TrialRejectionReason"
+      },
       "TrialStatusResponse": {
         "properties": {
           "eligible": {
@@ -28638,6 +28643,12 @@
           "status": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Status"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialRejectionReason" },
+              { "type": "null" }
+            ]
           },
           "ends_at": {
             "anyOf": [
