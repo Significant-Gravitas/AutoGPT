@@ -38,8 +38,25 @@ export function useExpertCredentialSelection(
       row.schema.discriminator_values,
     );
   }
-  const credential = findCredential(row.selected?.id) ?? findCredential();
+  // The matcher abstains when several accounts qualify, which would leave the
+  // row on Connect with an empty offer — the backend omits already-granted
+  // accounts — and no way forward. Grant order breaks the tie.
+  function firstGrantedMatch() {
+    for (const grant of grants.data ?? []) {
+      const match = findCredential(grant.credential_id);
+      if (match) return match;
+    }
+    return undefined;
+  }
+  const credential = findCredential(row.selected?.id) ?? firstGrantedMatch();
   const hasGrant = Boolean(row.expertGrant);
+  const isSelectionGranted = Boolean(
+    hasGrant &&
+      row.selected &&
+      !grants.isError &&
+      grants.data &&
+      credential?.id === row.selected.id,
+  );
 
   useEffect(() => {
     if (!hasGrant || !grants.data || !providers || grants.isFetching) return;
@@ -64,5 +81,18 @@ export function useExpertCredentialSelection(
     providers,
   ]);
 
-  return grants;
+  return {
+    isPending: grants.isPending,
+    isError: grants.isError,
+    isSelectionGranted,
+    /** Whether the expert holds the grant according to a freshly fetched list.
+     *  A refetch resolves rather than throws when it fails, so its result is
+     *  the only proof the grant landed. */
+    async confirmGrant(id: string) {
+      const refreshed = await grants.refetch();
+      return Boolean(
+        refreshed?.data?.some((grant) => grant.credential_id === id),
+      );
+    },
+  };
 }

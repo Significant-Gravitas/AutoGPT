@@ -147,13 +147,20 @@ export function toConnectorRows(
   }));
 }
 
-/** Grant candidates eligible for both requirements. A requirement without
- *  grant info contributes nothing to narrow by. */
+/** Grant candidates eligible for both requirements. A requirement the server
+ *  sent no candidates for — or one belonging to another expert — narrows the
+ *  row to nothing rather than letting the other side's candidates through:
+ *  offering an account for a requirement it was never cleared for would grant
+ *  access the expert was not meant to have. */
 export function intersectGrants(
   kept: ExpertGrant | undefined,
   incoming: ExpertGrant | undefined,
 ): ExpertGrant | undefined {
-  if (!kept || !incoming) return kept ?? incoming;
+  const defined = kept ?? incoming;
+  if (!defined) return undefined;
+  if (!kept || !incoming || kept.expertId !== incoming.expertId) {
+    return { expertId: defined.expertId, credentials: [] };
+  }
   const eligible = new Set(incoming.credentials.map((c) => c.id));
   return {
     expertId: kept.expertId,

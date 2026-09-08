@@ -41,12 +41,32 @@ describe("expert grant candidates on merged connector rows", () => {
     expect(rows[0].expertGrant?.credentials.map((c) => c.id)).toEqual(["both"]);
   });
 
-  it("keeps the defined side when only one requirement carries grant info", () => {
+  it("offers nothing when only one requirement carries grant info", () => {
     const grant = {
       expertId: "e",
       credentials: [{ id: "x", title: "X", type: "oauth2" }],
     };
-    expect(intersectGrants(undefined, grant)).toEqual(grant);
-    expect(intersectGrants(grant, undefined)).toEqual(grant);
+    const closed = { expertId: "e", credentials: [] };
+    expect(intersectGrants(undefined, grant)).toEqual(closed);
+    expect(intersectGrants(grant, undefined)).toEqual(closed);
+  });
+
+  it("offers nothing when the merged requirements name different experts", () => {
+    const kept = {
+      expertId: "expert-a",
+      credentials: [{ id: "x", title: "X", type: "oauth2" }],
+    };
+    const incoming = {
+      expertId: "expert-b",
+      credentials: [{ id: "x", title: "X", type: "oauth2" }],
+    };
+    expect(intersectGrants(kept, incoming)).toEqual({
+      expertId: "expert-a",
+      credentials: [],
+    });
+  });
+
+  it("leaves a row without any grant info in personal mode", () => {
+    expect(intersectGrants(undefined, undefined)).toBeUndefined();
   });
 });

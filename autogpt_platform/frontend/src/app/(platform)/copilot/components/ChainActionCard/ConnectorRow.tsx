@@ -8,6 +8,7 @@ import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInpu
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
 import { ProviderAvatar } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/ProviderAvatar";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import {
   CredentialsProvidersContext,
@@ -29,6 +30,7 @@ type SavedCredential = CredentialsProviderData["savedCredentials"][number];
 
 const UNUSABLE_ACCOUNT_ERROR =
   "That account is missing the access this needs. Try connecting again.";
+const GRANT_FAILED_ERROR = "Couldn't grant access. Try again.";
 
 export function ConnectorRow({ row }: Props) {
   const [isDialogOpen, setDialogOpen] = useState(false);
@@ -40,16 +42,15 @@ export function ConnectorRow({ row }: Props) {
   const [connected, setConnected] = useState<Grantable | null>(null);
   // Credential ids that existed when Connect was clicked, so the grant goes
   // to the account the user just added rather than one they already had.
-  const knownIds = useRef<Set<string>>(new Set());
+  // `null` while the provider's accounts were still loading, where a diff
+  // would call every account the user already had new.
+  const knownIds = useRef<Set<string> | null>(null);
   const allProviders = useContext(CredentialsProvidersContext);
   const { mutateAsync: grantCredentials, isPending: isGranting } =
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
   const grantedCredentials = useExpertCredentialSelection(row, allProviders);
 
-  // A credential the user already had — or one they just created in the
-  // dialog — satisfies this row, so pick it up as soon as the providers
-  // query refreshes rather than making them choose it again.
   const savedCredential = findSavedUserCredentialByProviderAndType(
     row.schema.credentials_provider ?? [],
     row.schema.credentials_types ?? [],
@@ -58,7 +59,10 @@ export function ConnectorRow({ row }: Props) {
     row.schema.discriminator_values,
   );
 
-  async function grant(credential: Grantable): Promise<boolean> {
+  async function grant(
+    credential: Grantable,
+    candidate?: SavedCredential,
+  ): Promise<boolean> {
     if (!expertGrant) return false;
     setGrantError(null);
     try {
@@ -66,11 +70,22 @@ export function ConnectorRow({ row }: Props) {
         expertId: expertGrant.expertId,
         data: { credential_ids: [credential.id] },
       });
-    } catch {
-      setGrantError("Couldn't grant access. Try again.");
+    } catch (error) {
+      setGrantError(
+        error instanceof ApiError ? error.message : GRANT_FAILED_ERROR,
+      );
       return false;
     }
-    await grantedCredentials.refetch();
+    const isGranted = await grantedCredentials.confirmGrant(credential.id);
+    const account =
+      candidate ??
+      allProviders?.[row.provider]?.savedCredentials.find(
+        (saved) => saved.id === credential.id,
+      );
+    if (!isGranted || !account || !grantableAmong(row, [account])) {
+      setGrantError(GRANT_FAILED_ERROR);
+      return false;
+    }
     setConnected(null);
     row.select({
       id: credential.id,
@@ -84,10 +99,7 @@ export function ConnectorRow({ row }: Props) {
 
   useEffect(() => {
     if (expertGrant) {
-      // The expert must be granted the credential; the account merely having
-      // one is not enough. After a sign-in from this row, grant the account
-      // that appeared since Connect was clicked — never a pre-existing one.
-      if (!awaitingGrant || row.selected) return;
+      if (!awaitingGrant || row.selected || !knownIds.current) return;
       const fresh = newlyConnectedCredential(
         row,
         allProviders,
@@ -117,17 +129,27 @@ export function ConnectorRow({ row }: Props) {
       title: savedCredential.title ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- row.select is rebuilt each render by the card
-  }, [savedCredential?.id, row.selected, allProviders, awaitingGrant]);
+  }, [
+    savedCredential?.id,
+    row.selected,
+    allProviders,
+    awaitingGrant,
+    expertGrant?.expertId,
+  ]);
 
   const grantableOptions = [
     ...(connected ? [connected] : []),
     ...(expertGrant?.credentials ?? []).filter((c) => c.id !== connected?.id),
   ];
+  const isSatisfied = expertGrant
+    ? grantedCredentials.isSelectionGranted
+    : Boolean(row.selected);
 
   function openDialog() {
-    knownIds.current = new Set(
-      (allProviders?.[row.provider]?.savedCredentials ?? []).map((c) => c.id),
-    );
+    const saved = allProviders?.[row.provider]?.savedCredentials;
+    knownIds.current = saved ? new Set(saved.map((c) => c.id)) : null;
+    setGrantError(null);
+    setAwaitingGrant(false);
     setDialogOpen(true);
   }
 
@@ -143,7 +165,7 @@ export function ConnectorRow({ row }: Props) {
         </span>
         {grantError && !isDialogOpen ? (
           <span className="truncate text-xs text-red-600">{grantError}</span>
-        ) : expertGrant && !row.selected ? (
+        ) : expertGrant && !isSatisfied ? (
           <span className="truncate text-xs text-zinc-500">
             {grantableOptions.length > 0
               ? "Needs this expert's access"
@@ -158,7 +180,7 @@ export function ConnectorRow({ row }: Props) {
         )}
       </div>
 
-      {row.selected ? (
+      {isSatisfied ? (
         <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
@@ -168,7 +190,9 @@ export function ConnectorRow({ row }: Props) {
           variant="primary"
           size="small"
           className="shrink-0"
-          disabled={isGranting}
+          disabled={
+            isGranting || Boolean(expertGrant && grantedCredentials.isPending)
+          }
           onClick={openDialog}
         >
           Connect
@@ -197,10 +221,9 @@ export function ConnectorRow({ row }: Props) {
             row.onConnected();
             return;
           }
-          const provider = allProviders?.[row.provider];
-          // A flow that does not report its credential (or a provider list
-          // not loaded yet) leaves the refresh to find the new account.
-          if (!credential || !provider) {
+          // A flow that does not report its credential leaves the refresh to
+          // find the new account.
+          if (!credential) {
             setAwaitingGrant(true);
             return;
           }
@@ -208,15 +231,14 @@ export function ConnectorRow({ row }: Props) {
           // an existing account keeps its id, which a refresh diff would
           // never surface. One that cannot satisfy the row is an error, not
           // a wait.
-          const usable = grantableAmong(row, provider, [
-            toSavedCredential(credential),
-          ]);
+          const account = toSavedCredential(credential);
+          const usable = grantableAmong(row, [account]);
           if (!usable) {
             setGrantError(UNUSABLE_ACCOUNT_ERROR);
             return;
           }
           setConnected(usable);
-          void grant(usable);
+          void grant(usable, account);
         }}
       />
     </div>
@@ -224,10 +246,10 @@ export function ConnectorRow({ row }: Props) {
 }
 
 /** The credential among `candidates` that satisfies `row`, shaped for a
- *  grant. */
+ *  grant. Matching reads nothing but the candidates, so a row whose provider
+ *  has not loaded yet is still answerable. */
 function grantableAmong(
   row: Row,
-  provider: CredentialsProviderData,
   candidates: SavedCredential[],
 ): Grantable | null {
   if (candidates.length === 0) return null;
@@ -235,7 +257,11 @@ function grantableAmong(
     row.schema.credentials_provider ?? [],
     row.schema.credentials_types ?? [],
     row.schema.credentials_scopes,
-    { [row.provider]: { ...provider, savedCredentials: candidates } },
+    {
+      [row.provider]: {
+        savedCredentials: candidates,
+      } as CredentialsProviderData,
+    },
     row.schema.discriminator_values,
   );
   return match
@@ -267,7 +293,6 @@ function newlyConnectedCredential(
   if (!provider) return null;
   return grantableAmong(
     row,
-    provider,
     provider.savedCredentials.filter((c) => !knownIds.has(c.id)),
   );
 }
