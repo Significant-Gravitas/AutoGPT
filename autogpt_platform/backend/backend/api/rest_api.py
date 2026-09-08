@@ -170,11 +170,9 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
     await backend.data.org_migration.run_migration()
 
-    # Bounded, because this one loops: on a converged database it costs a single
-    # query, but the first boot after the data migration walks whatever that
-    # migration could not reach, a graph load and a transaction each. Every
-    # preset is committed on its own, so a timeout defers the remainder to the
-    # next boot instead of delaying the port behind an unbounded backfill.
+    # Bounded because this one loops: the first boot after the data migration
+    # walks whatever it could not reach, a graph load and a transaction each.
+    # Presets commit individually, so a timeout defers the rest to the next boot.
     try:
         await asyncio.wait_for(
             backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs(),

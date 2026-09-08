@@ -2469,9 +2469,9 @@ async def migrate_webhook_presets_to_new_version(
     # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
     # the new version's trigger node at execution (the mask would be dropped and
     # the trigger would silently stop firing). Re-key the mask to the new node's
-    # prefix in the same transaction as the version bump: a preset left pinned
-    # to the new version with the old mask key is no longer a candidate for a
-    # retried activation, so a partial write would kill the trigger for good.
+    # prefix, in the same transaction as the version bump: a preset pinned to the
+    # new version with the old key is no longer a retry candidate, so a partial
+    # write kills the trigger for good.
     async with transaction() as tx:
         count = await prisma.models.AgentPreset.prisma(tx).update_many(
             where={

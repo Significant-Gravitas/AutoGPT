@@ -231,11 +231,9 @@ async def update_triggered_preset(
                 ),
             }
 
-            # Validate the same way setup does, before any webhook is
-            # registered. Regular graph inputs are editable on a triggered
-            # preset, so without this a user can clear a required input, get a
-            # 200 + re-registered webhook, and have every later delivery die
-            # inside the executor's catch-all where nobody sees it.
+            # Validate as setup does, before the webhook is registered: a
+            # cleared required input would otherwise 200, re-register, and then
+            # fail every delivery inside the executor's catch-all.
             graph_inputs = {
                 key: value
                 for key, value in inputs.items()

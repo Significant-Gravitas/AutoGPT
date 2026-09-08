@@ -350,10 +350,9 @@ class UpdatePresetTool(BaseTool):
         new_inputs = kwargs.get("inputs")
         new_trigger_config = kwargs.get("trigger_config")
         if new_inputs or new_trigger_config:
-            # A triggered preset stores its trigger config nested under a
-            # per-node `_node_input_mask_{node_id}` key, alongside the graph's
-            # own inputs. Keep the two apart: merging graph inputs into the mask
-            # pollutes the trigger config and leaves the graph input unchanged.
+            # A triggered preset nests its trigger config under a per-node mask
+            # key, beside the graph's own inputs. Merging graph inputs into that
+            # mask pollutes the config and leaves the graph input unchanged.
             mask_key = next(
                 (k for k in current.inputs if k.startswith(NODE_INPUT_MASK_PREFIX)),
                 None,

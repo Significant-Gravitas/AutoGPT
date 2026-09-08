@@ -118,6 +118,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # graph inputs into the trigger config. Both tools' wording was trimmed by 303
 # chars first, so the bump pays only for the new parameters. Merged registry
 # measures 61162 chars; ~840 headroom.
+# On a merge conflict with another PR's bump, keep the HIGHER value. The budget
+# has to cover what every in-flight PR adds together, but each branch's CI only
+# ever measures its own delta against dev — which is how a green PR gets ejected
+# from the merge queue by a bump it never saw.
 _CHAR_BUDGET = 62_000
 
 
