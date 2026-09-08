@@ -23,6 +23,18 @@ export const NO_PAYWALL_STEPS = {
   preparing: 4,
 } as const;
 
+// Self-host has no paywall, but it has the same question in a different
+// currency: a chat needs a model behind it before personalising the chat is
+// worth anything. On cloud the user pays us first; on self-host they connect
+// a plan they already pay for. Same slot, same reason.
+export const SELF_HOST_STEPS = {
+  connect: 1,
+  welcome: 2,
+  role: 3,
+  painPoints: 4,
+  preparing: 5,
+} as const;
+
 interface OnboardingWizardState {
   currentStep: Step;
   name: string;

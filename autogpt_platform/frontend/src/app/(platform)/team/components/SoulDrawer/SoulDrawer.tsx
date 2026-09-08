@@ -2,23 +2,15 @@
 
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertSoulUpdate } from "@/app/api/__generated__/models/expertSoulUpdate";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { LockIcon } from "@hugeicons/core-free-icons";
 import { ReactNode, useState } from "react";
+import { cn } from "@/lib/utils";
+import { ExpertSidePanel } from "../ExpertSidePanel/ExpertSidePanel";
+import { useBottomScrollShadow } from "./useBottomScrollShadow";
 import { useSoulDrawer } from "./useSoulDrawer";
 
 interface Props {
@@ -27,69 +19,73 @@ interface Props {
 }
 
 export function SoulDrawer({ expert, onClose }: Props) {
-  const [displayedExpert] = useState(expert);
+  return (
+    <ExpertSidePanel
+      identity={
+        expert ? { name: expert.name, avatarUrl: expert.avatar_url } : null
+      }
+      title={expert ? `${expert.name}'s Soul` : ""}
+      panelId="soul"
+      closeLabel="Close Soul panel"
+      onClose={onClose}
+    >
+      {expert ? <SoulPanelBody expert={expert} onClose={onClose} /> : null}
+    </ExpertSidePanel>
+  );
+}
+
+interface BodyProps {
+  expert: Expert;
+  onClose: () => void;
+}
+
+function SoulPanelBody({ expert, onClose }: BodyProps) {
   const { soul, updateField, save, isPending, canSave } = useSoulDrawer({
     expert,
     onClose,
   });
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const hasMoreBelow = useBottomScrollShadow(scrollElement);
 
   return (
-    <Sheet
-      open={expert !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col overflow-hidden p-0 sm:w-1/2 sm:max-w-none"
-      >
-        <div className="border-b border-zinc-200 bg-white px-6 py-5 pr-12 sm:px-8">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-11 w-11">
-              {displayedExpert?.avatar_url ? (
-                <AvatarImage
-                  src={displayedExpert.avatar_url}
-                  alt={displayedExpert.name}
-                />
-              ) : null}
-              <AvatarFallback>{displayedExpert?.name ?? "Soul"}</AvatarFallback>
-            </Avatar>
-            <div>
-              <SheetTitle>{`${displayedExpert?.name ?? "Expert"}'s Soul`}</SheetTitle>
-              <SheetDescription>
-                A living document that shapes every reply.
-              </SheetDescription>
-            </div>
-          </div>
+    <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={setScrollElement}
+          className="h-full overflow-y-auto px-5 py-5"
+        >
+          <Text variant="small" tone="muted" className="mb-5">
+            A living document that shapes every reply.
+          </Text>
+          <SoulFields soul={soul} updateField={updateField} />
+          <LearnedNotes />
+          <ProtectedRules rules={expert.protected_soul_rules} />
         </div>
-
-        <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto bg-zinc-50 px-4 py-6 sm:px-8">
-            <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8">
-              <SoulFields soul={soul} updateField={updateField} />
-              <LearnedNotes />
-              <ProtectedRules
-                rules={displayedExpert?.protected_soul_rules ?? []}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 border-t border-zinc-200 bg-white px-6 py-4 sm:px-8">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              loading={isPending}
-              disabled={!canSave}
-            >
-              Save Soul
-            </Button>
-          </div>
-        </form>
-      </SheetContent>
-    </Sheet>
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-200",
+            hasMoreBelow ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </div>
+      <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
+        <Button type="button" variant="ghost" size="xs" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="xs"
+          loading={isPending}
+          disabled={!canSave}
+        >
+          Save Soul
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -105,7 +101,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-name"
         label="Name"
         labelVariant="small-medium"
-        labelClassName="uppercase tracking-[0.12em] !text-purple-600"
+        labelClassName="!text-zinc-700"
         value={soul.name}
         maxLength={100}
         required
@@ -115,7 +111,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-identity"
         label="Identity and personality"
         labelVariant="small-medium"
-        labelClassName="uppercase tracking-[0.12em] !text-purple-600"
+        labelClassName="!text-zinc-700"
         type="textarea"
         rows={6}
         value={soul.identity}
@@ -127,7 +123,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-voice"
         label="Voice"
         labelVariant="small-medium"
-        labelClassName="uppercase tracking-[0.12em] !text-purple-600"
+        labelClassName="!text-zinc-700"
         type="textarea"
         rows={3}
         value={soul.voice_preferences}
@@ -141,7 +137,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
         id="soul-boundaries"
         label="Boundaries"
         labelVariant="small-medium"
-        labelClassName="uppercase tracking-[0.12em] !text-purple-600"
+        labelClassName="!text-zinc-700"
         type="textarea"
         rows={4}
         value={soul.boundaries}
@@ -157,7 +153,7 @@ function LearnedNotes() {
   return (
     <section className="mb-8">
       <SoulSectionTitle>What I&apos;ve learned</SoulSectionTitle>
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         Nothing recorded yet. What this expert learns will appear here.
       </Text>
     </section>
@@ -173,17 +169,20 @@ function ProtectedRules({ rules }: { rules: string[] }) {
       </div>
       <div className="space-y-2 rounded-xl bg-zinc-50 p-4">
         {rules.map((rule) => (
-          <div
+          <Text
             key={rule}
-            className="flex gap-2 text-sm leading-5 text-zinc-600"
+            variant="body"
+            as="div"
+            tone="secondary"
+            className="flex gap-2 leading-5"
           >
             <Icon icon={LockIcon} size={14} className="mt-0.5 shrink-0" />
             <span>{rule}</span>
-          </div>
+          </Text>
         ))}
       </div>
-      <Text variant="small" className="mt-3 text-zinc-400">
-        These safeguards are always active and cannot be edited.
+      <Text variant="small" tone="muted" className="mt-3">
+        These rules are part of every expert&apos;s soul and cannot be edited.
       </Text>
     </section>
   );
@@ -191,8 +190,8 @@ function ProtectedRules({ rules }: { rules: string[] }) {
 
 function SoulSectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-purple-600">
+    <Text variant="body-medium" as="h3" tone="primary">
       {children}
-    </h3>
+    </Text>
   );
 }

@@ -1,13 +1,10 @@
-"""Unit tests for CoPilot mode routing logic in the processor.
+"""Unit tests for engine routing in the processor.
 
-Tests cover the mode→service mapping:
-  - 'fast' → baseline service
-  - 'extended_thinking' → SDK service
-  - None → feature flag / config fallback
-
-as well as the ``CHAT_MODE_OPTION`` server-side gate.  The tests import
-the real production helpers from ``processor.py`` so the routing logic
-has meaningful coverage.
+Nothing outside the server can name an engine, so the decision is one
+chain: the SDK kill switch, then a Claude Code subscription, then the
+``COPILOT_SDK`` flag, then the config default. The tests import the real
+production helper from ``processor.py`` so that chain has meaningful
+coverage.
 """
 
 import asyncio
@@ -20,13 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.config import CopilotMode
+from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
     _normalize_private_expert_session_tenancy,
-    resolve_effective_mode,
-    resolve_use_sdk_for_mode,
     sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
@@ -48,53 +43,17 @@ from backend.util.exceptions import (
 )
 
 
-class TestResolveUseSdkForMode:
-    """Tests for the per-request mode routing logic."""
+class TestResolveUseSdk:
+    """Which engine runs a turn — entirely the server's call."""
 
     @pytest.mark.asyncio
-    async def test_fast_mode_uses_baseline(self):
-        """mode='fast' always routes to baseline, regardless of flags."""
+    async def test_subscription_override_routes_to_sdk(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert (
-                await resolve_use_sdk_for_mode(
-                    "fast",
-                    "user-1",
-                    use_claude_code_subscription=True,
-                    config_default=True,
-                )
-                is False
-            )
-
-    @pytest.mark.asyncio
-    async def test_extended_thinking_uses_sdk(self):
-        """mode='extended_thinking' always routes to SDK, regardless of flags."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await resolve_use_sdk_for_mode(
-                    "extended_thinking",
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is True
-            )
-
-    @pytest.mark.asyncio
-    async def test_none_mode_uses_subscription_override(self):
-        """mode=None with claude_code_subscription=True routes to SDK."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk_for_mode(
-                    None,
+                await resolve_use_sdk(
                     "user-1",
                     use_claude_code_subscription=True,
                     config_default=False,
@@ -103,51 +62,47 @@ class TestResolveUseSdkForMode:
             )
 
     @pytest.mark.asyncio
-    async def test_none_mode_uses_feature_flag(self):
-        """mode=None with feature flag enabled routes to SDK."""
+    async def test_feature_flag_routes_to_sdk(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=True),
-        ) as flag_mock:
+        ):
             assert (
-                await resolve_use_sdk_for_mode(
-                    None,
+                await resolve_use_sdk(
                     "user-1",
                     use_claude_code_subscription=False,
                     config_default=False,
                 )
                 is True
             )
-            flag_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_none_mode_uses_config_default(self):
-        """mode=None falls back to config.use_claude_agent_sdk."""
-        # When LaunchDarkly returns the default (True), we expect SDK routing.
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
+    async def test_config_default_is_the_flag_fallback(self):
+        captured: dict[str, object] = {}
+
+        async def _flag(_flag_name, _user, default=False):
+            captured["default"] = default
+            return default
+
+        with patch("backend.copilot.engine.is_feature_enabled", new=_flag):
             assert (
-                await resolve_use_sdk_for_mode(
-                    None,
+                await resolve_use_sdk(
                     "user-1",
                     use_claude_code_subscription=False,
                     config_default=True,
                 )
                 is True
             )
+        assert captured["default"] is True
 
     @pytest.mark.asyncio
-    async def test_none_mode_all_disabled(self):
-        """mode=None with all flags off routes to baseline."""
+    async def test_everything_disabled_routes_to_baseline(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await resolve_use_sdk_for_mode(
-                    None,
+                await resolve_use_sdk(
                     "user-1",
                     use_claude_code_subscription=False,
                     config_default=False,
@@ -156,104 +111,41 @@ class TestResolveUseSdkForMode:
             )
 
     @pytest.mark.asyncio
-    async def test_thinking_unavailable_forces_baseline(self, caplog):
-        """When the SDK transport can't run (use_local=true), every mode
-        routes to baseline — including an explicit extended_thinking
-        request, which is logged at WARNING for visibility."""
-        caplog.set_level(logging.WARNING, logger="backend.copilot.executor.processor")
+    async def test_thinking_unavailable_forces_baseline(self):
+        """The kill switch wins over subscription and flag alike.
+
+        Set where the SDK transport simply cannot run — today
+        ``CHAT_USE_LOCAL=true``, since Ollama does not speak Anthropic's
+        wire protocol.
+        """
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ):
-            for mode in ("fast", "extended_thinking", None):
-                assert (
-                    await resolve_use_sdk_for_mode(
-                        mode,
-                        "user-1",
-                        use_claude_code_subscription=True,
-                        config_default=True,
-                        thinking_available=False,
-                    )
-                    is False
+            assert (
+                await resolve_use_sdk(
+                    "user-1",
+                    use_claude_code_subscription=True,
+                    config_default=True,
+                    thinking_available=False,
                 )
-        # Compare levelno, not levelname: the FancyConsoleFormatter
-        # colorizes record.levelname IN PLACE when a console handler is
-        # installed in the test process, so string comparison breaks
-        # depending on logging-config import order.
-        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-        assert len(warnings) == 1
-        assert "extended_thinking" in warnings[0].message
+                is False
+            )
 
     @pytest.mark.asyncio
-    async def test_thinking_available_default_preserves_legacy_behaviour(self):
-        """The new ``thinking_available`` kwarg defaults to True, so
-        existing call sites (and existing tests in this class) continue
-        to work without explicit opt-in."""
+    async def test_anonymous_user_is_routable(self):
         with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
+            "backend.copilot.engine.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await resolve_use_sdk_for_mode(
-                    "extended_thinking",
-                    "user-1",
+                await resolve_use_sdk(
+                    None,
                     use_claude_code_subscription=False,
                     config_default=False,
                 )
-                is True
+                is False
             )
-
-
-class TestResolveEffectiveMode:
-    """Tests for the CHAT_MODE_OPTION server-side gate."""
-
-    @pytest.mark.asyncio
-    async def test_none_mode_passes_through(self):
-        """mode=None is returned as-is without a flag check."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ) as flag_mock:
-            assert await resolve_effective_mode(None, "user-1") is None
-            flag_mock.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_mode_stripped_when_flag_disabled(self):
-        """When CHAT_MODE_OPTION is off, mode is dropped to None."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert await resolve_effective_mode("fast", "user-1") is None
-            assert await resolve_effective_mode("extended_thinking", "user-1") is None
-
-    @pytest.mark.asyncio
-    async def test_mode_preserved_when_flag_enabled(self):
-        """When CHAT_MODE_OPTION is on, the user-selected mode is preserved."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert await resolve_effective_mode("fast", "user-1") == "fast"
-            assert (
-                await resolve_effective_mode("extended_thinking", "user-1")
-                == "extended_thinking"
-            )
-
-    @pytest.mark.asyncio
-    async def test_anonymous_user_with_mode(self):
-        """Anonymous users (user_id=None) still pass through the gate."""
-        with patch(
-            "backend.copilot.executor.processor.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ) as flag_mock:
-            assert await resolve_effective_mode("fast", None) is None
-            flag_mock.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# _execute_async aclose propagation
-# ---------------------------------------------------------------------------
 
 
 class _TrackedStream:
@@ -794,14 +686,12 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
 def _codex_entry(
     *,
     credential_id: str = "cred-1",
-    mode: CopilotMode | None = None,
 ) -> CoPilotExecutionEntry:
     return CoPilotExecutionEntry(
         session_id="sess-codex",
         turn_id="turn-codex",
         user_id="user-1",
         message="hi",
-        mode=mode,
         llm_auth_provider="codex",
         llm_credential_id=credential_id,
     )
@@ -831,7 +721,6 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
     transport.acquire_runtime_lease = AsyncMock(return_value=lease)
     baseline_stream = MagicMock()
     sdk_stream = MagicMock(return_value=MagicMock())
-    resolve_mode = AsyncMock(return_value=None)
 
     with (
         patch(
@@ -852,10 +741,6 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
             sdk_stream,
         ),
         patch(
-            "backend.copilot.executor.processor.resolve_effective_mode",
-            resolve_mode,
-        ),
-        patch(
             "backend.copilot.executor.processor.wrap_stream_with_heartbeat",
             return_value=MagicMock(),
         ),
@@ -869,7 +754,7 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
         ),
     ):
         await CoPilotProcessor()._execute_async(
-            _codex_entry(mode="extended_thinking"),
+            _codex_entry(),
             threading.Event(),
             MagicMock(),
             _make_log(),
@@ -881,9 +766,7 @@ async def test_codex_route_uses_claude_sdk_for_builder_and_releases_lease():
         lock_timeout_seconds=_CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     )
     lease.release.assert_awaited_once()
-    resolve_mode.assert_awaited_once_with("extended_thinking", "user-1")
     sdk_stream.assert_called_once()
-    assert sdk_stream.call_args.kwargs["mode"] is None
     assert sdk_stream.call_args.kwargs["credential_lease"] is lease
     assert sdk_stream.call_args.kwargs["session"].session_id == "sess-codex"
     baseline_stream.assert_not_called()

@@ -19,6 +19,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
+from backend.data.activity_event import ActivityEventDraft
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -817,6 +818,26 @@ class WriteWorkspaceFileTool(BaseTool):
     def requires_auth(self) -> bool:
         return True
 
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceWriteResponse):
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.updated" if kwargs.get("overwrite") else "file.created",
+            title=result.name,
+            object_id=result.file_id,
+            data={
+                "path": result.path,
+                "mime_type": result.mime_type,
+                "size_bytes": result.size_bytes,
+            },
+        )
+
     async def _execute(
         self,
         user_id: str | None,
@@ -1005,6 +1026,21 @@ class DeleteWorkspaceFileTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, WorkspaceDeleteResponse) or not result.success:
+            return None
+        return ActivityEventDraft(
+            category="FILE",
+            event_type="file.deleted",
+            title=kwargs.get("path") or "Workspace file",
+            object_id=result.file_id,
+        )
 
     async def _execute(
         self,

@@ -34,7 +34,7 @@ import {
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
-  Home01Icon,
+  Home10Icon,
   NoteEditIcon,
   Store01Icon,
   UserGroup02Icon,
@@ -56,7 +56,7 @@ const MAIN_LINKS: NavLink[] = [
 
 // /home 404s without the experts flag, so the entry only exists for the
 // cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home01Icon };
+const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },

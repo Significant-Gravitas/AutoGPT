@@ -36,6 +36,9 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -125,6 +128,7 @@ from backend.data.onboarding import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.stripe_client import stripe_call
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -150,7 +154,6 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
-    record_graph_execution,
     record_graph_operation,
 )
 from backend.notifications import lifecycle
@@ -827,6 +830,10 @@ async def configure_user_auto_top_up(
             await credit_model.top_up_credits(user_id, request.amount)
         else:
             await credit_model.top_up_credits(user_id, 0)
+    except NotImplementedError as e:
+        raise HTTPException(
+            status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -988,7 +995,7 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     every GET /credits/subscription page load and reduces quota consumption.
     """
     try:
-        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        price = await stripe_call(stripe.Price.retrieve_async, price_id)
         return price.unit_amount or 0
     except stripe.StripeError:
         logger.warning(
@@ -1003,7 +1010,11 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
@@ -1633,7 +1644,7 @@ async def stripe_webhook(request: Request):
         if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
             invoice_id = data_object.get("invoice")
             if invoice_id:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
@@ -1687,6 +1698,7 @@ async def get_credit_history(
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
+    cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
@@ -1697,6 +1709,8 @@ async def get_credit_history(
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
     )
 
 
@@ -2113,8 +2127,6 @@ async def execute_graph(
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
         )
-        # Record successful graph execution
-        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
             await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
@@ -2122,10 +2134,6 @@ async def execute_graph(
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
-        # Record failed graph execution
-        record_graph_execution(
-            graph_id=graph_id, status="validation_error", user_id=user_id
-        )
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -2138,8 +2146,6 @@ async def execute_graph(
             },
         )
     except Exception:
-        # Record any other failures
-        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
         record_graph_operation(operation="execute", status="error")
         raise
 

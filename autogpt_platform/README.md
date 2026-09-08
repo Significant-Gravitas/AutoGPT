@@ -16,7 +16,7 @@ To run the AutoGPT Platform, follow these steps:
 1. Clone this repository to your local machine and navigate to the `autogpt_platform` directory within the repository:
 
    ```
-   git clone <https://github.com/Significant-Gravitas/AutoGPT.git | git@github.com:Significant-Gravitas/AutoGPT.git>
+   git clone https://github.com/Significant-Gravitas/AutoGPT.git
    cd AutoGPT/autogpt_platform
    ```
 

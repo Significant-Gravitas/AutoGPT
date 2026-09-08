@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
@@ -52,6 +53,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
     get_briefing_alert_conditions,
@@ -451,6 +453,9 @@ class DatabaseManager(AppService):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = _(log_platform_cost)
 
+    # ============ Activity Events ============ #
+    create_activity_event = _(create_activity_event)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -516,6 +521,7 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
@@ -552,6 +558,7 @@ class DatabaseManager(AppService):
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -647,6 +654,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
+
+    # Activity events (executor completion hook)
+    create_activity_event = _(d.create_activity_event)
 
     # Morning briefing (scheduler cron; runs Prisma-less)
     append_plain_session_message = _(d.append_plain_session_message)
@@ -839,6 +849,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = d.log_platform_cost
 
+    # ============ Activity Events ============ #
+    create_activity_event = d.create_activity_event
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
     delete_push_subscription = d.delete_push_subscription
@@ -889,6 +902,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    expert_allowed_credential_ids = d.expert_allowed_credential_ids
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current
     update_soul_fields = d.update_soul_fields
@@ -920,6 +934,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
+    update_chat_session_llm_route = d.update_chat_session_llm_route
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status

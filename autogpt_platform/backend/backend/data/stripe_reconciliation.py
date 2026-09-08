@@ -15,7 +15,6 @@ in ``_reconcile_one``), so a steady-state run does no DB writes.
 import logging
 
 import stripe
-from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel
@@ -26,6 +25,7 @@ from backend.data.credit import (
     log_tier_reconciliation_discrepancy,
     set_subscription_tier,
 )
+from backend.data.stripe_client import stripe_call
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ async def _collect_status_page(
         if starting_after:
             list_kwargs["starting_after"] = starting_after
         try:
-            subs = await run_in_threadpool(stripe.Subscription.list, **list_kwargs)
+            subs = await stripe_call(stripe.Subscription.list_async, **list_kwargs)
         except stripe.StripeError:
             # A Stripe outage/rate-limit must not abort the whole sweep. Stop
             # this status and flag the run incomplete so we don't downgrade users
