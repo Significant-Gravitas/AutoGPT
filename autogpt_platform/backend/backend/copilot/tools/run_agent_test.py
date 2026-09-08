@@ -578,10 +578,12 @@ async def test_build_setup_requirements_from_credential_validation_error(
     )
 
     # Race path: all credential fields shown as missing.
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert isinstance(response, SetupRequirementsResponse)
@@ -618,10 +620,12 @@ async def test_build_setup_requirements_shows_all_creds_missing_in_race(
         node_errors={"some-node-id": {"credentials": "These credentials are required"}},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert isinstance(response, SetupRequirementsResponse)
@@ -647,10 +651,12 @@ async def test_build_setup_requirements_returns_none_for_empty_node_errors(
         node_errors={},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -670,10 +676,12 @@ async def test_build_setup_requirements_returns_none_for_non_credential_error(
         node_errors={"some-node-id": {"url": "Input field 'url' is required"}},
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -696,10 +704,12 @@ async def test_build_setup_requirements_returns_none_for_mixed_errors(
         },
     )
 
-    response = tool._build_setup_requirements_from_validation_error(
+    response = await tool._build_setup_requirements_from_validation_error(
         graph=graph,
         error=error,
         session_id="test-session",
+        user_id="test-user",
+        expert_id=None,
     )
 
     assert response is None
@@ -1670,3 +1680,40 @@ async def test_run_preset_refuses_uninstalled_workflow_for_expert():
     assert isinstance(result, ErrorResponse)
     assert result.error == "workflow_not_installed"
     add_exec.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_validation_error_card_carries_expert_grants(
+    setup_firecrawl_test_data,
+):
+    """The race-path card is an expert connect card like every other one, so
+    the row must not fall back to the account's credential."""
+    graph = setup_firecrawl_test_data["graph"]
+    tool = RunAgentTool()
+    error = GraphValidationError(
+        message="Graph is invalid",
+        node_errors={"some-node-id": {"credentials": "These credentials are required"}},
+    )
+
+    async def annotate(user_id, expert_id, missing):
+        return {
+            key: {**entry, "expert_grant": {"expert_id": expert_id, "credentials": []}}
+            for key, entry in missing.items()
+        }
+
+    with patch(
+        "backend.copilot.tools.run_agent.annotate_expert_grants", side_effect=annotate
+    ):
+        response = await tool._build_setup_requirements_from_validation_error(
+            graph=graph,
+            error=error,
+            session_id="test-session",
+            user_id="test-user",
+            expert_id="expert-a",
+        )
+
+    assert isinstance(response, SetupRequirementsResponse)
+    missing = response.setup_info.user_readiness.missing_credentials
+    assert all(
+        entry["expert_grant"]["expert_id"] == "expert-a" for entry in missing.values()
+    )

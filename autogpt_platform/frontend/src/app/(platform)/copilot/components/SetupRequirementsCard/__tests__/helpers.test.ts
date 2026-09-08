@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   coerceCredentialFields,
+  coerceExpertGrant,
   buildSiblingInputsFromCredentials,
   coerceExpectedInputs,
   buildExpectedInputsSchema,
@@ -817,5 +818,97 @@ describe("buildRunMessage", () => {
     const msg = buildRunMessage(true, true, { key: "val" });
     expect(msg).toContain("I've configured the required credentials.");
     expect(msg).toContain("Run with these inputs:");
+  });
+});
+
+describe("coerceExpertGrant", () => {
+  it("maps the wire shape onto the card's grant", () => {
+    const grant = coerceExpertGrant({
+      expert_id: "expert-a",
+      credentials: [{ id: "cred-1", title: "Work GitHub", type: "oauth2" }],
+    });
+    expect(grant).toEqual({
+      expertId: "expert-a",
+      credentials: [{ id: "cred-1", title: "Work GitHub", type: "oauth2" }],
+    });
+  });
+
+  it("returns undefined for a non-object", () => {
+    expect(coerceExpertGrant(null)).toBeUndefined();
+    expect(coerceExpertGrant("expert-a")).toBeUndefined();
+    expect(coerceExpertGrant(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined without an expert id", () => {
+    expect(coerceExpertGrant({ credentials: [] })).toBeUndefined();
+    expect(
+      coerceExpertGrant({ expert_id: "", credentials: [] }),
+    ).toBeUndefined();
+    expect(
+      coerceExpertGrant({ expert_id: 42, credentials: [] }),
+    ).toBeUndefined();
+  });
+
+  it("keeps the expert with an empty offer when credentials are not a list", () => {
+    expect(coerceExpertGrant({ expert_id: "expert-a" })).toEqual({
+      expertId: "expert-a",
+      credentials: [],
+    });
+    expect(
+      coerceExpertGrant({ expert_id: "expert-a", credentials: "cred-1" }),
+    ).toEqual({ expertId: "expert-a", credentials: [] });
+  });
+
+  it("drops candidates without a usable id", () => {
+    const grant = coerceExpertGrant({
+      expert_id: "expert-a",
+      credentials: [
+        null,
+        "cred-1",
+        { title: "No id" },
+        { id: "" },
+        { id: 7 },
+        { id: "cred-2", title: "Kept", type: "oauth2" },
+      ],
+    });
+    expect(grant?.credentials).toEqual([
+      { id: "cred-2", title: "Kept", type: "oauth2" },
+    ]);
+  });
+
+  it("falls back to the id as title and api_key as type", () => {
+    const grant = coerceExpertGrant({
+      expert_id: "expert-a",
+      credentials: [{ id: "cred-1" }, { id: "cred-2", title: 9, type: 9 }],
+    });
+    expect(grant?.credentials).toEqual([
+      { id: "cred-1", title: "cred-1", type: "api_key" },
+      { id: "cred-2", title: "cred-2", type: "api_key" },
+    ]);
+  });
+
+  it("passes an unrecognised type through rather than dropping the candidate", () => {
+    const grant = coerceExpertGrant({
+      expert_id: "expert-a",
+      credentials: [{ id: "cred-1", title: "Odd", type: "smoke_signal" }],
+    });
+    expect(grant?.credentials[0].type).toBe("smoke_signal");
+  });
+
+  it("reaches the card through coerceCredentialFields", () => {
+    const { credentialFields } = coerceCredentialFields({
+      cred1: {
+        provider: "github",
+        types: ["oauth2"],
+        expert_grant: {
+          expert_id: "expert-a",
+          credentials: [{ id: "cred-1", title: "Work", type: "oauth2" }],
+        },
+      },
+    });
+    expect(credentialFields[0][1].expert_grant).toEqual({
+      expertId: "expert-a",
+      credentials: [{ id: "cred-1", title: "Work", type: "oauth2" }],
+    });
   });
 });

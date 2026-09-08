@@ -30,7 +30,7 @@ from backend.util.exceptions import (
 )
 
 from .base import BaseTool
-from .expert_scope import require_installed_workflow
+from .expert_scope import annotate_expert_grants, require_installed_workflow
 from .models import (
     ErrorResponse,
     ResponseType,
@@ -374,7 +374,11 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             for key, cred in effective.items()
             if not (key == trigger_cred_key and trigger_cred_key not in selection)
         }
-        card_missing = build_missing_credentials_from_graph(graph, matched_for_card)
+        card_missing = await annotate_expert_grants(
+            user_id,
+            expert_id,
+            build_missing_credentials_from_graph(graph, matched_for_card),
+        )
         if card_missing:
             return {}, self._build_card(graph, card_missing, session_id)
 

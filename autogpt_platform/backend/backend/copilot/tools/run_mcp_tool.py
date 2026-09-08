@@ -25,6 +25,7 @@ from backend.copilot.tools.utils import build_missing_credentials_from_field_inf
 from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
+from .expert_scope import annotate_expert_grants
 from .models import (
     ErrorResponse,
     MCPToolInfo,
@@ -221,15 +222,18 @@ class RunMCPToolTool(BaseTool):
             if not await scope_credentials_to_expert(
                 user_id, session.expert_id, [creds]
             ):
-                return ErrorResponse(
+                return await self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
                     message=(
                         f"The account's credential for {server_host(server_url)} "
                         f"(credential_id={creds.id}) is not granted to this expert. "
-                        "Ask the user to grant it on the expert's Integrations page "
-                        "or from personal AutoPilot with grant_expert_credential."
+                        "Ask the user to grant it from the card, on the expert's "
+                        "Integrations page, or from personal AutoPilot with "
+                        "grant_expert_credential."
                     ),
-                    error="credential_not_granted",
-                    session_id=session_id,
                 )
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
@@ -294,8 +298,12 @@ class RunMCPToolTool(BaseTool):
                     # ``close`` is best-effort and swallows its own
                     # errors.
                     await probe_client.close()
-            return self._build_setup_requirements(
-                server_url, session_id, connected=connected
+            return await self._build_setup_requirements(
+                server_url,
+                session_id,
+                connected=connected,
+                user_id=user_id,
+                expert_id=session.expert_id,
             )
 
         if client is None:
@@ -331,7 +339,12 @@ class RunMCPToolTool(BaseTool):
                 # doesn't loop on the same dead token.
                 if creds is not None:
                     await invalidate_mcp_credential(user_id, creds.id)
-                return self._build_setup_requirements(server_url, session_id)
+                return await self._build_setup_requirements(
+                    server_url,
+                    session_id,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                )
             host = server_host(server_url)
             logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
@@ -538,11 +551,15 @@ class RunMCPToolTool(BaseTool):
             None,
         )
 
-    def _build_setup_requirements(
+    async def _build_setup_requirements(
         self,
         server_url: str,
         session_id: str,
         connected: bool = False,
+        *,
+        user_id: str | None = None,
+        expert_id: str | None = None,
+        message: str | None = None,
     ) -> SetupRequirementsResponse | ErrorResponse:
         """Build a SetupRequirementsResponse for an MCP server credential.
 
@@ -551,6 +568,10 @@ class RunMCPToolTool(BaseTool):
         instead of the bare Connect button.  Used by the
         ``surface_connect_card`` path so the user always gets visible
         feedback even when stored creds are still valid.
+
+        In an expert session the missing credential carries ``expert_grant``
+        so the card can grant an existing account credential to the expert or
+        grant a freshly connected one, the same as every other connect card.
         """
         mcp_block = MCPToolBlock()
         credentials_fields_info = mcp_block.input_schema.get_credentials_fields_info()
@@ -559,7 +580,7 @@ class RunMCPToolTool(BaseTool):
         # can match the credential to the correct OAuth provider/server.
         for field_info in credentials_fields_info.values():
             if field_info.discriminator == "server_url":
-                field_info.discriminator_values.add(server_url)
+                field_info.discriminator_values.add(normalize_mcp_url(server_url))
 
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, matched_keys=set()
@@ -579,11 +600,15 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             )
 
+        if user_id is not None and not connected:
+            missing_creds_dict = await annotate_expert_grants(
+                user_id, expert_id, missing_creds_dict
+            )
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
         service = _service_name(host)
-        message = (
+        message = message or (
             f"You're connected to {service}. Use Reconnect to swap accounts."
             if connected
             else f"To continue, sign in to {service} and approve access."

@@ -350,7 +350,8 @@ def find_matching_credential(
     available_creds: list[Credentials],
     field_info: CredentialsFieldInfo,
 ) -> Credentials | None:
-    """Find a credential that matches the required provider, type, scopes, and host."""
+    """Find a credential that matches the required provider, type, scopes, host,
+    and — for MCP OAuth credentials — the server URL."""
     for cred in available_creds:
         if cred.provider not in field_info.provider:
             continue
@@ -361,6 +362,10 @@ def find_matching_credential(
         ):
             continue
         if cred.type == "host_scoped" and not _credential_is_for_host(cred, field_info):
+            continue
+        if cred.provider == ProviderName.MCP and not _credential_is_for_mcp_server(
+            cred, field_info
+        ):
             continue
         return cred
     return None
@@ -423,27 +428,8 @@ async def match_user_credentials_to_graph(
         _,
         _,
     ) in aggregated_creds.items():
-        # Find first matching credential by provider, type, scopes, and host/URL
-        matching_cred = next(
-            (
-                cred
-                for cred in available_creds
-                if cred.provider in credential_requirements.provider
-                and cred.type in credential_requirements.supported_types
-                and (
-                    cred.type != "oauth2"
-                    or _credential_has_required_scopes(cred, credential_requirements)
-                )
-                and (
-                    cred.type != "host_scoped"
-                    or _credential_is_for_host(cred, credential_requirements)
-                )
-                and (
-                    cred.provider != ProviderName.MCP
-                    or _credential_is_for_mcp_server(cred, credential_requirements)
-                )
-            ),
-            None,
+        matching_cred = find_matching_credential(
+            available_creds, credential_requirements
         )
 
         if matching_cred:

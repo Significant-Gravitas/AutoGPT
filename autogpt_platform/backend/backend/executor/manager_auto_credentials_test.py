@@ -469,3 +469,80 @@ async def test_acquire_auto_credentials_rejects_non_dict_value_with_type_message
     # can't silently regress to the old generic message.
     assert type(bad_value).__name__ in msg
     manager.acquire.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_credentials_expert_is_refused_an_ungranted_credential(
+    mocker: MockerFixture,
+    google_drive_file_data,
+    mock_input_model,
+    mock_creds_manager,
+):
+    """A picker credential is held to the expert's grants like any other."""
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager, _, _ = mock_creds_manager
+    experts = mocker.MagicMock()
+    experts.expert_allowed_credential_ids = mocker.AsyncMock(return_value=["other"])
+    mocker.patch("backend.executor.auto_credentials.experts_db", return_value=experts)
+
+    with pytest.raises(ValueError, match="not been granted to this expert"):
+        await acquire_auto_credentials(
+            input_model=mock_input_model,
+            input_data={"spreadsheet": google_drive_file_data["valid"]},
+            creds_manager=manager,
+            user_id="user-1",
+            expert_id="expert-a",
+        )
+
+    experts.expert_allowed_credential_ids.assert_awaited_once_with("user-1", "expert-a")
+    manager.acquire.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_credentials_expert_may_use_a_granted_credential(
+    mocker: MockerFixture,
+    google_drive_file_data,
+    mock_input_model,
+    mock_creds_manager,
+):
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager, mock_creds, _ = mock_creds_manager
+    experts = mocker.MagicMock()
+    experts.expert_allowed_credential_ids = mocker.AsyncMock(
+        return_value=["cred-id-123"]
+    )
+    mocker.patch("backend.executor.auto_credentials.experts_db", return_value=experts)
+
+    extra_kwargs, _ = await acquire_auto_credentials(
+        input_model=mock_input_model,
+        input_data={"spreadsheet": google_drive_file_data["valid"]},
+        creds_manager=manager,
+        user_id="user-1",
+        expert_id="expert-a",
+    )
+
+    assert extra_kwargs["credentials"] == mock_creds
+
+
+@pytest.mark.asyncio
+async def test_auto_credentials_personal_session_skips_the_grant_lookup(
+    mocker: MockerFixture,
+    google_drive_file_data,
+    mock_input_model,
+    mock_creds_manager,
+):
+    from backend.executor.auto_credentials import acquire_auto_credentials
+
+    manager, _, _ = mock_creds_manager
+    experts_db = mocker.patch("backend.executor.auto_credentials.experts_db")
+
+    await acquire_auto_credentials(
+        input_model=mock_input_model,
+        input_data={"spreadsheet": google_drive_file_data["valid"]},
+        creds_manager=manager,
+        user_id="user-1",
+    )
+
+    experts_db.assert_not_called()

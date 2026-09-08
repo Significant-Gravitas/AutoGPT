@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectCredentialDialog } from "../ConnectCredentialDialog";
@@ -286,5 +287,147 @@ describe("ConnectCredentialDialog", () => {
 
     expect(onClose).toHaveBeenCalledOnce();
     expect(apiKey.form.reset).toHaveBeenCalledOnce();
+  });
+
+  it("hands the produced credential to onConnected", () => {
+    const onConnected = vi.fn();
+    renderDialog({ onConnected });
+    const produced = { id: "new-cred", provider: "github", type: "oauth2" };
+
+    const { onSuccess } = mockUseOAuthConnect.mock.calls[0][0] as {
+      onSuccess: (credential?: unknown) => void;
+    };
+    act(() => onSuccess(produced));
+
+    expect(onConnected).toHaveBeenCalledWith(produced);
+  });
+});
+
+describe("ConnectCredentialDialog with existing accounts", () => {
+  const accounts = [
+    { id: "cred-1", title: "Work GitHub", type: "oauth2" },
+    { id: "cred-2", title: "Personal GitHub", type: "api_key" },
+  ];
+
+  function offer(
+    overrides: Partial<{
+      onUse: (credential: (typeof accounts)[number]) => Promise<boolean>;
+      isPending: boolean;
+      error: string | null;
+    }> = {},
+  ) {
+    return {
+      credentials: accounts,
+      onUse: vi.fn().mockResolvedValue(true),
+      isPending: false,
+      error: null,
+      ...overrides,
+    };
+  }
+
+  it("offers the accounts before the connect methods", () => {
+    renderDialog({ existing: offer() });
+
+    expect(screen.getByText("Give this expert access to GitHub")).toBeDefined();
+    expect(screen.queryByTestId("connect-method-view")).toBeNull();
+    expect(
+      screen
+        .getByRole("radio", { name: /Work GitHub/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByText("Use existing")).toBeDefined();
+    expect(screen.queryByText("Continue")).toBeNull();
+  });
+
+  it("falls through to the connect methods when there is nothing to offer", () => {
+    renderDialog({ existing: { ...offer(), credentials: [] } });
+
+    expect(screen.getByTestId("connect-method-view")).toBeDefined();
+    expect(screen.queryByText("Use existing")).toBeNull();
+  });
+
+  it("uses the picked account and closes once it is granted", async () => {
+    const existing = offer();
+    const { onClose } = renderDialog({ existing });
+
+    fireEvent.click(screen.getByRole("radio", { name: /Personal GitHub/ }));
+    fireEvent.click(screen.getByText("Use existing"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(existing.onUse).toHaveBeenCalledWith(accounts[1]);
+  });
+
+  it("stays open with the error when the account cannot be used", async () => {
+    const existing = offer({
+      onUse: vi.fn().mockResolvedValue(false),
+      error: "Couldn't grant access. Try again.",
+    });
+    const { onClose } = renderDialog({ existing });
+
+    fireEvent.click(screen.getByText("Use existing"));
+
+    await waitFor(() => expect(existing.onUse).toHaveBeenCalledOnce());
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Couldn't grant access. Try again.",
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("switches to the connect methods on Add new", () => {
+    renderDialog({ existing: offer() });
+
+    fireEvent.click(screen.getByText("Add new"));
+
+    expect(screen.getByTestId("connect-method-view")).toBeDefined();
+    expect(screen.getByText("Continue")).toBeDefined();
+    expect(screen.queryByText("Use existing")).toBeNull();
+  });
+
+  it("signs into a fresh account on Add new instead of upgrading the offered one", () => {
+    renderDialog({ existing: offer(), credentialID: "cred-1" });
+
+    const beforeAddNew = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(beforeAddNew.credentialID).toBe("cred-1");
+
+    fireEvent.click(screen.getByText("Add new"));
+
+    // buildLoginParams omits credential_id for an undefined target, so the
+    // login asks for a brand-new account rather than re-authing cred-1.
+    const afterAddNew = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(afterAddNew.credentialID).toBeUndefined();
+  });
+
+  it("keeps the upgrade target for the plain connect flow", () => {
+    renderDialog({ credentialID: "cred-1" });
+
+    const args = mockUseOAuthConnect.mock.calls.at(-1)?.[0] as {
+      credentialID?: string;
+    };
+    expect(args.credentialID).toBe("cred-1");
+  });
+
+  it("returns to the accounts after Add new is cancelled", () => {
+    const { onClose, rerender } = renderDialog({ existing: offer() });
+
+    fireEvent.click(screen.getByText("Add new"));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onClose).toHaveBeenCalledOnce();
+
+    rerender(
+      <ConnectCredentialDialog
+        schema={baseSchema}
+        provider="github"
+        displayName="GitHub"
+        open
+        onClose={onClose}
+        existing={offer()}
+      />,
+    );
+    expect(screen.queryByTestId("connect-method-view")).toBeNull();
+    expect(screen.getByText("Use existing")).toBeDefined();
   });
 });

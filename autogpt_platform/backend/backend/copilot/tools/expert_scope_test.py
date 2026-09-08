@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.expert_scope import (
@@ -34,6 +35,7 @@ def experts():
     )
     db.install_workflow = AsyncMock()
     db.expert_allowed_credential_ids = AsyncMock(return_value=["granted-cred"])
+    db.settle_credential_seed = AsyncMock()
     with patch(f"{_PATH}.experts_db", return_value=db):
         yield db
 
@@ -179,3 +181,84 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
     assert "granted-cred" not in hint and "other-cred" not in hint
     assert "grant_expert_credential" in hint
     assert none == "" and personal == ""
+
+
+async def test_missing_credentials_are_annotated_with_expert_grants(experts):
+    from backend.copilot.tools.expert_scope import annotate_expert_grants
+
+    def cred(id: str, type: str, scopes: list[str]):
+        return MagicMock(id=id, provider="github", title=id, type=type, scopes=scopes)
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            cred("granted-cred", "oauth2", ["repo"]),
+            cred("spare-cred", "oauth2", ["repo"]),
+            cred("wrong-type", "api_key", []),
+            cred("narrow-scope", "oauth2", ["read:user"]),
+        ]
+    )
+    missing = {
+        "github_credentials": {
+            "provider": "github",
+            "types": ["oauth2"],
+            "scopes": ["repo"],
+        }
+    }
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        annotated = await annotate_expert_grants("user-1", "expert-a", missing)
+        untouched = await annotate_expert_grants("user-1", None, missing)
+    grant = annotated["github_credentials"]["expert_grant"]
+    assert grant["expert_id"] == "expert-a"
+    assert [c["id"] for c in grant["credentials"]] == ["spare-cred"]
+    assert grant["credentials"][0]["type"] == "oauth2"
+    assert "expert_grant" not in missing["github_credentials"]
+    assert untouched is missing
+
+
+async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
+    from backend.copilot.tools.expert_scope import annotate_expert_grants
+    from backend.data.model import OAuth2Credentials
+
+    def mcp_cred(id: str, server_url: str):
+        return OAuth2Credentials(
+            id=id,
+            provider="mcp",
+            title=id,
+            access_token=SecretStr("token"),
+            scopes=[],
+            metadata={"mcp_server_url": server_url},
+        )
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            mcp_cred("right-server", "https://mcp.example.com/sse"),
+            mcp_cred("other-server", "https://mcp.other.com/sse"),
+        ]
+    )
+    missing = {
+        "mcp_credentials": {
+            "provider": "mcp",
+            "types": ["oauth2"],
+            "discriminator_values": ["https://mcp.example.com/sse"],
+        }
+    }
+    with patch(
+        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        annotated = await annotate_expert_grants("user-1", "expert-a", missing)
+    grant = annotated["mcp_credentials"]["expert_grant"]
+    assert [c["id"] for c in grant["credentials"]] == ["right-server"]
+
+
+async def test_agent_built_by_expert_settles_grants_before_install(experts):
+    order: list[str] = []
+    experts.settle_credential_seed.side_effect = lambda *_: order.append("settle")
+    experts.install_workflow.side_effect = lambda *_, **__: order.append("install")
+    await install_saved_agent("user-1", _expert_session(), _saved())
+    assert order == ["settle", "install"]

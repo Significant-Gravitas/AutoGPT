@@ -129,7 +129,7 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
-            user_id, block, input_data
+            user_id, block, input_data, session.expert_id
         )
         if missing_creds:
             return ErrorResponse(
@@ -151,6 +151,7 @@ class ContinueRunBlockTool(BaseTool):
             dry_run=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
         # Delete review record after successful execution (one-time use)
