@@ -178,6 +178,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=300,
         description="The default timeout in seconds, for RPC client calls.",
     )
+    llm_request_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        # Literal rather than an import of DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+        # (1800): util must not import blocks. test_llm.py asserts this bound
+        # stays under that cap, whatever it is set to.
+        le=1500,
+        description=(
+            "Wall-clock cap on a single LLM provider request, covering the whole "
+            "generation (the block path is non-streaming). Raising it lengthens how "
+            "long a stalled provider holds one of `num_graph_workers` slots. "
+            "AgentExecutor and AutoPilot opt out of the per-node cap, so for those "
+            "this is the only per-call wall-clock bound."
+        ),
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",

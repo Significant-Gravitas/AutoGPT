@@ -2,55 +2,80 @@
 
 import { WorkHistoryIcon } from "@hugeicons/core-free-icons";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import type { HomeRecentWorkGroup } from "@/app/api/__generated__/models/homeRecentWorkGroup";
 import { Text } from "@/components/atoms/Text/Text";
 import { HomeTile } from "../HomeTile/HomeTile";
 import { HomeTileEmpty } from "../HomeTileEmpty/HomeTileEmpty";
 import { WorkGroup } from "./components/WorkGroup";
+import { splitGroupsBySection } from "./helpers";
 
 interface Props {
   dashboard: HomeDashboardResponse;
   className?: string;
 }
 
+/** One card for what the agents did this week: the team (each expert and
+ *  Autopilot) first, then the workflows that ran on their own. */
 export function RecentWork({ dashboard, className }: Props) {
+  const { briefing } = dashboard;
   const groups = dashboard.recent_work?.groups ?? [];
+  const { team, workflows } = splitGroupsBySection(groups);
+  const completed = dashboard.recent_work?.completed_count ?? 0;
+  const failed = dashboard.recent_work?.failed_count ?? 0;
+  const isEmpty = groups.length === 0 && !briefing.narrative;
 
   return (
     <HomeTile
       className={className}
-      contentClassName="flex flex-col"
-      surfaceClassName="py-4 sm:py-4"
-      title={
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon
-            icon={WorkHistoryIcon}
-            size={18}
-            className="text-zinc-500"
-            aria-hidden="true"
-          />
-          <Text variant="h5" className="text-zinc-950">
-            Recent work
+      icon={WorkHistoryIcon}
+      title="Recent work"
+      meta={
+        <>
+          <Text
+            variant="small"
+            as="span"
+            tone="muted"
+            className="hidden sm:inline"
+          >
+            This week
           </Text>
-        </div>
-      }
-      header={
-        <Text variant="large" className="text-zinc-600">
-          What your agents produced this week.
-        </Text>
+          <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">
+            ·
+          </span>
+          <Text variant="small" as="span" tone="muted" className="tabular-nums">
+            {completed} completed
+          </Text>
+          {failed > 0 ? (
+            <Text
+              variant="small"
+              as="span"
+              className="tabular-nums text-rose-600"
+            >
+              {failed} failed
+            </Text>
+          ) : null}
+        </>
       }
     >
-      {groups.length === 0 ? (
+      {isEmpty ? (
         <HomeTileEmpty
-          icon={WorkHistoryIcon}
-          title="No work delivered yet"
-          description="Files your agents write, integrations they use and schedules they set up will appear here."
+          title="Nothing to show yet"
+          description="Runs, files, integrations and schedules from your experts and workflows will appear here."
         />
       ) : (
-        <div className="-mx-4 divide-y divide-zinc-100 sm:-mx-5">
-          {groups.map((group) => (
+        <div className="divide-y divide-zinc-200">
+          {briefing.narrative ? (
+            <Text
+              variant="body"
+              tone="secondary"
+              className="text-pretty px-4 py-3 leading-5"
+            >
+              {briefing.narrative}
+            </Text>
+          ) : null}
+          {[...team, ...workflows].map((group) => (
             <WorkGroup
-              key={group.items[0]?.id ?? group.actor.name}
+              key={groupKey(group)}
               group={group}
               timezone={dashboard.timezone}
             />
@@ -59,4 +84,8 @@ export function RecentWork({ dashboard, className }: Props) {
       )}
     </HomeTile>
   );
+}
+
+function groupKey(group: HomeRecentWorkGroup) {
+  return group.runs?.[0]?.id ?? group.items?.[0]?.id ?? group.actor.name;
 }

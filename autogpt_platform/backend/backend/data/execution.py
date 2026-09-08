@@ -230,6 +230,11 @@ class GraphExecutionMeta(BaseDbModel):
     # resume/requeue recovery reason as org/team above.
     expert_id: Optional[str] = None
 
+    # What started this run, when it was not a person: the scheduler job or
+    # the webhook that fired. Soft references; either may be gone by now.
+    schedule_id: Optional[str] = None
+    webhook_id: Optional[str] = None
+
     class Stats(BaseModel):
         model_config = ConfigDict(
             extra="allow",
@@ -381,6 +386,8 @@ class GraphExecutionMeta(BaseDbModel):
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
             expert_id=_graph_exec.expertId,
+            schedule_id=_graph_exec.scheduleId,
+            webhook_id=_graph_exec.webhookId,
         )
 
 
@@ -934,6 +941,8 @@ async def create_graph_execution(
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
     expert_id: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -988,6 +997,8 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"expertId": expert_id} if expert_id else {}),
+            **({"scheduleId": schedule_id} if schedule_id else {}),
+            **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -1228,10 +1239,16 @@ async def update_graph_execution_stats(
                 f"This status can only be set at creation or is not a valid target status."
             )
 
-    await AgentGraphExecution.prisma().update_many(
+    updated = await AgentGraphExecution.prisma().update_many(
         where=where_clause,
         data=update_data,
     )
+    if status is not None and updated == 0:
+        # The row exists but is not in a state this status may be reached
+        # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
+        # the run already finished. Nothing changed, so do not score it,
+        # cascade its children, or hand back a row that suggests it did.
+        return None
 
     if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Score the finished run for the Briefing while its stats are fresh.

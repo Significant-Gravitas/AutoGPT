@@ -211,142 +211,6 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     } in where["OR"]
 
 
-@pytest.mark.asyncio
-async def test_list_library_agents_exposes_matching_store_version_id(mocker):
-    """The list response carries the approved StoreListingVersion id matching
-    the agent's exact graph_id + graph_version, so install flows stay
-    version-stable instead of resolving the listing's current active version."""
-    mock_library_agents = [
-        prisma.models.LibraryAgent(
-            id="ua1",
-            userId="test-user",
-            agentGraphId="agent2",
-            settings=cast(prisma.fields.Json, "{}"),
-            agentGraphVersion=3,
-            isCreatedByUser=False,
-            isDeleted=False,
-            isArchived=False,
-            isHidden=False,
-            createdAt=datetime.now(),
-            updatedAt=datetime.now(),
-            isFavorite=False,
-            useGraphIsActiveVersion=True,
-            visibility=prisma.enums.ResourceVisibility.PRIVATE,
-            AgentGraph=prisma.models.AgentGraph(
-                id="agent2",
-                version=3,
-                name="Test Agent 2",
-                description="Test Description 2",
-                userId="other-user",
-                isActive=True,
-                createdAt=datetime.now(),
-                visibility=prisma.enums.ResourceVisibility.PRIVATE,
-            ),
-        )
-    ]
-
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_library_agents
-    )
-    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
-
-    matching_version = MagicMock(
-        id="slv-exact", agentGraphId="agent2", agentGraphVersion=3
-    )
-    older_matching_version = MagicMock(
-        id="slv-older", agentGraphId="agent2", agentGraphVersion=3
-    )
-    wrong_version = MagicMock(
-        id="slv-other-version", agentGraphId="agent2", agentGraphVersion=4
-    )
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv_find_many = mocker.AsyncMock(
-        return_value=[wrong_version, matching_version, older_matching_version]
-    )
-    mock_slv.return_value.find_many = mock_slv_find_many
-
-    mocker.patch(
-        "backend.api.features.library.db._fetch_execution_counts",
-        new=mocker.AsyncMock(return_value={}),
-    )
-
-    result = await db.list_library_agents("test-user")
-
-    assert result.agents[0].store_listing_version_id == "slv-exact"
-    where = mock_slv_find_many.call_args.kwargs["where"]
-    assert where["OR"] == [{"agentGraphId": "agent2", "agentGraphVersion": 3}]
-    assert where["submissionStatus"] == prisma.enums.SubmissionStatus.APPROVED
-    assert where["isDeleted"] is False
-    assert where["isAvailable"] is True
-    assert where["StoreListing"] == {"is": {"isDeleted": False}}
-    assert mock_slv_find_many.call_args.kwargs["distinct"] == [
-        "agentGraphId",
-        "agentGraphVersion",
-    ]
-    assert mock_slv_find_many.call_args.kwargs["order"] == [
-        {"agentGraphId": "asc"},
-        {"agentGraphVersion": "asc"},
-        {"createdAt": "desc"},
-        {"id": "desc"},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_list_library_agents_store_version_lookup_fails_soft(mocker):
-    """A failing StoreListingVersion lookup must not break the library list;
-    agents just come back without a store_listing_version_id."""
-    mock_library_agents = [
-        prisma.models.LibraryAgent(
-            id="ua1",
-            userId="test-user",
-            agentGraphId="agent2",
-            settings=cast(prisma.fields.Json, "{}"),
-            agentGraphVersion=1,
-            isCreatedByUser=False,
-            isDeleted=False,
-            isArchived=False,
-            isHidden=False,
-            createdAt=datetime.now(),
-            updatedAt=datetime.now(),
-            isFavorite=False,
-            useGraphIsActiveVersion=True,
-            visibility=prisma.enums.ResourceVisibility.PRIVATE,
-            AgentGraph=prisma.models.AgentGraph(
-                id="agent2",
-                version=1,
-                name="Test Agent 2",
-                description="Test Description 2",
-                userId="other-user",
-                isActive=True,
-                createdAt=datetime.now(),
-                visibility=prisma.enums.ResourceVisibility.PRIVATE,
-            ),
-        )
-    ]
-
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.find_many = mocker.AsyncMock(
-        return_value=mock_library_agents
-    )
-    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
-
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_many = mocker.AsyncMock(
-        side_effect=RuntimeError("db down")
-    )
-
-    mocker.patch(
-        "backend.api.features.library.db._fetch_execution_counts",
-        new=mocker.AsyncMock(return_value={}),
-    )
-
-    result = await db.list_library_agents("test-user")
-
-    assert len(result.agents) == 1
-    assert result.agents[0].store_listing_version_id is None
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     mocker.patch(
@@ -472,7 +336,6 @@ async def test_add_agent_to_library(mocker):
     assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
-    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "version123"
 
 
 @pytest.mark.asyncio
@@ -533,7 +396,6 @@ async def test_add_agent_to_library_reuses_existing_without_loading_graph(mocker
     from_db.assert_called_once_with(
         restored,
         schedule_info={},
-        store_listing_version_id="version123",
     )
 
 
@@ -811,12 +673,6 @@ async def test_list_favorite_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
-    matching_version = MagicMock(
-        id="slv-favorite", agentGraphId="agent-fav", agentGraphVersion=1
-    )
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_many = mocker.AsyncMock(return_value=[matching_version])
-
     mocker.patch(
         "backend.api.features.library.db._fetch_execution_counts",
         new=mocker.AsyncMock(return_value={"agent-fav": 7}),
@@ -828,50 +684,10 @@ async def test_list_favorite_library_agents(mocker):
     assert result.agents[0].id == "fav1"
     assert result.agents[0].name == "Favorite Agent"
     assert result.agents[0].graph_id == "agent-fav"
-    assert result.agents[0].store_listing_version_id == "slv-favorite"
     assert result.pagination.total_items == 1
     assert result.pagination.total_pages == 1
     assert result.pagination.current_page == 1
     assert result.pagination.page_size == 50
-
-
-@pytest.mark.asyncio
-async def test_get_library_agent_exposes_matching_store_version_id(mocker):
-    agent_graph = MagicMock(id="graph-id", version=7)
-    library_agent = MagicMock(
-        id="library-id",
-        agentGraphId="graph-id",
-        agentGraphVersion=7,
-        AgentGraph=agent_graph,
-    )
-    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.find_first = mocker.AsyncMock(
-        return_value=library_agent
-    )
-    mocker.patch(
-        "backend.api.features.library.db._fetch_marketplace_details",
-        new=mocker.AsyncMock(return_value=(None, None)),
-    )
-    mocker.patch(
-        "backend.api.features.library.db._fetch_schedule_info",
-        new=mocker.AsyncMock(return_value={}),
-    )
-    mocker.patch(
-        "backend.api.features.library.db._fetch_matching_store_version_ids",
-        new=mocker.AsyncMock(return_value={("graph-id", 7): "slv-exact"}),
-    )
-    mocker.patch.object(
-        db.graph_db, "get_sub_graphs", new=mocker.AsyncMock(return_value=[])
-    )
-    converted = MagicMock()
-    mock_from_db = mocker.patch.object(
-        library_model.LibraryAgent, "from_db", return_value=converted
-    )
-
-    result = await db.get_library_agent("library-id", "test-user")
-
-    assert result is converted
-    assert mock_from_db.call_args.kwargs["store_listing_version_id"] == "slv-exact"
 
 
 @pytest.mark.asyncio

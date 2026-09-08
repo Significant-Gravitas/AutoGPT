@@ -4,6 +4,7 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 
 export type OriginFilter = "all" | "uploaded" | "generated";
+export type ArtifactsView = "list" | "grid";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const ARTIFACTS_PAGE_SIZE = 50;
@@ -16,6 +17,7 @@ export function useArtifactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [originFilter, setOriginFilter] = useState<OriginFilter>("all");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [view, setView] = useState<ArtifactsView>("list");
 
   const debouncedSearch = useDebouncedValue(
     searchTerm.trim(),
@@ -74,6 +76,8 @@ export function useArtifactsPage() {
     setOriginFilter,
     selectedFolderId,
     setSelectedFolderId,
+    view,
+    setView,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: () => {

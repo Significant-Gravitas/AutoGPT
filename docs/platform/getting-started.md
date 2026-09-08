@@ -13,73 +13,53 @@ This guide will help you setup the server and builder for the project.
 
 ## Prerequisites
 
-To setup the server, you need to have the following installed:
+The single-container appliance's only product prerequisite is an installed,
+running Docker CLI and daemon. Select a local Docker endpoint using Linux
+containers on `amd64` or `arm64`. The Unix bootstrap also uses Bash, curl, and
+`sha256sum` or `shasum`. Docker Compose, Git, Node.js, and NPM are not required
+for the appliance installer.
 
-- [Node.js](https://nodejs.org/en/)
-- [Docker](https://docs.docker.com/get-docker/)
-- [Git](https://git-scm.com/downloads)
+Install Docker from the [official Docker documentation](https://docs.docker.com/get-docker/),
+start it, then verify the selected daemon:
 
-### Checking if you have Node.js & NPM installed
-
-We use Node.js to run our frontend application.
-
-If you need assistance installing Node.js:  
-https://nodejs.org/en/download/
-
-NPM is included with Node.js, but if you need assistance installing NPM:
-https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-
-You can check if you have Node.js & NPM installed by running the following command:
-
-```bash
-node -v
-npm -v
-```
-
-Once you have Node.js installed, you can proceed to the next step.
-
-### Checking if you have Docker & Docker Compose installed
-
-Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
-
-If you need assistance installing docker:
-https://docs.docker.com/desktop/
-
-Docker-compose is included in Docker Desktop, but if you need assistance installing docker compose:
-https://docs.docker.com/compose/install/
-
-You can check if you have Docker installed by running the following command:
-
-```bash
+```console
 docker -v
-docker compose -v
+docker info
 ```
 
-Once you have Docker and Docker Compose installed, you can proceed to the next step.
+## Quick Setup with the Appliance Installer
 
-## Quick Setup with Auto Setup Script (Recommended)
-If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
+The release installer pulls and starts the published single-container
+appliance: one Docker container, one loopback port, no source checkout. It
+needs a running Docker daemon with Linux containers on `amd64` or `arm64`; it
+does not install Docker or build AutoGPT from source. See
+[the installer reference](installer.md) for details.
 
-For macOS/Linux:
-```
-curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
-```
+The hosted installer is not live yet: `setup.agpt.co/install.sh` still serves
+the Compose installer, and the appliance image tags are not public until the
+[release gates](installer.md#maintainer-release-gates) pass. This first release
+supports Linux and macOS. Until then, and on Windows, use the
+[from-source setup](#manual-setup) below, which is also the path that supports
+a fully offline install with a local LLM.
 
-For Windows (PowerShell):
-```
-powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
-```
-
-This method is ideal if you're setting up for development or testing and want to skip manual configuration.
-
-## Experimental single-container image
-
-For a small self-hosted installation that does not need a source checkout, see
-[Run AutoGPT in one Docker container](single-container.md). The image bundles
-the platform and its stateful services for one host; it is not the development
-setup or a high-availability deployment.
 
 ## Manual Setup
+
+### Development prerequisites
+
+The manual source checkout requires
+[Git](https://git-scm.com/downloads),
+[Node.js and NPM](https://nodejs.org/en/download/), Docker, and
+[Docker Compose](https://docs.docker.com/compose/install/). Verify them before
+continuing:
+
+```console
+git --version
+node -v
+npm -v
+docker -v
+docker compose version
+```
 
 ### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
@@ -160,8 +140,8 @@ make help
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
 
 **Notes:**
-
-By default the application for different services run on the following ports:
+ 
+By default the application for different services run on the following ports: 
 
 Frontend UI Server: 3000
 Backend Websocket Server: 8001
@@ -482,7 +462,7 @@ make format
 To run the tests:
 
 ```sh
-poetry run pytest -s
+poetry run pytest -s 
 ```
 
 ## Adding a New Agent Block
