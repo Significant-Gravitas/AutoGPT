@@ -10,8 +10,7 @@
       "description": "Specific search term description",
       "runs": 75,
       "rating": 4.2,
-      "agent_graph_id": "test-graph-search",
-      "verified": false
+      "agent_graph_id": "test-graph-search"
     }
   ],
   "pagination": {

@@ -27,7 +27,30 @@ async def setup_prisma():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents(mocker):
     # Mock data
-    mock_agents = [_store_agent_row()]
+    mock_agents = [
+        prisma.models.StoreAgent(
+            listing_id="test-id",
+            listing_version_id="version123",
+            slug="test-agent",
+            agent_name="Test Agent",
+            agent_video=None,
+            agent_image=["image.jpg"],
+            featured=False,
+            creator_username="creator",
+            creator_avatar="avatar.jpg",
+            sub_heading="Test heading",
+            description="Test description",
+            categories=[],
+            runs=10,
+            rating=4.5,
+            versions=["1.0"],
+            graph_id="test-graph-id",
+            graph_versions=["1"],
+            updated_at=datetime.now(),
+            is_available=False,
+            use_for_onboarding=False,
+        )
+    ]
 
     # Mock prisma calls
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
@@ -47,32 +70,6 @@ async def test_get_store_agents(mocker):
     mock_store_agent.return_value.count.assert_called_once()
 
 
-def _store_agent_row(verified: bool = False) -> prisma.models.StoreAgent:
-    return prisma.models.StoreAgent(
-        listing_id="test-id",
-        listing_version_id="version123",
-        slug="test-agent",
-        agent_name="Test Agent",
-        agent_video=None,
-        agent_image=["image.jpg"],
-        featured=False,
-        verified=verified,
-        creator_username="creator",
-        creator_avatar="avatar.jpg",
-        sub_heading="Test heading",
-        description="Test description",
-        categories=[],
-        runs=10,
-        rating=4.5,
-        versions=["1.0"],
-        graph_id="test-graph-id",
-        graph_versions=["1"],
-        updated_at=datetime.now(),
-        is_available=False,
-        use_for_onboarding=False,
-    )
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agent_details(mocker):
     # Mock data - StoreAgent view already contains the active version data
@@ -84,7 +81,6 @@ async def test_get_store_agent_details(mocker):
         agent_video="video.mp4",
         agent_image=["image.jpg"],
         featured=False,
-        verified=False,
         creator_username="creator",
         creator_avatar="avatar.jpg",
         sub_heading="Test heading",
@@ -172,7 +168,6 @@ async def test_create_store_submission(mocker):
         username="testuser",
         description="Test",
         isFeatured=False,
-        isVerified=False,
         links=[],
         createdAt=now,
         updatedAt=now,
@@ -228,7 +223,6 @@ async def test_create_store_submission(mocker):
         imageUrls=[],
         categories=[],
         isFeatured=False,
-        isVerified=False,
         isDeleted=False,
         version=1,
         storeListingId="listing-id",
@@ -290,7 +284,6 @@ async def test_update_profile(mocker):
         links=["link1"],
         avatarUrl="avatar.jpg",
         isFeatured=False,
-        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -335,7 +328,6 @@ async def test_update_profile_creates_when_missing(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
-        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -374,7 +366,6 @@ async def test_update_profile_tolerates_create_race(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
-        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -387,7 +378,6 @@ async def test_update_profile_tolerates_create_race(mocker):
         links=[],
         avatarUrl=None,
         isFeatured=False,
-        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
     )
@@ -429,7 +419,6 @@ async def test_get_user_profile(mocker):
         links=["link1", "link2"],
         avatarUrl="avatar.jpg",
         isFeatured=False,
-        isVerified=False,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
         userId="user-id",
@@ -1214,45 +1203,6 @@ def store_agent_query(mocker):
     mock.return_value.find_many = AsyncMock(return_value=[])
     mock.return_value.count = AsyncMock(return_value=0)
     return mock.return_value.find_many
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_unsorted_browse_ranks_verified_first(store_agent_query):
-    await db.get_store_agents()
-
-    assert store_agent_query.call_args.kwargs["order"] == [{"verified": "desc"}]
-
-
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("sorted_by", list(db.StoreAgentsSortOptions))
-async def test_every_browse_sort_ranks_verified_first(store_agent_query, sorted_by):
-    await db.get_store_agents(sorted_by=sorted_by)
-
-    order = store_agent_query.call_args.kwargs["order"]
-    assert order[0] == {"verified": "desc"}
-    assert len(order) == 2
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_featured_listings_must_also_be_verified(store_agent_query):
-    await db.get_store_agents(featured=True)
-
-    where = store_agent_query.call_args.kwargs["where"]
-    assert where["featured"] is True
-    assert where["verified"] is True
-
-
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("verified", [True, False])
-async def test_browse_reports_each_listings_verified_state(mocker, verified):
-    row = _store_agent_row(verified=verified)
-    mock = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock.return_value.find_many = AsyncMock(return_value=[row])
-    mock.return_value.count = AsyncMock(return_value=1)
-
-    result = await db.get_store_agents()
-
-    assert result.agents[0].verified is verified
 
 
 @pytest.mark.asyncio(loop_scope="session")

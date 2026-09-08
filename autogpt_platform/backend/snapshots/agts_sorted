@@ -10,8 +10,7 @@
       "description": "Top agent description",
       "runs": 1000,
       "rating": 5.0,
-      "agent_graph_id": "test-graph-3",
-      "verified": false
+      "agent_graph_id": "test-graph-3"
     }
   ],
   "pagination": {

@@ -50,7 +50,6 @@ class StoreAgent(pydantic.BaseModel):
     runs: int
     rating: float
     agent_graph_id: str
-    verified: bool = False
 
     @classmethod
     def from_db(cls, agent: "prisma.models.StoreAgent") -> "StoreAgent":
@@ -65,7 +64,6 @@ class StoreAgent(pydantic.BaseModel):
             runs=agent.runs,
             rating=agent.rating,
             agent_graph_id=agent.graph_id,
-            verified=agent.verified,
         )
 
 

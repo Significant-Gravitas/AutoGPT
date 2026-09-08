@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StoreCard } from "../StoreCard";
 
-function renderStoreCard(onClick = vi.fn(), verified?: boolean) {
+function renderStoreCard(onClick = vi.fn()) {
   render(
     <StoreCard
       agentName="Research workflow"
@@ -12,7 +12,6 @@ function renderStoreCard(onClick = vi.fn(), verified?: boolean) {
       rating={4.5}
       onClick={onClick}
       avatarSrc=""
-      verified={verified}
     />,
   );
 
@@ -37,21 +36,5 @@ describe("StoreCard keyboard handling", () => {
 
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);
-  });
-});
-
-describe("StoreCard verification badge", () => {
-  it("marks a verified listing", () => {
-    renderStoreCard(vi.fn(), true);
-
-    expect(screen.getByText("Verified")).toBeTruthy();
-    expect(screen.queryByText("Community")).toBeNull();
-  });
-
-  it("marks an unverified listing as community", () => {
-    renderStoreCard(vi.fn(), false);
-
-    expect(screen.getByText("Community")).toBeTruthy();
-    expect(screen.queryByText("Verified")).toBeNull();
   });
 });

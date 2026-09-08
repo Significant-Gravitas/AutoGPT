@@ -151,7 +151,7 @@ async def hybrid_search(
     where_parts = ["sa.is_available = true"]
 
     if featured:
-        where_parts.append("sa.featured = true AND sa.verified = true")
+        where_parts.append("sa.featured = true")
 
     if creators:
         params.append(creators)
@@ -240,7 +240,6 @@ async def hybrid_search(
                 sa.rating,
                 sa.categories,
                 sa.featured,
-                sa.verified,
                 sa.is_available,
                 sa.updated_at,
                 sa.graph_id,
@@ -301,7 +300,6 @@ async def hybrid_search(
                 rating,
                 categories,
                 featured,
-                verified,
                 is_available,
                 updated_at,
                 graph_id,
