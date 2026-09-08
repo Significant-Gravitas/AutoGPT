@@ -122,7 +122,7 @@ class RunAgentInput(BaseModel):
     use_defaults: bool = False
     schedule_name: str = ""
     cron: str = ""
-    timezone: str = "UTC"
+    timezone: str | None = None
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
     save_as_preset: bool = False
@@ -213,7 +213,7 @@ class RunAgentTool(BaseTool):
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone (default: UTC).",
+                    "description": "IANA timezone. Defaults to the account timezone, or UTC if unset.",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -1163,7 +1163,7 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         schedule_name: str,
         cron: str,
-        timezone: str,
+        timezone: str | None,
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
@@ -1196,7 +1196,9 @@ class RunAgentTool(BaseTool):
 
         # Get user timezone
         user = await user_db().get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
+        user_timezone = timezone or get_user_timezone_or_utc(
+            user.timezone if user else None
+        )
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise

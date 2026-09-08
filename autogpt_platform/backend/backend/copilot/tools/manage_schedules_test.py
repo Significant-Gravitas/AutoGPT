@@ -8,8 +8,11 @@ import pytest
 from backend.copilot.tools.manage_schedules import (
     DeleteScheduleTool,
     ListSchedulesTool,
+    PauseScheduleTool,
+    ResumeScheduleTool,
     ScheduleDeletedResponse,
     ScheduleListResponse,
+    ScheduleToggledResponse,
 )
 from backend.copilot.tools.models import ErrorResponse
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -187,7 +190,7 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     assert isinstance(result, ScheduleListResponse)
     mock_client.get_execution_schedules.assert_called_once_with(
-        graph_id="graph-42", user_id=_USER
+        graph_id="graph-42", user_id=_USER, include_paused=True
     )
 
 
@@ -211,12 +214,16 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
 
 
 @pytest.mark.parametrize(
-    ("session_expert_id", "expected_id"),
-    [(None, "autopilot"), ("expert-a", "expert-a-job"), ("expert-b", "expert-b-job")],
+    ("session_expert_id", "expected_ids"),
+    [
+        (None, ["autopilot", "expert-a-job", "expert-b-job"]),
+        ("expert-a", ["expert-a-job"]),
+        ("expert-b", ["expert-b-job"]),
+    ],
 )
 @pytest.mark.asyncio
-async def test_list_schedules_only_returns_current_persona_scope(
-    list_tool, session_expert_id, expected_id
+async def test_list_schedules_autopilot_sees_all_experts_see_their_own(
+    list_tool, session_expert_id, expected_ids
 ):
     scoped_session = make_session(_USER, expert_id=session_expert_id)
     mock_client = AsyncMock()
@@ -232,7 +239,12 @@ async def test_list_schedules_only_returns_current_persona_scope(
         result = await list_tool._execute(user_id=_USER, session=scoped_session)
 
     assert isinstance(result, ScheduleListResponse)
-    assert [schedule.schedule_id for schedule in result.schedules] == [expected_id]
+    assert [schedule.schedule_id for schedule in result.schedules] == expected_ids
+    assert all(
+        schedule.expert_id == schedule.schedule_id.removesuffix("-job")
+        for schedule in result.schedules
+        if schedule.schedule_id != "autopilot"
+    )
 
 
 # ── DeleteScheduleTool ─────────────────────────────────────────────
@@ -324,14 +336,13 @@ async def test_delete_schedule_not_authorized(delete_tool, session):
 @pytest.mark.parametrize(
     ("session_expert_id", "target_expert_id"),
     [
-        (None, "expert-a"),
         ("expert-a", None),
         ("expert-a", "expert-b"),
         ("expert-b", "expert-a"),
     ],
 )
 @pytest.mark.asyncio
-async def test_delete_schedule_refuses_cross_persona_job(
+async def test_delete_schedule_refuses_cross_expert_job(
     delete_tool, session_expert_id, target_expert_id
 ):
     scoped_session = make_session(_USER, expert_id=session_expert_id)
@@ -374,4 +385,82 @@ async def test_delete_schedule_allows_same_expert_job(delete_tool):
     assert isinstance(result, ScheduleDeletedResponse)
     mock_client.delete_schedule.assert_awaited_once_with(
         schedule_id="expert-job", user_id=_USER
+    )
+
+
+@pytest.mark.asyncio
+async def test_autopilot_can_delete_an_expert_schedule(delete_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER, session=session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
+    mock_client.delete_schedule.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "session_expert_id"),
+    [
+        (PauseScheduleTool(), "pause_schedule", None),
+        (ResumeScheduleTool(), "resume_schedule", None),
+        (PauseScheduleTool(), "pause_schedule", "expert-a"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_pause_and_resume_within_scope(tool, method, session_expert_id):
+    scoped_session = make_session(_USER, expert_id=session_expert_id)
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    setattr(mock_client, method, AsyncMock(return_value=True))
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(
+            user_id=_USER, session=scoped_session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ScheduleToggledResponse)
+    getattr(mock_client, method).assert_awaited_once_with("expert-job", _USER)
+
+
+@pytest.mark.asyncio
+async def test_expert_cannot_pause_another_experts_schedule():
+    scoped_session = make_session(_USER, expert_id="expert-b")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[_make_graph_info(schedule_id="expert-job", expert_id="expert-a")]
+    )
+    mock_client.pause_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await PauseScheduleTool()._execute(
+            user_id=_USER, session=scoped_session, schedule_id="expert-job"
+        )
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    mock_client.pause_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_marks_paused_entries(list_tool, session):
+    paused = _make_graph_info(schedule_id="paused-job")
+    paused.next_run_time = ""
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[paused])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert result.schedules[0].paused is True
+    assert (
+        mock_client.get_execution_schedules.call_args.kwargs["include_paused"] is True
     )

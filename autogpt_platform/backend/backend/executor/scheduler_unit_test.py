@@ -1906,3 +1906,22 @@ class TestMorningBriefingSchedule:
             "Failed to remove morning briefing job" in r.getMessage()
             for r in caplog.records
         )
+
+
+def test_graph_schedule_listing_can_include_paused_jobs():
+    fixtures = TestScheduleOrgVisibility()
+    info = fixtures._graph_info(user_id="owner")
+    sched, jobs, decode = fixtures._scheduler_with_jobs([info])
+    jobs[0].next_run_time = None
+    with (
+        patch.object(Scheduler, "_get_jobs_cached", return_value=jobs),
+        patch("backend.executor.scheduler._job_to_info", side_effect=decode),
+    ):
+        assert sched.get_graph_execution_schedules(user_id="owner") == []
+        assert sched.get_graph_execution_schedules(
+            user_id="owner", include_paused=True
+        ) == [info]
+        assert (
+            sched.get_graph_execution_schedules(user_id="other", include_paused=True)
+            == []
+        )

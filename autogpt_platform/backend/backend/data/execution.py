@@ -600,6 +600,7 @@ async def get_graph_executions(
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
+    expert_id: Optional[str] = None,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -631,6 +632,8 @@ async def get_graph_executions(
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
         where_filter["agentGraphVersion"] = graph_version
+    if expert_id:
+        where_filter["expertId"] = expert_id
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
