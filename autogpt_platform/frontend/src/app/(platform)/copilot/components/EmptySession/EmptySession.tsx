@@ -43,6 +43,8 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  /** Expert the new conversation will address; scopes workspace-file pickers. */
+  expertId?: string | null;
   /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
   voiceToggle?: ReactNode;
 }
@@ -56,6 +58,7 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  expertId = null,
   voiceToggle,
 }: Props) {
   const { user } = useAuth();
@@ -214,6 +217,7 @@ export function EmptySession({
                   }
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  expertId={expertId}
                   recipientPicker={
                     isExpertsEnabled ? (
                       <RecipientChip
