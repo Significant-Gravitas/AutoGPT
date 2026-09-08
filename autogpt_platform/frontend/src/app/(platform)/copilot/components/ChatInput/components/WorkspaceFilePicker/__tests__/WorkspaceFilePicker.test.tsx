@@ -21,6 +21,45 @@ afterEach(() => {
 });
 
 describe("WorkspaceFilePicker", () => {
+  it("scopes the listing to the expert the chat is addressed to", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+
+    render(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        expertId="expert-a"
+      />,
+    );
+
+    await screen.findByText("alpha.txt");
+    expect(mockListWorkspaceFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ expert_id: "expert-a" }),
+    );
+  });
+
+  it("lists the whole workspace for a personal chat", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+
+    render(
+      <WorkspaceFilePicker
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("alpha.txt");
+    expect(mockListWorkspaceFiles.mock.calls[0][0].expert_id).toBeUndefined();
+  });
+
   it("lists workspace files and confirms the selection", async () => {
     mockListWorkspaceFiles.mockResolvedValue({
       status: 200,

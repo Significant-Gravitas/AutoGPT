@@ -41,6 +41,8 @@ interface Props {
   isInteractionLocked?: boolean;
   isKickoffStarting?: boolean;
   expertName?: string;
+  /** Expert the new conversation will address; scopes workspace-file pickers. */
+  expertId?: string | null;
 }
 
 export function EmptySession({
@@ -52,6 +54,7 @@ export function EmptySession({
   isInteractionLocked,
   isKickoffStarting,
   expertName,
+  expertId = null,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -198,6 +201,7 @@ export function EmptySession({
                   }
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  expertId={expertId}
                   recipientPicker={
                     isExpertsEnabled ? (
                       <RecipientChip

@@ -337,8 +337,10 @@ export function getEmptyMessage(opts: {
   hasSearchTerm: boolean;
   isInFolder: boolean;
   hasFolders: boolean;
+  hasExpertFilter?: boolean;
 }): string {
   if (opts.hasSearchTerm) return "No files match your search";
+  if (opts.hasExpertFilter) return "No files from this expert yet";
   if (opts.isInFolder) return "This folder is empty";
   if (opts.hasFolders) return "No files at the root yet";
   return "No files yet";

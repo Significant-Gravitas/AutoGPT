@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import { useFileDrag } from "../../WorkspaceFolders/useFileDrag";
+import { ExpertBadge } from "../ExpertBadge";
 import { FileActionsMenu } from "../FileActionsMenu";
 import { formatDayLabel, formatFileSize, formatFullDate } from "../helpers";
 import { FilePreviewCard } from "./FilePreviewCard";
@@ -70,6 +71,7 @@ export function FileRow({ file, onOpen }: Props) {
             >
               {file.name}
             </Text>
+            <ExpertBadge expertId={file.expert_id} className="shrink-0" />
           </button>
         </TooltipTrigger>
         <TooltipPortal>

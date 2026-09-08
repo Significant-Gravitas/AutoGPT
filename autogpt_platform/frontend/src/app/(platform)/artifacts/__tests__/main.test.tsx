@@ -8,12 +8,14 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetWorkspaceStorageUsageMockHandler,
   getListWorkspaceFilesMockHandler,
   getListWorkspaceFilesMockHandler401,
   getListWorkspaceFoldersMockHandler,
 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
+import type { ExpertIdentity } from "@/app/api/__generated__/models/expertIdentity";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 
 const { setFlagStatusMock, uploadFileDirectMock } = vi.hoisted(() => {
@@ -34,6 +36,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS_PAGE: "artifacts-page",
     AUTOGPT_NEW_LAYOUT: "autogpt-new-layout",
+    HIRE_EXPERTS: "hire-experts",
   },
   useGetFlag: (flag: string) => flag !== "autogpt-new-layout",
   useFlagStatus: () => setFlagStatusMock(),
@@ -111,6 +114,27 @@ function useFilesHandler(files: WorkspaceFileItem[]) {
       has_more: false,
     }),
   );
+}
+
+const HIRED_EXPERTS: ExpertIdentity[] = [
+  {
+    id: "expert-a",
+    name: "Nova",
+    avatar_url: null,
+    role: "Analyst",
+    is_archived: false,
+  },
+  {
+    id: "expert-b",
+    name: "Kai",
+    avatar_url: null,
+    role: "Writer",
+    is_archived: true,
+  },
+];
+
+function useExpertsHandler(experts: ExpertIdentity[] = HIRED_EXPERTS) {
+  server.use(getListExpertIdentitiesMockHandler(experts));
 }
 
 // The row's name button is the tooltip trigger; focusing it opens the large
@@ -725,5 +749,68 @@ describe("ArtifactsPage - file viewer modal", () => {
     expect(
       await screen.findByRole("button", { name: /^download$/i }),
     ).toBeDefined();
+  });
+});
+
+describe("ArtifactsPage - expert filter", () => {
+  test("offers hired experts and narrows the listing to the chosen one", async () => {
+    useStorageHandler();
+    useExpertsHandler();
+    const requests: { expertId: string | null; rootOnly: string | null }[] = [];
+    server.use(
+      http.get("/api/proxy/api/workspace/files", ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        requests.push({
+          expertId: params.get("expert_id"),
+          rootOnly: params.get("root_only"),
+        });
+        return HttpResponse.json({ files: [], offset: 0, has_more: false });
+      }),
+    );
+
+    render(<ArtifactsPage />);
+
+    const novaTab = await screen.findByRole("tab", { name: "Nova" });
+    expect(screen.getByRole("tab", { name: "Everyone" })).toBeDefined();
+    // A fired expert is history, not a filter you can pick.
+    expect(screen.queryByRole("tab", { name: "Kai" })).toBeNull();
+
+    fireEvent.click(novaTab);
+
+    await waitFor(() => {
+      const last = requests[requests.length - 1];
+      expect(last.expertId).toBe("expert-a");
+      expect(last.rootOnly).toBe("false");
+    });
+    expect(novaTab.getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("labels each file with the expert whose conversation it came from", async () => {
+    useStorageHandler();
+    useExpertsHandler();
+    useFilesHandler([
+      makeFile({ id: "f1", name: "plan.md", expert_id: "expert-a" }),
+      makeFile({ id: "f2", name: "notes.md", expert_id: null }),
+    ]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("notes.md")).toBeDefined();
+    const badges = await screen.findAllByTestId("artifacts-expert-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("Nova");
+  });
+
+  test("hides the expert filter when no expert is hired", async () => {
+    useStorageHandler();
+    useExpertsHandler([]);
+    useFilesHandler([]);
+    server.use(getListWorkspaceFoldersMockHandler({ folders: [] }));
+
+    render(<ArtifactsPage />);
+
+    expect(await screen.findByText("No files yet")).toBeDefined();
+    expect(screen.queryByTestId("artifacts-expert-filter")).toBeNull();
   });
 });

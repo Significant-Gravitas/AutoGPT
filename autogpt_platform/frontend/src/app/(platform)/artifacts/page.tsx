@@ -8,10 +8,12 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { usePlatformChrome } from "@/app/(platform)/PlatformChrome/usePlatformChrome";
+import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { ArtifactsSearchBar } from "./components/ArtifactsSearchBar/ArtifactsSearchBar";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
 import { getEmptyMessage } from "./components/ArtifactsList/helpers";
 import { NewMenu } from "./components/NewMenu/NewMenu";
+import { ExpertFilter } from "./components/ExpertFilter/ExpertFilter";
 import { OriginFilter } from "./components/OriginFilter/OriginFilter";
 import { StorageUsage } from "./components/StorageUsage/StorageUsage";
 import { ViewToggle } from "./components/ViewToggle/ViewToggle";
@@ -61,6 +63,8 @@ export default function ArtifactsPage() {
     setOriginFilter,
     selectedFolderId,
     setSelectedFolderId,
+    expertFilter,
+    setExpertFilter,
     view,
     setView,
     hasMore,
@@ -68,11 +72,13 @@ export default function ArtifactsPage() {
     loadMore,
   } = useArtifactsPage();
   const { folders, isLoading: isFoldersLoading } = useArtifactsFolders();
+  const { activeExperts } = useExpertMap();
 
   const isSearching = searchTerm.length > 0;
   const isInFolder = selectedFolderId !== null;
+  const isFilteringByExpert = expertFilter !== null;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-  const showFolders = !isInFolder && !isSearching;
+  const showFolders = !isInFolder && !isSearching && !isFilteringByExpert;
   const hasFolders = showFolders && folders.length > 0;
   // At the root the empty state depends on whether folders exist, so hold
   // the loading state until both queries have settled.
@@ -81,6 +87,11 @@ export default function ArtifactsPage() {
   useEffect(() => {
     document.title = "Files – AutoGPT Platform";
   }, []);
+
+  function handleExpertFilterChange(expertId: string | null) {
+    setExpertFilter(expertId);
+    if (expertId) setSelectedFolderId(null);
+  }
 
   if (!flagReady) {
     return <ArtifactsPageSkeleton showNewLayout={showNewLayout} />;
@@ -126,12 +137,18 @@ export default function ArtifactsPage() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <motion.div
+          className="flex flex-wrap items-center gap-x-6 gap-y-2"
           variants={variants}
           initial="hidden"
           animate="show"
           transition={{ delay: reduceMotion ? 0 : 0.16 }}
         >
           <OriginFilter value={originFilter} onChange={setOriginFilter} />
+          <ExpertFilter
+            experts={activeExperts}
+            value={expertFilter}
+            onChange={handleExpertFilterChange}
+          />
         </motion.div>
         <motion.div
           variants={variants}
@@ -170,12 +187,13 @@ export default function ArtifactsPage() {
             hasSearchTerm: isSearching,
             isInFolder,
             hasFolders,
+            hasExpertFilter: isFilteringByExpert,
           })}
           compactEmpty={hasFolders}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={loadMore}
-          listKey={`${originFilter}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
+          listKey={`${originFilter}|${expertFilter ?? "everyone"}|${debouncedSearch}|${selectedFolderId ?? "root"}`}
           view={view}
           showFolders={showFolders}
           onSelectFolder={setSelectedFolderId}

@@ -341,6 +341,7 @@ export const ChatContainer = ({
                             onDroppedFilesConsumed={onDroppedFilesConsumed}
                             hasSession={!!sessionId}
                             sessionId={sessionId}
+                            expertId={expertIdentity?.id ?? null}
                           />
                         </div>
                       </TooltipTrigger>
@@ -364,6 +365,7 @@ export const ChatContainer = ({
                 isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
                 isKickoffStarting={isKickoffStarting}
                 expertName={expertIdentity?.name}
+                expertId={expertIdentity?.id ?? null}
               />
             )}
           </div>

@@ -13,7 +13,13 @@ const PAGE_SIZE = 50;
 
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
-export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
+interface Args {
+  enabled: boolean;
+  /** Expert the chat is scoped to; lists only files that expert can attach. */
+  expertId?: string | null;
+}
+
+export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   const [searchTerm, setSearchTerm] = useState("");
   // Keep the full item (not just id) so a selection survives a search that
   // pages the file off the currently-loaded list.
@@ -28,9 +34,18 @@ export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
   const q = debouncedSearch || undefined;
 
   const query = useInfiniteQuery({
-    queryKey: ["workspace-file-picker", "list", { q: q ?? null }] as const,
+    queryKey: [
+      "workspace-file-picker",
+      "list",
+      { q: q ?? null, expertId: expertId ?? null },
+    ] as const,
     queryFn: ({ pageParam }) =>
-      listWorkspaceFiles({ limit: PAGE_SIZE, offset: pageParam, q }),
+      listWorkspaceFiles({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q,
+        expert_id: expertId ?? undefined,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;

@@ -14896,7 +14896,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14982,6 +14982,20 @@
               "title": "Root Only"
             },
             "description": "Only return root-level files (not in any folder)."
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "title": "Expert Id"
+            },
+            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
           }
         ],
         "responses": {
@@ -30295,7 +30309,11 @@
             "enum": ["uploaded", "generated"],
             "title": "Origin"
           },
-          "created_at": { "type": "string", "title": "Created At" }
+          "created_at": { "type": "string", "title": "Created At" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          }
         },
         "type": "object",
         "required": [

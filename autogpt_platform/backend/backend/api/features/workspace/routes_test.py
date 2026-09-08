@@ -8,6 +8,7 @@ import pytest
 
 from backend.api.features.workspace.routes import router
 from backend.data.workspace import Workspace, WorkspaceFile
+from backend.data.workspace_scope import WorkspaceScope
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -1160,3 +1161,110 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.txt")
         with pytest.raises(RuntimeError, match="Also failed"):
             await create_file_download_response(file)
+
+
+# -- list_workspace_files: expert filter + attribution --
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_filters_to_the_experts_own_conversations(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope, test_user_id
+):
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_resolve_scope.return_value = WorkspaceScope(
+        expert_id="expert-a",
+        session_ids=["s1", "s2"],
+        delegated_session_ids=["delegated"],
+    )
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-a&q=plan")
+    assert response.status_code == 200
+    mock_resolve_scope.assert_awaited_once_with(test_user_id, "expert-a")
+    mock_instance.list_files.assert_called_once_with(
+        limit=201,
+        offset=0,
+        include_all_sessions=True,
+        name_contains="plan",
+        metadata_equals=None,
+        metadata_not_equals=None,
+        folder_id=None,
+        root_only=False,
+        allowed_path_prefixes=["/sessions/s1/", "/sessions/s2/"],
+    )
+
+
+@patch("backend.api.features.workspace.routes.resolve_expert_workspace_scope")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_unowned_expert_lists_nothing(
+    mock_manager_cls, mock_get_workspace, mock_resolve_scope
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_resolve_scope.return_value = WorkspaceScope(expert_id="expert-x")
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?expert_id=expert-x")
+    assert response.status_code == 200
+    assert response.json()["files"] == []
+    assert mock_instance.list_files.call_args.kwargs["allowed_path_prefixes"] == []
+
+
+@pytest.mark.parametrize(
+    "query", ["session_id=sess-1", "folder_id=fld-1", "root_only=true"]
+)
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+def test_list_files_rejects_expert_id_with_other_axes(mock_get_workspace, query):
+    response = client.get(f"/files?expert_id=expert-a&{query}")
+    assert response.status_code == 400
+    assert "expert_id" in response.json()["detail"]
+    mock_get_workspace.assert_not_called()
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_attributes_each_file_to_its_expert(
+    mock_manager_cls, mock_get_workspace, mock_expert_ids, test_user_id
+):
+    mock_get_workspace.return_value = _make_workspace(user_id=test_user_id)
+    mock_expert_ids.return_value = {"sess-a": "expert-a", "sess-p": None}
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [
+        _make_file(id="f1", path="/sessions/sess-a/plan.md"),
+        _make_file(id="f2", path="/sessions/sess-p/notes.md"),
+        _make_file(id="f3", path="/report.pdf"),
+    ]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files")
+    assert response.status_code == 200
+    assert [f["expert_id"] for f in response.json()["files"]] == [
+        "expert-a",
+        None,
+        None,
+    ]
+    mock_expert_ids.assert_awaited_once_with(test_user_id, ["sess-a", "sess-p"])
+
+
+@patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_skips_the_session_lookup_without_session_paths(
+    mock_manager_cls, mock_get_workspace, mock_expert_ids
+):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = [_make_file(id="f1", path="/report.pdf")]
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files")
+    assert response.status_code == 200
+    assert response.json()["files"][0]["expert_id"] is None
+    mock_expert_ids.assert_not_called()

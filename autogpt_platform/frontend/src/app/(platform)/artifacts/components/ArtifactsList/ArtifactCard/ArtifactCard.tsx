@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { useFileDrag } from "../../WorkspaceFolders/useFileDrag";
+import { ExpertBadge } from "../ExpertBadge";
 import { FileActionsMenu } from "../FileActionsMenu";
 import {
   formatFileSize,
@@ -73,11 +74,14 @@ export function ArtifactCard({ file, onOpen }: Props) {
             >
               {file.name}
             </Text>
-            <Text variant="small" className="truncate text-zinc-500">
-              {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
-              {formatFileSize(file.size_bytes)} ·{" "}
-              {formatRelativeDate(file.created_at)}
-            </Text>
+            <div className="flex min-w-0 items-center gap-2">
+              <Text variant="small" className="truncate text-zinc-500">
+                {getFileTypeLabel(file.mime_type, file.name)} ·{" "}
+                {formatFileSize(file.size_bytes)} ·{" "}
+                {formatRelativeDate(file.created_at)}
+              </Text>
+              <ExpertBadge expertId={file.expert_id} className="shrink-0" />
+            </div>
           </div>
           <div className="pointer-events-auto">
             <FileActionsMenu file={file} />
