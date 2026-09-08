@@ -42,6 +42,7 @@ from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
+from .expert_scope import provider_slug, ungranted_credential_hint
 from .models import (
     BlockOutputResponse,
     ErrorResponse,
@@ -589,10 +590,12 @@ async def resolve_block_credentials(
     user_id: str,
     block: AnyBlockSchema,
     input_data: dict[str, Any] | None = None,
+    expert_id: str | None = None,
 ) -> tuple[dict[str, CredentialsMetaInput], list[CredentialsMetaInput]]:
     """Resolve credentials for a block by matching user's available credentials.
 
     Handles discriminated credentials (e.g. provider selection based on model).
+    ``expert_id`` narrows the pool to that expert's granted credentials.
 
     Returns:
         (matched_credentials, missing_credentials)
@@ -603,7 +606,7 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
-    return await match_credentials_to_requirements(user_id, requirements)
+    return await match_credentials_to_requirements(user_id, requirements, expert_id)
 
 
 @dataclass
@@ -714,7 +717,7 @@ async def prepare_block_for_execution(
             input_data.pop(field_name)
 
     matched_credentials, missing_credentials = await resolve_block_credentials(
-        user_id, block, input_data
+        user_id, block, input_data, session.expert_id
     )
 
     try:
@@ -779,6 +782,10 @@ async def prepare_block_for_execution(
                 f"Block '{block.name}' requires credentials that are not "
                 "configured. Please set up the required credentials before "
                 "running this block."
+            ) + await ungranted_credential_hint(
+                user_id,
+                session.expert_id,
+                {provider_slug(m.provider) for m in missing_credentials},
             )
         else:
             message = (

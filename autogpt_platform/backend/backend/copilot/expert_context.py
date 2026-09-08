@@ -223,9 +223,10 @@ async def _expert_session_context(
 
     workflows_block = (
         f"<expert_workflows>\n"
-        f"Workflows installed on this expert. For requests that match a "
-        f"workflow's purpose, prefer running it with `run_agent` using the "
-        f"IDs below over building something new:\n"
+        f"Workflows installed on this expert — the only ones you can run, edit, "
+        f"or schedule (`run_agent` with the IDs below). To use another agent, "
+        f"install it first with `install_expert_workflow` from the marketplace "
+        f"or the owner's library; agents you build here are installed for you:\n"
         f"{workflow_lines}\n"
         f"</expert_workflows>\n\n"
     )

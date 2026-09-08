@@ -6,7 +6,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_search import search_agents
 from .base import BaseTool
-from .models import ToolResponseBase
+from .models import AgentsFoundResponse, ToolResponseBase
 
 
 class FindAgentTool(BaseTool):
@@ -41,9 +41,21 @@ class FindAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         """Search marketplace for agents matching the query."""
-        return await search_agents(
+        result = await search_agents(
             query=query.strip(),
             source="marketplace",
             session_id=session.session_id,
             user_id=user_id,
+        )
+        if session.expert_id is None or not isinstance(result, AgentsFoundResponse):
+            return result
+        return result.model_copy(
+            update={
+                "message": (
+                    f"{result.message} This is an expert chat: a marketplace agent "
+                    "must be installed with install_expert_workflow "
+                    "(username_agent_slug='creator/slug', the agent id below) "
+                    "before run_agent can use it."
+                )
+            }
         )

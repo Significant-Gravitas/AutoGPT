@@ -760,6 +760,7 @@ async def test_run_agent_schedule_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
     setup_test_data,
+    request,
 ):
     """A schedule created from an expert-scoped chat session must carry the
     session's expert_id, otherwise it never shows on the Team card / expert
@@ -786,6 +787,12 @@ async def test_run_agent_schedule_in_expert_session_stamps_expert_id(
         expert_id=expert_id,
     )
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.get_scheduler_client",
         return_value=fake_scheduler,
@@ -951,6 +958,7 @@ async def test_run_agent_execution_credential_race_returns_setup_card(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     setup_test_data,
+    request,
 ):
     user = setup_test_data["user"]
     store_submission = setup_test_data["store_submission"]
@@ -958,6 +966,12 @@ async def test_run_agent_expert_workspace_unavailable_returns_stable_error(
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
     session = make_session(user_id=user.id, expert_id="expert-1")
 
+    installed = patch(
+        "backend.copilot.tools.run_agent.require_installed_workflow",
+        new=AsyncMock(return_value=None),
+    )
+    installed.start()
+    request.addfinalizer(installed.stop)
     with patch(
         "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
         new_callable=AsyncMock,
@@ -1617,3 +1631,42 @@ async def test_detailed_fetch_failure_degrades_to_summary(mocker):
 
     assert "completed successfully" in response.message
     assert response.execution.nodes_failed is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_run_preset_refuses_uninstalled_workflow_for_expert():
+    from backend.copilot.tools.run_agent import RunAgentInput
+
+    tool = RunAgentTool()
+    session = make_session(user_id="preset-user", expert_id="expert-a")
+    preset = MagicMock(
+        expert_id="expert-a", graph_id="graph-out", graph_version=1, inputs={}
+    )
+    lib_db = MagicMock()
+    lib_db.get_preset = AsyncMock(return_value=preset)
+    graph_db_mock = MagicMock()
+    graph_db_mock.get_graph = AsyncMock(
+        return_value=MagicMock(id="graph-out", name="Outside", version=1)
+    )
+    experts = MagicMock()
+    experts.get_expert = AsyncMock(
+        return_value=MagicMock(
+            workflows=[MagicMock(library_agent_id="lib-in", graph_id="graph-in")]
+        )
+    )
+    add_exec = AsyncMock()
+    with (
+        patch("backend.copilot.tools.run_agent.library_db", return_value=lib_db),
+        patch("backend.copilot.tools.run_agent.graph_db", return_value=graph_db_mock),
+        patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch(
+            "backend.copilot.tools.run_agent.execution_utils.add_graph_execution",
+            new=add_exec,
+        ),
+    ):
+        result = await tool._handle_preset_run(
+            "preset-user", session, RunAgentInput(preset_id="p1")
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "workflow_not_installed"
+    add_exec.assert_not_awaited()

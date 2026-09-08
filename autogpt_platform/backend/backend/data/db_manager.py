@@ -530,6 +530,11 @@ class DatabaseManager(AppService):
     update_soul_fields_if_current = _(experts_db.update_soul_fields_if_current)
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
+    install_workflow = _(experts_db.install_workflow)
+    remove_workflow = _(experts_db.remove_workflow)
+    grant_expert_credentials = _(expert_credentials.grant_expert_credentials)
+    revoke_expert_credential = _(expert_credentials.revoke_expert_credential)
+    list_expert_credentials = _(expert_credentials.list_expert_credentials)
     # Hire / raise from the copilot chat tools, plus the counts their
     # preview step uses to refuse a change that could never land.
     list_templates = _(experts_db.list_templates)
@@ -914,6 +919,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_soul_fields_if_current = d.update_soul_fields_if_current
     add_expert_skill_name = d.add_expert_skill_name
     remove_expert_skill_name = d.remove_expert_skill_name
+    install_workflow = d.install_workflow
+    remove_workflow = d.remove_workflow
+    grant_expert_credentials = d.grant_expert_credentials
+    revoke_expert_credential = d.revoke_expert_credential
+    list_expert_credentials = d.list_expert_credentials
     list_templates = d.list_templates
     hire_expert = d.hire_expert
     create_raised_expert = d.create_raised_expert

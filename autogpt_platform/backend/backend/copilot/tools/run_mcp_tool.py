@@ -35,6 +35,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .utils import scope_credentials_to_expert
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,20 @@ class RunMCPToolTool(BaseTool):
         # Fast DB lookup — no network call.
         # Normalize for matching because stored credentials use normalized URLs.
         creds = await auto_lookup_mcp_credential(user_id, normalize_mcp_url(server_url))
+        if creds is not None and session.expert_id is not None:
+            if not await scope_credentials_to_expert(
+                user_id, session.expert_id, [creds]
+            ):
+                return ErrorResponse(
+                    message=(
+                        f"The account's credential for {server_host(server_url)} "
+                        f"(credential_id={creds.id}) is not granted to this expert. "
+                        "Ask the user to grant it on the expert's Integrations page "
+                        "or from personal AutoPilot with grant_expert_credential."
+                    ),
+                    error="credential_not_granted",
+                    session_id=session_id,
+                )
         client = (
             MCPClient(server_url, authorization=mcp_authorization_header(creds))
             if creds is not None

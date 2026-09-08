@@ -12,6 +12,7 @@ from .agent_search import (
     search_library_for_creation,
 )
 from .base import BaseTool
+from .expert_scope import require_installed_workflow, session_workflow_scope
 from .models import AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
 
@@ -97,6 +98,73 @@ class FindLibraryAgentTool(BaseTool):
         for_creation: bool = False,
         goal_summary: str = "",
         **kwargs,
+    ) -> ToolResponseBase:
+        if user_id and (direct_id := agent_id.strip()):
+            scope_error = await require_installed_workflow(
+                user_id,
+                session,
+                graph_id=direct_id,
+                library_agent_id=direct_id,
+                name=direct_id,
+            )
+            if scope_error is not None:
+                return scope_error
+        result = await self._search(
+            user_id,
+            session,
+            query=query,
+            agent_id=agent_id,
+            include_graph=include_graph,
+            write_graph_to=write_graph_to,
+            for_creation=for_creation,
+            goal_summary=goal_summary,
+        )
+        if not user_id or not isinstance(result, AgentsFoundResponse):
+            return result
+        scope = await session_workflow_scope(user_id, session)
+        if scope is None:
+            return result
+        if for_creation:
+            # The pre-create similarity check exists to avoid duplicates, so it
+            # must see the whole library; an expert installs a match instead
+            # of building it again.
+            return result.model_copy(
+                update={
+                    "message": (
+                        f"{result.message} You are an expert: to reuse a match, "
+                        "install it with install_expert_workflow rather than "
+                        "building a new agent."
+                    )
+                }
+            )
+        agents = [
+            a
+            for a in result.agents
+            if scope.allows_agent(library_agent_id=a.id, graph_id=a.graph_id)
+        ]
+        return result.model_copy(
+            update={
+                "agents": agents,
+                "count": len(agents),
+                "title": f"Found {len(agents)} installed workflows",
+                "message": (
+                    f"Found {len(agents)} installed workflows. Only this expert's workflows are "
+                    "listed; install_expert_workflow adds more."
+                ),
+            }
+        )
+
+    async def _search(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        *,
+        query: str,
+        agent_id: str,
+        include_graph: bool,
+        write_graph_to: str,
+        for_creation: bool,
+        goal_summary: str,
     ) -> ToolResponseBase:
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty

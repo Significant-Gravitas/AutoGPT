@@ -56,7 +56,7 @@ class ListTeamTool(BaseTool):
                 message="Authentication required", session_id=session.session_id
             )
         try:
-            experts = await experts_db().list_experts(user_id, with_metrics=False)
+            experts = await experts_db().list_experts(user_id)
         except Exception as e:
             logger.warning(f"list_team roster lookup failed: {e}")
             return ErrorResponse(
@@ -73,15 +73,18 @@ class ListTeamTool(BaseTool):
                 session_id=session.session_id,
             )
         lines = "; ".join(
-            f"{e.name} — {e.role} (expert_id: {e.id})"
+            f"{e.name} — {e.role} (expert_id: {e.id}, "
+            f"{len(e.workflows)} workflow(s), {e.credential_count} credential(s))"
             + (" [paused]" if e.schedules_paused_at is not None else "")
             for e in active
         )
         return TeamRosterResponse(
             message=(
                 f"{len(active)} expert{'s' if len(active) != 1 else ''} on the "
-                f"team: {lines}. Use these expert_ids with delegate_to_expert; "
-                "never re-raise an expert who is already listed here."
+                f"team: {lines}. Use these expert_ids with delegate_to_expert; an "
+                "expert can only run its installed workflows with its granted "
+                "credentials, so check those before delegating. Never re-raise "
+                "an expert who is already listed here."
             ),
             session_id=session.session_id,
             experts=[
@@ -92,6 +95,8 @@ class ListTeamTool(BaseTool):
                     color=e.color,
                     avatar_url=e.avatar_url,
                     is_paused=e.schedules_paused_at is not None,
+                    workflow_count=len(e.workflows),
+                    credential_count=e.credential_count,
                 )
                 for e in active
             ],

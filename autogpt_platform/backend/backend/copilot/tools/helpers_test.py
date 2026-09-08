@@ -1219,7 +1219,7 @@ async def test_prepare_block_null_non_credential_field_not_stripped() -> None:
     excl_ids, excl_types = _patch_excluded()
     captured: list[dict] = []
 
-    async def _capture_resolve(user_id, block, input_data):
+    async def _capture_resolve(user_id, block, input_data, expert_id=None):
         captured.append(dict(input_data))
         return {}, []
 
