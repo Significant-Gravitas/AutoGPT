@@ -455,11 +455,28 @@ async def test_edit_channel_message_failed_on_connector_error(app_id):
     from backend.copilot.bot.adapters.teams.api_client import TeamsApiError
 
     adapter = TeamsAdapter(MagicMock())
-    adapter._client.update_activity = AsyncMock(side_effect=TeamsApiError("404"))
+    adapter._client.update_activity = AsyncMock(
+        side_effect=TeamsApiError("boom", status_code=500)
+    )
 
     outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
 
     assert outcome == EditOutcome.FAILED
+
+
+@pytest.mark.asyncio
+async def test_edit_channel_message_not_found_on_404(app_id):
+    from backend.copilot.bot.adapters.base import EditOutcome
+    from backend.copilot.bot.adapters.teams.api_client import TeamsApiError
+
+    adapter = TeamsAdapter(MagicMock())
+    adapter._client.update_activity = AsyncMock(
+        side_effect=TeamsApiError("not found", status_code=404)
+    )
+
+    outcome = await adapter.edit_channel_message("a:chat", "activity-9", "updated text")
+
+    assert outcome == EditOutcome.NOT_FOUND
 
 
 @pytest.mark.asyncio

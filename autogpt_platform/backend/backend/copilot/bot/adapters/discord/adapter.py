@@ -147,12 +147,22 @@ class DiscordAdapter(SocketAdapter):
         ``Client.get_channel`` only reads the in-memory cache, so it misses
         threads the bot hasn't seen since its last restart. Fall back to
         ``fetch_channel`` (REST) so long-lived threads keep working.
+
+        ``channel_id`` reaches here as a caller-supplied string (a model-chosen
+        edit target, a raw proactive-post ID) that was never guaranteed to look
+        like a snowflake, so the ``int()`` conversion is inside the guarded
+        block rather than raising ``ValueError`` straight out to the RPC layer.
         """
-        channel = self._client.get_channel(int(channel_id))
+        try:
+            numeric_id = int(channel_id)
+        except ValueError:
+            logger.warning("Channel id %r is not a valid snowflake", channel_id)
+            return None
+        channel = self._client.get_channel(numeric_id)
         if channel is not None:
             return channel
         try:
-            return await self._client.fetch_channel(int(channel_id))
+            return await self._client.fetch_channel(numeric_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             logger.warning("Channel %s not found or inaccessible", channel_id)
             return None

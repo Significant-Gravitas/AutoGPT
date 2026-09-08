@@ -441,10 +441,10 @@ class TeamsAdapter(WebhookAdapter):
             await self._client.update_activity(
                 self._service_url_for(channel_id), channel_id, ref_id, activity
             )
-        except TeamsApiError:
-            # The Connector doesn't distinguish "not found" from other 4xx
-            # rejections in a way worth parsing — either way the edit failed.
+        except TeamsApiError as e:
             logger.exception("Failed to edit Teams activity %s", ref_id)
+            if e.status_code == 404:
+                return EditOutcome.NOT_FOUND
             return EditOutcome.FAILED
         return EditOutcome.OK
 

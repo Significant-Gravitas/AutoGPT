@@ -1261,6 +1261,16 @@ class TestProactiveOutput:
         assert await adapter.get_channel_server_id("10") is None
 
     @pytest.mark.asyncio
+    async def test_get_channel_server_id_none_for_non_numeric_id(self):
+        # A non-snowflake channel_id (a caller-chosen edit target, not
+        # necessarily one that passed the numeric-ID grammar check first)
+        # must resolve to None rather than raise ValueError out of int().
+        adapter, client = _bare_adapter()
+
+        assert await adapter.get_channel_server_id("not-a-snowflake") is None
+        client.get_channel.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_post_channel_message_returns_ref_with_url(self):
         adapter, client = _bare_adapter()
         channel = MagicMock(spec=discord.TextChannel)
@@ -1403,6 +1413,15 @@ class TestProactiveOutput:
         outcome = await adapter.edit_channel_message("10", "not-a-number", "x")
 
         assert outcome == EditOutcome.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_edit_channel_message_not_found_for_non_numeric_channel_id(self):
+        adapter, client = _bare_adapter()
+
+        outcome = await adapter.edit_channel_message("not-a-snowflake", "999", "x")
+
+        assert outcome == EditOutcome.NOT_FOUND
+        client.get_channel.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_edit_channel_message_failed_when_platform_rejects(self):
