@@ -523,7 +523,14 @@ class WorkspaceManager:
             file_id: The file's ID
 
         Returns:
-            WorkspaceFile instance or None
+            WorkspaceFile instance, or None when no such file exists.
+
+        Raises:
+            WorkspaceAccessDeniedError: the file exists but lies outside this
+                manager's scope. Deliberately not folded into ``None`` so an
+                expert sees "access denied" rather than "not found" for a
+                file it cannot reach; every caller either surfaces it as such
+                or treats it like any other failure to read the file.
         """
         db = workspace_db()
         file = await db.get_workspace_file(file_id, self.workspace_id)
