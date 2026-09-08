@@ -48,6 +48,7 @@ export function ExpertChatDrawer({
     ? {
         name: target.name,
         avatarUrl: target.avatarUrl,
+        color: target.color,
         isAutopilot: target.expertId === null,
       }
     : null;

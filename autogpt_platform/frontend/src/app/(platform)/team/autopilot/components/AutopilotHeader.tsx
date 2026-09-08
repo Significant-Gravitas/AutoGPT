@@ -1,4 +1,5 @@
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import { AUTOPILOT_AVATAR } from "@/components/molecules/BotAvatar/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,7 +15,12 @@ export function AutopilotHeader() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="relative z-10 -mt-12 ml-14 flex size-24 shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
-          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-12" />
+          <BotAvatar
+            config={AUTOPILOT_AVATAR}
+            size={80}
+            title="Autopilot"
+            showBadge={false}
+          />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">

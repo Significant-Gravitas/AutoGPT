@@ -6,6 +6,7 @@ export interface ChatTarget {
   name: string;
   role: string;
   avatarUrl: string | null;
+  color?: string | null;
 }
 
 export const AUTOPILOT_CHAT_TARGET: ChatTarget = {
@@ -21,5 +22,6 @@ export function expertToChatTarget(expert: Expert): ChatTarget {
     name: expert.name,
     role: expert.role,
     avatarUrl: expert.avatar_url,
+    color: expert.color,
   };
 }

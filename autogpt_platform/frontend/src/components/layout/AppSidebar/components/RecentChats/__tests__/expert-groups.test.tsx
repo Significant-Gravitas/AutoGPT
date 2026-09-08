@@ -192,7 +192,7 @@ describe("RecentChats — expert groups", () => {
       name: "Expert chats",
     });
     expect(
-      expertGroup.querySelector('svg[aria-label="AutoGPT Logo"]'),
+      expertGroup.querySelector('svg[data-testid="bot-avatar"]'),
     ).not.toBe(null);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
