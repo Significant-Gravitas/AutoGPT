@@ -9,6 +9,8 @@ interface Props {
 /** AutoPilot's mark. The built-in helper has no avatar image of its own, so
  *  the embossed AutoGPT logo stands in for one wherever it is named. */
 export function AutopilotAvatar({ size = 24, className }: Props) {
+  // Sized inline rather than by Tailwind class: callers pass an arbitrary
+  // pixel size (18, 20, 24 and 36 are live) and the logo tracks it by ratio.
   const logoSize = Math.round(size * 0.58);
 
   return (
