@@ -2,10 +2,12 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.workspace_scope import WorkspaceAccessDeniedError, WorkspaceScope
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -23,6 +25,7 @@ from .db import (
     create_user_link_token,
     delete_server_link,
     delete_user_link,
+    fetch_workspace_artifact,
     get_link_token_info,
     get_link_token_status,
     refresh_server_link_name,
@@ -554,3 +557,85 @@ class TestRefreshServerLinkName:
             )
             # Must not raise.
             await refresh_server_link_name("DISCORD", "g1", "x")
+
+
+# ── Fetch workspace artifact: expert file scope ─────────────────────
+
+
+def _artifact_patches(*, expert_id: str | None, manager: MagicMock):
+    session = SimpleNamespace(user_id="user-1", expert_id=expert_id)
+    file = SimpleNamespace(name="report.txt", mime_type="text/plain", size_bytes=10)
+    return (
+        patch(
+            "backend.platform_linking.db.get_chat_session_metadata",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace",
+            new=AsyncMock(return_value=SimpleNamespace(id="ws-1")),
+        ),
+        patch(
+            "backend.platform_linking.db.get_workspace_file",
+            new=AsyncMock(return_value=file),
+        ),
+        patch("backend.platform_linking.db.WorkspaceManager", return_value=manager),
+    )
+
+
+class TestFetchWorkspaceArtifactExpertScope:
+    @pytest.mark.asyncio
+    async def test_expert_session_cannot_fetch_a_file_outside_its_scope(self):
+        scope = WorkspaceScope(expert_id="expert-a", session_ids=["older"])
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(
+            side_effect=WorkspaceAccessDeniedError("denied")
+        )
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id="expert-a", manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(return_value=scope),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is None
+        resolve_mock.assert_awaited_once_with("user-1", "expert-a")
+        manager_cls.assert_called_once_with(
+            user_id="user-1",
+            workspace_id="ws-1",
+            session_id="sess-1",
+            scope=scope.with_session("sess-1"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_personal_session_keeps_owner_access(self):
+        manager = MagicMock()
+        manager.read_file_by_id = AsyncMock(return_value=b"data")
+        session_p, workspace_p, file_p, manager_p = _artifact_patches(
+            expert_id=None, manager=manager
+        )
+        with (
+            session_p,
+            workspace_p,
+            file_p,
+            manager_p as manager_cls,
+            patch(
+                "backend.platform_linking.db.resolve_expert_workspace_scope",
+                new=AsyncMock(),
+            ) as resolve_mock,
+        ):
+            result = await fetch_workspace_artifact("sess-1", "file-1", max_bytes=100)
+
+        assert result is not None
+        assert result.content == b"data"
+        resolve_mock.assert_not_awaited()
+        manager_cls.assert_called_once_with(
+            user_id="user-1", workspace_id="ws-1", session_id="sess-1", scope=None
+        )

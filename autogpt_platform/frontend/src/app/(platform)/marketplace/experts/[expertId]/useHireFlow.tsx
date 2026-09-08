@@ -24,7 +24,13 @@ function celebrate(result: HireResult) {
       : undefined,
     variant: "success",
     action: (
-      <Button as="NextLink" href="/team" variant="ghost" size="small">
+      <Button
+        as="NextLink"
+        href="/team"
+        variant="outline"
+        size="small"
+        className="border-white text-white hover:border-white hover:bg-white/15 hover:text-white"
+      >
         View team
       </Button>
     ),
