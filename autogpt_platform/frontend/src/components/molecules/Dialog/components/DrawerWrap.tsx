@@ -1,5 +1,6 @@
 import { Button } from "@/components/__legacy__/ui/button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { isComposingEvent } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
@@ -29,6 +30,12 @@ export function DrawerWrap({
   const hasVisibleTitle = Boolean(title);
   const isCompact = variant === "compact";
 
+  // Mirrors DialogWrap: below the lg breakpoint the same <Dialog> renders as a
+  // drawer, and Escape has to behave identically in both.
+  function handleEscapeKeyDown(event: KeyboardEvent) {
+    if (isForceOpen || isComposingEvent(event)) event.preventDefault();
+  }
+
   const closeBtn = (
     <Button
       variant="link"
@@ -51,6 +58,7 @@ export function DrawerWrap({
           className,
         )}
         data-testid={testId}
+        onEscapeKeyDown={handleEscapeKeyDown}
         onInteractOutside={handleClose}
       >
         <div

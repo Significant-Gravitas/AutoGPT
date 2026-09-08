@@ -83,6 +83,14 @@ interface Props {
   /** Card composer: the text always keeps its own row above the controls,
    *  instead of sharing a single pill row until it wraps. Empty state only. */
   stacked?: boolean;
+  /** Voice-mode toggle, rendered beside the mic. Absent when the flag is off. */
+  voiceToggle?: ReactNode;
+  /**
+   * Replaces the composer's controls while voice mode is on: typing,
+   * attachments and send do nothing hands-free, and a bar of its own above
+   * the composer covered the last message's buttons.
+   */
+  voiceBar?: ReactNode;
   /** Compact composer for side panels: tighter radius, flat shadow, smaller
    *  controls, and no per-message connection chip. */
   variant?: "default" | "compact";
@@ -105,6 +113,8 @@ export function ChatInput({
   hideSubmitWhenEmpty = false,
   recipientPicker,
   stacked = false,
+  voiceToggle,
+  voiceBar,
   variant = "default",
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
@@ -312,6 +322,7 @@ export function ChatInput({
             "border-red-400 ring-1 ring-red-400 has-[[data-slot=input-group-control]:focus-visible]:border-red-400 has-[[data-slot=input-group-control]:focus-visible]:ring-red-400",
         )}
       >
+        {voiceBar}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -322,6 +333,9 @@ export function ChatInput({
           className={cn(
             "flex w-full flex-wrap",
             stacked || isCompact ? "items-center" : "items-end",
+            // tailwind-merge drops `flex` for `hidden`: the draft and the
+            // attachments survive the round trip through voice mode.
+            voiceBar && "hidden",
           )}
         >
           <InputGroupAddon
@@ -404,6 +418,7 @@ export function ChatInput({
             {devtoolSessionId && (
               <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
+            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}

@@ -4,7 +4,6 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { formatDistanceToNow } from "date-fns";
 
 /** Section headings sit outside the cards, so they need the cards' own content
@@ -324,14 +323,6 @@ export function getAutopilotSummary({
       0,
     ),
   };
-}
-
-/** Covers live at `public/experts/covers/<color token>.jpg`, one per raise-flow
- *  accent. Experts without a colour (marketplace templates) and Autopilot
- *  share `autopilot.jpg`. */
-export function getExpertCoverSrc(color: string | null | undefined) {
-  const token = findColorOption(color ?? null)?.id ?? "autopilot";
-  return `/experts/covers/${token}.jpg`;
 }
 
 export const WORKFLOW_FILTERS = [

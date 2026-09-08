@@ -1,3 +1,4 @@
+import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import Image from "next/image";
-import { type ExpertRosterStatus, getExpertCoverSrc } from "../../../helpers";
+import type { ExpertRosterStatus } from "../../../helpers";
 
 type CoverStatus = ExpertRosterStatus | "built-in";
 
@@ -52,16 +53,19 @@ export function ExpertCover({ className, color, status }: Props) {
     <div
       className={cn(
         "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
+        coverClassFor(color ?? null),
         className,
       )}
     >
-      <Image
-        src={getExpertCoverSrc(color)}
-        alt=""
-        fill
-        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-        className="object-cover"
-      />
+      {status === "built-in" ? (
+        <Image
+          src="/experts/covers/autopilot.jpg"
+          alt=""
+          fill
+          sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+          className="object-cover"
+        />
+      ) : null}
       {statusStyle ? (
         <Text
           variant="small-medium"

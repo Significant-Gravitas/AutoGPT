@@ -4711,6 +4711,49 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postChatSynthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -21598,6 +21641,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -22014,6 +22061,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -22076,6 +22127,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -23016,6 +23071,11 @@
             "type": "string",
             "title": "State Token",
             "description": "State token for CSRF verification"
+          },
+          "iss": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Iss",
+            "description": "Issuer identifier from the authorization response (RFC 9207). Must match the authorization server discovered at login; required when that server advertises `authorization_response_iss_parameter_supported`."
           }
         },
         "type": "object",
@@ -26677,6 +26737,27 @@
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
       },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -27386,6 +27467,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [
