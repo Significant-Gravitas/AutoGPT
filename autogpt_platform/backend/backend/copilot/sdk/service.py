@@ -1692,6 +1692,7 @@ async def _apply_building_mode_restart(
     sdk_options: "ClaudeAgentOptions",
     base_system_prompt: str,
     delegation_supplement: str,
+    oversight_supplement: str,
     graphiti_supplement: str,
     use_e2b: bool,
     session_id: str,
@@ -1720,14 +1721,16 @@ async def _apply_building_mode_restart(
         organization_id=session.organization_id,
         team_id=session.team_id,
     )
-    # Same supplement order as the main assembly. The delegation tools stay
-    # registered across a restart (registration happens once, before it), so
-    # dropping their disclosure rules here would leave the model able to
-    # delegate silently for the rest of the turn.
+    # Same supplement order as the main assembly. The delegation and
+    # chat-reading tools stay registered across a restart (registration happens
+    # once, before it), so dropping their disclosure rules here would leave the
+    # model able to delegate, or read a teammate's chats, silently for the rest
+    # of the turn.
     system_prompt = (
         base_system_prompt
         + get_sdk_supplement(use_e2b=use_e2b)
         + delegation_supplement
+        + oversight_supplement
         + graphiti_supplement
         + building_suffix
         + expert_session_suffix
@@ -5572,6 +5575,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sdk_options=sdk_options,
                     base_system_prompt=base_system_prompt,
                     delegation_supplement=delegation_supplement,
+                    oversight_supplement=oversight_supplement,
                     graphiti_supplement=graphiti_supplement,
                     use_e2b=use_e2b,
                     session_id=session_id,

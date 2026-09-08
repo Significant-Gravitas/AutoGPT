@@ -240,6 +240,40 @@ class TestListExpertChats:
         assert result.chats == []
 
 
+class TestListPaging:
+    """A full page is only distinguishable from the last page by the row
+    fetched past it, so both cases are asserted against the same page size."""
+
+    @staticmethod
+    def _db(count: int) -> _FakeChatDB:
+        return _FakeChatDB(chats=[_chat(f"chat-{i}") for i in range(count)])
+
+    @pytest.mark.asyncio
+    async def test_a_full_page_with_more_behind_it_offers_the_next_offset(
+        self,
+    ) -> None:
+        result = await _list(self._db(3), limit=2)
+        assert [c.session_id for c in result.chats] == ["chat-0", "chat-1"]
+        assert result.has_more is True
+        assert result.next_offset == 2
+        assert "offset 2" in result.message
+
+    @pytest.mark.asyncio
+    async def test_the_offered_offset_returns_the_rest_and_stops(self) -> None:
+        result = await _list(self._db(3), limit=2, offset=2)
+        assert [c.session_id for c in result.chats] == ["chat-2"]
+        assert result.has_more is False
+        assert result.next_offset is None
+
+    @pytest.mark.asyncio
+    async def test_a_full_page_that_is_the_last_page_offers_nothing(self) -> None:
+        result = await _list(self._db(2), limit=2)
+        assert len(result.chats) == 2
+        assert result.has_more is False
+        assert result.next_offset is None
+        assert "More chats follow" not in result.message
+
+
 class TestReadOwnership:
     @pytest.mark.asyncio
     async def test_another_users_chat_reads_exactly_like_a_missing_one(self) -> None:

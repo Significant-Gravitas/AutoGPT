@@ -619,10 +619,16 @@ class ExpertChatSummary(BaseModel):
 
 
 class ExpertChatListResponse(ToolResponseBase):
-    """The user's chats with their hired experts, most recent first."""
+    """The user's chats with their hired experts, most recent first.
+
+    ``next_offset`` is the cursor for the next page, set only when one
+    exists: a full page is otherwise indistinguishable from the last one.
+    """
 
     type: ResponseType = ResponseType.EXPERT_CHAT_LIST
     chats: list[ExpertChatSummary] = Field(default_factory=list)
+    has_more: bool = False
+    next_offset: int | None = None
 
 
 class ExpertChatMessage(BaseModel):

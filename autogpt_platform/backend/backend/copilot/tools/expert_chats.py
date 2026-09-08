@@ -107,11 +107,15 @@ class ListExpertChatsTool(BaseTool):
             )
 
         one_expert = (expert_id or "").strip() or None
+        page_size = _clamp(limit, _DEFAULT_LIMIT)
+        start = max(0, offset or 0)
         try:
+            # One row past the page, so a full page can say whether it is the
+            # last one rather than costing a call to find out.
             chats = await chat_db().get_user_chat_sessions(
                 user_id,
-                _clamp(limit, _DEFAULT_LIMIT),
-                max(0, offset or 0),
+                page_size + 1,
+                start,
                 organization_id=session.organization_id,
                 expert_id=one_expert,
                 # Mutually exclusive with expert_id, which already implies it.
@@ -123,6 +127,9 @@ class ListExpertChatsTool(BaseTool):
                 message="Could not load the expert chats right now. Try again.",
                 session_id=session.session_id,
             )
+
+        has_more = len(chats) > page_size
+        chats = chats[:page_size]
 
         names = await _expert_names(user_id)
         if not chats:
@@ -150,13 +157,21 @@ class ListExpertChatsTool(BaseTool):
             f"updated {row.updated_at:%Y-%m-%d})"
             for row in rows
         )
+        next_offset = start + len(rows) if has_more else None
+        more = (
+            f" More chats follow — pass offset {next_offset} for the next page."
+            if next_offset is not None
+            else ""
+        )
         return ExpertChatListResponse(
             message=(
                 f"{len(rows)} expert chat{'s' if len(rows) != 1 else ''}: "
-                f"{listing}. Read one with read_expert_chat."
+                f"{listing}. Read one with read_expert_chat.{more}"
             ),
             session_id=session.session_id,
             chats=rows,
+            has_more=has_more,
+            next_offset=next_offset,
         )
 
 
