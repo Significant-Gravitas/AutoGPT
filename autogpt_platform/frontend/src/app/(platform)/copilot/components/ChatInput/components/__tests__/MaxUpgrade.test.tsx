@@ -1,4 +1,5 @@
 import { server } from "@/mocks/mock-server";
+import { getGetV1ListProvidersMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import { render, screen, within } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -61,12 +62,12 @@ describe("contextual Max upsell", () => {
 
   it("does not infer a ChatGPT plan lock from an Advanced-only lock", async () => {
     mockMaxUpgrade();
+    server.use(getGetV1ListProvidersMockHandler200([{ name: "codex" }]));
     render(<ConnectionPicker />);
     await openPicker();
 
     const upgrade = await screen.findByRole("link", { name: "Upgrade to Max" });
-    expect(screen.getByText("Add a connection").isConnected).toBe(true);
-    const connect = screen.getByRole("button", {
+    const connect = await screen.findByRole("button", {
       name: "Connect a ChatGPT subscription",
     });
     expect(within(connect).getByText("ChatGPT subscription").isConnected).toBe(
@@ -83,6 +84,7 @@ describe("contextual Max upsell", () => {
 
   it("keeps Advanced and the normal connection action available when the server permits them", async () => {
     mockMaxUpgrade([availableDeploymentOffer()]);
+    server.use(getGetV1ListProvidersMockHandler200([{ name: "codex" }]));
     render(<ConnectionPicker />);
     await openPicker();
 
@@ -93,7 +95,7 @@ describe("contextual Max upsell", () => {
 
     expect(useCopilotUIStore.getState().copilotLlmModel).toBe("advanced");
     expect(advanced.getAttribute("aria-checked")).toBe("true");
-    const connect = screen.getByRole("button", {
+    const connect = await screen.findByRole("button", {
       name: "Connect a ChatGPT subscription",
     });
     expect(connect.hasAttribute("disabled")).toBe(false);

@@ -29,6 +29,7 @@ from backend.copilot.transports import (
 )
 from backend.integrations.codex.access import CODEX_MINIMUM_PLAN_ERROR, has_codex_access
 from backend.util.entitlements import Entitlement, has_entitlement
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import BehaveAs
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,9 @@ async def _locked_codex_offer(
     if entitled:
         # Entitled but unconnected: the settings page owns that invitation.
         return None
+    if not await is_feature_enabled(Flag.CHAT_CONNECTION_UPSELL, user_id):
+        return None
+
     return AIConnectionOffer(
         offer_id="codex:locked",
         provider_family="openai",

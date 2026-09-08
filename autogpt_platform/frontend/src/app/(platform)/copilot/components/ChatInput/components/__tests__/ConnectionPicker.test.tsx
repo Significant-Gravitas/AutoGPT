@@ -3,6 +3,7 @@ import {
   getGetV2ListChatConnectionsMockHandler401,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
+import { getGetV1ListProvidersMockHandler200 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { ConnectionTier } from "@/app/api/__generated__/models/connectionTier";
 import { server } from "@/mocks/mock-server";
 import {
@@ -620,10 +621,11 @@ describe("ConnectionPicker", () => {
     expect(within(tierGroup).getAllByRole("radio")).toHaveLength(2);
   });
 
-  it("offers to link ChatGPT when the user has no ChatGPT at all", async () => {
+  it("offers to link ChatGPT when discovery confirms the unconnected user has access", async () => {
     // Otherwise the one control about connections cannot make one, and the
     // user has to find Settings to act on what they are already looking at.
     mockOffers([offer()]);
+    server.use(getGetV1ListProvidersMockHandler200([{ name: "codex" }]));
 
     render(<ConnectionPicker />);
     await userEvent.click(await openPicker());

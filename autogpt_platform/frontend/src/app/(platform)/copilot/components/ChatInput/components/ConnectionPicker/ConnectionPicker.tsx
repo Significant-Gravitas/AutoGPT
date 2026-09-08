@@ -156,7 +156,6 @@ export function ConnectionPicker({
     offers.length === 1 && Boolean(offers[0]?.lock_reason);
   if (
     !showTiers &&
-    !chatGPTUpgrade &&
     !onlyOfferIsLocked &&
     (connectionLocked || offers.length === 1)
   ) {
@@ -191,7 +190,6 @@ export function ConnectionPicker({
   // different: the explanation and unlock link are the entire reason the chip
   // remains visible.
   const showsConnections =
-    connectionOffers.length > 0 &&
     (!connectionLocked || onlyOfferIsLocked) &&
     (connectionOffers.length > 1 || Boolean(connectionOffers[0]?.lock_reason));
 
