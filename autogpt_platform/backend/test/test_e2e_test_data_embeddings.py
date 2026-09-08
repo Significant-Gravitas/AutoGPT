@@ -67,6 +67,14 @@ async def test_skips_when_already_covered(seeder):
     assert recorder.batch_sizes == []
 
 
+async def test_does_not_claim_coverage_when_stats_are_unreadable(seeder):
+    """get_embedding_stats reports zero missing on failure; that is not 100%."""
+    broken = dict(_stats(0, 5584), error="connection refused")
+    recorder = _Recorder([broken])
+    await _run(seeder, recorder)
+    assert recorder.batch_sizes == []
+
+
 async def test_backfills_until_coverage_is_complete(seeder):
     recorder = _Recorder([_stats(5584), _stats(2000), _stats(0)])
     await _run(seeder, recorder)

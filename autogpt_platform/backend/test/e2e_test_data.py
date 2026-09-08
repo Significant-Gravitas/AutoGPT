@@ -1310,7 +1310,18 @@ class TestDataCreator:
         print("Backfilling content embeddings...")
         deadline = time.monotonic() + EMBEDDING_BACKFILL_TIMEOUT_SECONDS
         while True:
-            totals = (await get_embedding_stats())["totals"]
+            stats = await get_embedding_stats()
+            # On failure get_embedding_stats reports zero missing, which would read
+            # as complete coverage and cache a dump with no embeddings in it.
+            if "error" in stats:
+                print(
+                    "::warning title=e2e-embeddings-unknown::Could not read embedding "
+                    f"stats ({stats['error']}); skipping backfill. The cached dump "
+                    "will be incomplete."
+                )
+                return
+
+            totals = stats["totals"]
             missing = totals["without_embeddings"]
             if missing == 0:
                 print(
