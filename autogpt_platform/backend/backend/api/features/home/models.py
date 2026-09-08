@@ -45,6 +45,9 @@ class HomeBriefingOutcome(BaseModel):
     duration_seconds: float = 0
     cost_cents: int = 0
     link: str | None = None
+    # How the run started: a scheduler job fired it, a webhook fired it, or
+    # someone started it by hand (library, chat, API).
+    trigger: Literal["schedule", "webhook", "manual"] = "manual"
 
 
 class HomeBriefing(BaseModel):
@@ -69,6 +72,8 @@ class HomeActiveTask(BaseModel):
     title: str
     status: Literal["running", "queued"]
     expert: HomeExpert | None = None
+    # The workflow's own picture, shown when no expert owns the run.
+    image_url: str | None = None
     started_at: datetime | None = None
     link: str | None = None
 
@@ -78,6 +83,8 @@ class HomeUpcomingTask(BaseModel):
     title: str
     kind: Literal["agent", "followup"]
     expert: HomeExpert | None = None
+    # The workflow's own picture, shown when no expert owns the schedule.
+    image_url: str | None = None
     next_run_time: datetime
 
 
@@ -128,6 +135,8 @@ class HomeWorkActor(BaseModel):
     kind: Literal["expert", "workflow", "autopilot"]
     name: str
     expert: HomeExpert | None = None
+    # A workflow has no avatar of its own, so its library picture stands in.
+    image_url: str | None = None
     link: str | None = None
 
 

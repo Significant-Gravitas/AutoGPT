@@ -14,6 +14,7 @@ import {
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
 } from "@/lib/mcp-auth";
+import { isKey } from "@/lib/keyboard";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { useId, useState } from "react";
 import type { McpConnectorRequest } from "./helpers";
@@ -126,7 +127,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
                 setValidationError(null);
               }}
               onKeyDown={(e) =>
-                e.key === "Enter" &&
+                isKey(e, "Enter") &&
                 !request.loading &&
                 token.trim() &&
                 submitCredential()

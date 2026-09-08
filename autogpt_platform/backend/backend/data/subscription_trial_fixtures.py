@@ -120,7 +120,7 @@ def boundaries(subscription, session):
         patch.object(
             stripe.Subscription,
             "list_async",
-            AsyncMock(return_value=MagicMock(data=[])),
+            AsyncMock(return_value=MagicMock(data=[], has_more=False)),
         ),
         patch.object(
             stripe.checkout.Session,

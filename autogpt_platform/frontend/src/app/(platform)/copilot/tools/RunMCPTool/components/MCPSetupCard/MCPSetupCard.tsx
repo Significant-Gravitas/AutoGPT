@@ -16,12 +16,14 @@ import {
   mcpAuthTokenPlaceholder,
 } from "@/components/contextual/MCPAuthSchemeField/helpers";
 import { useMCPAuthScheme } from "@/components/contextual/MCPAuthSchemeField/useMCPAuthScheme";
+import { isKey } from "@/lib/keyboard";
 import {
   detectMCPAuthScheme,
   prepareMCPAuthCredential,
   validateMCPAuthCredential,
   type MCPAuthScheme,
 } from "@/lib/mcp-auth";
+import { getAPIResponseError, getErrorStatus } from "@/lib/mcp-errors";
 import { normalizeMcpUrl } from "@/lib/mcp-url";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
@@ -79,7 +81,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
+  const {
+    data: liveCredsRes,
+    isFetchedAfterMount: liveCredsFetched,
+    isError: liveCredsError,
+  } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       // No staleTime — when this card mounts (e.g. immediately after the
@@ -92,12 +98,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       refetchOnMount: "always",
     },
   });
-  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
-  // while loading or after a network/auth failure (``select`` returned
-  // ``null``).  Treating an unknown live state as ``false`` would override
-  // a still-valid persisted snapshot — see review for the
-  // initiallyConnected=false + 5xx race that surfaces a bare Connect
-  // button despite an existing cred.
+  // Tri-state, because "we don't know yet" must fall back to the persisted
+  // snapshot rather than to disconnected. Unknown covers: this mount's fetch
+  // hasn't landed (React Query keeps serving the previous cache until it
+  // does, and that cache still lists rows the backend just invalidated), the
+  // refetch settled but errored (stale data is still served), and a non-200
+  // that ``select`` mapped to null.
+  //
+  // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
+  // app-wide, so ``isFetching`` also goes true on window focus and on every
+  // credential mutation elsewhere, blanking a genuinely connected card.
   const liveCredential = !Array.isArray(liveCredsRes)
     ? null
     : liveCredsRes.find(
@@ -106,9 +116,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : Boolean(liveCredential);
+  const liveHasCred: boolean | "unknown" =
+    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
     liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
 
@@ -171,15 +182,32 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     oauthAbortRef.current?.();
 
     try {
-      const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: serverUrl,
-      });
-      if (!(loginRes.status >= 200 && loginRes.status < 300)) {
-        const d =
-          loginRes.data && typeof loginRes.data === "object"
-            ? loginRes.data
-            : {};
-        throw { status: loginRes.status, ...d };
+      // Only a 400 from the *initiate* call means "this server has no OAuth
+      // to offer" and justifies the manual-token fallback.  A 400 from the
+      // callback is a rejected authorization response — a failed issuer
+      // check, say — and must surface as the error it is rather than an
+      // invitation to paste a credential instead.
+      let loginRes: Awaited<
+        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+      >;
+      try {
+        loginRes = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: serverUrl,
+        });
+        if (!(loginRes.status >= 200 && loginRes.status < 300)) {
+          throw getAPIResponseError(loginRes.status, loginRes.data);
+        }
+      } catch (e: unknown) {
+        if (getErrorStatus(e) === 400) {
+          setConnected(false);
+          setForceDisconnected(true);
+          setShowManualToken(true);
+          setError(
+            "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
+          );
+          return;
+        }
+        throw e;
       }
       const { login_url, state_token } = loginRes.data as {
         login_url: string;
@@ -196,16 +224,19 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
 
       const mcpProvider = allProviders?.["mcp"];
       if (mcpProvider) {
-        await mcpProvider.mcpOAuthCallback(result.code, state_token);
+        await mcpProvider.mcpOAuthCallback(
+          result.code,
+          state_token,
+          result.iss,
+        );
       } else {
         const cbRes = await postV2ExchangeOauthCodeForMcpTokens({
           code: result.code,
           state_token,
+          iss: result.iss,
         });
         if (!(cbRes.status >= 200 && cbRes.status < 300)) {
-          const d =
-            cbRes.data && typeof cbRes.data === "object" ? cbRes.data : {};
-          throw { status: cbRes.status, ...d };
+          throw getAPIResponseError(cbRes.status, cbRes.data);
         }
       }
 
@@ -227,12 +258,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       // user retries.
       setConnected(false);
       setForceDisconnected(true);
-      if (err?.status === 400) {
-        setShowManualToken(true);
-        setError(
-          "This server does not support OAuth sign-in. Choose how its API credential should be sent.",
-        );
-      } else if (
+      if (
         typeof err?.message === "string" &&
         err.message === "OAuth flow timed out"
       ) {
@@ -461,7 +487,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                   detectSchemeFrom(nextToken);
                 }}
                 onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && handleManualToken()
+                  isKey(e, "Enter") && !loading && handleManualToken()
                 }
                 className="flex-1 rounded border px-2 py-1 text-sm"
               />
@@ -471,7 +497,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onClick={() => handleManualToken()}
                 disabled={loading || !manualToken.trim()}
               >
-                Use Token
+                {loading ? "Verifying…" : "Use Token"}
               </Button>
             </div>
           </div>

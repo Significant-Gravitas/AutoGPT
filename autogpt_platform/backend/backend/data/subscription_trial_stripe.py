@@ -128,8 +128,9 @@ async def _reconcile_locked(
                 status=status,
                 limit=100,
             )
-            if any(sub.id != snapshot.id for sub in others.data):
-                return dict(raw), None
+            async for other in stripe_list_items(others):
+                if other.id != snapshot.id:
+                    return dict(raw), None
     await tx.user.update_many(
         where={
             "id": trial.user_id,

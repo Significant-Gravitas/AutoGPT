@@ -127,7 +127,14 @@ async def get_trial_status(user_id: CurrentUser) -> TrialStatusResponse:
     )
 
 
-@router.post("")
+@router.post(
+    "",
+    responses={
+        409: {"description": "Trial offer unavailable"},
+        502: {"description": "Stripe checkout unavailable"},
+        503: {"description": "Billing return URL not configured"},
+    },
+)
 async def start_trial_checkout(
     body: TrialCheckoutRequest,
     user_id: CurrentUser,
