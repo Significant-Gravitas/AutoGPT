@@ -5,6 +5,7 @@ Provides endpoints for MCP tool discovery and OAuth authentication so the
 frontend can list available tools on an MCP server before placing a block.
 """
 
+import asyncio
 import logging
 from typing import Annotated, Any
 from urllib.parse import urlparse
@@ -34,7 +35,14 @@ from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, Requests, validate_url_host
+from backend.util.request import (
+    AUTH_STATUS_CODES,
+    CREDENTIAL_REJECTED_STATUS_CODES,
+    HTTPClientError,
+    HTTPServerError,
+    Requests,
+    validate_url_host,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -42,6 +50,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 router = fastapi.APIRouter(tags=["mcp"])
 creds_manager = IntegrationCredentialsManager()
+
+# Verifying a token is best-effort; it must never outlast a user's patience.
+_PROBE_TIMEOUT_SECONDS = 10
+_PROBE_CLOSE_TIMEOUT_SECONDS = 5
 
 
 # ====================== Tool Discovery ====================== #
@@ -127,7 +139,7 @@ async def discover_tools(
         init_result = await client.initialize()
         tools = await client.list_tools()
     except HTTPClientError as e:
-        if e.status_code in (401, 403):
+        if e.status_code in AUTH_STATUS_CODES:
             raise fastapi.HTTPException(
                 status_code=401,
                 detail="This MCP server requires authentication. "
@@ -509,9 +521,67 @@ async def mcp_store_token(
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
-    # Normalize URL so trailing-slash variants match existing credentials.
+    # Normalize URL so trailing-slash and scheme-less variants match existing
+    # credentials — and so the value stored below is the one every lookup path
+    # re-derives from the same user input.
     server_url = normalize_mcp_url(request.server_url)
+
     hostname = server_host(server_url)
+
+    # ``validate_url_host`` permits http:// for MCP servers generally, but a
+    # credential travels in a header and must not go out in cleartext.
+    if not server_url.lower().startswith("https://"):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f"{hostname} must be reached over https:// — a credential "
+            "cannot be sent over an unencrypted connection.",
+        )
+
+    # A 2xx from this endpoint is what turns the setup card's pill green, so
+    # it has to mean "this credential authenticates against the server" rather
+    # than "a row was written". One ``initialize`` round-trip is the cheapest
+    # proof. Only an unambiguous rejection blocks the save: any other outcome
+    # says nothing about the credential, and refusing to store would strand
+    # the user.
+    #
+    # Redirects are not followed: a cross-host hop either carries the
+    # credential somewhere the user never named, or drops it and earns a 401
+    # we would wrongly report as "you mistyped this".
+    probe_client = MCPClient(
+        server_url, authorization=authorization, follow_redirects=False
+    )
+    try:
+        # MCPClient sets no timeout and no retry ceiling of its own.
+        await asyncio.wait_for(
+            probe_client.initialize(), timeout=_PROBE_TIMEOUT_SECONDS
+        )
+    except (HTTPClientError, HTTPServerError) as e:
+        if e.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f"{hostname} rejected this credential. "
+                "Please check that you copied it correctly and try again.",
+            )
+        logger.info(
+            "Could not verify MCP credential against %s (HTTP %s) — storing anyway",
+            hostname,
+            e.status_code,
+        )
+    except Exception as e:
+        # No ``exc_info``: the error text embeds a server-controlled body.
+        logger.info(
+            "Could not verify MCP credential against %s (%s) — storing anyway",
+            hostname,
+            type(e).__name__,
+        )
+    finally:
+        # Without the DELETE the probe leaks a session row server-side.
+        try:
+            await asyncio.wait_for(
+                probe_client.close(), timeout=_PROBE_CLOSE_TIMEOUT_SECONDS
+            )
+        except Exception:
+            logger.debug("MCP probe close failed for %s", hostname)
 
     # Rotate the existing manual credential in place so saved graphs keep their
     # credential ID.  OAuth rows are left alone: rewriting one would drop its
