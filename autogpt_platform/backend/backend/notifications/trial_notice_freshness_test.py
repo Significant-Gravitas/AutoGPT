@@ -26,14 +26,16 @@ def subscription(trial):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "changes",
+    "changes,expected",
     [
-        {"card_verified_at": None},
-        {"ends_at": datetime.now(UTC) + timedelta(days=8)},
-        {"notification_revision": 4},
+        ({"card_verified_at": None}, "suppressed"),
+        ({"ends_at": datetime.now(UTC) + timedelta(days=8)}, "obsolete"),
+        ({"notification_revision": 4}, "obsolete"),
     ],
 )
-async def test_delivery_reconciles_and_suppresses_outdated_notice(trial, changes):
+async def test_delivery_reconciles_and_suppresses_outdated_notice(
+    trial, changes, expected
+):
     trial.notification_revision = 2
     data = notices.trial_notice_data(trial, "resumed", "Sam").model_copy(
         update={"notice_key": notices.trial_notice_key(trial, "resumed")}
@@ -48,7 +50,7 @@ async def test_delivery_reconciles_and_suppresses_outdated_notice(trial, changes
         patch.object(notices, "credit_db", return_value=database),
         patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
     ):
-        assert not await notices.trial_notice_is_current(trial.user_id, data)
+        assert await notices.trial_notice_disposition(trial.user_id, data) == expected
     database.sync_subscription_from_stripe.assert_awaited_once_with(raw)
 
 
@@ -65,6 +67,21 @@ async def test_old_checkout_attempt_is_acknowledged_without_a_notice(trial):
         patch.object(notices, "queue_notification_async", AsyncMock()) as queue,
     ):
         assert await notices.notify_trial(stale, "started")
+    queue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unconsumed_checkout_without_end_date_does_not_publish(trial):
+    raw = subscription(trial)
+    raw["trial_end"] = None
+    pending = trial.model_copy(update={"consumed_at": None, "ends_at": None})
+    database = MagicMock(get_subscription_trial=AsyncMock(return_value=pending))
+    with (
+        patch.object(notices, "credit_db", return_value=database),
+        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
+        patch.object(notices, "queue_notification_async", AsyncMock()) as queue,
+    ):
+        assert await notices.notify_trial(raw, "started")
     queue.assert_not_awaited()
 
 
@@ -101,7 +118,7 @@ async def test_current_notice_survives_authoritative_refresh(trial, kind, change
         patch.object(notices, "credit_db", return_value=database),
         patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
     ):
-        assert await notices.trial_notice_is_current(trial.user_id, data)
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "current"
     database.sync_subscription_from_stripe.assert_awaited_once_with(raw)
 
 
@@ -109,7 +126,7 @@ async def test_current_notice_survives_authoritative_refresh(trial, kind, change
 async def test_unidentified_legacy_payload_cannot_bypass_freshness_check(trial):
     data = notices.trial_notice_data(trial, "started", "Sam")
     with patch.object(notices, "credit_db") as database:
-        assert not await notices.trial_notice_is_current(trial.user_id, data)
+        assert await notices.trial_notice_disposition(trial.user_id, data) == "obsolete"
     database.assert_not_called()
 
 
@@ -128,7 +145,9 @@ async def test_state_change_during_refresh_does_not_send_old_welcome(trial):
             notices, "stripe_call", AsyncMock(return_value=subscription(trial))
         ),
     ):
-        assert not await notices.trial_notice_is_current(trial.user_id, data)
+        assert (
+            await notices.trial_notice_disposition(trial.user_id, data) == "suppressed"
+        )
 
 
 @pytest.mark.asyncio

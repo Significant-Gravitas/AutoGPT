@@ -124,6 +124,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
+    """Internal grant: callers must derive user_id from authenticated identity
+    or a verified webhook's stored owner, never an untrusted request field."""
     reward = 0
     match step:
         # The wizard fires ONBOARDING_COMPLETE on completion; this is the grant

@@ -1,6 +1,6 @@
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { CancelTrialDialog } from "./CancelTrialDialog";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
 import { TrialRejection } from "./TrialRejection";
 
@@ -20,7 +20,7 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
       <Text variant="h4">
         {trial.active ? "Your trial" : "Your trial has ended"}
       </Text>
-      <Text variant="body">
+      <Text variant="body" unmask={false}>
         {trial.status === "canceled"
           ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
           : trial.cancel_at_period_end
@@ -33,14 +33,7 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
         <Text variant="small">Canceling ends trial access immediately.</Text>
       ) : null}
       {trial.active && !trial.cancel_at_period_end ? (
-        <Button
-          variant="outline"
-          onClick={onCancel}
-          loading={isCanceling}
-          disabled={isCanceling}
-        >
-          Cancel trial
-        </Button>
+        <CancelTrialDialog isCanceling={isCanceling} onCancel={onCancel} />
       ) : null}
     </div>
   );

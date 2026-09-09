@@ -39,7 +39,9 @@ async def test_trial_mail_uses_shared_sender_and_preserves_delivery_gates(
     db_client.get_user_notification_preference.return_value.daily_limit = 0
     with (
         patch.object(
-            delivery, "trial_notice_is_current", AsyncMock(return_value=current)
+            delivery,
+            "trial_notice_disposition",
+            AsyncMock(return_value="current" if current else "obsolete"),
         ),
         patch.object(
             delivery, "get_database_manager_async_client", return_value=db_client
@@ -75,3 +77,59 @@ def test_trial_notices_have_no_separate_queue():
     assert all(
         "trial" not in queue.name for queue in create_notification_config().queues
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recovers", [True, False])
+async def test_suppressed_trial_mail_uses_shared_retry_and_dlq(
+    trial, db_client, recovers
+):
+    data = trial_notice_data(trial, "started", "Sam")
+    data.notice_key = trial_notice_key(trial, "started")
+    event = NotificationEventModel[TrialUpdateData](
+        user_id=trial.user_id, type=NotificationType.TRIAL_UPDATE, data=data
+    )
+    manager = delivery.NotificationManager.__new__(delivery.NotificationManager)
+    sender = AsyncMock()
+    manager.email_sender = MagicMock(send_notification=sender)
+    message = MagicMock(
+        body=event.model_dump_json().encode(), ack=AsyncMock(), reject=AsyncMock()
+    )
+    dispositions = (
+        ["suppressed", "current"]
+        if recovers
+        else ["suppressed"] * delivery.MAX_CONSUMER_RETRY_ATTEMPTS
+    )
+    with (
+        patch.object(
+            delivery, "trial_notice_disposition", AsyncMock(side_effect=dispositions)
+        ),
+        patch.object(
+            delivery, "get_database_manager_async_client", return_value=db_client
+        ),
+        patch.object(
+            delivery,
+            "generate_unsubscribe_link",
+            return_value="https://example.com/prefs",
+        ),
+        patch.object(
+            delivery,
+            "generate_preference_link",
+            return_value="https://example.com/prefs",
+        ),
+        patch.object(delivery.asyncio, "sleep", AsyncMock()) as sleep,
+        patch("backend.notifications.trial.release_claim", AsyncMock()) as release,
+        patch(
+            "backend.notifications.trial.queue_notification_async", AsyncMock()
+        ) as publish,
+    ):
+        await manager._process_message_with_retry(
+            message, manager._process_user_notification, "user_notifications_v3"
+        )
+    assert sender.await_count == int(recovers)
+    assert message.ack.await_count == int(recovers)
+    if not recovers:
+        message.reject.assert_awaited_once_with(requeue=False)
+    assert sleep.await_count > 0
+    release.assert_not_awaited()
+    publish.assert_not_awaited()

@@ -1,5 +1,12 @@
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 
+export const trialPlanLabels: Record<TrialOfferResponse["tier"], string> = {
+  BASIC: "Basic",
+  PRO: "Pro",
+  MAX: "Max",
+  BUSINESS: "Team",
+};
+
 export function formatTrialPrice(offer: TrialOfferResponse) {
   const formatter = new Intl.NumberFormat("en-US", {
     style: "currency",

@@ -12,6 +12,7 @@ interface Props {
 
 export function TrialCard({ returnTo = "billing" }: Props) {
   const {
+    userID,
     trial,
     isLoading,
     queryError,
@@ -44,6 +45,7 @@ export function TrialCard({ returnTo = "billing" }: Props) {
         />
       ) : (
         <TrialStatus
+          key={userID}
           trial={trial}
           isCanceling={isCanceling}
           onCancel={cancelTrial}

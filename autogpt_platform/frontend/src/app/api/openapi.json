@@ -5864,6 +5864,10 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "No cancelable trial subscription" },
+          "502": {
+            "description": "Stripe cancellation temporarily unavailable"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -5885,6 +5889,12 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Trial checkout is unavailable or no longer current"
+          },
+          "502": {
+            "description": "Stripe confirmation temporarily unavailable"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]

@@ -86,6 +86,7 @@ export function useTrialCard(returnTo: "onboarding" | "billing") {
   }
 
   return {
+    userID,
     trial: query.data,
     isLoading: Boolean(userID) && query.isLoading,
     error: failure && failure.userID === userID ? failure.message : null,

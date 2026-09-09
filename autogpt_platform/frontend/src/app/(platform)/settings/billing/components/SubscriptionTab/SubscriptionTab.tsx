@@ -9,8 +9,8 @@ import { TrialCheckoutConfirmation } from "@/components/organisms/TrialCard/Tria
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
 export function SubscriptionTab() {
-  const { data: trial } = useTrialStatus();
-  const showPlan = !trial?.active || trial.converted;
+  const { data: trial, isLoading } = useTrialStatus();
+  const showPlan = !isLoading && (!trial?.active || trial.converted);
   return (
     <div className="flex flex-col gap-6">
       <TrialCheckoutConfirmation />

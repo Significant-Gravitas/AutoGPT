@@ -124,10 +124,6 @@ async def on_trial_invoice(invoice: dict, *, paid: bool) -> bool:
     return False
 
 
-async def trial_notice_is_current(user_id: str, data: TrialUpdateData) -> bool:
-    return await trial_notice_disposition(user_id, data) == "current"
-
-
 async def trial_notice_disposition(
     user_id: str, data: TrialUpdateData
 ) -> Literal["current", "suppressed", "obsolete"]:

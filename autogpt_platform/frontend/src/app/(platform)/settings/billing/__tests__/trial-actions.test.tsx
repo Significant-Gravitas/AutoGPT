@@ -43,6 +43,9 @@ describe("trial billing actions", () => {
       screen.getByText(/Canceling ends trial access immediately/),
     ).toBeDefined();
     fireEvent.click(button);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "End trial now" }),
+    );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.click(button);
@@ -64,6 +67,9 @@ describe("trial billing actions", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "End trial now" }),
+    );
     expect(await screen.findByRole("alert")).toBeDefined();
     expect(
       screen
@@ -77,6 +83,9 @@ describe("trial billing actions", () => {
       ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "End trial now" }),
+    );
     await screen.findByText(/Cancellation confirmed/);
     expect(screen.queryByRole("alert")).toBeNull();
   });

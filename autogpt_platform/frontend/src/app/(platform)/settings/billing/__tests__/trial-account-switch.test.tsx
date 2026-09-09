@@ -108,6 +108,9 @@ describe("trial account isolation", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "End trial now" }),
+    );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
     await screen.findByText(/\$30\.00/);

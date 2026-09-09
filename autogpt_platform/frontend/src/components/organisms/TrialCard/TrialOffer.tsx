@@ -1,7 +1,7 @@
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatTrialPrice } from "./helpers";
+import { formatTrialPrice, trialPlanLabels } from "./helpers";
 
 interface Props {
   trial: TrialStatusResponse;
@@ -15,11 +15,9 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <Text variant="h4">
-        Try AutoGPT{" "}
-        {offer.tier === "BUSINESS" ? "Team" : offer.tier.toLowerCase()} for{" "}
-        {offer.duration_days} days
+        Try AutoGPT {trialPlanLabels[offer.tier]} for {offer.duration_days} days
       </Text>
-      <Text variant="body">
+      <Text variant="body" unmask={false}>
         Card required. No subscription charge today. Then{" "}
         {formatTrialPrice(offer)}, plus applicable tax, unless you cancel before
         the trial ends.

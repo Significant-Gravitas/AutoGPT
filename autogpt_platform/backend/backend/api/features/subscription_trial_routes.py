@@ -164,7 +164,13 @@ async def start_trial_checkout(
     return TrialCheckoutResponse(url=url)
 
 
-@router.post("/cancel")
+@router.post(
+    "/cancel",
+    responses={
+        409: {"description": "No cancelable trial subscription"},
+        502: {"description": "Stripe cancellation temporarily unavailable"},
+    },
+)
 async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if (
@@ -198,7 +204,13 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     return await get_trial_status(user_id)
 
 
-@router.post("/confirm")
+@router.post(
+    "/confirm",
+    responses={
+        409: {"description": "Trial checkout is unavailable or no longer current"},
+        502: {"description": "Stripe confirmation temporarily unavailable"},
+    },
+)
 async def confirm_trial(user_id: CurrentUser) -> TrialStatusResponse:
     try:
         await confirm_trial_checkout(user_id)
