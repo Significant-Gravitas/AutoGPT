@@ -17,6 +17,7 @@ interface Props {
   workflows: ExpertWorkflowRef[];
   open: boolean;
   onClose: () => void;
+  title?: string;
 }
 
 export function CreateScheduleDialog({
@@ -24,6 +25,7 @@ export function CreateScheduleDialog({
   workflows,
   open,
   onClose,
+  title = "Create schedule",
 }: Props) {
   const { handleScheduleCreated } = useCreateScheduleDialog(expertId, onClose);
   const schedulable = workflows.filter((workflow) => workflow.library_agent_id);
@@ -39,7 +41,7 @@ export function CreateScheduleDialog({
         },
       }}
       styling={{ maxWidth: "28rem", maxHeight: "60vh" }}
-      title="Create schedule"
+      title={title}
     >
       <Dialog.Content>
         <div className="flex flex-col">

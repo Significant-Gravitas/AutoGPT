@@ -1,19 +1,29 @@
 "use client";
 
+import type { Expert } from "@/app/api/__generated__/models/expert";
+import { useState } from "react";
+import { workflowNeedsSetup } from "../../../helpers";
+import { CreateScheduleDialog } from "../CreateScheduleDialog";
 import { ExpertAttentionCard } from "./ExpertAttentionCard";
 import { useExpertNeedsYou } from "./useExpertNeedsYou";
 
 interface Props {
-  expertId: string;
+  expert: Expert;
   enabled: boolean;
 }
 
 /** One card per item, styled like the stack sections in the chat sidebar. */
-export function ExpertNeedsYouSection({ expertId, enabled }: Props) {
+export function ExpertNeedsYouSection({ expert, enabled }: Props) {
   const { items, pendingIDs, decide } = useExpertNeedsYou({
-    expertId,
+    expertId: expert.id,
     enabled,
   });
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  // "Needs setup" means a scheduled workflow with no schedule yet, so
+  // finishing setup is creating that schedule.
+  const workflowsNeedingSetup = expert.workflows.filter((workflow) =>
+    workflowNeedsSetup(workflow),
+  );
 
   if (items.length === 0) return null;
 
@@ -31,9 +41,17 @@ export function ExpertNeedsYouSection({ expertId, enabled }: Props) {
             item={item}
             isProcessing={pendingIDs.has(item.id)}
             onDecision={decide}
+            onFinishSetup={() => setIsSetupOpen(true)}
           />
         ))}
       </div>
+      <CreateScheduleDialog
+        expertId={expert.id}
+        workflows={workflowsNeedingSetup}
+        open={isSetupOpen}
+        onClose={() => setIsSetupOpen(false)}
+        title="Finish setup"
+      />
     </section>
   );
 }

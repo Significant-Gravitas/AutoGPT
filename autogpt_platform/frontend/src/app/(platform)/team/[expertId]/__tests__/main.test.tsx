@@ -1377,11 +1377,19 @@ describe("ExpertDetailPage", () => {
         name: "1 item needs your attention",
       }),
     ).toBeDefined();
-    expect(
-      within(section)
-        .getByRole("link", { name: "Finish setup" })
-        .getAttribute("href"),
-    ).toBe("/team/expert-maria");
+
+    // The feed's link points at this very page, so here Finish setup opens
+    // the schedule dialog with only the workflows still missing a schedule.
+    const user = userEvent.setup();
+    await user.click(
+      within(section).getByRole("button", { name: "Finish setup" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Finish setup" });
+    const list = within(dialog).getByRole("list", {
+      name: "Schedulable workflows",
+    });
+    expect(within(list).getByText("SEO Audit")).toBeDefined();
+    expect(within(list).queryByText("Content Calendar")).toBeNull();
   });
 
   test("hides the Needs you block when nothing is waiting on the user", async () => {

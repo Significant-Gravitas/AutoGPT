@@ -159,7 +159,7 @@ export default function ExpertDetailPage() {
         </div>
 
         <ExpertNeedsYouSection
-          expertId={expert.id}
+          expert={expert}
           enabled={Boolean(enabled) && ready}
         />
 
