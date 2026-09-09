@@ -219,7 +219,7 @@ export function ExpertTeamCard({
           </Text>
         </div>
 
-        <div className="w-full px-2">
+        <div className="w-full px-2 pl-5">
           <CardStats className="mt-3 w-full">
             <CardStat
               icon={Calendar03Icon}
