@@ -266,3 +266,47 @@ describe("HireStep — while the job is still running", () => {
     expect(screen.queryAllByTestId("hire-step-pending")).toHaveLength(0);
   });
 });
+
+it.each([408, 429, 503])(
+  "recovers team recommendations after a transient %s response",
+  async (status) => {
+    let calls = 0;
+    server.use(
+      http.get("*/api/onboarding/brain-dump/recommended-experts", () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ detail: "try again" }, { status })
+          : HttpResponse.json({ ready: true, team: TEAM });
+      }),
+    );
+    render(<HireStep />);
+    await waitFor(() => expect(calls).toBe(1));
+    expect(screen.queryAllByTestId("hire-step-pending")).not.toHaveLength(0);
+    expect(
+      await screen.findByText("Maria", {}, { timeout: 5000 }),
+    ).toBeDefined();
+    expect(calls).toBe(2);
+  },
+);
+
+it("stops waiting after the deadline if transient errors persist", async () => {
+  let calls = 0;
+  server.use(
+    http.get("*/api/onboarding/brain-dump/recommended-experts", () => {
+      calls += 1;
+      return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
+    }),
+  );
+  render(<HireStep />);
+  expect(
+    await screen.findByText(
+      "Here's my read on your team",
+      {},
+      { timeout: 22000 },
+    ),
+  ).toBeDefined();
+  expect(calls).toBeGreaterThan(1);
+  const stoppedAt = calls;
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  expect(calls).toBe(stoppedAt);
+}, 26000);
