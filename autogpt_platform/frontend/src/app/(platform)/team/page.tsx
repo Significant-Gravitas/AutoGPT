@@ -13,7 +13,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { KanbanIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { notFound } from "next/navigation";
 import { useState } from "react";
 import { EmptyTeamState } from "./components/EmptyTeamState";
