@@ -121,12 +121,24 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ten merged; 2,253 headroom.
 # list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
 # under 65_000 without a bump of their own; merged registry measures 62,694.
+# Bumped 65_000 -> 72_000 on 2026-09-09. dev measured 62,747 and the six expert
+# PRs then in flight add 4,903 between them, so they reach 67,650 together and
+# blow the old ceiling by 2,650 — while each branch's own CI, measuring only its
+# own delta, stays green. Measured per branch, not estimated:
+#     #14443 fix-expert-credential-grant-paths  +3,744
+#     #14207 multi-expert-teams                   +981
+#     #11220 input-blocks-alongside-trigger       +178
+#     #14244 agent-collab-architecture              +0
+#     #14209 autopilot-auto-mode-v2                 +0
+#     #14432 secrt-2593-publish                     +0
+# 72_000 is 67,650 plus a 5% margin, rounded up. Treat it as a floor: #14443 is
+# a stack whose upper layers add the expert workflow and credential tools.
 #
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
 # incoming side lowers a ceiling that has already ejected a green PR.
-_CHAR_BUDGET = 65_000
+_CHAR_BUDGET = 72_000
 
 
 @pytest.fixture(scope="module")
