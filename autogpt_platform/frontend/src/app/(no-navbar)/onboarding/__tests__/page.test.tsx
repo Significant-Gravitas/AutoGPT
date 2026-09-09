@@ -105,6 +105,7 @@ vi.mock("@/app/api/helpers", () => ({
 // the pillbox step this file asserts on.
 let mockFlagValue = false;
 let mockExpertTeamEnabled = false;
+let mockHireExpertsEnabled = true;
 let mockBrainDumpEnabled = false;
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
@@ -115,8 +116,8 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   },
   useGetFlag: (flag: string) => {
     if (flag === "ENABLE_PLATFORM_PAYMENT") return mockFlagValue;
-    if (flag === "ONBOARDING_EXPERT_TEAM" || flag === "HIRE_EXPERTS")
-      return mockExpertTeamEnabled;
+    if (flag === "ONBOARDING_EXPERT_TEAM") return mockExpertTeamEnabled;
+    if (flag === "HIRE_EXPERTS") return mockHireExpertsEnabled;
     if (flag === "ONBOARDING_BRAIN_DUMP") return mockBrainDumpEnabled;
     return false;
   },
@@ -150,6 +151,7 @@ beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
   mockExpertTeamEnabled = false;
+  mockHireExpertsEnabled = true;
   mockBrainDumpEnabled = false;
   mockIsLocal = false;
   mockSubscriptionTier = "NO_TIER";
@@ -666,4 +668,42 @@ describe("OnboardingPage — self-host closes with the connection", () => {
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(screen.queryByTestId("step-connect")).toBeNull();
   });
+});
+
+it("never offers Back into the paywall, with or without the intro", async () => {
+  mockFlagValue = true;
+  window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+  currentSearchParams = new URLSearchParams("step=2");
+  render(<OnboardingPage />);
+  expect(await screen.findByTestId("step-role")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+  act(() => useOnboardingWizardStore.getState().nextStep());
+  expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(await screen.findByTestId("step-role")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+});
+
+it("hides Back on the first intro after the paywall", async () => {
+  mockFlagValue = true;
+  mockExpertTeamEnabled = true;
+  window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+  currentSearchParams = new URLSearchParams("step=2");
+  render(<OnboardingPage />);
+  expect(await screen.findByTestId("step-team")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+});
+
+it("skips both intro and hire when hiring is disabled independently of the team flag", async () => {
+  mockExpertTeamEnabled = true;
+  mockHireExpertsEnabled = false;
+  mockBrainDumpEnabled = true;
+  render(<OnboardingPage />);
+  expect(await screen.findByTestId("step-role")).toBeDefined();
+  expect(screen.queryByTestId("step-team")).toBeNull();
+  act(() => useOnboardingWizardStore.getState().nextStep());
+  expect(await screen.findByTestId("step-braindump")).toBeDefined();
+  act(() => useOnboardingWizardStore.getState().nextStep());
+  expect(await screen.findByTestId("step-preparing")).toBeDefined();
+  expect(screen.queryByTestId("step-hire")).toBeNull();
 });

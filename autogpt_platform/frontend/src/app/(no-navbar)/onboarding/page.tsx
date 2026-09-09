@@ -45,7 +45,9 @@ export default function OnboardingPage() {
   // Back is hidden on the first step and while the current step is
   // mid-flight (brain dump processing) — there is nothing coherent to go
   // back to.
-  const showBack = currentStep > 1 && currentStep <= totalSteps && !isStepBusy;
+  const firstContentStep = isPaymentEnabled ? 2 : 1;
+  const showBack =
+    currentStep > firstContentStep && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
@@ -75,7 +77,7 @@ export default function OnboardingPage() {
         </Button>
       )}
 
-      <div className="flex flex-1 items-center pb-8 pt-16">
+      <div className="flex w-full min-w-0 flex-1 items-center justify-center pb-8 pt-16">
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
