@@ -22172,6 +22172,7 @@
             "type": "array",
             "title": "Outcomes"
           },
+          "author": { "$ref": "#/components/schemas/HomeBriefingAuthor" },
           "narrative": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Narrative"
@@ -22190,9 +22191,21 @@
           "completed_count",
           "failed_count",
           "routine_count",
-          "outcomes"
+          "outcomes",
+          "author"
         ],
         "title": "HomeBriefing"
+      },
+      "HomeBriefingAuthor": {
+        "properties": {
+          "kind": { "type": "string", "const": "autopilot", "title": "Kind" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" }
+        },
+        "type": "object",
+        "required": ["kind", "name", "role"],
+        "title": "HomeBriefingAuthor",
+        "description": "Who wrote the brief. Always AutoPilot, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
       },
       "HomeBriefingOutcome": {
         "properties": {

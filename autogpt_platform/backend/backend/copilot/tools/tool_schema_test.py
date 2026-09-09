@@ -121,15 +121,33 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ten merged; 2,253 headroom.
 # list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
 # under 65_000 without a bump of their own; merged registry measures 62,694.
-# #11220's `constant_inputs` and `trigger_config`, net of a 303-char trim to
-# both tools' wording, add 178: 62,747 for dev alone against 62,925 here, both
-# read on the same machine (the line above was measured elsewhere).
+# Bumped 65_000 -> 67_651 on 2026-09-09: dev's 62,747 plus the six expert PRs
+# then in flight, which add 4,903 between them and blow the old ceiling by 2,650
+# while each branch's own CI, measuring only its own delta, stays green.
+# Measured per branch, not estimated:
+#     #14443 fix-expert-credential-grant-paths  +3,744
+#     #14207 multi-expert-teams                   +981
+#     #11220 input-blocks-alongside-trigger       +178
+#     #14244 agent-collab-architecture              +0
+#     #14209 autopilot-auto-mode-v2                 +0
+#     #14432 secrt-2593-publish                     +0
+# There is NO margin on top, deliberately. This limit is a brake: it exists to
+# make every increase in what AutoPilot pays per turn a decision someone took,
+# so slack for growth nobody has measured is the one thing it must not carry.
+# The assertion below is a strict <, so the ceiling is the measured total plus
+# one — 67,651 admits exactly that aggregate and nothing beyond it.
+# The next tool that does not fit raises this line itself, with its own measured
+# number and its own row above.
 #
 # ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
 # incoming side lowers a ceiling that has already ejected a green PR.
-_CHAR_BUDGET = 65_000
+#
+# Measure it the way this test does — one json.dumps over the whole list —
+# not by summing per-tool lengths, which misses ~142 chars of array
+# separators and overstates the headroom.
+_CHAR_BUDGET = 67_651
 
 
 @pytest.fixture(scope="module")
