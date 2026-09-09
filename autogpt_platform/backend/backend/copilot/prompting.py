@@ -361,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -384,6 +384,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+**4. Connecting is not running.** When the user only asks to connect or
+sign in to a service, call `connect_integration(provider=...)` — never
+`run_block` or `run_agent`, which commit to an action the user has not
+asked for. Call those only when the user asks for the action itself.
+
+**5. The card asks for credentials, not inputs.** A setup card never
+renders a form for a block's or agent's inputs (the one exception is a
+picker-backed field, see above). Collect every other input in the chat:
+if you do not have a value, ask the user for it via `ask_question`, then
+call the tool with it once they connect. Do not tell the user to fill
+anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -448,6 +465,21 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
   Actions), pass the required scopes: e.g.
   `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
+
+
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
 
 
 # Environment-specific supplement templates

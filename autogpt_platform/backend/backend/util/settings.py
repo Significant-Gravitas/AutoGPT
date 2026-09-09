@@ -557,6 +557,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="Whether to use the new agent image generation service",
     )
+    marketplace_require_canonical_category: bool = Field(
+        default=False,
+        description="Hide listings without a canonical category from the marketplace's default view. Turn on only once the category backfill has run, or real listings disappear.",
+    )
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,
         description="Whether to enable the agent input subtype blocks",
