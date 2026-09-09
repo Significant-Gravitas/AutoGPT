@@ -15,6 +15,7 @@ import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { KanbanIcon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { notFound } from "next/navigation";
+import { useState } from "react";
 import { EmptyTeamState } from "./components/EmptyTeamState";
 import { ExpertChatDrawer } from "./components/ExpertChatDrawer/ExpertChatDrawer";
 import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
@@ -25,6 +26,8 @@ import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
+import { TeamRosterToolbar } from "./components/TeamRoster/TeamRosterToolbar";
+import { useTeamRosterView } from "./components/TeamRoster/useTeamRosterView";
 import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
@@ -35,6 +38,8 @@ const TABS = [
   { value: "overview", label: "Team Overview", icon: UserGroupIcon },
   { value: "pods", label: "Pod board", icon: KanbanIcon },
 ] as const;
+
+type TeamTab = (typeof TABS)[number]["value"];
 
 export default function TeamPage() {
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
@@ -65,6 +70,11 @@ export default function TeamPage() {
     isCreatingPod,
     assignPod,
   } = useTeamPage({ enabled: Boolean(enabled) && ready });
+  const [tab, setTab] = useState<TeamTab>("overview");
+  const roster = useTeamRosterView({
+    experts: hiredExperts,
+    schedulesForExpert,
+  });
 
   if (!ready) {
     return (
@@ -124,24 +134,42 @@ export default function TeamPage() {
           />
         ) : null}
 
-        <TabsLine variant="compact" defaultValue="overview">
-          <TabsLineList className="overflow-x-auto border-b-transparent">
-            {TABS.map((tab) => (
-              <TabsLineTrigger
-                key={tab.value}
-                value={tab.value}
-                icon={tab.icon}
-              >
-                {tab.label}
-              </TabsLineTrigger>
-            ))}
-          </TabsLineList>
+        <TabsLine
+          variant="compact"
+          value={tab}
+          onValueChange={(next) => setTab(next as TeamTab)}
+        >
+          {/* The roster's search and filter share the tabs row, right-aligned,
+              and only while the roster is the tab being shown. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsLineList className="w-auto overflow-x-auto border-b-transparent">
+              {TABS.map((item) => (
+                <TabsLineTrigger
+                  key={item.value}
+                  value={item.value}
+                  icon={item.icon}
+                >
+                  {item.label}
+                </TabsLineTrigger>
+              ))}
+            </TabsLineList>
+            {tab === "overview" ? (
+              <TeamRosterToolbar
+                query={roster.query}
+                onQueryChange={roster.setQuery}
+                filter={roster.filter}
+                onFilterChange={roster.setFilter}
+              />
+            ) : null}
+          </div>
 
           <TabsLineContent value="overview" className="space-y-6">
             <SetupNeeded enabled={Boolean(enabled) && ready} />
             <TeamRoster
               isLoading={isLoading}
               experts={hiredExperts}
+              visibleExperts={roster.visibleExperts}
+              isNarrowed={roster.isNarrowed}
               schedulesForExpert={schedulesForExpert}
               renderCard={renderCard}
               onAutopilotChat={() => openChat(null)}
