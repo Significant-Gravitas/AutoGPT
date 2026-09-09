@@ -51,7 +51,6 @@ export function ExpertBudgetSection({ expert }: Props) {
       <SpendMeter
         spent={weeklySpend?.spent ?? 0}
         budget={weeklySpend?.budget ?? 1}
-        color={expert.color}
         muted={!weeklySpend}
       />
       <EditBudgetDialog
