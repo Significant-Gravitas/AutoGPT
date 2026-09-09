@@ -53,7 +53,7 @@ export function AgentRow({ agent }: Props) {
           as="NextLink"
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="secondary"
-          size="xs"
+          size="small"
           aria-label={`Chat with ${agent.expert.name}`}
         >
           Chat
@@ -62,7 +62,7 @@ export function AgentRow({ agent }: Props) {
           as="NextLink"
           href={`/team/${agent.expert.id}`}
           variant="secondary"
-          size="xs"
+          size="small"
           aria-label={`Manage ${agent.expert.name}`}
         >
           Manage
