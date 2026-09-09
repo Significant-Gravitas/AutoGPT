@@ -26,6 +26,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
+from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
@@ -136,6 +137,28 @@ class RaiseExpertTool(BaseTool):
                         "Pick one that fits their personality."
                     ),
                 },
+                "avatar_shape": {
+                    "type": "string",
+                    "enum": AVATAR_SHAPES,
+                    "description": (
+                        "Silhouette of their generated avatar. Pick one that "
+                        "fits their personality; omit to seed one from the name."
+                    ),
+                },
+                "avatar_accessory": {
+                    "type": "string",
+                    "enum": AVATAR_ACCESSORIES,
+                    "description": (
+                        "The one accessory that says what they do: glasses "
+                        "for research and review, headset for support and ops, "
+                        "badge for finance and admin, bow for marketing and "
+                        "events, "
+                        "star for a favourite, crown for a pod lead, propeller "
+                        "for experiments, ears for a curious scout, flower for "
+                        "people and community, bowtie for formal or legal work, "
+                        "headband for focused sprints, none for a plain look."
+                    ),
+                },
                 "about": {
                     "type": "string",
                     "description": (
@@ -171,6 +194,8 @@ class RaiseExpertTool(BaseTool):
         role: str = "",
         tagline: str = "",
         color: str = "",
+        avatar_shape: str = "",
+        avatar_accessory: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
@@ -188,6 +213,24 @@ class RaiseExpertTool(BaseTool):
                 message=(
                     "Invalid expert charter — color must be one of: "
                     + ", ".join(COLOR_TOKENS)
+                ),
+                session_id=session_id,
+            )
+        avatar_shape = avatar_shape.strip()
+        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_shape must be one of: "
+                    + ", ".join(AVATAR_SHAPES)
+                ),
+                session_id=session_id,
+            )
+        avatar_accessory = avatar_accessory.strip()
+        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
+            return ErrorResponse(
+                message=(
+                    "Invalid expert charter — avatar_accessory must be one of: "
+                    + ", ".join(AVATAR_ACCESSORIES)
                 ),
                 session_id=session_id,
             )
@@ -252,6 +295,12 @@ class RaiseExpertTool(BaseTool):
             role=params.role,
             tagline=params.tagline,
             color=params.color,
+            avatar_url=build_avatar_url(
+                params.name,
+                shape=avatar_shape or None,
+                accessory=avatar_accessory or None,
+                color_token=params.color or None,
+            ),
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
