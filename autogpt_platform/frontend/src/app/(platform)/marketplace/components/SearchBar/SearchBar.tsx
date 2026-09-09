@@ -37,6 +37,7 @@ export function SearchBar({
       />
       <input
         type="text"
+        aria-label={placeholder}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}

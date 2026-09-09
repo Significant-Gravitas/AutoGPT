@@ -3,7 +3,7 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { SkillsBrowsePage } from "./components/SkillsBrowsePage/SkillsBrowsePage";
-import { PAGE_SIZE } from "./components/SkillsBrowsePage/useSkillsBrowsePage";
+import { BROWSE_PAGE_SIZE } from "../components/SkillsSection/helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export default async function MarketplaceSkillsPage() {
   // arrives in the URL and would miss this key anyway.
   await prefetchGetV2ListMarketplaceSkillsInfiniteQuery(queryClient, {
     page: 1,
-    page_size: PAGE_SIZE,
+    page_size: BROWSE_PAGE_SIZE,
   });
 
   return (

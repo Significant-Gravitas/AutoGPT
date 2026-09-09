@@ -7,8 +7,7 @@ import {
 } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useRouter, useSearchParams } from "next/navigation";
-
-export const PAGE_SIZE = 20;
+import { BROWSE_PAGE_SIZE } from "../../../components/SkillsSection/helpers";
 
 export function useSkillsBrowsePage() {
   const router = useRouter();
@@ -21,7 +20,7 @@ export function useSkillsBrowsePage() {
   const query = useGetV2ListMarketplaceSkillsInfinite(
     {
       page: 1,
-      page_size: PAGE_SIZE,
+      page_size: BROWSE_PAGE_SIZE,
       ...(search ? { search_query: search } : {}),
       ...(category ? { category } : {}),
     },
