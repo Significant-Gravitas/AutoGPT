@@ -108,6 +108,7 @@ describe("OnboardingWelcomeDialog — deck", () => {
     ).toBeDefined();
     expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
       card_index: 1,
+      deck: "autopilot",
     });
 
     await user.click(screen.getByRole("button", { name: "Previous card" }));
@@ -141,6 +142,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_completed", {
       card_index: 3,
+      deck: "autopilot",
     });
   });
 
@@ -158,6 +160,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
       card_index: 1,
+      deck: "autopilot",
     });
   });
 
@@ -174,6 +177,7 @@ describe("OnboardingWelcomeDialog — completion", () => {
     await waitFor(() => expect(steps).toEqual(["CAPABILITY_CARDS"]));
     expect(capture).toHaveBeenCalledWith("capability_cards_skipped", {
       card_index: 0,
+      deck: "autopilot",
     });
   });
 
@@ -336,3 +340,26 @@ it("keeps the last card valid when team flags change in either direction", async
   rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
   expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
 });
+
+it.each(["completed", "skipped"] as const)(
+  "identifies the team deck in view and %s events",
+  async (outcome) => {
+    flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+    recordCompletedSteps();
+    render(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+    const user = await advanceToCard(3);
+    expect(capture).toHaveBeenCalledWith("capability_card_viewed", {
+      card_index: 3,
+      deck: "team",
+    });
+    if (outcome === "completed") {
+      await user.click(screen.getByRole("button", { name: "Meet your team" }));
+    } else {
+      await user.keyboard("{Escape}");
+    }
+    expect(capture).toHaveBeenCalledWith(`capability_cards_${outcome}`, {
+      card_index: 3,
+      deck: "team",
+    });
+  },
+);

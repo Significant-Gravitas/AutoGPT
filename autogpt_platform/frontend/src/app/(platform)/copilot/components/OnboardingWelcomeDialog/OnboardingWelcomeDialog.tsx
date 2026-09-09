@@ -118,6 +118,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
   const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
   const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
   const isTeamEnabled = Boolean(isExpertTeamFlagOn && isHireExpertsFlagOn);
+  const deck = isTeamEnabled ? "team" : "autopilot";
   const cards = isTeamEnabled ? TEAM_CARDS : CARDS;
   const card = cards[cardIndex];
   const isLastCard = cardIndex === cards.length - 1;
@@ -127,7 +128,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
       outcome === "completed"
         ? "capability_cards_completed"
         : "capability_cards_skipped",
-      { card_index: cardIndex },
+      { card_index: cardIndex, deck },
     );
     completeStep({ params: { step: "CAPABILITY_CARDS" } });
     onClose();
@@ -146,14 +147,17 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, cardIndex, isConnectOpen]);
+  }, [isOpen, cardIndex, isConnectOpen, deck]);
 
   function handleNext() {
     if (isLastCard) {
       finish("completed");
       return;
     }
-    trackBrainDump("capability_card_viewed", { card_index: cardIndex + 1 });
+    trackBrainDump("capability_card_viewed", {
+      card_index: cardIndex + 1,
+      deck,
+    });
     setCardIndex(cardIndex + 1);
   }
 
