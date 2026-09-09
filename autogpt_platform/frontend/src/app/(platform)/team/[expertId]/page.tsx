@@ -147,9 +147,9 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        {/* items-end sits the tagline on the budget bar's line rather than
-            floating between the Budget label and the bar. */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-8">
+        {/* items-start keeps the tagline level with the Budget label rather
+            than floating between the label and the bar. */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
           {expert.tagline ? (
             <Text variant="large" tone="muted" className="min-w-0 flex-1">
               {expert.tagline}
