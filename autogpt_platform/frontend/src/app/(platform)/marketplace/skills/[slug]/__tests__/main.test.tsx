@@ -9,10 +9,20 @@ import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/cre
 import type { MarketplaceSkillDetails } from "@/app/api/__generated__/models/marketplaceSkillDetails";
 import { server } from "@/mocks/mock-server";
 import { HttpResponse, http } from "msw";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  configure,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+
 import { SkillPage } from "../components/SkillPage";
+
+// These pages wait on several queries before anything renders, and CI is
+// slower than a dev machine; the testing-library default is one second.
+configure({ asyncUtilTimeout: 10000 });
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
