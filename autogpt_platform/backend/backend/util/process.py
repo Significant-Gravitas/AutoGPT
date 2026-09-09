@@ -9,6 +9,7 @@ from typing import Optional
 from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
 from backend.util.retry import stop_retry_loops
+from backend.util.secrets_guard import check_secrets
 from backend.util.settings import set_service_name
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,11 @@ class AppProcess(ABC):
         Returns:
             the process id or 0 if the process is not running in the background.
         """
+        # Startup guard: no service comes up on a missing or publicly-known
+        # secret. Deliberately here rather than at import time so tooling and
+        # tests that merely import backend modules are unaffected.
+        check_secrets()
+
         if not background:
             self.execute_run_command(silent)
             return 0

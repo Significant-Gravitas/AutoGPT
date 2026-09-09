@@ -156,13 +156,14 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Platform - Copy default platform .env
-        run: |
-          cp ../.env.default ../.env
+      - name: Set up Platform - Create .env files with generated secrets
+        # Same bootstrap a contributor runs: .env.default ships its secrets
+        # blank, and this fills them with values generated for this run.
+        working-directory: autogpt_platform
+        run: make init-env
 
-      - name: Set up Platform - Copy backend .env and set OpenAI API key
+      - name: Set up Platform - Configure backend .env
         run: |
-          cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
           echo "CHAT_TEST_MODE=true" >> ../backend/.env
           echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env

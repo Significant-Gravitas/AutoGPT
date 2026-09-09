@@ -20,6 +20,8 @@ CONFIG_VERSION = "1"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
 SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+# A ``NAME=`` line in a .env file, i.e. a secret left blank for setup to fill.
+BLANK_ASSIGNMENT = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=[ \t]*\r?\n?$")
 
 
 def main() -> int:
@@ -29,6 +31,13 @@ def main() -> int:
     ensure_parser = subparsers.add_parser("ensure")
     ensure_parser.add_argument("--path", type=Path, required=True)
 
+    fill_parser = subparsers.add_parser("fill-env")
+    fill_parser.add_argument("--path", type=Path, required=True)
+    fill_parser.add_argument("--missing-ok", action="store_true")
+
+    check_parser = subparsers.add_parser("check-env-defaults")
+    check_parser.add_argument("--root", type=Path, required=True)
+
     url_parser = subparsers.add_parser("validate-public-url")
     url_parser.add_argument("url")
 
@@ -36,6 +45,23 @@ def main() -> int:
     try:
         if args.command == "ensure":
             ensure_runtime_config(args.path, os.environ)
+        elif args.command == "fill-env":
+            if args.missing_ok and not args.path.exists():
+                return 0
+            filled = fill_env_secrets(args.path)
+            if filled:
+                print(f"{args.path}: generated {', '.join(filled)}")
+        elif args.command == "check-env-defaults":
+            offenders = check_env_defaults(args.root)
+            for location in offenders:
+                print(
+                    f"{location}: ships a working secret value. .env.default is "
+                    "public, so this value is published. Leave it blank and let "
+                    "`make init-env` generate one.",
+                    file=sys.stderr,
+                )
+            if offenders:
+                return 1
         else:
             print(validate_public_url(args.url))
     except (OSError, ValueError) as exc:
@@ -58,6 +84,56 @@ def ensure_runtime_config(path: Path, environment: Mapping[str, str]) -> dict[st
     values = _new_values(environment)
     _write_config(path, values)
     return values
+
+
+def fill_env_secrets(path: Path) -> list[str]:
+    """Give every blank secret in a .env file a freshly generated value.
+
+    Idempotent by construction: only ``NAME=`` lines with nothing after the
+    ``=`` are touched, so re-running setup never rotates a value an operator
+    (or an earlier run) already put there. Returns the names that were filled.
+    """
+    if path.is_symlink():
+        raise ValueError(f"refusing symlink at {path}")
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    filled: list[str] = []
+    for index, line in enumerate(lines):
+        match = BLANK_ASSIGNMENT.match(line)
+        if match is None:
+            continue
+        generator = SECRET_GENERATORS.get(match.group("name"))
+        if generator is None:
+            continue
+        lines[index] = f"{match.group('name')}={generator()}\n"
+        filled.append(match.group("name"))
+
+    if filled:
+        _replace_atomically(path, "".join(lines))
+    return filled
+
+
+def check_env_defaults(root: Path) -> list[str]:
+    """Return `path:NAME` for every retired secret that is not blank."""
+    offenders: list[str] = []
+    for relative_path, names in BLANK_IN_ENV_DEFAULT.items():
+        content = (root / relative_path).read_text(encoding="utf-8")
+        for name in names:
+            if f"\n{name}=\n" not in f"\n{content}":
+                offenders.append(f"{relative_path}:{name}")
+    return offenders
+
+
+def _replace_atomically(path: Path, content: str) -> None:
+    """Rewrite `path` without a window where it is truncated or half-written."""
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        temporary.chmod(stat.S_IMODE(path.stat().st_mode))
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def validate_public_url(value: str) -> str:
@@ -107,30 +183,11 @@ def _new_values(environment: Mapping[str, str]) -> dict[str, str]:
     vapid_private, vapid_public = _configured_or_generated_vapid(environment)
     values = {
         "AUTOGPT_RUNTIME_CONFIG_VERSION": CONFIG_VERSION,
-        "POSTGRES_PASSWORD": _configured_or_generated(
-            environment, "POSTGRES_PASSWORD", lambda: secrets.token_urlsafe(36)
-        ),
         "RABBITMQ_DEFAULT_USER": environment.get("RABBITMQ_DEFAULT_USER") or "autogpt",
-        "RABBITMQ_DEFAULT_PASS": _configured_or_generated(
-            environment, "RABBITMQ_DEFAULT_PASS", lambda: secrets.token_urlsafe(36)
-        ),
-        "REDIS_PASSWORD": _configured_or_generated(
-            environment, "REDIS_PASSWORD", lambda: secrets.token_urlsafe(36)
-        ),
-        "BETTER_AUTH_SECRET": _configured_or_generated(
-            environment, "BETTER_AUTH_SECRET", lambda: secrets.token_urlsafe(48)
-        ),
-        "ENCRYPTION_KEY": _configured_or_generated(
-            environment, "ENCRYPTION_KEY", _fernet_key
-        ),
-        "UNSUBSCRIBE_SECRET_KEY": _configured_or_generated(
-            environment, "UNSUBSCRIBE_SECRET_KEY", lambda: secrets.token_urlsafe(36)
-        ),
-        "GRAPHITI_FALKORDB_PASSWORD": _configured_or_generated(
-            environment,
-            "GRAPHITI_FALKORDB_PASSWORD",
-            lambda: secrets.token_urlsafe(36),
-        ),
+        **{
+            name: _configured_or_generated(environment, name, generator)
+            for name, generator in SECRET_GENERATORS.items()
+        },
         "VAPID_PRIVATE_KEY": vapid_private,
         "VAPID_PUBLIC_KEY": vapid_public,
     }
@@ -174,6 +231,29 @@ def _generate_vapid_keypair() -> tuple[str, str]:
 
 def _fernet_key() -> str:
     return base64.urlsafe_b64encode(os.urandom(32)).decode("ascii")
+
+
+# The single source of truth for "this setting is a secret, and this is how a
+# local one is made". `.env.default` ships these blank (a working value in a
+# public file is a published value); every bootstrap path fills them from here.
+SECRET_GENERATORS: dict[str, Callable[[], str]] = {
+    "POSTGRES_PASSWORD": lambda: secrets.token_urlsafe(36),
+    "RABBITMQ_DEFAULT_PASS": lambda: secrets.token_urlsafe(36),
+    "REDIS_PASSWORD": lambda: secrets.token_urlsafe(36),
+    "BETTER_AUTH_SECRET": lambda: secrets.token_urlsafe(48),
+    "ENCRYPTION_KEY": _fernet_key,
+    "UNSUBSCRIBE_SECRET_KEY": lambda: secrets.token_urlsafe(36),
+    "GRAPHITI_FALKORDB_PASSWORD": lambda: secrets.token_urlsafe(36),
+}
+
+# Secrets already retired from the public .env.default files (SECRT-2611).
+# `check-env-defaults` keeps them blank: entropy scanners do not reliably catch
+# a freshly generated key pasted back into one of these lines, so the invariant
+# is asserted directly. Paths are relative to autogpt_platform/.
+BLANK_IN_ENV_DEFAULT: dict[str, tuple[str, ...]] = {
+    "backend/.env.default": ("ENCRYPTION_KEY", "UNSUBSCRIBE_SECRET_KEY"),
+    "frontend/.env.default": ("BETTER_AUTH_SECRET",),
+}
 
 
 def _base64url(value: bytes) -> str:
