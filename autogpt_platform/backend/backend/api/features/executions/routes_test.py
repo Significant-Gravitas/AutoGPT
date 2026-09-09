@@ -1,7 +1,7 @@
 """Tests for the execution routes."""
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -11,6 +11,9 @@ from fastapi.routing import APIRoute
 
 from backend.api.features.executions.routes import router
 from backend.api.rest_api import app as real_app
+from backend.data import execution as execution_db
+from backend.util.exceptions import NotFoundError
+from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -18,10 +21,29 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, test_user_id):
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from autogpt_libs.auth.models import RequestContext
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    # The real get_request_context queries Prisma to resolve the personal org,
+    # which closes the test event loop between sync TestClient calls.
+    async def _fake_request_context() -> RequestContext:
+        return RequestContext(
+            user_id=test_user_id,
+            org_id="test-org",
+            team_id=None,
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+
+    app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
 
@@ -266,3 +288,229 @@ def test_executions_cost_summary_rejects_inverted_window(
 
     assert response.status_code == 422
     mock_fn.assert_not_awaited()
+
+
+def _paginated(*executions):
+    return execution_db.GraphExecutionsPaginated(
+        executions=list(executions),
+        pagination=Pagination(
+            total_items=len(executions), total_pages=1, current_page=1, page_size=25
+        ),
+    )
+
+
+def test_list_all_executions_applies_the_activity_gate(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The gate is what keeps flag-disabled activity summaries out of the
+    response; bypassing it leaks them to every caller."""
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".get_graph_executions_paginated",
+        AsyncMock(return_value=_paginated()),
+    )
+    gate = mocker.patch(
+        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        AsyncMock(return_value=[]),
+    )
+
+    response = client.get("/executions")
+
+    assert response.status_code == 200
+    gate.assert_awaited_once()
+
+
+def test_list_all_executions_is_not_scoped_to_a_graph(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """This route and the per-graph one share a db call; a graph_id here would
+    silently narrow the user-wide list."""
+    query = mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".get_graph_executions_paginated",
+        AsyncMock(return_value=_paginated()),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        AsyncMock(return_value=[]),
+    )
+
+    client.get("/executions")
+
+    assert "graph_id" not in query.await_args.kwargs
+
+
+def test_list_graph_executions_forwards_pagination(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    query = mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".get_graph_executions_paginated",
+        AsyncMock(return_value=_paginated()),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.hide_activity_summaries_if_disabled",
+        AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.get_user_onboarding",
+        AsyncMock(return_value=Mock(onboardingAgentExecutionId=None)),
+    )
+
+    response = client.get("/graphs/graph-1/executions?page=3&page_size=10")
+
+    assert response.status_code == 200
+    kwargs = query.await_args.kwargs
+    assert (kwargs["graph_id"], kwargs["page"], kwargs["page_size"]) == (
+        "graph-1",
+        3,
+        10,
+    )
+
+
+def test_delete_execution_returns_204(mocker: pytest_mock.MockFixture) -> None:
+    deleted = mocker.patch(
+        "backend.api.features.executions.routes.execution_db.delete_graph_execution",
+        AsyncMock(),
+    )
+
+    response = client.delete("/executions/exec-1")
+
+    assert response.status_code == 204
+    assert deleted.await_args.kwargs["graph_exec_id"] == "exec-1"
+
+
+def test_get_shared_execution_returns_404_for_an_unknown_token(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".get_graph_execution_by_share_token",
+        AsyncMock(return_value=None),
+    )
+
+    response = client.get("/public/shared/550e8400-e29b-41d4-a716-446655440000")
+
+    assert response.status_code == 404
+
+
+def test_get_shared_execution_rejects_a_malformed_token() -> None:
+    """The token is the only credential this public route has, so its pattern
+    is the access control."""
+    response = client.get("/public/shared/not-a-uuid")
+
+    assert response.status_code == 422
+
+
+def test_get_graph_execution_rejects_a_graph_id_mismatch(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The execution is fetched by id alone, so the graph_id in the path is
+    only checked here — dropping it would let any graph's URL read any of the
+    caller's executions."""
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=Mock(graph_id="other-graph", graph_version=1)),
+    )
+
+    response = client.get("/graphs/graph-1/executions/exec-1")
+
+    assert response.status_code == 404
+
+
+def test_enable_sharing_clears_stale_allowlist_before_issuing_a_token(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Order matters: leaving old file records in place while a new token is
+    written would expose files the previous share allowed."""
+    calls: list[str] = []
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=Mock(outputs={})),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(side_effect=lambda **_: calls.append("delete")),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".update_graph_execution_share_status",
+        AsyncMock(side_effect=lambda **_: calls.append("update")),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".create_shared_execution_files",
+        AsyncMock(side_effect=lambda **_: calls.append("create")),
+    )
+
+    response = client.post("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code == 200
+    assert calls == ["delete", "update", "create"]
+    assert response.json()["share_url"].endswith(response.json()["share_token"])
+
+
+def test_enable_sharing_maps_a_lost_execution_to_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The write enforces (id, user_id) at the DB layer, so a delete racing the
+    pre-check must surface as 404 rather than a silent no-op."""
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=Mock(outputs={})),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(),
+    )
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".update_graph_execution_share_status",
+        AsyncMock(side_effect=NotFoundError("gone")),
+    )
+
+    response = client.post("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code == 404
+
+
+def test_enable_sharing_requires_an_execution(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=None),
+    )
+
+    response = client.post("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code == 404
+
+
+def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Revoking the token without clearing the allowlist would leave the files
+    reachable to anyone who kept the old link."""
+    mocker.patch(
+        "backend.api.features.executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=Mock()),
+    )
+    delete_files = mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(),
+    )
+    update = mocker.patch(
+        "backend.api.features.executions.routes.execution_db"
+        ".update_graph_execution_share_status",
+        AsyncMock(),
+    )
+
+    response = client.delete("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code in (200, 204)
+    delete_files.assert_awaited_once()
+    assert update.await_args.kwargs["is_shared"] is False
