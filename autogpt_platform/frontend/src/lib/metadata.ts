@@ -65,7 +65,11 @@ function firstValidOrigin(
   for (const candidate of candidates) {
     if (!candidate) continue;
     try {
-      return new URL(candidate).toString().replace(/\/$/, "");
+      const url = new URL(candidate);
+      // mailto: and data: parse but have no origin, so resolving a relative
+      // path against one throws instead of falling through to the next.
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      return url.toString().replace(/\/$/, "");
     } catch {
       continue;
     }

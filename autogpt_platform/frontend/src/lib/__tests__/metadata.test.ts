@@ -103,6 +103,19 @@ describe("getSiteUrl", () => {
     expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
   });
 
+  test.each([
+    ["mailto:", "mailto:hello@agpt.co"],
+    ["data:", "data:text/html,<h1>hi</h1>"],
+  ])("skips a %s candidate and uses the next one", (_label, configured) => {
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", configured);
+    vi.stubEnv("VERCEL_URL", "some-deployment.vercel.app");
+
+    expect(getSiteUrl()).toBe("https://some-deployment.vercel.app");
+    expect(() =>
+      buildPageMetadata({ title: "Marketplace", path: "/marketplace" }),
+    ).not.toThrow();
+  });
+
   test("always returns an origin new URL() accepts", () => {
     vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "not a url");
     vi.stubEnv("VERCEL_URL", "also not a url");
