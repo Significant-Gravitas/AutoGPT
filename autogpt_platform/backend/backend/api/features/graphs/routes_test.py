@@ -14,8 +14,12 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
+from backend.data import execution as execution_db
+from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
+from backend.data.onboarding import OnboardingStep
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.exceptions import GraphValidationError
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -49,6 +53,21 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides[get_request_context] = _fake_request_context
     yield
     app.dependency_overrides.clear()
+
+
+def _execution_meta() -> execution_db.GraphExecutionMeta:
+    return execution_db.GraphExecutionMeta(
+        id="exec-1",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        inputs={},
+        credential_inputs=None,
+        nodes_input_masks=None,
+        preset_id=None,
+        status=ExecutionStatus.QUEUED,
+        stats=None,
+    )
 
 
 EXPECTED_OPERATIONS = {
@@ -405,3 +424,339 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
     activate_mock.assert_awaited_once()
     create_graph_mock.assert_not_awaited()
     update_lib_agent_mock.assert_not_awaited()
+
+
+def test_get_graph_all_versions_returns_404_when_empty(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        AsyncMock(return_value=[]),
+    )
+
+    response = client.get("/graphs/graph-1/versions")
+
+    assert response.status_code == 404
+
+
+def test_update_graph_settings_requires_a_library_agent(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Settings live on the caller's library agent, so a graph the caller has
+    not added must not be settable."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.get_library_agent_by_graph_id",
+        AsyncMock(return_value=None),
+    )
+
+    response = client.patch("/graphs/graph-1/settings", json={})
+
+    assert response.status_code == 404
+
+
+def test_update_graph_settings_scopes_the_write_to_the_caller(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.get_library_agent_by_graph_id",
+        AsyncMock(return_value=Mock(id="lib-1")),
+    )
+    update = mocker.patch(
+        "backend.api.features.graphs.routes.library_db.update_library_agent",
+        AsyncMock(return_value=Mock(settings={})),
+    )
+
+    response = client.patch("/graphs/graph-1/settings", json={})
+
+    assert response.status_code == 200
+    kwargs = update.await_args.kwargs
+    assert kwargs["library_agent_id"] == "lib-1"
+    assert kwargs["user_id"] == test_user_id
+
+
+def test_execute_graph_refuses_a_zero_balance(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The balance gate is the last thing between an empty account and a paid
+    run; a 402 here is what stops it."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    started = mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(),
+    )
+
+    response = client.post("/graphs/graph-1/execute/1", json={})
+
+    assert response.status_code == 402
+    started.assert_not_awaited()
+
+
+def test_execute_graph_skips_the_balance_check_for_a_dry_run(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A dry run costs nothing, so it must not be blocked by an empty balance
+    — and must not consult the credit model at all."""
+    credit = mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model", AsyncMock()
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(return_value=_execution_meta()),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+
+    response = client.post("/graphs/graph-1/execute/1", json={"dry_run": True})
+
+    assert response.status_code == 200
+    credit.assert_not_awaited()
+
+
+def test_execute_graph_forwards_the_org_and_team_scope(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Dropping either would run the graph outside the caller's tenancy."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    started = mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(return_value=_execution_meta()),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+
+    response = client.post("/graphs/graph-1/execute/2", json={})
+
+    assert response.status_code == 200
+    kwargs = started.await_args.kwargs
+    assert kwargs["organization_id"] == "test-org"
+    assert kwargs["graph_version"] == 2
+
+
+def test_execute_graph_marks_the_onboarding_step_for_a_library_run(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The step is keyed off `source`, so a run started from the library is the
+    only thing that can complete it."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(return_value=_execution_meta()),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+    step = mocker.patch(
+        "backend.api.features.graphs.routes.complete_onboarding_step", AsyncMock()
+    )
+
+    response = client.post("/graphs/graph-1/execute/1", json={"source": "library"})
+
+    assert response.status_code == 200
+    assert step.await_args.args[1] is OnboardingStep.LIBRARY_RUN_AGENT
+
+
+def test_execute_graph_returns_structured_validation_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The builder parses `node_errors` to highlight the offending nodes; a
+    plain 500 would lose that."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(
+            side_effect=GraphValidationError(
+                message="bad graph", node_errors={"node-1": "missing input"}
+            )
+        ),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+
+    response = client.post("/graphs/graph-1/execute/1", json={})
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["type"] == "validation_error"
+    assert detail["node_errors"] == {"node-1": "missing input"}
+
+
+def test_update_graph_rejects_an_id_that_contradicts_the_uri(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Without this the body's id would silently win over the URI's."""
+    response = client.put(
+        "/graphs/graph-1",
+        json={
+            "id": "graph-2",
+            "name": "x",
+            "description": "",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_update_graph_returns_404_for_an_unknown_graph(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        AsyncMock(return_value=[]),
+    )
+
+    response = client.put(
+        "/graphs/graph-1",
+        json={
+            "id": "graph-1",
+            "name": "x",
+            "description": "",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_new_graph_reassigns_ids_and_persists_in_order(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The graph gets fresh ids before anything is written, and the library
+    agent is created only after the graph — the same ordering the activation
+    -error test above pins from the failure side. Reassignment matters because
+    a submitted id would otherwise let a caller collide with someone else's."""
+    calls: list[str] = []
+    mocker.patch(
+        "backend.api.features.graphs.routes.before_graph_activate",
+        new=AsyncMock(side_effect=lambda g, **_: g),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph",
+        new=AsyncMock(side_effect=lambda *a, **k: calls.append("graph")),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.library_db.create_library_agent",
+        new=AsyncMock(side_effect=lambda *a, **k: calls.append("library")),
+    )
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "id": "submitted-id",
+                "name": "x",
+                "description": "",
+                "nodes": [],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls == ["graph", "library"]
+    assert response.json()["id"] != "submitted-id"
+
+
+def test_set_active_version_returns_404_for_an_unknown_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The lookup is scoped to the caller, so a version belonging to someone
+    else reads as absent rather than being activated."""
+    lookup = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        AsyncMock(return_value=None),
+    )
+    activate = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.set_graph_active_version",
+        AsyncMock(),
+    )
+
+    response = client.put(
+        "/graphs/graph-1/versions/active", json={"active_graph_version": 7}
+    )
+
+    assert response.status_code == 404
+    activate.assert_not_awaited()
+    assert lookup.await_args.kwargs["user_id"]
+
+
+def test_get_graph_all_versions_scopes_to_the_caller_org(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    lookup = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        AsyncMock(return_value=[]),
+    )
+
+    client.get("/graphs/graph-1/versions")
+
+    assert lookup.await_args.kwargs["organization_id"] == "test-org"
+
+
+def test_execute_graph_marks_the_builder_onboarding_step(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Sibling of the library case: the two sources complete different steps,
+    so collapsing them would silently mark the wrong one."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(return_value=_execution_meta()),
+    )
+    mocker.patch("backend.api.features.graphs.routes.record_graph_operation", Mock())
+    step = mocker.patch(
+        "backend.api.features.graphs.routes.complete_onboarding_step", AsyncMock()
+    )
+
+    response = client.post("/graphs/graph-1/execute/1", json={"source": "builder"})
+
+    assert response.status_code == 200
+    assert step.await_args.args[1] is OnboardingStep.BUILDER_RUN_AGENT
+
+
+def test_execute_graph_records_a_failure_and_re_raises(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An unexpected error must still be counted; swallowing it would make the
+    execute metric read as if nothing went wrong."""
+    credit_model = Mock()
+    credit_model.get_credits = AsyncMock(return_value=100)
+    mocker.patch(
+        "backend.api.features.graphs.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution",
+        AsyncMock(side_effect=RuntimeError("boom")),
+    )
+    record = mocker.patch(
+        "backend.api.features.graphs.routes.record_graph_operation", Mock()
+    )
+
+    with pytest.raises(RuntimeError):
+        client.post("/graphs/graph-1/execute/1", json={})
+
+    assert record.call_args.kwargs["status"] == "error"
