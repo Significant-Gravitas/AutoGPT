@@ -11,6 +11,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
+import Image from "next/image";
 import { INSTALL_WORKFLOW_SOURCES, workflowSubtitle } from "./helpers";
 import { useInstallWorkflowPicker } from "./useInstallWorkflowPicker";
 
@@ -100,7 +101,7 @@ export function InstallWorkflowPicker({
                   </div>
                   <Button
                     variant="secondary"
-                    size="xs"
+                    size="small"
                     loading={pendingKey === expert.id}
                     onClick={() => installOnExpert(expert)}
                   >
@@ -163,7 +164,7 @@ export function InstallWorkflowPicker({
                         data-testid="install-workflow-option"
                         className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
                       >
-                        <WorkflowTile />
+                        <WorkflowTile imageUrl={agent.image_url} />
                         <div className="min-w-0 flex-1">
                           <Text variant="body-medium" className="truncate">
                             {agent.name}
@@ -177,7 +178,7 @@ export function InstallWorkflowPicker({
                         </div>
                         <Button
                           variant="secondary"
-                          size="xs"
+                          size="small"
                           loading={pendingKey === agent.id}
                           onClick={() => installLibraryAgent(agent)}
                         >
@@ -191,7 +192,7 @@ export function InstallWorkflowPicker({
                         data-testid="install-workflow-option"
                         className="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-zinc-50"
                       >
-                        <WorkflowTile />
+                        <WorkflowTile imageUrl={agent.agent_image} />
                         <div className="min-w-0 flex-1">
                           <Text variant="body-medium" className="truncate">
                             {agent.agent_name}
@@ -202,7 +203,7 @@ export function InstallWorkflowPicker({
                         </div>
                         <Button
                           variant="secondary"
-                          size="xs"
+                          size="small"
                           loading={pendingKey === agent.agent_graph_id}
                           onClick={() => installFromListing(agent)}
                         >
@@ -215,7 +216,7 @@ export function InstallWorkflowPicker({
             {source === "library" && hasMoreLibraryResults ? (
               <Button
                 variant="secondary"
-                size="xs"
+                size="small"
                 loading={isLoadingMore}
                 onClick={() => loadMoreLibraryResults()}
               >
@@ -229,7 +230,22 @@ export function InstallWorkflowPicker({
   );
 }
 
-function WorkflowTile() {
+interface WorkflowTileProps {
+  imageUrl?: string | null;
+}
+
+function WorkflowTile({ imageUrl }: WorkflowTileProps) {
+  if (imageUrl) {
+    return (
+      <Image
+        src={imageUrl}
+        alt=""
+        width={36}
+        height={36}
+        className="size-9 shrink-0 rounded-lg bg-zinc-100 object-cover"
+      />
+    );
+  }
   return (
     <span
       aria-hidden="true"
