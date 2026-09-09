@@ -75,7 +75,11 @@ function staticEl<T extends SVGElement>(tag: string) {
         }
       }
       const transform = transformFrom(props.animate);
-      if (transform) attrs.transform = transform;
+      if (transform) {
+        attrs.transform = [attrs.transform, transform]
+          .filter(Boolean)
+          .join(" ");
+      }
     }
     return createElement(tag, { ...attrs, ref });
   });
