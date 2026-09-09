@@ -38,6 +38,7 @@ from backend.util.exceptions import (
     BlockInputError,
     BlockOutputError,
     BlockUnknownError,
+    InsufficientBalanceError,
 )
 from backend.util.settings import Config
 
@@ -737,8 +738,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ):
                 yield output_name, output_data
         except Exception as ex:
-            if isinstance(ex, BlockError):
-                raise ex
+            if isinstance(ex, (BlockError, InsufficientBalanceError)):
+                raise
             else:
                 raise (
                     BlockExecutionError

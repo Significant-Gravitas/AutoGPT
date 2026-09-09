@@ -1,6 +1,7 @@
 import type { FileUIPart, UIMessage } from "ai";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { ExpertKickoffMetadata } from "./expertKickoff";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -24,10 +25,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
  */
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;
+  lastSubmittedKickoffExpertId: string | null;
+  lastSubmittedKickoffAttemptToken: string | null;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
+  lastSubmittedKickoffExpertId: null,
+  lastSubmittedKickoffAttemptToken: null,
 };
 
 /**
@@ -49,11 +54,12 @@ const defaultCoord: SessionCoord = {
 export interface PendingFirstSend {
   text: string;
   files: File[];
+  metadata?: ExpertKickoffMetadata;
 }
 
 interface PersistedCopilotStreamState {
   sessions: Record<string, SessionCoord>;
-  pendingFirstSend: Pick<PendingFirstSend, "text"> | null;
+  pendingFirstSend: Pick<PendingFirstSend, "text" | "metadata"> | null;
   pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
 }
@@ -64,20 +70,12 @@ interface CopilotStreamStore {
   pendingFirstSend: PendingFirstSend | null;
   pendingFirstSendSessionId: string | null;
   pendingFileParts: FileUIPart[];
-  /**
-   * True while the current chat is in `streaming` or `submitted` state.
-   * Shared so views outside the chat tree (e.g. the workspace sidebar's
-   * Progress tab) can decide whether to render an "active" task list view
-   * or fall back to an "idle/done" view without prop drilling.
-   */
-  isStreaming: boolean;
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
   clearSession: (sessionId: string) => void;
   getMessageSnapshot: (sessionId: string) => UIMessage[];
   setMessageSnapshot: (sessionId: string, messages: UIMessage[]) => void;
-  setStreaming: (streaming: boolean) => void;
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   bindPendingFirstSendToSession: (sessionId: string) => void;
@@ -100,10 +98,9 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       pendingFirstSend: null,
       pendingFirstSendSessionId: null,
       pendingFileParts: [],
-      isStreaming: false,
 
       getCoord(sessionId) {
-        return get().sessions[sessionId] ?? defaultCoord;
+        return { ...defaultCoord, ...get().sessions[sessionId] };
       },
       updateCoord(sessionId, patch) {
         set((state) => ({
@@ -141,11 +138,6 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           },
         }));
       },
-      setStreaming(streaming) {
-        if (get().isStreaming === streaming) return;
-        set({ isStreaming: streaming });
-      },
-
       setPendingFirstSend(send) {
         set({ pendingFirstSend: send, pendingFirstSendSessionId: null });
       },
@@ -180,7 +172,6 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           pendingFirstSend: null,
           pendingFirstSendSessionId: null,
           pendingFileParts: [],
-          isStreaming: false,
         });
       },
     }),
@@ -212,7 +203,10 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         return {
           sessions: state.sessions,
           pendingFirstSend: canRestorePending
-            ? { text: state.pendingFirstSend!.text }
+            ? {
+                text: state.pendingFirstSend!.text,
+                metadata: state.pendingFirstSend!.metadata,
+              }
             : null,
           pendingFirstSendSessionId: canRestorePending
             ? state.pendingFirstSendSessionId
@@ -227,7 +221,11 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
           persisted.pendingFirstSend &&
           typeof persisted.pendingFirstSendSessionId === "string"
             ? {
-                send: { text: persisted.pendingFirstSend.text, files: [] },
+                send: {
+                  text: persisted.pendingFirstSend.text,
+                  files: [],
+                  metadata: persisted.pendingFirstSend.metadata,
+                },
                 sessionId: persisted.pendingFirstSendSessionId,
                 parts: persisted.pendingFileParts ?? [],
               }

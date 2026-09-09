@@ -48,9 +48,39 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             credentials_id=credentials.id,
             webhook_type=webhook_type,
             resource=resource,
+            organization_id=organization_id,
+            team_id=team_id,
             events=events,
         ):
-            return webhook
+            if self._matches_tenancy(webhook, organization_id, team_id):
+                return webhook
+
+        # A legacy row predating tenancy stamping carries NULL org/team and
+        # is invisible to the tenancy-filtered lookup above; re-registering
+        # would duplicate the provider-side webhook. Rehome the legacy row
+        # instead (mirroring the manual-webhook path). A row in a DIFFERENT
+        # concrete tenancy still gets its own webhook below.
+        legacy = await integrations.find_webhook_by_credentials_and_props_any_tenant(
+            user_id=user_id,
+            credentials_id=credentials.id,
+            webhook_type=webhook_type,
+            resource=resource,
+        )
+        if (
+            legacy is not None
+            and legacy.organization_id is None
+            and legacy.team_id is None
+            # Adoption must be event-compatible: the tenancy-scoped lookup
+            # above enforces has_every on events, so mirror it here — a
+            # legacy row subscribed to a different set must not be claimed
+            # (its provider registration wouldn't fire the requested events).
+            and set(events).issubset(set(legacy.events))
+        ):
+            if organization_id is None and team_id is None:
+                return legacy
+            return await integrations.set_webhook_tenancy(
+                legacy.id, organization_id=organization_id, team_id=team_id
+            )
 
         return await self._create_webhook(
             user_id=user_id,
@@ -82,6 +112,13 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         If an existing webhook is found, we check if the events match and update them
         if necessary. We do this rather than creating a new webhook
         to avoid changing the webhook URL for existing manual webhooks.
+
+        The lookup is tenancy-tolerant on purpose: the webhook's org/team must
+        follow the graph/preset it triggers, so when the parent's tenancy moved
+        (e.g. an expert preset rehomed to the owner's personal org) the row is
+        rehomed to `organization_id`/`team_id` in place. Minting a replacement
+        instead would change the ingress URL and silently break the external
+        system that keeps POSTing to the old one.
         """
         if (graph_id or preset_id) and (
             current_webhook := await integrations.find_webhook_by_graph_and_props(
@@ -92,6 +129,12 @@ class BaseWebhooksManager(ABC, Generic[WT]):
                 preset_id=preset_id,
             )
         ):
+            if not self._matches_tenancy(current_webhook, organization_id, team_id):
+                current_webhook = await integrations.set_webhook_tenancy(
+                    current_webhook.id,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
             if set(current_webhook.events) != set(events):
                 current_webhook = await integrations.update_webhook(
                     current_webhook.id, events=events
@@ -106,6 +149,14 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             organization_id=organization_id,
             team_id=team_id,
         )
+
+    @staticmethod
+    def _matches_tenancy(
+        webhook: integrations.Webhook,
+        organization_id: str | None,
+        team_id: str | None,
+    ) -> bool:
+        return webhook.organization_id == organization_id and webhook.team_id == team_id
 
     async def prune_webhook_if_dangling(
         self, user_id: str, webhook_id: str, credentials: Optional[Credentials]

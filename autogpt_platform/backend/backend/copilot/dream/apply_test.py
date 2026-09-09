@@ -103,14 +103,19 @@ def _stub_boundaries(mocker):
     # ChatSession + ChatMessage writes — apply.py imports them lazily inside
     # ``_create_dream_session`` / ``_write_dream_summary_message`` to avoid a
     # circular import. Patch where the symbol is looked up (copilot.db).
-    mocker.patch(
-        "backend.copilot.db.create_chat_session",
-        AsyncMock(return_value=mocker.MagicMock(session_id="s1")),
+    database = mocker.MagicMock()
+    database.create_chat_session = AsyncMock(
+        return_value=mocker.MagicMock(session_id="s1")
     )
+    database.update_chat_session_title = AsyncMock(return_value=True)
+    database.add_chat_message = AsyncMock(return_value=None)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
+    mocker.patch("backend.copilot.db.create_chat_session", database.create_chat_session)
     mocker.patch(
-        "backend.copilot.db.update_chat_session_title", AsyncMock(return_value=True)
+        "backend.copilot.db.update_chat_session_title",
+        database.update_chat_session_title,
     )
-    mocker.patch("backend.copilot.db.add_chat_message", AsyncMock(return_value=None))
+    mocker.patch("backend.copilot.db.add_chat_message", database.add_chat_message)
     # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
     # queries on this test's function-scoped event loop whenever an earlier
     # test already connected Prisma (its except swallows the failure when
@@ -416,7 +421,34 @@ async def test_usage_refresh_protects_fact_recalled_after_submission(mocker):
         refresh_usage=True,
     )
 
-    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh", ["hot"])
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh", ["hot"], None)
+    apply_mod.mark_edges_superseded.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_usage_refresh_reads_the_experts_graph(mocker):
+    """An expert pass gathered from the expert's graph and stamped recalls
+    there, so the apply-time re-read must target the same graph — reading
+    the user's personal one would return nothing and unprotect every fact."""
+    mocker.patch.object(
+        apply_mod, "fetch_usage_rows", AsyncMock(return_value=[_used_fact("hot")])
+    )
+    ops = DreamOperations(
+        demotions=[DreamDemotion(edge_uuid="hot", reason="stale_fact")],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-refresh",
+        pass_id="p-refresh",
+        ops=ops,
+        expert_id="expert-1",
+        known_fact_uuids={"hot"},
+        facts=[_unused_fact("hot")],
+        refresh_usage=True,
+    )
+
+    apply_mod.fetch_usage_rows.assert_awaited_once_with(
+        "u-refresh", ["hot"], "expert-1"
+    )
     apply_mod.mark_edges_superseded.assert_not_awaited()
 
 
@@ -463,7 +495,7 @@ async def test_refresh_skips_uuids_the_snapshot_already_protects(mocker):
         refresh_usage=True,
     )
 
-    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-scope", ["cold"])
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-scope", ["cold"], None)
     # …and the scoping must not cost the snapshot's own protection: 'hot'
     # is excluded from the re-read precisely BECAUSE it stays protected, so
     # only 'cold' may reach Cypher. Asserting the call args alone would pass
@@ -500,7 +532,7 @@ async def test_failed_refresh_falls_back_to_snapshot_protection(mocker):
 
     # The unprotected target IS re-read (that's the whole point of the
     # refresh) and the lookup fails.
-    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh-fail", ["cold"])
+    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh-fail", ["cold"], None)
     # 'hot' must still be protected by the snapshot. A refactor to
     # `combined = fresh` would pass None into the guard, which fails open
     # and demotes BOTH — losing a fact the user demonstrably still uses.
@@ -680,6 +712,28 @@ async def test_title_failure_does_not_abort_apply(mocker):
 
     assert stats["consolidated_count"] == 1
     copilot_db.add_chat_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expert_dream_session_and_write_keep_expert_scope(mocker):
+    db = mocker.MagicMock()
+    db.create_chat_session = AsyncMock()
+    db.update_chat_session_title = AsyncMock(return_value=True)
+    mocker.patch("backend.data.db_accessors.chat_db", return_value=db)
+
+    await apply_mod._create_dream_session("u1", "p1", "expert-1")
+    assert db.create_chat_session.call_args.kwargs["expert_id"] == "expert-1"
+
+    await apply_mod._write_consolidated_fact(
+        "u1",
+        "p1",
+        0,
+        ConsolidatedFact(content="A likes B", confidence=0.8),
+        "session-1",
+        IngestionCompletion(),
+        expert_id="expert-1",
+    )
+    assert apply_mod.enqueue_episode.call_args.kwargs["expert_id"] == "expert-1"
 
 
 @pytest.mark.asyncio

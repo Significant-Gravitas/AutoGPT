@@ -15,6 +15,12 @@ class UserAgentCostRollup(BaseModel):
     run_count: int
 
 
+class UserExpertCostRollup(BaseModel):
+    expert_id: str
+    cost_cents: int
+    run_count: int
+
+
 class UserTopRun(BaseModel):
     execution_id: str
     graph_id: str
@@ -48,6 +54,10 @@ class UserExecutionCostSummary(BaseModel):
     # silently skips — dividing by it biases the average downward.
     duration_run_count: int = 0
     by_agent: list[UserAgentCostRollup]
+    # Only runs carrying an expert stamp; unattributed runs (plain library
+    # runs, Autopilot sessions) have no row here, so this does not sum to
+    # `total_cents`.
+    by_expert: list[UserExpertCostRollup] = []
     top_runs: list[UserTopRun]
     daily: list[UserDailyCost]
 
@@ -70,6 +80,7 @@ async def get_user_cost_summary(
     since: datetime | None = None,
     until: datetime | None = None,
     top_runs_limit: int = 10,
+    include_by_expert: bool = False,
 ) -> UserExecutionCostSummary:
     """Aggregate per-user execution costs from AgentGraphExecution.stats JSON.
 
@@ -80,6 +91,10 @@ async def get_user_cost_summary(
     `@@index([userId, isDeleted, createdAt])` is hit on `AgentGraphExecution`
     — bucketing by `startedAt` instead would force a full per-user scan for
     heavy users.
+
+    `include_by_expert` is opt-in because the expert rollup is its own query
+    over the same rows: callers that never render per-expert spend would
+    otherwise pay for a scan they throw away.
     """
     # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
     # this function is callable directly and an unbounded LIMIT would scan
@@ -93,9 +108,10 @@ async def get_user_cost_summary(
         until = now
 
     params = (user_id, since, until)
-    totals, by_agent, top_runs, daily = await asyncio.gather(
+    totals, by_agent, by_expert, top_runs, daily = await asyncio.gather(
         _fetch_totals(params),
         _fetch_by_agent(params),
+        _fetch_by_expert(params) if include_by_expert else _no_expert_rollup(),
         _fetch_top_runs(params, top_runs_limit),
         _fetch_daily(params),
     )
@@ -110,6 +126,7 @@ async def get_user_cost_summary(
         total_duration_seconds=float(totals.get("total_duration_seconds") or 0),
         duration_run_count=int(totals.get("duration_run_count") or 0),
         by_agent=by_agent,
+        by_expert=by_expert,
         top_runs=top_runs,
         daily=daily,
     )
@@ -160,6 +177,46 @@ async def _fetch_by_agent(
     return [
         UserAgentCostRollup(
             graph_id=r["graph_id"],
+            cost_cents=int(r.get("cost_cents") or 0),
+            run_count=int(r.get("run_count") or 0),
+        )
+        for r in rows
+    ]
+
+
+async def _no_expert_rollup() -> list[UserExpertCostRollup]:
+    return []
+
+
+async def _fetch_by_expert(
+    params: tuple[str, datetime, datetime],
+) -> list[UserExpertCostRollup]:
+    """Every expert with spend in the window — deliberately uncapped.
+
+    `by_agent` can afford a top-N cut because it only ever feeds a ranked
+    list, but callers sum this rollup into a headline total. A LIMIT here
+    would silently under-report that total for anyone whose hired roster
+    outgrew the cap; the row count is bounded by the user's own experts.
+
+    This is a separate scan of the same window, not a free rider on the
+    other aggregates — `asyncio.gather` only overlaps its latency. Hence
+    the `include_by_expert` opt-in on `get_user_cost_summary`.
+    """
+    rows = await query_raw_with_schema(
+        "SELECT"
+        '  "expertId" AS expert_id,'
+        "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS cost_cents,"
+        "  COUNT(*)::bigint AS run_count"
+        ' FROM {schema_prefix}"AgentGraphExecution"'
+        f" WHERE {_BASE_WHERE}"
+        '  AND "expertId" IS NOT NULL'
+        '  GROUP BY "expertId"'
+        "  ORDER BY cost_cents DESC",
+        *params,
+    )
+    return [
+        UserExpertCostRollup(
+            expert_id=r["expert_id"],
             cost_cents=int(r.get("cost_cents") or 0),
             run_count=int(r.get("run_count") or 0),
         )

@@ -4,6 +4,8 @@ is that the fetched rows carry what the dream pass needs downstream.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -129,16 +131,33 @@ async def test_fetch_usage_rows_returns_none_on_query_failure(mocker):
 
 @pytest.mark.asyncio
 async def test_fetch_usage_rows_returns_none_for_an_invalid_user_id(mocker):
-    """derive_group_id rejects malformed ids — fail open to the snapshot
-    rather than raising into the apply path."""
+    """derive_memory_group_id rejects malformed ids — fail open to the
+    snapshot rather than raising into the apply path."""
     ctor = MagicMock()
     mocker.patch.object(fetch_mod, "AutoGPTFalkorDriver", ctor)
     mocker.patch.object(
-        fetch_mod, "derive_group_id", side_effect=ValueError("bad user id")
+        fetch_mod, "derive_memory_group_id", side_effect=ValueError("bad user id")
     )
 
     assert await fetch_usage_rows("", ["hot"]) is None
     ctor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_opens_the_experts_graph(mocker):
+    """The re-read must select the graph the stamps were written to."""
+    driver = _driver_returning([])
+    driver.close = AsyncMock(return_value=None)
+    ctor = MagicMock(return_value=driver)
+    mocker.patch.object(fetch_mod, "AutoGPTFalkorDriver", ctor)
+    derive = mocker.patch.object(
+        fetch_mod, "derive_memory_group_id", return_value="expert_graph"
+    )
+
+    await fetch_usage_rows("u-1234567890ab", ["hot"], "expert-1")
+
+    derive.assert_called_once_with("u-1234567890ab", "expert-1")
+    assert ctor.call_args.kwargs["database"] == "expert_graph"
 
 
 @pytest.mark.asyncio
@@ -148,3 +167,29 @@ async def test_fetch_usage_rows_skips_the_driver_for_no_uuids(mocker):
 
     assert await fetch_usage_rows("u-1234567890ab", []) == []
     ctor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_autopilot_dream_fetches_only_unscoped_sessions(mocker):
+    database = SimpleNamespace(get_user_chat_sessions=AsyncMock(return_value=[]))
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+
+    await fetch_mod._fetch_recent_sessions("user-1", datetime.now(timezone.utc), 10)
+
+    database.get_user_chat_sessions.assert_awaited_once_with(
+        "user-1", limit=10, autopilot_only=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_expert_dream_fetches_only_that_experts_sessions(mocker):
+    database = SimpleNamespace(get_user_chat_sessions=AsyncMock(return_value=[]))
+    mocker.patch.object(fetch_mod, "chat_db", return_value=database)
+
+    await fetch_mod._fetch_recent_sessions(
+        "user-1", datetime.now(timezone.utc), 10, "expert-1"
+    )
+
+    database.get_user_chat_sessions.assert_awaited_once_with(
+        "user-1", limit=10, expert_id="expert-1"
+    )

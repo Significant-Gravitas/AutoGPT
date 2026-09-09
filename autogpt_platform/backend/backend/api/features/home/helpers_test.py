@@ -1,15 +1,16 @@
 from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
+from backend.api.features.library.model import LibraryAgentRef
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .activity import compose_upcoming_tasks
 from .helpers import (
+    agent_refs_by_graph,
+    experts_by_graph,
     experts_by_schedule,
     next_runs_by_expert,
     parse_datetime,
-    run_link,
-    split_summary,
 )
 
 SHARED_GRAPH = "graph-shared"
@@ -119,32 +120,38 @@ def test_upcoming_tasks_attribute_each_job_to_its_own_expert() -> None:
     ]
 
 
-def test_split_summary_uses_fallbacks_for_empty_input() -> None:
-    assert split_summary(None, fallback_title="Ran", fallback_detail="All good") == (
-        "Ran",
-        "All good",
+def test_expert_workflows_are_found_by_the_graph_they_run() -> None:
+    owners = experts_by_graph([_expert("alice")])
+
+    assert owners[SHARED_GRAPH].id == "alice"
+
+
+def test_a_graph_two_experts_build_on_is_left_unattributed() -> None:
+    assert experts_by_graph([_expert("alice"), _expert("bob")]) == {}
+
+
+def test_an_expert_with_two_workflows_on_one_graph_still_owns_it() -> None:
+    alice = _expert("alice")
+    alice.workflows.append(
+        alice.workflows[0].model_copy(update={"id": "workflow-alice-2"})
     )
-    assert split_summary("   ", fallback_title="Ran", fallback_detail="All good") == (
-        "Ran",
-        "All good",
-    )
+
+    assert experts_by_graph([alice])[SHARED_GRAPH].id == "alice"
 
 
-def test_split_summary_clips_a_single_sentence_title() -> None:
-    title, detail = split_summary(
-        "x" * 200, fallback_title="Ran", fallback_detail="All good"
-    )
+def test_an_experts_copy_of_a_workflow_keeps_the_library_picture() -> None:
+    refs = [
+        LibraryAgentRef(
+            id="lib-live",
+            graph_id=SHARED_GRAPH,
+            name="Inbox triage",
+            image_url="https://example.com/triage.png",
+        )
+    ]
 
-    assert title == "x" * 120
-    assert detail == "All good"
+    agents = agent_refs_by_graph([_expert("alice")], refs)
 
-
-def test_split_summary_splits_on_the_first_sentence() -> None:
-    assert split_summary(
-        "Sorted 12 emails.  Nothing needed a reply.",
-        fallback_title="Ran",
-        fallback_detail="All good",
-    ) == ("Sorted 12 emails.", "Nothing needed a reply.")
+    assert agents[SHARED_GRAPH].image_url == "https://example.com/triage.png"
 
 
 def test_parse_datetime_pins_naive_values_to_utc() -> None:
@@ -160,8 +167,16 @@ def test_parse_datetime_returns_none_for_garbage() -> None:
     assert parse_datetime("not-a-timestamp") is None
 
 
-def test_run_link_needs_a_library_agent() -> None:
-    assert run_link(None, "execution") is None
-    assert run_link("library agent", "exec/1") == (
-        "/library/agents/library%20agent?activeTab=runs&activeItem=exec/1"
-    )
+def test_a_removed_library_agent_still_names_its_runs_without_a_link() -> None:
+    refs = [
+        LibraryAgentRef(id="lib-live", graph_id="graph-live", name="Inbox triage"),
+        LibraryAgentRef(
+            id="lib-gone", graph_id="graph-gone", name="Sum Agent", is_deleted=True
+        ),
+    ]
+
+    agents = agent_refs_by_graph([], refs)
+
+    assert agents["graph-live"].library_agent_id == "lib-live"
+    assert agents["graph-gone"].name == "Sum Agent"
+    assert agents["graph-gone"].library_agent_id is None

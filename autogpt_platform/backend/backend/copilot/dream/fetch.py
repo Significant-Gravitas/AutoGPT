@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
-from backend.copilot.graphiti.client import derive_group_id
+from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
 from backend.data.db_accessors import chat_db
@@ -114,6 +114,7 @@ class DreamInput(BaseModel):
     """The whole gather-step bundle handed to the phase 1 prompt."""
 
     user_id: str
+    expert_id: str | None = None
     group_id: str
     window_start: datetime
     window_end: datetime
@@ -306,7 +307,9 @@ async def _fetch_active_facts(
     ]
 
 
-async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow] | None:
+async def fetch_usage_rows(
+    user_id: str, edge_uuids: list[str], expert_id: str | None = None
+) -> list[FactRow] | None:
     """Current usage stamps for the given edges, fetched at call time.
 
     The demotion guard's usage data otherwise comes from the pass's
@@ -314,6 +317,10 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     a fact recalled since submission would look unprotected. This
     re-reads ``recall_count`` / ``last_recalled_at`` for just the
     demotion targets right before the guard runs.
+
+    Reads the same graph the pass gathered from: ``expert_id`` selects the
+    expert's memory rather than the user's personal one, so an expert pass
+    re-reads the stamps it actually wrote.
 
     Returns ``None`` on any failure (guard falls back to bundle data);
     rows for edges never stamped carry ``None`` props, which the guard
@@ -328,7 +335,7 @@ async def fetch_usage_rows(user_id: str, edge_uuids: list[str]) -> list[FactRow]
     if not edge_uuids:
         return []
     try:
-        group_id = derive_group_id(user_id)
+        group_id = derive_memory_group_id(user_id, expert_id)
     except ValueError:
         return None
     driver = AutoGPTFalkorDriver(
@@ -387,6 +394,7 @@ async def _fetch_recent_sessions(
     user_id: str,
     window_start: datetime,
     limit: int,
+    expert_id: str | None = None,
 ) -> list[SessionRow]:
     """Pull the most recent N chat sessions and their first chunk of content.
 
@@ -405,7 +413,14 @@ async def _fetch_recent_sessions(
     """
     _ = window_start
     try:
-        sessions = await chat_db().get_user_chat_sessions(user_id, limit=limit)
+        if expert_id is None:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, autopilot_only=True
+            )
+        else:
+            sessions = await chat_db().get_user_chat_sessions(
+                user_id, limit=limit, expert_id=expert_id
+            )
     except Exception:
         logger.warning(
             "Failed to fetch recent sessions for user %s",
@@ -460,6 +475,7 @@ async def _fetch_recent_sessions(
 async def gather_dream_input(
     user_id: str,
     *,
+    expert_id: str | None = None,
     window_days: int = DEFAULT_WINDOW_DAYS,
     max_episodes: int = MAX_EPISODES,
     max_facts: int = MAX_ACTIVE_FACTS,
@@ -471,7 +487,7 @@ async def gather_dream_input(
     the three sources fails (Cypher error, Prisma timeout) the others
     still proceed — a partial dream is better than no dream.
     """
-    group_id = derive_group_id(user_id)
+    group_id = derive_memory_group_id(user_id, expert_id)
     window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=window_days)
 
@@ -484,10 +500,13 @@ async def gather_dream_input(
     finally:
         await driver.close()
 
-    sessions = await _fetch_recent_sessions(user_id, window_start, max_sessions)
+    sessions = await _fetch_recent_sessions(
+        user_id, window_start, max_sessions, expert_id
+    )
 
     return DreamInput(
         user_id=user_id,
+        expert_id=expert_id,
         group_id=group_id,
         window_start=window_start,
         window_end=window_end,

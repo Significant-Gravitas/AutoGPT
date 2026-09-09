@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
-from backend.util.llm.providers import DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 from . import orchestrator as orchestrator_mod
 from .apply import INGESTION_DRAIN_TIMEOUT_SECONDS, LOCK_DRAIN_RENEWAL_SECONDS
@@ -171,6 +170,61 @@ async def test_empty_input_returns_skipped(mocker):
     assert result.skip_reason == "no_input"
     structured.assert_not_called()
     apply_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_is_threaded_to_lock_and_gather(mocker):
+    lock_calls: list[tuple[tuple, dict]] = []
+
+    @asynccontextmanager
+    async def scoped_lock(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        yield
+
+    mocker.patch.object(orchestrator_mod, "dream_lock", scoped_lock)
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=_build_input(episodes=0, facts=0)),
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is True
+    assert lock_calls[0][1]["expert_id"] == "expert-1"
+    gather.assert_awaited_once_with("u", expert_id="expert-1")
+
+
+@pytest.mark.asyncio
+async def test_expert_scope_reaches_marker_and_apply_on_nonempty_pass(mocker):
+    input_bundle = _build_input().model_copy(
+        update={"expert_id": "expert-1", "group_id": "expert_scope"}
+    )
+    gather = mocker.patch.object(
+        orchestrator_mod,
+        "gather_dream_input",
+        AsyncMock(return_value=input_bundle),
+    )
+    read_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_read_last_completed_marker",
+        AsyncMock(return_value=None),
+    )
+    stamp_marker = mocker.patch.object(
+        orchestrator_mod,
+        "_stamp_last_completed_marker",
+        AsyncMock(),
+    )
+    apply_mock = _stub_three_phases_and_apply(mocker)
+
+    result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
+
+    assert result.skipped is False
+    assert result.error is None
+    gather.assert_awaited_once_with("u", expert_id="expert-1")
+    read_marker.assert_awaited_once_with("u", "expert-1")
+    assert apply_mock.await_args.kwargs["expert_id"] == "expert-1"
+    stamp_marker.assert_awaited_once_with("u", input_bundle.window_end, "expert-1")
 
 
 @pytest.mark.asyncio
@@ -397,17 +451,19 @@ async def test_each_phase_threads_its_own_llm_timeout_into_structured_completion
     ]
 
 
-def test_long_output_phase_timeouts_exceed_the_shared_request_default():
-    """Regression pin: every phase used to run on the shared 120s
-    ``DEFAULT_REQUEST_TIMEOUT_SECONDS``, which cannot decode the 16384
-    output tokens recombine/sanitize are budgeted for. If these ever
-    drop back to (or below) the default, the token-cap raise becomes
-    dead letter again."""
-    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
-    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > DEFAULT_REQUEST_TIMEOUT_SECONDS
-    assert (
-        orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= DEFAULT_REQUEST_TIMEOUT_SECONDS
-    )
+# A 120s ceiling truncates a 16384-token decode. Pinned as a literal, not
+# imported from `DEFAULT_REQUEST_TIMEOUT_SECONDS`: that setting sizes generic
+# block calls and is free to move independently of this budget.
+_TRUNCATING_TIMEOUT_SECONDS = 120
+
+
+def test_long_output_phase_timeouts_clear_the_120s_truncation_threshold():
+    """Regression pin: at 120s the phases cannot decode the 16384 output
+    tokens recombine/sanitize are budgeted for. If these ever drop to (or
+    below) that, the token-cap raise becomes dead letter again."""
+    assert orchestrator_mod.RECOMBINE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.SANITIZE_TIMEOUT_SECONDS > _TRUNCATING_TIMEOUT_SECONDS
+    assert orchestrator_mod.CONSOLIDATE_TIMEOUT_SECONDS >= _TRUNCATING_TIMEOUT_SECONDS
 
 
 def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
@@ -510,7 +566,14 @@ async def test_clamps_oversized_sanitizer_output(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        facts=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -573,7 +636,14 @@ async def test_demotions_capped_at_five_percent_of_active_facts(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        facts=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {
@@ -731,7 +801,14 @@ async def test_sync_path_filters_hallucinated_demotion_before_cap(mocker):
     captured: dict[str, DreamOperations] = {}
 
     async def fake_apply(
-        user_id, pass_id, ops, *, known_fact_uuids=None, facts=None, lock_handle=None
+        user_id,
+        pass_id,
+        ops,
+        *,
+        expert_id=None,
+        known_fact_uuids=None,
+        facts=None,
+        lock_handle=None,
     ):
         captured["ops"] = ops
         return {

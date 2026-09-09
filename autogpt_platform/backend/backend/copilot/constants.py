@@ -42,6 +42,7 @@ COPILOT_NODE_EXEC_ID_SEPARATOR = ":"
 
 # Compaction notice messages shown to users.
 COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context limits."
+COMPACTION_DROPPED_MSG = "Earlier messages were dropped to fit within context limits."
 COMPACTION_TOOL_NAME = "context_compaction"
 
 

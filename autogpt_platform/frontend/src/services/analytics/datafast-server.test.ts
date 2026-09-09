@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { after } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetConfigErrorReportingForTests,
   scheduleAccountCreatedGoal,
   wasAccountCreated,
 } from "./datafast-server";
@@ -16,6 +17,7 @@ const VISITOR_ID = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd";
 describe("DataFast server-side account creation tracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetConfigErrorReportingForTests();
     vi.stubEnv("DATAFAST_API_KEY", "df_test");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
     vi.mocked(cookies).mockResolvedValue({
@@ -95,10 +97,12 @@ describe("DataFast server-side account creation tracking", () => {
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("reports a missing website API key in cloud", async () => {
+  it("reports a missing website API key in cloud once per server instance", async () => {
     vi.stubEnv("DATAFAST_API_KEY", "");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
 
+    await scheduleAccountCreatedGoal("email");
+    await scheduleAccountCreatedGoal("google");
     await scheduleAccountCreatedGoal("email");
 
     expect(after).not.toHaveBeenCalled();
