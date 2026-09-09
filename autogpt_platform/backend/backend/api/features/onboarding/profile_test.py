@@ -4,10 +4,10 @@ import fastapi
 import fastapi.testclient
 import pytest
 
-from backend.api.features.v1 import v1_router
+from backend.api.features.onboarding.routes import router
 
 app = fastapi.FastAPI()
-app.include_router(v1_router)
+app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -22,11 +22,11 @@ def setup_app_auth(mock_jwt_user):
 
 def test_onboarding_profile_success(mocker):
     mock_extract = mocker.patch(
-        "backend.api.features.v1.extract_business_understanding",
+        "backend.api.features.onboarding.routes.extract_business_understanding",
         new_callable=AsyncMock,
     )
     mock_upsert = mocker.patch(
-        "backend.api.features.v1.upsert_business_understanding",
+        "backend.api.features.onboarding.routes.upsert_business_understanding",
         new_callable=AsyncMock,
     )
 
