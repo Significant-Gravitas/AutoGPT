@@ -3,43 +3,58 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { cn } from "@/lib/utils";
+import { BotAvatar } from "@/components/molecules/BotAvatar/BotAvatar";
+import {
+  AUTOPILOT_AVATAR,
+  expertAvatarConfig,
+  isUploadedAvatar,
+} from "@/components/molecules/BotAvatar/helpers";
 
 interface Props {
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
   isAutopilot?: boolean;
   size?: "sm" | "md";
 }
 
-export function ExpertAvatar({ name, avatarUrl, isAutopilot, size }: Props) {
+export function ExpertAvatar({
+  name,
+  avatarUrl,
+  color,
+  isAutopilot,
+  size,
+}: Props) {
   const isSmall = size === "sm";
   const sizeClass = isSmall ? "h-6 w-6" : "h-9 w-9";
 
   if (isAutopilot && !avatarUrl) {
     return (
-      <span
-        className={cn(
-          "flex items-center justify-center rounded-xl bg-gradient-to-b from-white to-zinc-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_-2px_4px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-inset ring-zinc-200/70",
-          sizeClass,
-          isSmall && "rounded-full",
-        )}
-      >
-        <AutoGPTLogo
-          hideText
-          viewBox="47 -1 42 42"
-          className={isSmall ? "size-3.5" : "size-5"}
-        />
-      </span>
+      <BotAvatar
+        config={AUTOPILOT_AVATAR}
+        size={isSmall ? 24 : 36}
+        animated={!isSmall}
+        showBadge={false}
+        title={name}
+      />
+    );
+  }
+
+  if (!isUploadedAvatar(avatarUrl)) {
+    return (
+      <BotAvatar
+        config={expertAvatarConfig({ name, avatarUrl, color })}
+        size={isSmall ? 24 : 36}
+        animated={!isSmall}
+        showBadge={false}
+        title={name}
+      />
     );
   }
 
   return (
     <Avatar className={sizeClass}>
-      {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
-      {/* The fallback seeds a generated avatar off the name, and also covers
-          an avatar URL that fails to load. */}
+      <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback className={sizeClass}>{name}</AvatarFallback>
     </Avatar>
   );

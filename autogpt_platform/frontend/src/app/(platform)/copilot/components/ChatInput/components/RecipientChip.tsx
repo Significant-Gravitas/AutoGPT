@@ -1,11 +1,6 @@
 "use client";
 
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -15,6 +10,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ExpertAvatar } from "../../ChatMessagesContainer/components/ExpertAvatar/ExpertAvatar";
 
 export interface RecipientOption {
   id: string | null;
@@ -89,15 +85,15 @@ export function RecipientChip({
   );
 }
 
+// The same face the expert wears in the thread: Autopilot's own avatar for
+// the null recipient, the generated one for experts without an upload.
 function RecipientAvatar({ option }: { option: RecipientOption }) {
   return (
-    <Avatar className="h-6 w-6">
-      {option.avatarUrl ? (
-        <AvatarImage src={option.avatarUrl} alt={option.name} />
-      ) : null}
-      <AvatarFallback className="text-[10px]">
-        {option.name.slice(0, 2)}
-      </AvatarFallback>
-    </Avatar>
+    <ExpertAvatar
+      name={option.name}
+      avatarUrl={option.avatarUrl}
+      isAutopilot={option.id === null}
+      size="sm"
+    />
   );
 }
