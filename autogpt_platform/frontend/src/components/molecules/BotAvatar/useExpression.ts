@@ -44,6 +44,7 @@ export function useExpression({ status, isLive, override }: Args) {
   }, [status, isLive]);
 
   useEffect(() => {
+    setIsBlinking(false);
     const cadence = BLINK_CADENCE_MS[status];
     if (!isLive || !cadence) return;
     const range: [number, number] = cadence;
