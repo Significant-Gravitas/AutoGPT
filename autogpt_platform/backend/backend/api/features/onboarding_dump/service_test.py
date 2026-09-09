@@ -1571,3 +1571,70 @@ async def test_pending_greeting_only_waits_for_an_enabled_team(
     assert card.greeting_pending is True
     assert card.team_pending is (hire_enabled and team_enabled)
     assert card.team is None
+
+
+@pytest.mark.asyncio
+async def test_team_uses_signup_snapshot_and_stays_pending_until_its_job_finishes(
+    dumps: DumpStore,
+    team_flag: AsyncMock,
+    templates: AsyncMock,
+    generate_team: AsyncMock,
+    extraction: dict[str, AsyncMock],
+):
+    saved = asyncio.Event()
+    release_team = asyncio.Event()
+    extraction["get_business_understanding"].return_value = (
+        BusinessUnderstanding.model_construct(
+            user_role="Marketing", pain_points=["Social media"]
+        )
+    )
+
+    async def save_understanding(*args, **kwargs):
+        extraction["get_business_understanding"].return_value = (
+            BusinessUnderstanding.model_construct(
+                user_role="Operations", pain_points=["Reports & data"]
+            )
+        )
+        saved.set()
+
+    async def generate(transcript, **kwargs):
+        await saved.wait()
+        assert transcript == TRANSCRIPT
+        assert kwargs["user_role"] == "Marketing"
+        assert kwargs["pain_points"] == ["Social media"]
+        await release_team.wait()
+        return ExpertRecommendations(source="llm")
+
+    extraction["upsert_business_understanding"].side_effect = save_understanding
+    generate_team.side_effect = generate
+    await start_voice_take(dumps)
+    task = asyncio.create_task(finalize_voice())
+    try:
+        await asyncio.wait_for(saved.wait(), timeout=2)
+        pending = await service.get_recommended_experts(USER_ID)
+        assert pending.ready is False
+        assert pending.team is None
+    finally:
+        release_team.set()
+        await asyncio.wait_for(task, timeout=2)
+    ready = await service.get_recommended_experts(USER_ID)
+    assert ready.ready is True
+    assert ready.team is not None
+    assert ready.team.source == "llm"
+
+
+@pytest.mark.asyncio
+async def test_failed_final_status_write_does_not_leave_the_dump_pending(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    async def update(user_id, recording_id, **fields):
+        if fields.get("status") == BrainDumpStatus.completed:
+            raise RuntimeError("completion write failed")
+        return await dumps.update_dump(user_id, recording_id, **fields)
+
+    mocker.patch.object(service.db, "update_dump", side_effect=update)
+    await start_voice_take(dumps)
+    await finalize_voice()
+    assert dumps.row is not None
+    assert dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == "understanding_failed"

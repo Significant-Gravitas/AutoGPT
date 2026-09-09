@@ -336,18 +336,31 @@ async def _run_background_jobs(
 ) -> None:
     """Run the greeting pipeline and the recommendation jobs side by side.
 
+    Snapshot the signup context before extraction updates it; recommendations
+    read the current transcript directly. Keep the dump pending until all
+    jobs settle so readers do not replace an in-flight team with a fallback.
+
     One background task, not three: ``BackgroundTasks`` awaits what it is
     given strictly in order, so a second entry would not start until the
     greeting's LLM calls had finished — and would never start at all if
     something escaped the first one. Gathered here they are genuinely
     concurrent, and none can take the others down.
     """
-    await asyncio.gather(
+    wizard_context = await _safe_understanding(user_id)
+    results = await asyncio.gather(
         _run_completion(user_id, recording_id, transcript, input_mode),
         _run_provider_recommendations(user_id, recording_id, transcript),
-        _run_expert_recommendations(user_id, recording_id, transcript),
+        _run_expert_recommendations(user_id, recording_id, transcript, wizard_context),
         return_exceptions=True,
     )
+    if results[0] is True:
+        try:
+            await db.update_dump(
+                user_id, recording_id, status=BrainDumpStatus.completed
+            )
+        except Exception as e:
+            logger.error("Brain dump completion failed for user %s: %s", user_id, e)
+            await db.mark_failed(user_id, recording_id, "understanding_failed")
 
 
 async def _run_completion(
@@ -355,7 +368,7 @@ async def _run_completion(
     recording_id: str,
     transcript: str,
     input_mode: BrainDumpInputMode,
-) -> None:
+) -> bool:
     """Background half of the pipeline, run after the response is sent.
 
     Anything that escapes here has no request to report to, so it marks
@@ -363,10 +376,14 @@ async def _run_completion(
     /status) instead of leaving it to hang until its ceiling.
     """
     try:
-        await _extract_and_complete(user_id, recording_id, transcript, input_mode)
+        result = await _extract_and_complete(
+            user_id, recording_id, transcript, input_mode
+        )
+        return result.status == BrainDumpStatus.completed
     except Exception as e:  # background task, nowhere to raise
         logger.error("Brain dump completion failed for user %s: %s", user_id, e)
         await db.mark_failed(user_id, recording_id, "understanding_failed")
+        return False
 
 
 async def _run_provider_recommendations(
@@ -425,7 +442,10 @@ def _stored_recommendations(raw: object) -> list[RecommendedProvider]:
 
 
 async def _run_expert_recommendations(
-    user_id: str, recording_id: str, transcript: str
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    wizard_context: tuple[str | None, list[str]],
 ) -> None:
     """The team job, third leg of the background gather.
 
@@ -443,7 +463,7 @@ async def _run_expert_recommendations(
         )
         return
 
-    user_role, pain_points = await _safe_understanding(user_id)
+    user_role, pain_points = wizard_context
     team = await recommend_experts.generate_expert_recommendations(
         transcript,
         user_role=user_role,
@@ -593,7 +613,6 @@ async def _extract_and_complete(
     await db.update_dump(
         user_id,
         recording_id,
-        status=BrainDumpStatus.completed,
         errorCode=None,
         greeting=greeting,
         suggestedPrompts=Json([p.model_dump() for p in suggested_prompts]),
