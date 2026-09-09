@@ -64,11 +64,11 @@ const hiredMaria: Expert = {
   source_template_id: "template-maria",
 };
 
-interface WrapperProps {
+interface Props {
   children: ReactNode;
 }
 
-function Wrapper({ children }: WrapperProps) {
+function Wrapper({ children }: Props) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
