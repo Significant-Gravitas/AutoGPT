@@ -56,6 +56,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.store.skill_routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
@@ -404,6 +405,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.api.features.store.skill_routes.router,
+    tags=["v2"],
+    prefix="/api/store/skills",
 )
 app.include_router(
     backend.api.features.builder.routes.router, tags=["v2"], prefix="/api/builder"

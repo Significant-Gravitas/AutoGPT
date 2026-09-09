@@ -7,6 +7,7 @@ in-plan usage rather than a free side channel.
 
 import logging
 
+import httpx
 from openai import AsyncOpenAI
 
 from backend.copilot.config import ChatConfig
@@ -21,6 +22,10 @@ settings = Settings()
 # OpenAI rejects longer inputs outright; the client chunks at sentence
 # boundaries well below this, so hitting it means a malformed request.
 MAX_SPEECH_CHARS = 4096
+
+# One chunk is a sentence, not a generation, so the client's 600 s default bounds
+# nothing a listener is still waiting through. Connect fast-fails as elsewhere.
+SPEECH_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 ALLOWED_VOICES = frozenset(
     {
@@ -137,4 +142,4 @@ def _speech_client() -> AsyncOpenAI:
     )
     if not api_key:
         raise SpeechUnavailable("no OpenAI API key configured")
-    return AsyncOpenAI(api_key=api_key)
+    return AsyncOpenAI(api_key=api_key, timeout=SPEECH_TIMEOUT)
