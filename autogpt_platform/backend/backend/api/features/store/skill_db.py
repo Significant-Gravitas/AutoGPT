@@ -37,7 +37,9 @@ async def get_marketplace_skills(
     versions = await prisma.models.SkillListingVersion.prisma().find_many(
         where=where,
         include={"ActiveFor": {"include": _LISTING_INCLUDE}},
-        order=[{"updatedAt": "desc"}],
+        # Seeded versions share a timestamp, and an undefined order between
+        # pages then drops or repeats a row; `id` is the uuid primary key.
+        order=[{"updatedAt": "desc"}, {"id": "desc"}],
         skip=(page - 1) * page_size,
         take=page_size,
     )
