@@ -36,7 +36,7 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
   const word = count === 1 ? singular : label.toLowerCase();
 
   return (
-    <div className="flex items-center gap-1 whitespace-nowrap text-zinc-500">
+    <div className="flex items-center gap-1 whitespace-nowrap text-zinc-800">
       <Icon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
       <Text
         variant="body-medium"
@@ -46,7 +46,7 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
       >
         {count}
       </Text>
-      <Text variant="body" as="dt" className="!text-inherit">
+      <Text variant="body-medium" as="dt" className="!text-inherit">
         <span className="sr-only">{label}</span>
         <span aria-hidden="true">{word}</span>
       </Text>
