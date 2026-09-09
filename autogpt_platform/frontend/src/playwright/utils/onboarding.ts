@@ -92,6 +92,7 @@ export async function completeOnboardingWizard(
 
   await advanceToRoleStep(page, plan);
   await page.getByText(role, { exact: false }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByText("What's eating your time?")).toBeVisible({
     timeout: 5000,
   });
