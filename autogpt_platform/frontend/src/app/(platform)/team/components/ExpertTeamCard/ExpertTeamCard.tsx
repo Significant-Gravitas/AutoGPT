@@ -1,4 +1,5 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
@@ -24,6 +25,7 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
@@ -61,6 +63,7 @@ export function ExpertTeamCard({
   onAssignPod,
 }: Props) {
   const blurb = getExpertBlurb(expert);
+  const accent = getRaisedExpertAccent(expert.role, expert.color);
   const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
@@ -195,8 +198,17 @@ export function ExpertTeamCard({
           >
             {expert.name}
           </Text>
-          <Text variant="body" tone="muted" className="line-clamp-2">
-            {expert.role}
+          {/* Same pill as the expert page header and the marketplace card. */}
+          <Text
+            variant="body-medium"
+            as="span"
+            className={cn(
+              "inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-3 py-1",
+              accent.pill,
+            )}
+          >
+            <Icon icon={accent.roleIcon} size={14} className="shrink-0" />
+            <span className="truncate">{expert.role}</span>
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
             {blurb}

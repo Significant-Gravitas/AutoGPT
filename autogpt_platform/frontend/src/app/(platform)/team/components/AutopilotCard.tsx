@@ -1,9 +1,15 @@
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { BubbleChatIcon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { AUTOPILOT_BLURB, AUTOPILOT_ROLE } from "../helpers";
+import {
+  AUTOPILOT_BLURB,
+  AUTOPILOT_PILL_CLASS,
+  AUTOPILOT_ROLE,
+} from "../helpers";
 import { CardStat, CardStats } from "./CardStats";
 import { ExpertCover } from "./ExpertTeamCard/components/ExpertCover";
 
@@ -46,7 +52,15 @@ export function AutopilotCard({
           >
             Autopilot
           </Text>
-          <Text variant="body" tone="muted">
+          <Text
+            variant="body-medium"
+            as="span"
+            className={cn(
+              "inline-flex items-center gap-1.5 self-start rounded-full px-3 py-1",
+              AUTOPILOT_PILL_CLASS,
+            )}
+          >
+            <Icon icon={SparklesIcon} size={14} />
             {AUTOPILOT_ROLE}
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
