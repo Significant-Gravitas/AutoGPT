@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   render as rtlRender,
   screen,
@@ -36,8 +37,12 @@ function render(ui: React.ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
+/** speechPlayer keeps one module-level <audio>, so this outlives a single test. */
+let autoEndPlayback = true;
+
 describe("TTSButton", () => {
   beforeEach(() => {
+    autoEndPlayback = true;
     stubSpeechSynthesis([]);
     stubAudio();
     global.URL.createObjectURL = vi.fn(() => "blob:chunk");
@@ -52,7 +57,9 @@ describe("TTSButton", () => {
   });
 
   it("speaks through the browser when it has voices, without spending on synthesis", async () => {
-    const speak = stubSpeechSynthesis([{ name: "Samantha", lang: "en-US" }]);
+    const { speak } = stubSpeechSynthesis([
+      { name: "Samantha", lang: "en-US" },
+    ]);
     render(<TTSButton text="A local voice reads this." sessionID="s-1" />);
 
     await userEvent.click(await screen.findByRole("button"));
@@ -103,16 +110,38 @@ describe("TTSButton", () => {
 
   it("still offers browser speech when the flag is off but voices exist", async () => {
     useGetFlag.mockReturnValue(false);
-    stubSpeechSynthesis([{ name: "Samantha", lang: "en-US" }]);
+    const { speak } = stubSpeechSynthesis([
+      { name: "Samantha", lang: "en-US" },
+    ]);
     render(<TTSButton text="A local voice reads this." sessionID="s-1" />);
 
-    // findByRole rejects when nothing matches, so this is a real presence check.
-    expect(await screen.findByRole("button")).not.toBeNull();
+    await userEvent.click(await screen.findByRole("button"));
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(synthesizeSpeech).not.toHaveBeenCalled();
+  });
+
+  it("keeps Stop on our own audio when voices arrive mid-playback", async () => {
+    // speech-dispatcher starting mid-reply flips `hasVoices`, which would
+    // otherwise hand Stop to the browser path and strand our audio playing.
+    autoEndPlayback = false;
+    const { speak, arriveVoices } = stubSpeechSynthesis([]);
+    render(<TTSButton text="No local voice reads this." sessionID="s-1" />);
+
+    await userEvent.click(await screen.findByRole("button"));
+    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalled());
+    act(() => arriveVoices([{ name: "Samantha", lang: "en-US" }]));
+
+    await userEvent.click(screen.getByRole("button"));
+
+    expect(speak).not.toHaveBeenCalled();
   });
 });
 
 function stubSpeechSynthesis(voices: Partial<SpeechSynthesisVoice>[]) {
   const speak = vi.fn();
+  let current = voices;
+  let onVoicesChanged = () => {};
   vi.stubGlobal(
     "SpeechSynthesisUtterance",
     class {
@@ -120,15 +149,23 @@ function stubSpeechSynthesis(voices: Partial<SpeechSynthesisVoice>[]) {
     },
   );
   vi.stubGlobal("speechSynthesis", {
-    getVoices: () => voices as SpeechSynthesisVoice[],
+    getVoices: () => current as SpeechSynthesisVoice[],
     speak,
     cancel: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
-    addEventListener: vi.fn(),
+    addEventListener: vi.fn((event: string, handler: () => void) => {
+      if (event === "voiceschanged") onVoicesChanged = handler;
+    }),
     removeEventListener: vi.fn(),
   });
-  return speak;
+  return {
+    speak,
+    arriveVoices(later: Partial<SpeechSynthesisVoice>[]) {
+      current = later;
+      onVoicesChanged();
+    },
+  };
 }
 
 function stubAudio() {
@@ -141,7 +178,7 @@ function stubAudio() {
       pause = vi.fn();
       addEventListener = vi.fn(
         (event: string, handler: () => void) =>
-          event === "ended" && setTimeout(handler, 0),
+          autoEndPlayback && event === "ended" && setTimeout(handler, 0),
       );
       removeEventListener = vi.fn();
     },

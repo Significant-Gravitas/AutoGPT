@@ -27,7 +27,10 @@ export function useTTSButton({ text, sessionID }: Args) {
   // The speech route 404s when voice mode is off for the user, so without the
   // flag there is nothing to fall back to and the button must not offer one.
   const canFallBack = useGetFlag(Flag.COPILOT_VOICE_MODE);
-  const viaServer = !browser.hasVoices;
+  // `hasVoices` flips reactively on `voiceschanged`; a flip mid-playback would
+  // move Stop to the other path and strand the audio that is already speaking.
+  const speaking = server.isPlaying || browser.status === "playing";
+  const viaServer = speaking ? server.isPlaying : !browser.hasVoices;
 
   return {
     canSpeak: Boolean(cleanText) && (browser.hasVoices || canFallBack),
