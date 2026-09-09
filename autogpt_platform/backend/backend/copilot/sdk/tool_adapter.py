@@ -1036,6 +1036,13 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 #   prod without issues.
 # ScheduleWakeup: no /loop runtime in copilot turns; the handler returns
 #   {"scheduledFor": 0} and nothing is scheduled.
+# CronCreate/CronList/CronDelete: same failure mode as ScheduleWakeup, but
+#   worse because CronCreate *confirms* success ("Persisted to
+#   .claude/scheduled_tasks.json").  Those jobs belong to the CLI process,
+#   which exits with the turn; nothing here ever reads or runs that file, and
+#   sdk_cwd is a per-session /tmp dir that is never restored.  Leaving them
+#   exposed lets the model promise unattended monitoring that silently never
+#   fires — `schedule_followup` is the primitive that actually persists.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
@@ -1045,6 +1052,9 @@ SDK_DISALLOWED_TOOLS = [
     "Edit",
     "Read",
     "ScheduleWakeup",
+    "CronCreate",
+    "CronList",
+    "CronDelete",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).

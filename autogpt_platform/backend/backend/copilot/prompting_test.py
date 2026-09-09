@@ -91,3 +91,28 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
+
+
+class TestSchedulingGuidance:
+    """The CLI's cron built-ins are blocked (REQ-121), but blocking alone just
+    moves the failure: the model must be told which primitive is durable, and
+    told not to promise monitoring it never scheduled.
+    """
+
+    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Scheduling future work — use `schedule_followup`" in result
+        assert "ONLY way to make something happen after this turn" in result
+
+    def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        # CronCreate reports success and claims it persisted to disk, so
+        # "it said it worked" must not be treated as evidence it is scheduled.
+        assert "even if it reports success and says it persisted to disk" in result
+        assert "unless a `schedule_followup` call" in result
+        assert "actually succeeded" in result
+
+    def test_baseline_mode_gets_the_same_rule(self):
+        # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
+        # system prompt; the rule is useless if it only reaches one mode.
+        assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES

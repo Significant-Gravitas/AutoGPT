@@ -19,12 +19,14 @@ from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
     BASELINE_ONLY_MCP_TOOLS,
+    BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
     create_copilot_mcp_server,
     create_tool_handler,
+    get_sdk_disallowed_tools,
     pop_pending_tool_output,
     reset_pending_tool_outputs,
     reset_stash_event,
@@ -742,6 +744,29 @@ class TestSDKDisallowedTools:
 
     def test_schedule_wakeup_tool_is_disallowed(self):
         assert "ScheduleWakeup" in SDK_DISALLOWED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cli_cron_tools_are_disallowed(self, tool: str):
+        """The CLI's cron built-ins schedule nothing that outlives the turn.
+
+        CronCreate confirms success and claims it persisted to disk, so an
+        exposed cron tool lets the model promise unattended monitoring that
+        never fires. `schedule_followup` is the only durable primitive.
+        """
+        assert tool in SDK_DISALLOWED_TOOLS
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cron_tools_reach_sdk_options_in_both_modes(self, tool: str, use_e2b: bool):
+        """`disallowed_tools` is what removes a built-in from the model's
+        context, so the names must survive the E2B branch too."""
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+
+    @pytest.mark.parametrize("tool", ["CronCreate", "CronList", "CronDelete"])
+    def test_cron_tools_reach_security_hook_denylist(self, tool: str):
+        """Defence in depth: security_hooks denies on BLOCKED_TOOLS, which is
+        a denylist — an unlisted tool falls through and executes."""
+        assert tool in BLOCKED_TOOLS
 
 
 # ---------------------------------------------------------------------------
