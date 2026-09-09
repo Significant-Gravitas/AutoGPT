@@ -5,8 +5,12 @@ import {
 } from "@/tests/integrations/copilot-sse";
 import { screen, waitFor } from "@testing-library/react";
 import type { UIMessageChunk } from "ai";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { useCopilotStreamStore } from "../copilotStreamStore";
+import { getKickoffStatus, kickoffStorageKey } from "../expertKickoff";
+import { useCopilotUIStore } from "../store";
 import {
   renderHost,
   TEST_BACKEND_BASE_URL,
@@ -34,24 +38,40 @@ vi.mock("../helpers", async (importActual) => {
 });
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "test-user" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
+
+const flagState = vi.hoisted(() => ({ experts: false }));
 
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     ARTIFACTS: "ARTIFACTS",
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
     ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
+    HIRE_EXPERTS: "HIRE_EXPERTS",
   },
-  useGetFlag: () => false,
+  useGetFlag: (flag: string) =>
+    flag === "HIRE_EXPERTS" ? flagState.experts : false,
 }));
 
 beforeEach(() => {
   resetCopilotChatRegistry();
+  useCopilotStreamStore.getState().resetAll();
+  useCopilotUIStore.setState({ initialPrompt: null });
+  window.localStorage.clear();
+  flagState.experts = false;
 });
 
 afterEach(() => {
   resetCopilotChatRegistry();
+  useCopilotStreamStore.getState().resetAll();
+  useCopilotUIStore.setState({ initialPrompt: null });
+  window.localStorage.clear();
+  flagState.experts = false;
 });
 
 describe("AutoPilot streaming — error paths", () => {
@@ -99,6 +119,59 @@ describe("AutoPilot streaming — error paths", () => {
         timeout: 5000,
       }),
     ).toBeDefined();
+  });
+
+  it("clears kickoff recovery state after an HTTP 429", async () => {
+    const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
+    flagState.experts = true;
+    server.use(
+      http.get("*/api/experts/identities", () =>
+        HttpResponse.json([
+          {
+            id: expertId,
+            name: "Maria",
+            avatar_url: null,
+            role: "Operations expert",
+            is_archived: false,
+          },
+        ]),
+      ),
+      copilotStreamErrorHandler({
+        baseUrl: TEST_BACKEND_BASE_URL,
+        sessionId: TEST_SESSION_ID,
+        status: 429,
+        body: { detail: "You've reached your usage limit. Try again later." },
+      }),
+    );
+
+    renderHost({
+      searchParams: `?sessionId=${TEST_SESSION_ID}&expertId=${expertId}&kickoff=1`,
+      sessionOverride: { expert_id: expertId },
+    });
+
+    expect(
+      await screen.findByText(/daily autopilot limit reached/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(getKickoffStatus("test-user", expertId)).toBe("idle"),
+    );
+    expect(
+      window.localStorage.getItem(kickoffStorageKey("test-user", expertId)),
+    ).toBeNull();
+    expect(useCopilotStreamStore.getState().getCoord(TEST_SESSION_ID)).toEqual({
+      lastSubmittedMessageText: null,
+      lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
+    });
+    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    expect(
+      useCopilotStreamStore
+        .getState()
+        .getMessageSnapshot(TEST_SESSION_ID)
+        .filter((message) => message.role === "user"),
+    ).toHaveLength(0);
   });
 
   it("surfaces an HTTP 500 response as a visible error", async () => {

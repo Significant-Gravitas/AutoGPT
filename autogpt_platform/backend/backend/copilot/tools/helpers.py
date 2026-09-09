@@ -6,12 +6,13 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cache
 from typing import Any
 
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
-from backend.blocks._base import AnyBlockSchema
+from backend.blocks._base import AnyBlockSchema, BlockSchemaInput
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
@@ -21,6 +22,7 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
 from backend.data.execution import ExecutionContext
@@ -168,6 +170,33 @@ async def _charge_block_credits(
         # BILLING_LEAK log above is the signal for reconciliation.
 
 
+def get_block_provider(block: AnyBlockSchema) -> str | None:
+    """Sole integration provider slug for a block, or None when the block
+    uses zero or multiple providers."""
+    try:
+        return _get_input_schema_provider(block.input_schema)
+    except Exception:
+        logger.debug(
+            "Unable to determine integration provider for block input schema %r",
+            block.input_schema,
+            exc_info=True,
+        )
+        return None
+
+
+@cache
+def _get_input_schema_provider(input_schema: type[BlockSchemaInput]) -> str | None:
+    infos = input_schema.get_credentials_fields_info()
+    providers = {
+        ProviderName(provider).value
+        for info in infos.values()
+        for provider in info.provider
+    }
+    if len(providers) != 1:
+        return None
+    return next(iter(providers))
+
+
 async def execute_block(
     *,
     block: AnyBlockSchema,
@@ -181,8 +210,12 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
+
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
 
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
@@ -221,6 +254,7 @@ async def execute_block(
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
+                provider=get_block_provider(block),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
@@ -260,6 +294,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -443,6 +478,7 @@ async def execute_block(
                     block_id=block_id,
                     block_name=block.name,
                     outputs=dict(outputs),
+                    provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
                 )
@@ -671,6 +707,8 @@ async def prepare_block_for_execution(
             message=f"Block '{block.name}' cannot be run directly.{hint}",
             session_id=session_id,
         )
+
+    emit_tool_display_name(block.name)
 
     # LLMs sometimes pass `"credentials": null` instead of omitting the field.
     # Treat null credential fields as absent so the injection path below can
@@ -920,6 +958,7 @@ def _resolve_discriminated_credentials(
         return {}
 
     resolved: dict[str, CredentialsFieldInfo] = {}
+    required_fields = set(block.input_schema.get_required_fields())
 
     for field_name, field_info in credentials_fields_info.items():
         effective_field_info = field_info
@@ -930,6 +969,12 @@ def _resolve_discriminated_credentials(
                 field = block.input_schema.model_fields.get(field_info.discriminator)
                 if field and field.default is not PydanticUndefined:
                     discriminator_value = field.default
+
+            if (
+                field_name not in required_fields
+                and not field_info.requires_credentials(discriminator_value)
+            ):
+                continue
 
             if discriminator_value is not None:
                 if field_info.discriminator_mapping:

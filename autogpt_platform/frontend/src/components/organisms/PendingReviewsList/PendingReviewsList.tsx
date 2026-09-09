@@ -39,9 +39,10 @@ export function PendingReviewsList({
     },
   );
 
-  const [pendingAction, setPendingAction] = useState<
-    "approve" | "reject" | null
-  >(null);
+  const [pendingAction, setPendingAction] = useState<{
+    nodeId: string;
+    action: "approve" | "reject";
+  } | null>(null);
 
   const [autoApproveFutureMap, setAutoApproveFutureMap] = useState<
     Record<string, boolean>
@@ -103,8 +104,13 @@ export function PendingReviewsList({
     }));
   }
 
-  async function processReviews(approved: boolean) {
-    if (reviews.length === 0) {
+  // Scoped to one node's reviews on purpose: these are the rows rendered
+  // directly above the button that calls this, and a decision must never
+  // reach a row the reviewer has not been shown.
+  async function processGroup(nodeId: string, approved: boolean) {
+    const groupReviews = groupedReviews[nodeId] || [];
+
+    if (groupReviews.length === 0) {
       toast({
         title: "No reviews to process",
         description: "No reviews found to process.",
@@ -113,10 +119,10 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction(approved ? "approve" : "reject");
+    setPendingAction({ nodeId, action: approved ? "approve" : "reject" });
     const reviewItems = [];
 
-    for (const review of reviews) {
+    for (const review of groupReviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
       const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
@@ -151,7 +157,7 @@ export function PendingReviewsList({
     try {
       const res = await submitReviewAction(
         reviewItems,
-        reviews.map((review) => review.graph_exec_id),
+        groupReviews.map((review) => review.graph_exec_id),
       );
 
       if (res.status !== 200) {
@@ -233,8 +239,10 @@ export function PendingReviewsList({
 
       <div className="space-y-7">
         {Object.entries(groupedReviews).map(([nodeId, nodeReviews]) => {
-          const isCollapsed = collapsedGroups[nodeId] ?? nodeReviews.length > 1;
+          const isCollapsed = collapsedGroups[nodeId] ?? false;
           const reviewCount = nodeReviews.length;
+          const groupAction =
+            pendingAction?.nodeId === nodeId ? pendingAction.action : null;
 
           const firstReview = nodeReviews[0];
           const blockName = firstReview?.instructions;
@@ -301,6 +309,31 @@ export function PendingReviewsList({
                       Auto-approve future executions of this node
                     </Text>
                   </div>
+
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button
+                      onClick={() => processGroup(nodeId, true)}
+                      disabled={isProcessing}
+                      variant="primary"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                      loading={groupAction === "approve" && isProcessing}
+                    >
+                      {reviewCount === 1
+                        ? "Approve"
+                        : `Approve ${reviewCount} reviews`}
+                    </Button>
+                    <Button
+                      onClick={() => processGroup(nodeId, false)}
+                      disabled={isProcessing}
+                      variant="destructive"
+                      className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+                      loading={groupAction === "reject" && isProcessing}
+                    >
+                      {reviewCount === 1
+                        ? "Reject"
+                        : `Reject ${reviewCount} reviews`}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -308,33 +341,10 @@ export function PendingReviewsList({
         })}
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => processReviews(true)}
-            disabled={isProcessing || reviews.length === 0}
-            variant="primary"
-            className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
-            loading={pendingAction === "approve" && isProcessing}
-          >
-            Approve
-          </Button>
-          <Button
-            onClick={() => processReviews(false)}
-            disabled={isProcessing || reviews.length === 0}
-            variant="destructive"
-            className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
-            loading={pendingAction === "reject" && isProcessing}
-          >
-            Reject
-          </Button>
-        </div>
-
-        <Text variant="small" className="text-textGrey">
-          You can turn auto-approval on or off using the toggle above for each
-          node.
-        </Text>
-      </div>
+      <Text variant="small" className="text-textGrey">
+        Each decision applies only to the reviews shown above it. You can turn
+        auto-approval on or off using the toggle for each node.
+      </Text>
     </div>
   );
 }

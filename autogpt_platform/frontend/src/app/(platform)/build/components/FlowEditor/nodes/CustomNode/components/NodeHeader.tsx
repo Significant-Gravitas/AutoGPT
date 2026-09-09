@@ -13,6 +13,7 @@ import { formatNodeDisplayTitle, getNodeDisplayTitle } from "../helpers";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { NodeCost } from "./NodeCost";
+import { isKey } from "@/lib/keyboard";
 
 type Props = {
   data: CustomNodeData;
@@ -44,8 +45,8 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
   };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleTitleEdit();
-    if (e.key === "Escape") {
+    if (isKey(e, "Enter")) handleTitleEdit();
+    if (isKey(e, "Escape")) {
       setEditedTitle(title);
       setIsEditingTitle(false);
     }

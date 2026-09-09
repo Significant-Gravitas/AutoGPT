@@ -295,7 +295,7 @@ class PublicUrlTest(unittest.TestCase):
 
 class FatalListenerTest(unittest.TestCase):
     def test_fatal_event_acknowledges_before_terminating_supervisor(self) -> None:
-        payload = "processname:rest groupname:rest from_state:BACKOFF"
+        payload = "processname:rest groupname:runtime from_state:BACKOFF"
         header = f"eventname:PROCESS_STATE_FATAL len:{len(payload)}\n"
         input_stream = io.StringIO(payload)
         output_stream = io.StringIO()
@@ -313,7 +313,7 @@ class FatalListenerTest(unittest.TestCase):
         self.assertEqual(calls, ["RESULT 2\nOK"])
 
     def test_fatal_event_does_not_echo_untrusted_payload(self) -> None:
-        payload = "processname:rest\nsecret-value groupname:rest"
+        payload = "processname:rest\nsecret-value groupname:runtime"
         header = f"eventname:PROCESS_STATE_FATAL len:{len(payload)}\n"
         with mock.patch.object(fatal_listener.sys, "stderr", io.StringIO()) as stderr:
             fatal_listener.handle_event(
@@ -327,7 +327,7 @@ class FatalListenerTest(unittest.TestCase):
         self.assertIn("unknown", stderr.getvalue())
 
     def test_unexpected_bootstrap_exit_terminates_supervisor(self) -> None:
-        payload = "processname:bootstrap groupname:bootstrap expected:0"
+        payload = "processname:bootstrap groupname:runtime expected:0"
         output_stream = io.StringIO()
         calls: list[str] = []
 

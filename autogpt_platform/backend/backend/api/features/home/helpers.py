@@ -1,16 +1,14 @@
-from datetime import datetime, timezone
-from urllib.parse import quote
+from collections import defaultdict
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.experts.models import Expert
 from backend.api.features.library.model import LibraryAgentRef
+from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, as_utc
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .models import HomeExpert
-
-# Longest a summary's first sentence may run before it is clipped into a title.
-_TITLE_MAX = 120
 
 
 def to_home_expert(expert: Expert) -> HomeExpert:
@@ -46,6 +44,27 @@ def experts_by_schedule(
     return {schedule_id: expert for schedule_id, expert in owners.items() if expert}
 
 
+def experts_by_graph(experts: list[Expert]) -> dict[str, Expert]:
+    """Map graph id to the expert that owns a workflow built on it.
+
+    A run started from the library carries no expert stamp, but the workflow
+    it ran is still an expert's, so the surfaces that show who is working can
+    fall back to the owner instead of showing nobody. Two experts can build on
+    the same graph, and picking one of them would put the wrong face on the
+    run, so a shared graph is left unattributed.
+    """
+    owners: defaultdict[str, dict[str, Expert]] = defaultdict(dict)
+    for expert in experts:
+        for workflow in expert.workflows:
+            if workflow.graph_id:
+                owners[workflow.graph_id][expert.id] = expert
+    return {
+        graph_id: next(iter(by_expert_id.values()))
+        for graph_id, by_expert_id in owners.items()
+        if len(by_expert_id) == 1
+    }
+
+
 def next_runs_by_expert(
     schedules: list[GraphExecutionJobInfo], expert_by_schedule: dict[str, Expert]
 ) -> dict[str, datetime]:
@@ -67,9 +86,10 @@ class AgentRef(BaseModel):
 
     name: str
     library_agent_id: str | None
+    image_url: str | None = None
 
 
-UNKNOWN_AGENT = AgentRef(name="Agent task", library_agent_id=None)
+UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
 
 
 def agent_refs_by_graph(
@@ -77,7 +97,9 @@ def agent_refs_by_graph(
 ) -> dict[str, AgentRef]:
     agents = {
         ref.graph_id: AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name, library_agent_id=ref.id
+            name=ref.name or UNKNOWN_AGENT.name,
+            library_agent_id=None if ref.is_deleted else ref.id,
+            image_url=ref.image_url,
         )
         for ref in refs
     }
@@ -85,10 +107,13 @@ def agent_refs_by_graph(
         for workflow in expert.workflows:
             if workflow.graph_id:
                 current = agents.get(workflow.graph_id, UNKNOWN_AGENT)
+                # An expert names its own copy of the workflow, but only the
+                # library row carries the picture, so keep the one we found.
                 agents[workflow.graph_id] = AgentRef(
                     name=workflow.name or current.name,
                     library_agent_id=workflow.library_agent_id
                     or current.library_agent_id,
+                    image_url=current.image_url,
                 )
     return agents
 
@@ -100,41 +125,9 @@ def setup_count(expert: Expert) -> int:
     )
 
 
-def as_utc(value: datetime) -> datetime:
-    """Stored timestamps can come back naive; comparing those to an aware `now`
-    raises, so pin anything naive to UTC before it reaches arithmetic or sorting.
-    """
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-
-def as_utc_or_none(value: datetime | None) -> datetime | None:
-    return as_utc(value) if value else None
-
-
 def parse_datetime(value: str) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
     return as_utc(parsed)
-
-
-def run_link(library_id: str | None, execution_id: str) -> str | None:
-    if not library_id:
-        return None
-    return (
-        f"/library/agents/{quote(library_id)}"
-        f"?activeTab=runs&activeItem={quote(execution_id)}"
-    )
-
-
-def split_summary(
-    value: str | None, *, fallback_title: str, fallback_detail: str
-) -> tuple[str, str]:
-    compact = " ".join(value.split()) if value else ""
-    if not compact:
-        return fallback_title, fallback_detail
-    if ". " not in compact:
-        return compact[:_TITLE_MAX], fallback_detail
-    title, detail = compact.split(". ", 1)
-    return f"{title}.", detail

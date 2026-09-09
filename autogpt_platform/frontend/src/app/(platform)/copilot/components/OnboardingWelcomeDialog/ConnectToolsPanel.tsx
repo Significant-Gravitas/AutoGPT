@@ -4,13 +4,14 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { ConnectMethodView } from "./ConnectMethodView";
+import { ConnectMethodView } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/ConnectMethodView/ConnectMethodView";
 import { ConnectProviderRow } from "./ConnectProviderRow";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Plug01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { useConnectToolsPanel } from "./useConnectToolsPanel";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   onBack: () => void;
@@ -66,7 +67,7 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
   // reaching the dialog's skip handler, which would end onboarding.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (!isKey(event, "Escape")) return;
       if (selectedProvider) {
         handleBackToList();
         return;
@@ -101,6 +102,10 @@ export function ConnectToolsPanel({ onBack, onNext }: Props) {
                 onSelectMethod={setSelectedMethod}
                 apiKeyForm={apiKeyForm}
                 onApiKeySubmit={handleApiKeySubmit}
+                // Without this, approving on the phone drops the user back on
+                // the initial "Connect <provider>" screen, which reads as a
+                // failure. OAuth and API key both return to the list.
+                onDeviceAuthSuccess={handleBackToList}
               />
             </motion.div>
           ) : (

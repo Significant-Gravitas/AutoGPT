@@ -27,7 +27,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.enums import SubscriptionTier
+from prisma.enums import BriefingFrequency, SubscriptionTier
 from pydantic import BaseModel, Field
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -36,6 +36,9 @@ from starlette.status import (
 )
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.credits_rate_limit import (
+    enforce_subscription_status_rate_limit,
+)
 from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -106,7 +109,12 @@ from backend.data.execution_cost_summary import (
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
-from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.notifications import (
+    NotificationPreference,
+    NotificationPreferenceDTO,
+    PassWorkEvent,
+    PassWorkKind,
+)
 from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
@@ -120,6 +128,11 @@ from backend.data.onboarding import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.stripe_client import stripe_call
+from backend.data.subscription_trial_billing import (
+    TRIAL_BILLING_EVENTS,
+    sync_trials_for_billing_event,
+)
 from backend.data.tally import extract_business_understanding
 from backend.data.tenancy import get_user_team_ids
 from backend.data.understanding import (
@@ -134,6 +147,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
+    verify_preference_token,
 )
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
@@ -144,9 +158,11 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
 )
 from backend.monitoring.instrumentation import (
     record_block_execution,
-    record_graph_execution,
     record_graph_operation,
 )
+from backend.notifications import lifecycle
+from backend.notifications.queue import queue_pass_work
+from backend.notifications.trial import notify_trial, on_trial_invoice
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -302,6 +318,59 @@ async def update_preferences(
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
     return output
+
+
+@v1_router.post(
+    "/auth/user/preferences/from-email",
+    summary="Apply a volume-knob choice from a Briefing footer link",
+    tags=["auth"],
+)
+async def apply_email_preference_choice(
+    choice: Annotated[str, Query()],
+    token: Annotated[str, Query()],
+) -> NotificationPreference:
+    """Apply one footer choice, authorised by the token in the link.
+
+    Deliberately not `Security(requires_user)`. The session is the wrong
+    authority here: the settings page applies this on arrival, so a
+    session-authenticated write would let any third party change a logged-in
+    reader's preferences just by getting them to follow a link. The HMAC binds
+    the choice to the recipient we sent it to, exactly as the unsubscribe link
+    does, and works whether or not they happen to be signed in.
+    """
+    user_id = verify_preference_token(token, choice)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+
+    current = await get_user_notification_preference(user_id)
+    updated = _preference_with_choice(current, choice)
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Unknown preference choice")
+    return await update_user_notification_preference(user_id, updated)
+
+
+def _preference_with_choice(
+    current: NotificationPreference, choice: str
+) -> NotificationPreferenceDTO | None:
+    """The volume knob, server-side. "alerts" and "off" both stop the digest;
+    they differ in whether alerts survive."""
+    mapping: dict[str, tuple[BriefingFrequency, bool]] = {
+        "daily": (BriefingFrequency.DAILY, current.alerts_enabled),
+        "weekly": (BriefingFrequency.WEEKLY, current.alerts_enabled),
+        "monthly": (BriefingFrequency.MONTHLY, current.alerts_enabled),
+        "alerts": (BriefingFrequency.OFF, True),
+        "off": (BriefingFrequency.OFF, False),
+    }
+    if choice not in mapping:
+        return None
+    frequency, alerts = mapping[choice]
+    return NotificationPreferenceDTO(
+        email=current.email,
+        briefing_frequency=frequency,
+        alerts_enabled=alerts,
+        store_verdicts_enabled=current.store_verdicts_enabled,
+        daily_limit=current.daily_limit,
+    )
 
 
 ########################################################
@@ -766,6 +835,10 @@ async def configure_user_auto_top_up(
             await credit_model.top_up_credits(user_id, request.amount)
         else:
             await credit_model.top_up_credits(user_id, 0)
+    except NotImplementedError as e:
+        raise HTTPException(
+            status_code=501, detail="Auto top-up is not available in this context"
+        ) from e
     except ValueError as e:
         known_messages = (
             "must not be negative",
@@ -806,7 +879,7 @@ class SubscriptionTierRequest(BaseModel):
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["NO_TIER", "TRIAL", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> monthly amount in cents
     tier_costs_yearly: dict[str, int] = Field(
@@ -927,7 +1000,7 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     every GET /credits/subscription page load and reduces quota consumption.
     """
     try:
-        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        price = await stripe_call(stripe.Price.retrieve_async, price_id)
         return price.unit_amount or 0
     except stripe.StripeError:
         logger.warning(
@@ -942,7 +1015,11 @@ async def _get_stripe_price_amount(price_id: str) -> int | None:
     summary="Get subscription tier, current cost, and all tier costs",
     operation_id="getSubscriptionStatus",
     tags=["credits"],
-    dependencies=[Security(requires_user)],
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
@@ -1102,6 +1179,11 @@ async def update_subscription_tier(
     # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
     # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    if current_tier == SubscriptionTier.TRIAL and tier != SubscriptionTier.NO_TIER:
+        raise HTTPException(
+            409,
+            "Your accepted plan starts after your trial. Manage the trial in billing.",
+        )
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
     has_active_stripe_subscription = (
         await get_active_subscription_period_end(user_id) is not None
@@ -1396,6 +1478,48 @@ async def _claim_stripe_event(event_id: str) -> bool:
         return True
 
 
+async def _notify_checkout_completed(session: dict) -> None:
+    """Hand the completed checkout to the lifecycle emails.
+
+    Failures here must not fail the webhook: the customer has paid, and Stripe
+    retrying the whole event would re-run `fulfill_checkout`, which grants
+    credits. But swallowing the failure lost the welcome permanently — Stripe
+    does not retry a 200, and `customer.subscription.created` deliberately does
+    not send it either.
+
+    So the work is queued rather than done here. The consumer re-reads the
+    session and subscription from Stripe and sends the welcome, with the same
+    retry-with-backoff and dead-letter queue every other notification gets.
+    Publishing is one small call that either succeeds or is logged; the Stripe
+    API round-trip and the email now sit behind a retry instead of a warning.
+    """
+    if session.get("mode") != "subscription":
+        return
+    if not session.get("subscription"):
+        return
+    session_id = session.get("id")
+    if not session_id:
+        return
+    result = await queue_pass_work(
+        PassWorkKind.WELCOME.value,
+        str(session_id),
+        PassWorkEvent(
+            kind=PassWorkKind.WELCOME,
+            user_id="",
+            scheduled_for=datetime.now(tz=timezone.utc),
+            context={"session_id": str(session_id)},
+        ).model_dump_json(),
+    )
+    if not result.success:
+        if (session.get("metadata") or {}).get("trial_enrollment_id"):
+            raise RuntimeError("Could not queue the trial welcome notice")
+        logger.warning(
+            "stripe_webhook: could not queue the welcome email for session %s: %s",
+            session_id,
+            result.message,
+        )
+
+
 async def _release_stripe_event(event_id: str) -> None:
     """Release a previously-claimed dedup key so Stripe's retry can rerun."""
     if not event_id:
@@ -1447,6 +1571,12 @@ async def stripe_webhook(request: Request):
     event_id = event.get("id", "")
     event_type = event.get("type", "")
 
+    if event_type in TRIAL_BILLING_EVENTS:
+        # This idempotent path only reconciles current Stripe state. Do not let
+        # a claim left by a crashed delivery suppress card removal/restoration.
+        await sync_trials_for_billing_event(event_type, event.get("data"))
+        return Response(status_code=200)
+
     # Event-level dedup: short-circuit identical re-deliveries before any
     # handler runs. Stripe retries the same event.id on non-2xx responses, and
     # not every downstream handler is independently idempotent.
@@ -1484,6 +1614,11 @@ async def stripe_webhook(request: Request):
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
             await sync_tier_from_checkout_session(data_object)
+            # Only `checkout.session.completed` drives the welcome email.
+            # `customer.subscription.created` fires at signup too; listening to
+            # both would double-send.
+            if event_type == "checkout.session.completed":
+                await _notify_checkout_completed(data_object)
 
         if event_type in (
             "customer.subscription.created",
@@ -1491,6 +1626,12 @@ async def stripe_webhook(request: Request):
             "customer.subscription.deleted",
         ):
             await sync_subscription_from_stripe(data_object)
+            if event_type == "customer.subscription.updated":
+                await lifecycle.on_subscription_updated(
+                    data_object, event_data.get("previous_attributes") or {}
+                )
+            elif event_type == "customer.subscription.deleted":
+                await lifecycle.on_subscription_deleted(data_object)
 
         # `subscription_schedule.updated` is deliberately omitted: our own
         # `SubscriptionSchedule.create` + `.modify` calls in
@@ -1506,9 +1647,16 @@ async def stripe_webhook(request: Request):
 
         if event_type == "invoice.payment_succeeded":
             await handle_subscription_payment_success(data_object)
+            await on_trial_invoice(data_object, paid=True)
+
+        if event_type == "customer.subscription.trial_will_end":
+            await sync_subscription_from_stripe(data_object)
+            await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
             await handle_subscription_payment_failure(data_object)
+            if not await on_trial_invoice(data_object, paid=False):
+                await lifecycle.on_payment_failed(data_object)
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -1520,12 +1668,15 @@ async def stripe_webhook(request: Request):
         if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
             invoice_id = data_object.get("invoice")
             if invoice_id:
-                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+                invoice = await stripe_call(stripe.Invoice.retrieve_async, invoice_id)
                 invoice_payload = cast(dict, invoice)
                 if event_type == "invoice_payment.paid":
                     await handle_subscription_payment_success(invoice_payload)
+                    await on_trial_invoice(invoice_payload, paid=True)
                 else:
                     await handle_subscription_payment_failure(invoice_payload)
+                    if not await on_trial_invoice(invoice_payload, paid=False):
+                        await lifecycle.on_payment_failed(invoice_payload)
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1573,6 +1724,7 @@ async def get_credit_history(
     transaction_time: datetime | None = None,
     transaction_type: str | None = None,
     transaction_count_limit: int = 100,
+    cursor: str | None = None,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
@@ -1583,6 +1735,8 @@ async def get_credit_history(
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
         transaction_type=transaction_type,
+        cursor=cursor,
+        viewer_organization_id=ctx.org_id,
     )
 
 
@@ -1999,8 +2153,6 @@ async def execute_graph(
             organization_id=ctx.org_id,
             team_id=ctx.team_id,
         )
-        # Record successful graph execution
-        record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         if source == "library":
             await complete_onboarding_step(user_id, OnboardingStep.LIBRARY_RUN_AGENT)
@@ -2008,10 +2160,6 @@ async def execute_graph(
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
-        # Record failed graph execution
-        record_graph_execution(
-            graph_id=graph_id, status="validation_error", user_id=user_id
-        )
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
         raise HTTPException(
@@ -2024,8 +2172,6 @@ async def execute_graph(
             },
         )
     except Exception:
-        # Record any other failures
-        record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
         record_graph_operation(operation="execute", status="error")
         raise
 

@@ -97,7 +97,22 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ``{}`` and dropping it; nested props are kept type-only to minimise the spend.
 # Merged registry measures 50915 chars (incl. find_library_agent's
 # write_graph_to); ~580 headroom for wording tweaks.
-_CHAR_BUDGET = 51_500
+# Includes the two-step Soul edit flow (update_expert_soul preview +
+# confirm_expert_soul_update); registry measures ~52.2k chars locally, with
+# ~800 headroom for CI env deltas and wording tweaks.
+# Bumped 53000 -> 54_000 for the copilot tool-chain UI: ``ask_question`` is back
+# in TOOL_REGISTRY as a first-class tool (docked clarifying-question flow), so
+# its schema counts again on top of the Soul edit flow. Merged registry measures
+# 53349 chars; ~650 headroom for CI env deltas and wording tweaks.
+# Bumped 54_000 -> 59_000 for the expert team tools: delegate_to_expert plus
+# the confirm-gated hire/raise pair, their shared confirm, and handoff_to_expert.
+# No single session sees them all (hire/raise/confirm and handoff/soul gate on
+# opposite sides of session.expert_id), but the registry total counts every
+# tool. Merged registry measures 57814 chars; ~1.2k headroom for CI env deltas.
+# Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
+# same confirm gate) and raise_expert's color palette enum + persona-name
+# guidance. Merged registry measures 59625 chars; ~1.4k headroom.
+_CHAR_BUDGET = 61_000
 
 
 @pytest.fixture(scope="module")

@@ -23,6 +23,7 @@ except ImportError:
     LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
+from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 
@@ -195,8 +196,9 @@ def _before_send(event, hint):
         if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
-        # Expected business logic — insufficient balance
-        if "insufficient balance" in exc_msg or "no credits left" in exc_msg:
+        # Expected business logic — exhausted wallet, or a plan that does
+        # not include the feature. Neither is a platform bug.
+        if get_execution_failure_reason(exc_value) is not None:
             return None
 
         # Expected security check — blocked IP access

@@ -9,7 +9,10 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { getGetV1ListCredentialsQueryKey } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/endpoints/mcp/mcp";
+import {
+  postV2ExchangeOauthCodeForMcpTokens,
+  postV2StoreABearerTokenForAnMcpServer,
+} from "@/app/api/__generated__/endpoints/mcp/mcp";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
@@ -45,6 +48,12 @@ export type CredentialsProviderData = {
   mcpOAuthCallback: (
     code: string,
     state_token: string,
+    iss?: string,
+  ) => Promise<CredentialsMetaResponse>;
+  /** Stores a manually entered MCP credential for a server without OAuth. */
+  mcpStoreToken: (
+    server_url: string,
+    token: string,
   ) => Promise<CredentialsMetaResponse>;
   createAPIKeyCredentials: (
     credentials: APIKeyCredentialsCreatable,
@@ -121,7 +130,7 @@ export default function CredentialsProvider({
   const [systemProviders, setSystemProviders] = useState<Set<string>>(
     new Set(),
   );
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isUserLoading } = useAuth();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
   const queryClient = useQueryClient();
@@ -162,11 +171,13 @@ export default function CredentialsProvider({
     async (
       code: string,
       state_token: string,
+      iss?: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
         const response = await postV2ExchangeOauthCodeForMcpTokens({
           code,
           state_token,
+          iss,
         });
         if (response.status !== 200) throw response.data;
         const credsMeta: CredentialsMetaResponse = {
@@ -184,6 +195,30 @@ export default function CredentialsProvider({
       }
     },
     [upsertCredentials, onFailToast],
+  );
+
+  /** Stores a manual MCP credential, and adds the result to the internal credentials store. */
+  const mcpStoreToken = useCallback(
+    async (
+      server_url: string,
+      token: string,
+    ): Promise<CredentialsMetaResponse> => {
+      const response = await postV2StoreABearerTokenForAnMcpServer({
+        server_url,
+        token,
+      });
+      if (response.status !== 200) throw response.data;
+      const credsMeta: CredentialsMetaResponse = {
+        ...response.data,
+        title: response.data.title ?? undefined,
+        scopes: response.data.scopes ?? undefined,
+        username: response.data.username ?? undefined,
+        host: response.data.host ?? undefined,
+      };
+      upsertCredentials("mcp", credsMeta);
+      return credsMeta;
+    },
+    [upsertCredentials],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -287,7 +322,22 @@ export default function CredentialsProvider({
 
   const loadCredentials = useCallback(() => {
     if (!isLoggedIn || providerNames.length === 0) {
-      if (isLoggedIn == false) setProviders({});
+      // null is the sole "still loading" sentinel; an empty object means
+      // "loaded, and this user has no providers". Keeping those distinct
+      // matters because consumers render an unavailable state from the
+      // latter, and showing that to an entitled user is wrong.
+      //
+      // Logged out, once auth has settled: genuinely empty. isLoggedIn is
+      // false while the auth store initializes too, hence the isUserLoading
+      // guard — without it a logged-in user briefly gets the empty map.
+      if (!isUserLoading && !isLoggedIn) {
+        setProviders({});
+        return;
+      }
+      // Logged in but provider names haven't arrived yet. If a previous
+      // logout left the empty map published, clear it back to null so this
+      // reads as loading rather than "nothing is available to you".
+      if (isLoggedIn) setProviders(null);
       return;
     }
 
@@ -321,6 +371,7 @@ export default function CredentialsProvider({
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
+                  mcpStoreToken,
                   createAPIKeyCredentials: (
                     credentials: APIKeyCredentialsCreatable,
                   ) => createAPIKeyCredentials(provider, credentials),
@@ -342,6 +393,7 @@ export default function CredentialsProvider({
   }, [
     api,
     isLoggedIn,
+    isUserLoading,
     providerNames,
     systemProviders,
     createAPIKeyCredentials,
@@ -350,6 +402,7 @@ export default function CredentialsProvider({
     deleteCredentials,
     oAuthCallback,
     mcpOAuthCallback,
+    mcpStoreToken,
     onFailToast,
   ]);
 

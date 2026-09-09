@@ -12,7 +12,7 @@
 #                          wire backend/.env so AutoPilot runs without any
 #                          cloud API keys (CHAT_USE_LOCAL=true). See
 #                          docs/platform/copilot-local-llm.md.
-#   --ollama-model=NAME    Model to pull (default: hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M).
+#   --ollama-model=NAME    Model to pull (default: hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M).
 #   --ollama-host=URL      Use an existing Ollama at this URL instead of
 #                          installing one locally. Skips the Ollama install
 #                          but still writes the CHAT_USE_LOCAL .env entries.
@@ -33,7 +33,7 @@ DOCKER_CMD="docker"
 DOCKER_COMPOSE_CMD="docker compose"
 LOG_FILE=""
 WITH_OLLAMA=false
-OLLAMA_MODEL="hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M"
+OLLAMA_MODEL="hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 OLLAMA_HOST_URL=""
 
 # OS-family detection — Linux and macOS install Ollama very differently
@@ -175,7 +175,7 @@ bootstrap_ollama() {
         # the first chat turn fails with "model not found" — a setup
         # script that returns 0 should mean the platform is *usable*.
         # ``grep -F`` (fixed string) so model names containing regex
-        # metacharacters (``hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`` has ``.`` and
+        # metacharacters (``hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M`` has ``.`` and
         # ``:``) match literally, not as wildcards.
         if ! curl -sf "${OLLAMA_ROOT}/api/tags" \
             | grep -Fq "\"name\":\"$OLLAMA_MODEL\""; then
@@ -234,7 +234,7 @@ _bootstrap_ollama_linux() {
     sudo tee /etc/systemd/system/ollama.service.d/host.conf > /dev/null <<'OLLAMA_DROPIN'
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
-Environment="OLLAMA_CONTEXT_LENGTH=32768"
+Environment="OLLAMA_CONTEXT_LENGTH=262144"
 OLLAMA_DROPIN
     sudo systemctl daemon-reload
     sudo systemctl restart ollama
@@ -288,7 +288,7 @@ _bootstrap_ollama_macos() {
     # effect.
     launchctl setenv OLLAMA_HOST "0.0.0.0:11434" \
         || handle_error "launchctl setenv OLLAMA_HOST failed"
-    launchctl setenv OLLAMA_CONTEXT_LENGTH "32768" \
+    launchctl setenv OLLAMA_CONTEXT_LENGTH "262144" \
         || handle_error "launchctl setenv OLLAMA_CONTEXT_LENGTH failed"
     # Stop any currently-running Ollama (tray app, brew service, raw
     # ``ollama serve``). ``pkill`` matches by name; ``|| true`` so the
@@ -310,7 +310,7 @@ _bootstrap_ollama_macos() {
     # Export the same vars on the serve invocation so the headless server
     # honors them too. ``disown`` so the background job survives this script's
     # exit even in shells with ``shopt -s huponexit`` (login shells, some CI).
-    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="32768" \
+    OLLAMA_HOST="0.0.0.0:11434" OLLAMA_CONTEXT_LENGTH="262144" \
         nohup ollama serve >/dev/null 2>&1 &
     disown 2>/dev/null || true
     for _ in $(seq 1 20); do

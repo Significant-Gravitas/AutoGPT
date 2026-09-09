@@ -21,7 +21,7 @@ from ._format import (
     extract_fact,
     extract_temporal_validity,
 )
-from .client import derive_group_id, get_graphiti_client
+from .client import derive_memory_group_id, get_graphiti_client
 from .config import graphiti_config
 
 if TYPE_CHECKING:
@@ -84,6 +84,7 @@ async def refresh_warm_context(
     user_id: str | None,
     message: str | None,
     *,
+    expert_id: str | None = None,
     force: bool = False,
 ) -> str | None:
     """Re-fetch warm context on a FOLLOW-UP turn, keyed on the current message.
@@ -113,6 +114,7 @@ async def refresh_warm_context(
     return await fetch_warm_context(
         user_id,
         message or "",
+        expert_id,
         use_cross_encoder=False,
         timeout=graphiti_config.context_refresh_timeout,
     )
@@ -121,11 +123,12 @@ async def refresh_warm_context(
 async def fetch_warm_context(
     user_id: str,
     message: str,
+    expert_id: str | None = None,
     *,
     use_cross_encoder: bool = True,
     timeout: float | None = None,
 ) -> str | None:
-    """Fetch relevant temporal context for the current user and message.
+    """Fetch relevant temporal context for the current memory owner and message.
 
     Returns a formatted ``<temporal_context>`` block suitable for appending
     to the current turn's user message, or ``None`` on failure/empty.
@@ -146,7 +149,7 @@ async def fetch_warm_context(
     )
     try:
         return await asyncio.wait_for(
-            _fetch(user_id, message, use_cross_encoder=use_cross_encoder),
+            _fetch(user_id, message, expert_id, use_cross_encoder=use_cross_encoder),
             timeout=effective_timeout,
         )
     except asyncio.TimeoutError:
@@ -202,11 +205,15 @@ def _build_search_config(use_cross_encoder: bool) -> "SearchConfig":
 
 
 async def _fetch(
-    user_id: str, message: str, *, use_cross_encoder: bool = True
+    user_id: str,
+    message: str,
+    expert_id: str | None = None,
+    *,
+    use_cross_encoder: bool = True,
 ) -> str | None:
     search_config = _build_search_config(use_cross_encoder)
 
-    group_id = derive_group_id(user_id)
+    group_id = derive_memory_group_id(user_id, expert_id)
     client = await get_graphiti_client(group_id)
 
     edge_results, episodes = await asyncio.gather(
@@ -235,7 +242,7 @@ async def _fetch(
     # an unratified memory — and would do so once per substantive turn rather
     # than once per session. Refreshes still retrieve; they just don't ratify.
     if edges and use_cross_encoder:
-        _spawn_ratification_hits(user_id, edges)
+        _spawn_ratification_hits(user_id, expert_id, edges)
 
     if not edges and not episodes:
         return None
@@ -259,7 +266,7 @@ def _on_hit_task_done(task: asyncio.Task) -> None:
         logger.warning("Ratification hit task %s failed", task.get_name(), exc_info=exc)
 
 
-def _spawn_ratification_hits(user_id: str, edges) -> None:
+def _spawn_ratification_hits(user_id: str, expert_id: str | None, edges) -> None:
     """Fire-and-forget the ratification hit-hook for retrieved edges.
 
     Imports lazily so the dream/ratification module isn't pulled into
@@ -274,7 +281,7 @@ def _spawn_ratification_hits(user_id: str, edges) -> None:
     from backend.copilot.dream.ratification import try_ratify_on_hit
 
     task = asyncio.create_task(
-        try_ratify_on_hit(user_id, edge_uuids),
+        try_ratify_on_hit(user_id, edge_uuids, expert_id=expert_id),
         name=f"ratify-hits-{user_id[:12]}",
     )
     _pending_hit_tasks.add(task)

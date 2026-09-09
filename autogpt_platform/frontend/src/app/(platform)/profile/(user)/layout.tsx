@@ -65,8 +65,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     },
   ];
 
-  // Under the new layout these legacy pages redirect to /settings — render
-  // nothing while the replace() is in flight so the old shell never flashes.
+  // These legacy pages redirect to /settings — render nothing while the
+  // replace() is in flight so the old shell never flashes.
   if (isRedirecting) return null;
 
   return (

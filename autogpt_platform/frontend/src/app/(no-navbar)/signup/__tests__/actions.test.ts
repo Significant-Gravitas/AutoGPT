@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   rollbackSession: vi.fn(),
   postV1GetOrCreateUser: vi.fn(),
   scheduleAccountCreatedGoal: vi.fn(),
+  cookieSet: vi.fn(),
 }));
 
 vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
@@ -24,6 +25,7 @@ vi.mock("@/lib/auth/server/rollbackSession", () => ({
 }));
 vi.mock("next/headers", () => ({
   headers: vi.fn().mockResolvedValue(new Headers()),
+  cookies: vi.fn().mockResolvedValue({ set: mocks.cookieSet }),
 }));
 vi.mock("@/services/analytics/datafast-server", async (importOriginal) => {
   const actual =
@@ -67,6 +69,13 @@ describe("email signup account creation tracking", () => {
     expect(result.success).toBe(true);
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledWith("email");
+    // The browser reports the Google Ads sign-up conversion from this flag on
+    // the next page it renders.
+    expect(mocks.cookieSet).toHaveBeenCalledWith(
+      "agpt_account_created",
+      "email",
+      expect.objectContaining({ maxAge: 600, path: "/" }),
+    );
   });
 
   it("does not track an account that already existed", async () => {
@@ -85,6 +94,7 @@ describe("email signup account creation tracking", () => {
 
     expect(result.success).toBe(true);
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
   });
 
   it("reports a thrown backend error instead of completing signup", async () => {

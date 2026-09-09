@@ -27,6 +27,7 @@ import {
   Share03Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Session {
   id: string;
@@ -106,12 +107,12 @@ export function RecentChatItem({
           value={editingTitle}
           onChange={(e) => onEditingTitleChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (isKey(e, "Enter")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onSubmitRename(session.id);
               e.currentTarget.blur();
-            } else if (e.key === "Escape") {
+            } else if (isKey(e, "Escape")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onCancelRename();
@@ -155,11 +156,7 @@ export function RecentChatItem({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction
-            showOnHover
-            aria-label="Chat actions"
-            className="border border-zinc-200 bg-white"
-          >
+          <SidebarMenuAction showOnHover aria-label="Chat actions">
             <Icon
               icon={MoreHorizontalIcon}
               className="text-sidebar-foreground/90"

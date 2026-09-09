@@ -1012,8 +1012,23 @@ class TestSystemPromptPreset:
         assert isinstance(fresh, dict)
         assert fresh.get("exclude_dynamic_sections") is True
 
-    def test_default_config_is_enabled(self, _clean_config_env):
-        """The default value for claude_agent_cross_user_prompt_cache is True."""
+    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
+        """The default config passes only AutoGPT's Copilot system prompt."""
+        cfg = cfg_mod.ChatConfig(
+            _env_file=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            aux_api_key="or-aux-key",
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
+
+    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -1024,20 +1039,6 @@ class TestSystemPromptPreset:
             aux_api_key="or-aux-key",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
-
-    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
 class TestStreamErrorCodePrefix:
@@ -1110,7 +1111,7 @@ class TestRetryStateObservedModel:
         return _RetryState(
             options=options,
             query_message="",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -1552,7 +1553,7 @@ class TestConsumeSdkUntilDone:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -1592,7 +1593,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
             yield ResultMessage(
                 subtype="success",
@@ -1637,7 +1638,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield None  # heartbeat
             yield ResultMessage(
                 subtype="success",
@@ -1686,7 +1687,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield AssistantMessage(
                 content=[
                     ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
@@ -1755,7 +1756,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="init", data={})
             yield AssistantMessage(
                 content=[
@@ -1817,7 +1818,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield ResultMessage(
                 subtype="error",
                 duration_ms=1,
@@ -1856,7 +1857,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             yield SystemMessage(subtype="task_progress", data={"step": 1})
             yield ResultMessage(
                 subtype="success",
@@ -1895,7 +1896,7 @@ class TestConsumeSdkUntilDone:
         acc = self._acc()
         loop_state = self._loop_state()
 
-        async def fake_iter(client):
+        async def fake_iter(client, wake=None, tool_display_wake=None):
             # Two consecutive AssistantMessages with empty tool args —
             # the breaker counter should advance but not yet trip.
             for i in range(2):
@@ -2106,7 +2107,7 @@ class TestStreamEndedWithoutResultMessage:
         return _RetryState(
             options=MagicMock(),
             query_message="hello",
-            was_compacted=False,
+            compaction_stats=None,
             use_resume=False,
             resume_file=None,
             transcript_msg_count=0,
@@ -2136,7 +2137,7 @@ class TestStreamEndedWithoutResultMessage:
         ctx = self._ctx()
         state = self._state()
 
-        async def empty_iter(_client):
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
             # Drain immediately — no ResultMessage ever arrives. Mirrors
             # the CLI exiting on per-query ``max_budget_usd`` exhaustion
             # mid-tool-call.
@@ -2569,6 +2570,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
             )
@@ -2591,10 +2593,33 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="continue",
                 was_compacted=True,
             )
         assert mock_refresh.await_args.kwargs["force"] is True
+
+    @pytest.mark.asyncio
+    async def test_refresh_is_scoped_to_the_expert(self):
+        """The first turn injects the EXPERT's warm context; a follow-up turn
+        that refreshed from the user's personal graph would swap the memory
+        set mid-conversation."""
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            await _append_follow_up_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id="expert-1",
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+            )
+        assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
 
     @pytest.mark.asyncio
     async def test_retry_reuses_the_cached_block_without_a_second_fetch(self):
@@ -2612,6 +2637,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
                 block_cache=cache,
@@ -2622,6 +2648,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=True,
                 block_cache=cache,
@@ -2649,6 +2676,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="continue",
                 was_compacted=False,
                 block_cache=cache,
@@ -2659,6 +2687,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="continue",
                 was_compacted=True,
                 block_cache=cache,
@@ -2684,6 +2713,7 @@ class TestAppendFollowUpWarmContext:
                 has_history=True,
                 is_user_message=True,
                 user_id="u1",
+                expert_id=None,
                 current_message="what is Sarah working on this week",
                 was_compacted=False,
             )
@@ -2707,6 +2737,7 @@ class TestAppendFollowUpWarmContext:
                     "has_history": True,
                     "is_user_message": True,
                     "user_id": "u1",
+                    "expert_id": None,
                     "current_message": "a substantive follow-up request here",
                     "was_compacted": False,
                 }

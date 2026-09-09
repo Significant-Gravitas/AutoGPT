@@ -16,6 +16,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
 from . import cache as store_cache
+from . import categories as store_categories
 from . import db as store_db
 from . import image_gen as store_image_gen
 from . import media as store_media
@@ -184,6 +185,23 @@ async def get_agents(
 
 
 @router.get(
+    "/categories",
+    summary="List store categories",
+    tags=["store", "public"],
+)
+async def get_categories() -> list[store_model.StoreCategoryInfo]:
+    """The canonical categories a listing can be filed under."""
+    return [
+        store_model.StoreCategoryInfo(
+            value=category.value,
+            label=store_categories.CATEGORY_LABELS[category],
+            description=store_categories.CATEGORY_DESCRIPTIONS[category],
+        )
+        for category in store_categories.StoreCategory
+    ]
+
+
+@router.get(
     "/agents/{username}/{agent_name}",
     summary="Get specific agent",
     tags=["store", "public"],
@@ -232,11 +250,12 @@ async def post_user_review_for_agent(
     "/listings/versions/{store_listing_version_id}",
     summary="Get agent by version",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def get_agent_by_listing_version(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:
+    # Public on purpose: the query only reads the APPROVED-only StoreAgent
+    # view, so a signed-out expert page can show its workflows' preview images.
     agent = await store_db.get_store_agent_by_version_id(store_listing_version_id)
     return agent
 

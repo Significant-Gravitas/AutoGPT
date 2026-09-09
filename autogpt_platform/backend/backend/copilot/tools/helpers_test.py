@@ -13,6 +13,7 @@ from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_block_provider,
     prepare_block_for_execution,
     require_library_check,
 )
@@ -23,13 +24,75 @@ from backend.copilot.tools.models import (
     ReviewRequiredResponse,
     SetupRequirementsResponse,
 )
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    CredentialsType,
+)
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
+
+
+class TestGetBlockProvider:
+    def test_returns_only_provider(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) == "google"
+
+    def test_returns_none_for_multiple_providers(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE, ProviderName.GITHUB}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_without_providers(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = {}
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_for_invalid_schema_info_shape(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.return_value = []
+
+        assert get_block_provider(block) is None
+
+    def test_returns_none_when_schema_introspection_fails(self):
+        block = MagicMock()
+        block.input_schema.get_credentials_fields_info.side_effect = RuntimeError
+
+        assert get_block_provider(block) is None
+
+    def test_retries_schema_introspection_after_transient_failure(self):
+        block = MagicMock()
+        info = CredentialsFieldInfo[ProviderName, CredentialsType](
+            credentials_provider=frozenset({ProviderName.GOOGLE}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        block.input_schema.get_credentials_fields_info.side_effect = [
+            RuntimeError,
+            {"credentials": info},
+        ]
+
+        assert get_block_provider(block) is None
+        assert get_block_provider(block) == "google"
 
 
 def _make_block(
@@ -1777,3 +1840,58 @@ class TestRequireLibraryCheck:
         session = make_session("user-lib-check", guide_read=False, library_check=False)
         session.metadata.builder_graph_id = "some-graph-id"
         assert require_library_check(session, "create_agent") is None
+
+
+class TestExecuteBlockExpertFileScope:
+    """A ``workspace://`` block input is a second door into the workspace, so
+    the run it belongs to must carry the session's expert."""
+
+    async def test_expert_block_run_cannot_read_another_sessions_file(self):
+        result = await _store_workspace_file("/sessions/personal/private.txt")
+        assert isinstance(result, ErrorResponse)
+        assert "outside this expert's scope" in result.message
+
+    async def test_expert_block_run_reads_its_own_session_file(self):
+        result = await _store_workspace_file(f"/sessions/{_SESSION}/notes.txt")
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+async def _store_workspace_file(path: str):
+    """Run FileStoreBlock on ``workspace://<path>`` in an expert session."""
+    from backend.blocks.basic import FileStoreBlock
+    from backend.data.workspace_scope import WorkspaceScope
+    from backend.util.workspace_test import _make_workspace_file
+
+    scope_db = MagicMock()
+    scope_db.resolve_expert_workspace_scope = AsyncMock(
+        return_value=WorkspaceScope(expert_id="expert-a")
+    )
+    files = MagicMock()
+    files.get_workspace_file_by_path = AsyncMock(
+        return_value=_make_workspace_file(path=path)
+    )
+    storage = AsyncMock()
+    storage.retrieve.return_value = b"secret"
+    credit_patch, _ = _patch_credit_db()
+
+    with (
+        _patch_workspace(),
+        credit_patch,
+        patch("backend.data.db_accessors.workspace_db", return_value=scope_db),
+        patch("backend.util.workspace.workspace_db", return_value=files),
+        patch("backend.util.workspace.get_workspace_storage", return_value=storage),
+        patch("backend.util.file.scan_content_safe", AsyncMock()),
+        patch("backend.util.file.get_cloud_storage_handler", AsyncMock()),
+    ):
+        return await execute_block(
+            block=FileStoreBlock(),
+            block_id="cbb50872-625b-42f0-8203-a2ae78242d8a",
+            input_data={"file_in": f"workspace://{path}", "base_64": True},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-scope",
+            matched_credentials={},
+            dry_run=False,
+            expert_id="expert-a",
+        )

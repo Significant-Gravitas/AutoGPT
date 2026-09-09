@@ -33,7 +33,11 @@ class TestFetchWarmContextTimeout:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         async def _slow_fetch(
-            user_id: str, message: str, *, use_cross_encoder: bool = True
+            user_id: str,
+            message: str,
+            expert_id: str | None = None,
+            *,
+            use_cross_encoder: bool = True,
         ) -> str:
             await asyncio.sleep(10)
             return "<temporal_context>data</temporal_context>"
@@ -52,7 +56,7 @@ class TestFetchWarmContextGeneralError:
         with (
             patch.object(
                 context,
-                "derive_group_id",
+                "derive_memory_group_id",
                 return_value="user_abc",
             ),
             patch.object(
@@ -94,7 +98,7 @@ class TestFetchInternal:
         mock_client.retrieve_episodes.return_value = []
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
@@ -105,6 +109,36 @@ class TestFetchInternal:
             result = await context._fetch("test-user", "hello")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_expert_scope_is_used_for_all_retrievals(self) -> None:
+        mock_client = AsyncMock()
+        mock_client.search_.return_value = _search_results([])
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(
+                context,
+                "derive_memory_group_id",
+                return_value="expert_private_group",
+            ) as derive_mock,
+            patch.object(
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ) as get_client_mock,
+        ):
+            await context._fetch("user-1", "hello", "expert-1")
+
+        derive_mock.assert_called_once_with("user-1", "expert-1")
+        get_client_mock.assert_awaited_once_with("expert_private_group")
+        assert mock_client.search_.await_args.kwargs["group_ids"] == [
+            "expert_private_group"
+        ]
+        assert mock_client.retrieve_episodes.await_args.kwargs["group_ids"] == [
+            "expert_private_group"
+        ]
 
     @pytest.mark.asyncio
     async def test_returns_context_with_edges(self) -> None:
@@ -119,7 +153,7 @@ class TestFetchInternal:
         mock_client.retrieve_episodes.return_value = []
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
@@ -144,7 +178,7 @@ class TestFetchInternal:
         mock_client.retrieve_episodes.return_value = [ep]
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
@@ -170,7 +204,7 @@ class TestFetchInternal:
         mock_client.retrieve_episodes.return_value = []
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
@@ -467,7 +501,7 @@ class TestRatificationHitHookFiresFireAndForget:
             return AsyncMock()
 
         monkeypatch.setattr(context.asyncio, "create_task", fake_create_task)
-        context._spawn_ratification_hits("user-abc", edges=[])
+        context._spawn_ratification_hits("user-abc", None, edges=[])
         assert created_tasks == []
 
     def test_spawn_helper_creates_task_with_retrieved_uuids(
@@ -476,10 +510,15 @@ class TestRatificationHitHookFiresFireAndForget:
         """Edges with uuid attrs → fire-and-forget task scheduled with
         all of their uuids. Edges missing a uuid are filtered out so
         the hook never passes ``None`` to the ratification module."""
-        captured_calls: list[tuple[str, list[str]]] = []
+        captured_calls: list[tuple[str, list[str], str | None]] = []
 
-        async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
-            captured_calls.append((user_id, edge_uuids))
+        async def fake_try_ratify(
+            user_id: str,
+            edge_uuids: list[str],
+            *,
+            expert_id: str | None = None,
+        ):
+            captured_calls.append((user_id, edge_uuids, expert_id))
 
         from backend.copilot.dream import ratification as ratification_mod
 
@@ -494,15 +533,16 @@ class TestRatificationHitHookFiresFireAndForget:
                 SimpleNamespace(uuid=None),  # filtered
                 SimpleNamespace(),  # no uuid attr at all → filtered
             ]
-            context._spawn_ratification_hits("user-xyz", edges=edges)
+            context._spawn_ratification_hits("user-xyz", "expert-1", edges=edges)
             # Yield once so the spawned task runs.
             await asyncio.sleep(0)
 
         asyncio.run(driver())
         assert len(captured_calls) == 1
-        user_id, uuids = captured_calls[0]
+        user_id, uuids, expert_id = captured_calls[0]
         assert user_id == "user-xyz"
         assert uuids == ["edge-a", "edge-b"]
+        assert expert_id == "expert-1"
 
 
 class TestRatificationHitTaskRetention:
@@ -520,12 +560,17 @@ class TestRatificationHitTaskRetention:
             context._pending_hit_tasks.clear()
             release = asyncio.Event()
 
-            async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+            async def fake_try_ratify(
+                user_id: str,
+                edge_uuids: list[str],
+                *,
+                expert_id: str | None = None,
+            ):
                 await release.wait()
 
             monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
             context._spawn_ratification_hits(
-                "user-xyz", edges=[SimpleNamespace(uuid="edge-a")]
+                "user-xyz", None, edges=[SimpleNamespace(uuid="edge-a")]
             )
             # Strong ref held while the task is in flight.
             assert len(context._pending_hit_tasks) == 1
@@ -549,12 +594,17 @@ class TestRatificationHitTaskRetention:
         async def driver():
             context._pending_hit_tasks.clear()
 
-            async def fake_try_ratify(user_id: str, edge_uuids: list[str]):
+            async def fake_try_ratify(
+                user_id: str,
+                edge_uuids: list[str],
+                *,
+                expert_id: str | None = None,
+            ):
                 raise RuntimeError("falkordb down")
 
             monkeypatch.setattr(ratification_mod, "try_ratify_on_hit", fake_try_ratify)
             context._spawn_ratification_hits(
-                "user-xyz", edges=[SimpleNamespace(uuid="edge-a")]
+                "user-xyz", None, edges=[SimpleNamespace(uuid="edge-a")]
             )
             task = next(iter(context._pending_hit_tasks))
             await asyncio.gather(task, return_exceptions=True)
@@ -681,6 +731,53 @@ class TestRefreshWarmContext:
         mock_fetch.assert_awaited_once()
         assert mock_fetch.await_args.kwargs["use_cross_encoder"] is False
 
+    @pytest.mark.asyncio
+    async def test_refresh_is_scoped_to_the_expert_graph(self) -> None:
+        """An expert chat must refresh from the EXPERT's memory, not the
+        user's personal graph — otherwise the follow-up turn recalls facts the
+        first turn deliberately never saw."""
+        with patch.object(
+            context,
+            "fetch_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>x</temporal_context>",
+        ) as mock_fetch:
+            await refresh_warm_context(
+                "user-abc",
+                "deploy the staging environment now",
+                expert_id="expert-1",
+            )
+        assert mock_fetch.await_args.args[2] == "expert-1"
+
+    @pytest.mark.asyncio
+    async def test_expert_id_reaches_the_group_id_derivation(self) -> None:
+        """End-to-end through the real ``fetch_warm_context``: the expert must
+        select the graph, so a scoping regression can't hide behind a mock of
+        the layer that does the derivation."""
+        mock_client = AsyncMock()
+        mock_client.search_.return_value = _search_results([])
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(
+                context, "derive_memory_group_id", return_value="expert_graph"
+            ) as mock_derive,
+            patch.object(
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
+            ),
+        ):
+            await refresh_warm_context(
+                "user-abc",
+                "deploy the staging environment now",
+                expert_id="expert-1",
+            )
+
+        mock_derive.assert_called_once_with("user-abc", "expert-1")
+        assert mock_client.search_.await_args.kwargs["group_ids"] == ["expert_graph"]
+
 
 class TestRefreshTimeoutIsApplied:
     """The refresh's tighter budget must be APPLIED, not merely passed."""
@@ -716,7 +813,7 @@ class TestFetchRecipeSelection:
         mock_client.retrieve_episodes.return_value = []
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
@@ -759,7 +856,7 @@ class TestRatificationGatedToCrossEncoder:
         mock_client.retrieve_episodes.return_value = []
 
         with (
-            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(context, "derive_memory_group_id", return_value="user_abc"),
             patch.object(
                 context,
                 "get_graphiti_client",
