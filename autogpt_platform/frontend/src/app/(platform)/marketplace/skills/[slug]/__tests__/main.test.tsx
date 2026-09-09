@@ -14,6 +14,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { SkillPage } from "../components/SkillPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
+const mockNotFound = vi.hoisted(() => vi.fn());
+const skillsHubFlag = vi.hoisted(() => ({ enabled: true, ready: true }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -27,9 +29,18 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/marketplace/skills/outreach-playbook",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({ slug: "outreach-playbook" }),
+  notFound: mockNotFound,
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useFlagStatus: () => skillsHubFlag };
+});
 
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
@@ -76,6 +87,19 @@ function renderPage(credentials: CredentialsMetaResponse[]) {
 describe("Marketplace skill page", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { id: "user-1" }, isLoggedIn: true });
+    mockNotFound.mockClear();
+    skillsHubFlag.enabled = true;
+    skillsHubFlag.ready = true;
+  });
+
+  test("is not found when the skills-hub flag is off", async () => {
+    skillsHubFlag.enabled = false;
+    renderPage([]);
+
+    // A bookmarked URL reaches this page without passing the marketplace
+    // shelf, so the shelf being hidden is not what keeps the feature dark.
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(screen.queryByTestId("skill-install-button")).toBeNull();
   });
 
   test("shows the instructions the AutoPilot will follow", async () => {

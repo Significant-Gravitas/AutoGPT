@@ -18,12 +18,18 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { slug } = await _params;
-  const { data } = await getV2GetMarketplaceSkill(slug);
-  const skill = data as MarketplaceSkillDetails;
-  return {
-    title: `${skill.name} - AutoGPT Marketplace`,
-    description: skill.description,
-  };
+  // The generated client throws on any non-2xx, so an unknown or gated slug
+  // would render a 500 here instead of the page's own not-found.
+  try {
+    const { data } = await getV2GetMarketplaceSkill(slug);
+    const skill = data as MarketplaceSkillDetails;
+    return {
+      title: `${skill.name} - AutoGPT Marketplace`,
+      description: skill.description,
+    };
+  } catch {
+    return { title: "Skill - AutoGPT Marketplace" };
+  }
 }
 
 export default async function MarketplaceSkillPage({

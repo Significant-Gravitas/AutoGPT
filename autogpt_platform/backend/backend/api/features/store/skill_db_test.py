@@ -1,4 +1,5 @@
 import datetime
+from types import SimpleNamespace
 
 import prisma.enums
 import prisma.models
@@ -153,6 +154,7 @@ async def test_detail_of_an_off_shelf_listing_is_not_found(has_approved_version:
 async def test_install_stores_under_the_listing_slug_and_counts(mocker):
     listing = await _make_listing("install-one", body="# do this\n")
     stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
 
     result = await skill_db.install_marketplace_skill("user-1", "install-one")
 
@@ -167,6 +169,25 @@ async def test_install_stores_under_the_listing_slug_and_counts(mocker):
     )
     assert refreshed is not None
     assert refreshed.installCount == 1
+
+
+async def test_reinstalling_stores_again_but_does_not_count_again(mocker):
+    listing = await _make_listing("install-twice", body="# do this\n")
+    stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(
+        skill_db,
+        "list_user_skills",
+        return_value=[SimpleNamespace(name="install-twice")],
+    )
+
+    await skill_db.install_marketplace_skill("user-1", "install-twice")
+
+    stored.assert_awaited_once()
+    refreshed = await prisma.models.SkillListing.prisma().find_unique(
+        where={"id": listing.id}
+    )
+    assert refreshed is not None
+    assert refreshed.installCount == 0
 
 
 @pytest.mark.parametrize("has_approved_version", OFF_SHELF)
@@ -196,6 +217,7 @@ async def test_seed_is_idempotent_and_keeps_one_version_per_listing():
 async def test_seeded_skills_are_installable_under_their_own_slug(mocker):
     await skill_seed.seed_starter_skills()
     stored = mocker.patch.object(skill_db, "store_user_skill")
+    mocker.patch.object(skill_db, "list_user_skills", return_value=[])
 
     result = await skill_db.install_marketplace_skill("user-1", "brand-voice-guide")
 
