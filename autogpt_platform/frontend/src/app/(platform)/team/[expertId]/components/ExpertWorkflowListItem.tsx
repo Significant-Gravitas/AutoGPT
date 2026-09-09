@@ -65,22 +65,25 @@ export function ExpertWorkflowListItem({
         />
       ) : null}
 
+      {/* A square as tall as the text column, title through meta line. */}
       {libraryAgent?.image_url ? (
-        <Image
-          src={libraryAgent.image_url}
-          alt=""
-          width={56}
-          height={36}
-          className="pointer-events-none h-9 w-14 flex-shrink-0 rounded-md bg-zinc-100 object-cover"
-        />
+        <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
+          <Image
+            src={libraryAgent.image_url}
+            alt=""
+            fill
+            sizes="96px"
+            className="object-cover"
+          />
+        </div>
       ) : (
         <div
           className={cn(
             accentClassName,
-            "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
+            "pointer-events-none flex aspect-square shrink-0 items-center justify-center self-stretch rounded-lg border-0",
           )}
         >
-          <Icon icon={WorkflowSquare01Icon} size={18} aria-hidden="true" />
+          <Icon icon={WorkflowSquare01Icon} size={20} aria-hidden="true" />
         </div>
       )}
 
