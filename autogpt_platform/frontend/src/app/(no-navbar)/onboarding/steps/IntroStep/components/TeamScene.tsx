@@ -133,58 +133,60 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 export function TeamScene() {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="relative" style={{ width: WIDTH, height: HEIGHT }}>
-        <svg
-          aria-hidden
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="absolute inset-0 h-full w-full"
-        >
-          {PARENTS.map((p) => (
-            <motion.path
-              key={p.name}
-              d={branch(p)}
-              fill="none"
-              className="stroke-zinc-300"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{
-                delay: 0.25 + depth(p) * 0.3,
-                duration: 0.7,
-                ease: EASE,
-              }}
-            />
-          ))}
-        </svg>
-        {TEAM.map((member) => (
-          <motion.div
-            key={member.name}
-            initial={{ opacity: 0, y: 10, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+      <svg
+        role="img"
+        aria-label="AutoPilot and your team of AI experts"
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="h-auto w-full max-w-[420px]"
+      >
+        {PARENTS.map((p) => (
+          <motion.path
+            key={p.name}
+            d={branch(p)}
+            fill="none"
+            className="stroke-zinc-300"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
             transition={{
-              delay: 0.1 + depth(member) * 0.3,
-              duration: 0.6,
+              delay: 0.25 + depth(p) * 0.3,
+              duration: 0.7,
               ease: EASE,
             }}
-            className="absolute"
-            style={{
-              left: member.x - member.size / 2,
-              top: member.y - member.size / 2,
-            }}
-          >
-            <BotAvatar
-              config={member.config}
-              status={member.status}
-              size={member.size}
-              poseOffset={facing(yawToward(member))}
-              trackPointer={member.name === "AutoPilot"}
-              showBadge={false}
-            />
-          </motion.div>
+          />
         ))}
-      </div>
+        {TEAM.map((member) => (
+          <foreignObject
+            key={member.name}
+            x={member.x - member.size / 2}
+            y={member.y - member.size / 2}
+            width={member.size}
+            height={member.size}
+            overflow="visible"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{
+                delay: 0.1 + depth(member) * 0.3,
+                duration: 0.6,
+                ease: EASE,
+              }}
+            >
+              <BotAvatar
+                config={member.config}
+                status={member.status}
+                size={member.size}
+                poseOffset={facing(yawToward(member))}
+                trackPointer={member.name === "AutoPilot"}
+                showBadge={false}
+              />
+            </motion.div>
+          </foreignObject>
+        ))}
+      </svg>
     </div>
   );
 }
