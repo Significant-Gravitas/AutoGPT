@@ -21,7 +21,7 @@ export function ExpertBudgetSection({ expert }: Props) {
   return (
     <section
       aria-label={`${expert.name} budget`}
-      className="flex w-full flex-col gap-1.5 lg:w-1/2"
+      className="flex w-full shrink-0 flex-col gap-1.5 md:ml-auto md:w-64"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">

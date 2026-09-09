@@ -147,13 +147,14 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        <ExpertBudgetSection expert={expert} />
-
-        {expert.tagline ? (
-          <Text variant="body" tone="muted">
-            {expert.tagline}
-          </Text>
-        ) : null}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-8">
+          {expert.tagline ? (
+            <Text variant="body" tone="muted" className="min-w-0 flex-1">
+              {expert.tagline}
+            </Text>
+          ) : null}
+          <ExpertBudgetSection expert={expert} />
+        </div>
 
         <ExpertNeedsYouSection
           expertId={expert.id}
