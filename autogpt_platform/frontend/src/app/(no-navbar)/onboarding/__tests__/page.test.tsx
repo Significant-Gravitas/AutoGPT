@@ -707,3 +707,46 @@ it("skips both intro and hire when hiring is disabled independently of the team 
   expect(await screen.findByTestId("step-preparing")).toBeDefined();
   expect(screen.queryByTestId("step-hire")).toBeNull();
 });
+
+it("submits the profile once if account data arrives after Preparing", async () => {
+  window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+  currentSearchParams = new URLSearchParams("step=3");
+  useOnboardingWizardStore.setState({
+    role: "Engineering",
+    painPoints: ["slow builds"],
+  });
+  const { rerender } = render(<OnboardingPage />);
+  expect(await screen.findByTestId("step-preparing")).toBeDefined();
+  expect(submitOnboardingProfile).not.toHaveBeenCalled();
+  mockUser = {
+    id: "u1",
+    email: "reinier@example.com",
+    user_metadata: { name: "Reinier Bot" },
+  };
+  rerender(<OnboardingPage />);
+  await waitFor(() =>
+    expect(submitOnboardingProfile).toHaveBeenCalledWith({
+      user_name: "Reinier",
+      user_role: "Engineering",
+      pain_points: ["slow builds"],
+    }),
+  );
+  mockUser = { ...mockUser };
+  rerender(<OnboardingPage />);
+  expect(submitOnboardingProfile).toHaveBeenCalledTimes(1);
+});
+
+it.each([1, 2])(
+  "preserves reached step %s on a checkout return when payment is disabled",
+  async (highest) => {
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, String(highest));
+    currentSearchParams = new URLSearchParams("step=4&subscription=success");
+    render(<OnboardingPage />);
+    expect(
+      await screen.findByTestId(
+        highest === 1 ? "step-role" : "step-painpoints",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+  },
+);

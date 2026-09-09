@@ -187,9 +187,10 @@ export function useOnboardingPage() {
     const isSubscriptionSuccess =
       searchParams.get("subscription") === "success" ||
       trialConfirmation.active;
-    const ceiling = isSubscriptionSuccess
-      ? (Math.min((steps.subscription ?? 0) + 1, preparingStep) as Step)
-      : (Math.min(readHighestStep(), preparingStep) as Step);
+    const ceiling =
+      isSubscriptionSuccess && steps.subscription !== undefined
+        ? (Math.min(steps.subscription + 1, preparingStep) as Step)
+        : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
@@ -280,8 +281,6 @@ export function useOnboardingPage() {
   // Submit profile when entering the Preparing step
   useEffect(() => {
     if (currentStep !== preparingStep || hasSubmitted.current) return;
-    hasSubmitted.current = true;
-
     const { role, painPoints } = normalizeOnboardingProfile(
       useOnboardingWizardStore.getState(),
     );
@@ -291,6 +290,7 @@ export function useOnboardingPage() {
     // Guard against an empty role so a stray Preparing visit can't blank a
     // previously-saved profile.
     if (!role.trim() || !userName) return;
+    hasSubmitted.current = true;
 
     postV1SubmitOnboardingProfile({
       user_name: userName,
