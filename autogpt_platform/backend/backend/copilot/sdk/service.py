@@ -4724,12 +4724,20 @@ def _start_follow_up_warm_context(
         return None
     if not graphiti_context.should_refresh_warm_context(current_message):
         return None
-    return asyncio.create_task(
+    task = asyncio.create_task(
         graphiti_context.refresh_warm_context(
             user_id, current_message, expert_id=expert_id
         ),
         name=f"warm-ctx-refresh-{user_id[:12]}",
     )
+    # The event loop holds only a weak reference. Between here and the join
+    # the turn suspends at several ``yield``s, and a consumer that closes the
+    # generator there would drop the last strong ref mid-flight — the task
+    # gets collected, and "Task was destroyed but it is pending!" is all
+    # anyone sees. Same registry the other spawns in this module use.
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
 
 
 async def _append_follow_up_warm_context(
@@ -5637,6 +5645,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # read the compaction row as history and the current user message as
         # prior context, seeding a transcript that repeats the live turn.
         pre_compaction_msg_count = len(session.messages)
+        # SECRT-2378 forces a refresh right after a compaction, even on a
+        # message the substance gate would skip. `_build_query_message`
+        # reports that by returning stats, so the flag is derived rather
+        # than tracked separately and cannot drift from what actually ran.
+        was_compacted = compaction_stats is not None
         if compaction_stats is not None:
             for ev in compaction.emit_pre_query_end(session, compaction_stats):
                 yield ev
@@ -5873,8 +5886,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # inject_user_context. Follow-up turns get NO warm context in
                 # current_message, so re-run the SECRT-2378 refresh here too —
                 # otherwise a follow-up turn that recovers via retry-time
-                # compaction (``state.was_compacted``) would drop deterministic
-                # recall on exactly the path where it matters most.
+                # compaction would drop deterministic recall on exactly the
+                # path where it matters most. The force flag comes off this
+                # attempt's own ``state.compaction_stats``.
                 state.query_message = await _append_follow_up_warm_context(
                     state.query_message,
                     graphiti_enabled=graphiti_enabled,
@@ -5883,7 +5897,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     user_id=user_id,
                     expert_id=session.expert_id,
                     current_message=current_message,
-                    was_compacted=state.was_compacted,
+                    was_compacted=state.compaction_stats is not None,
                     block_cache=warm_ctx_block_cache,
                 )
                 # Re-inject per-turn builder context so retries carry the

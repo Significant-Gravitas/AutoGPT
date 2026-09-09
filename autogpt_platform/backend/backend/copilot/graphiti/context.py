@@ -56,11 +56,16 @@ def should_refresh_warm_context(message: str | None) -> bool:
     """
     if not message:
         return False
-    return _signal_units(message) >= WARM_CONTEXT_REFRESH_MIN_WORDS
+    return _has_signal_units(message, WARM_CONTEXT_REFRESH_MIN_WORDS)
 
 
-def _signal_units(message: str) -> int:
-    """Count retrieval "signal units" in *message* for the substance gate.
+def _has_signal_units(message: str, threshold: int) -> bool:
+    """Whether *message* carries at least *threshold* retrieval signal units.
+
+    Short-circuits: the gate only needs to know whether the threshold is
+    reached, and this runs on the pre-query path where a user can paste a
+    large log. Counting the whole message would make that a full character
+    walk for an answer settled in the first few words.
 
     A plain ``str.split()`` word count under-counts languages that don't
     separate words with whitespace (Japanese, Chinese, Thai) — a long CJK
@@ -68,11 +73,22 @@ def _signal_units(message: str) -> int:
     the refresh for those users.  So each CJK/ideographic character counts as
     its own unit and is added to the whitespace-word count of the rest.
     """
-    cjk = sum(1 for ch in message if _is_unspaced_script(ch))
-    # Words made of non-CJK runs; CJK chars are counted individually above, so
-    # exclude them from the whitespace-split count to avoid double counting.
-    non_cjk = "".join(" " if _is_unspaced_script(ch) else ch for ch in message)
-    return cjk + len(non_cjk.split())
+    units = 0
+    in_word = False
+    for ch in message:
+        # CJK/ideographic characters count individually; everything else is
+        # counted by whitespace-delimited run, so neither is double counted.
+        if _is_unspaced_script(ch):
+            units += 1
+            in_word = False
+        elif ch.isspace():
+            in_word = False
+        elif not in_word:
+            in_word = True
+            units += 1
+        if units >= threshold:
+            return True
+    return False
 
 
 def _is_unspaced_script(ch: str) -> bool:
