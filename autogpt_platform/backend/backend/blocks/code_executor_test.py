@@ -101,7 +101,28 @@ class TestBuildVariableInjection:
         envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
         # The dangerous string lives only in the env payload, never in the code.
         assert "os.system" not in prefix
-        assert envs[VARIABLES_ENV_KEY] == json.dumps(variables)
+        assert envs[VARIABLES_ENV_KEY] == json.dumps(variables, ensure_ascii=True)
+
+    def test_unicode_and_emojis_serialize_safely_as_ascii(self):
+        """Emojis and UTF-8 characters serialize safely to ASCII to prevent env var encoding errors."""
+        variables = {"greeting": "Holidays 🎅🏻", "name": "日本語"}
+        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        serialized = envs[VARIABLES_ENV_KEY]
+        # Should be strictly ASCII-encoded JSON
+        assert serialized.isascii()
+        # Roundtrip deserialization preserves the exact original unicode
+        assert json.loads(serialized) == variables
+
+    def test_surrogate_characters_serialize_without_error(self):
+        """Surrogate sequences do not raise UnicodeEncodeError when serialized."""
+        variables = {"surrogate": "\ud83d\ude00"}
+        envs, prefix = build_variable_injection(variables, ProgrammingLanguage.PYTHON)
+
+        serialized = envs[VARIABLES_ENV_KEY]
+        assert serialized.isascii()
+        decoded = json.loads(serialized)
+        assert decoded["surrogate"] in ("\ud83d\ude00", "😀")
 
     @pytest.mark.parametrize(
         "language",
