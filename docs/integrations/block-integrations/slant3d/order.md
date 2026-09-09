@@ -6,7 +6,7 @@ Blocks for managing 3D print orders through Slant3D.
 ## Slant3D Create Order
 
 ### What it is
-Create and process a print order, charging the Slant3D account payment method
+Order physical 3D-printed parts from Slant3D for manufacturing and delivery. Accepts multiple STL URLs, workspace attachments, or uploaded file IDs with per-part material and quantity, including complete project part sets. Creates a draft, charges the connected payment method, and submits the parts to production. Use only with real customer shipping details and order approval. For a printing-only quote without shipping or billing details, use Slant3D Slicer first.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -45,7 +45,7 @@ Set platform_id, or omit it when the account has exactly one enabled platform. T
 ## Slant3D Estimate Order
 
 ### What it is
-Create an uncharged draft order to estimate printing and shipping costs
+Quote a 3D-printed parts order including shipping by creating an uncharged Slant3D draft. Accepts multiple STL files or uploaded file IDs with per-part quantities. Requires real customer shipping details and an account payment method; do not invent an address. For printing-only part or project quotes without shipping details, use Slant3D Slicer for each file instead. Returns a draft ID that Process Order can submit after approval.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -87,7 +87,7 @@ After the customer approves the quote, pass the returned order_id to Process Ord
 ## Slant3D Estimate Shipping
 
 ### What it is
-Create an uncharged draft order to estimate shipping costs
+Estimate delivery costs for physical 3D-printed parts by creating an uncharged Slant3D order draft. Requires real customer shipping details and an account payment method. For printing-only quotes without an address or billing setup, use Slant3D Slicer instead. Returns shipping cost and the draft ID; does not charge or submit the order.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

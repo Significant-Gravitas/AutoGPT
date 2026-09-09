@@ -6,7 +6,7 @@ Blocks for getting available filament options from Slant3D.
 ## Slant3D Filament
 
 ### What it is
-Get available filaments, their public IDs, and material and color details
+Find available materials and colors for quoting or ordering physical 3D-printed parts from Slant3D. Returns filament public IDs, material, color, and availability. Use a specific filament_id when a material or color matches more than one filament. Slant3D Slicer uses default black PLA when no filament is selected.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

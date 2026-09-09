@@ -39,7 +39,12 @@ class Slant3DFilamentBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="7cc416f4-f305-4606-9b3b-452b8a81031c",
-            description="Get available filaments, their public IDs, and material and color details",
+            description=(
+                "Find available materials and colors for quoting or ordering physical 3D-printed parts from Slant3D. "
+                "Returns filament public IDs, material, color, and availability. "
+                "Use a specific filament_id when a material or color matches more than one filament. "
+                "Slant3D Slicer uses default black PLA when no filament is selected."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},

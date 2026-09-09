@@ -56,7 +56,19 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="f8a12c8d-3e4b-4d5f-b6a7-8c9d0e1f2g3h",
-            description="Upload or reuse an STL file and estimate its printing cost",
+            description=(
+                "Get a live 3D printing quote for physical parts from STL URLs or attached workspace files. "
+                "Use this to price printable parts and complete project part sets before ordering from Slant3D, "
+                "which manufactures and ships the parts. Binary STL URLs are accepted directly; no browser upload is needed. "
+                "For complete projects, first read the assembly bill of materials: include repeated parts across subassemblies, "
+                "select a design variant for alternative parts while keeping the required number of copies, "
+                "and exclude reference assembly meshes. "
+                "One copy of each STL is not necessarily a complete set. "
+                "Quote each required file with its full assembly quantity and sum the returned prices, which already include quantity. "
+                "Before reporting a complete quote, reconcile all quoted files and quantities against the parts list. "
+                "Printing-only quotes need no shipping address or payment method. "
+                "Returns a reusable file_id for ordering; this block does not place or charge an order."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={

@@ -72,7 +72,7 @@ Use this for order management dashboards or to sync order data with your systems
 ## Slant3D Process Order
 
 ### What it is
-Process an existing draft, charging the Slant3D account payment method and starting production
+Submit an approved Slant3D draft to order physical 3D-printed parts for manufacturing and delivery. Uses the order_id from Estimate Order or Estimate Shipping, charges the connected payment method, and starts production. Run only after the customer approves the quoted order.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

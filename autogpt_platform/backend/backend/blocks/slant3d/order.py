@@ -16,7 +16,13 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="f73007d6-f48f-4aaf-9e6b-6883998a09b4",
-            description="Create and process a print order, charging the Slant3D account payment method",
+            description=(
+                "Order physical 3D-printed parts from Slant3D for manufacturing and delivery. "
+                "Accepts multiple STL URLs, workspace attachments, or uploaded file IDs with per-part material and quantity, "
+                "including complete project part sets. Creates a draft, charges the connected payment method, "
+                "and submits the parts to production. Use only with real customer shipping details and order approval. "
+                "For a printing-only quote without shipping or billing details, use Slant3D Slicer first."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input=TEST_ORDER_INPUT,
@@ -74,7 +80,13 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="bf8823d6-b42a-48c7-b558-d7c117f2ae85",
-            description="Create an uncharged draft order to estimate printing and shipping costs",
+            description=(
+                "Quote a 3D-printed parts order including shipping by creating an uncharged Slant3D draft. "
+                "Accepts multiple STL files or uploaded file IDs with per-part quantities. "
+                "Requires real customer shipping details and an account payment method; do not invent an address. "
+                "For printing-only part or project quotes without shipping details, use Slant3D Slicer for each file instead. "
+                "Returns a draft ID that Process Order can submit after approval."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input=TEST_ORDER_INPUT,
@@ -126,7 +138,12 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="00aae2a1-caf6-4a74-8175-39a0615d44e1",
-            description="Create an uncharged draft order to estimate shipping costs",
+            description=(
+                "Estimate delivery costs for physical 3D-printed parts by creating an uncharged Slant3D order draft. "
+                "Requires real customer shipping details and an account payment method. "
+                "For printing-only quotes without an address or billing setup, use Slant3D Slicer instead. "
+                "Returns shipping cost and the draft ID; does not charge or submit the order."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input=TEST_ORDER_INPUT,

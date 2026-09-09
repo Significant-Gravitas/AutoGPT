@@ -159,7 +159,11 @@ class Slant3DProcessOrderBlock(Slant3DBlockBase):
     def __init__(self):
         super().__init__(
             id="f46fe306-86d8-4da4-8043-ad93614ed2b7",
-            description="Process an existing draft, charging the Slant3D account payment method and starting production",
+            description=(
+                "Submit an approved Slant3D draft to order physical 3D-printed parts for manufacturing and delivery. "
+                "Uses the order_id from Estimate Order or Estimate Shipping, charges the connected payment method, "
+                "and starts production. Run only after the customer approves the quoted order."
+            ),
             input_schema=self.Input,
             output_schema=self.Output,
             test_input={
