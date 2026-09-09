@@ -66,22 +66,29 @@ RECALL_DEDUPE_INTERVAL = timedelta(hours=24)
 # free-text reasons the model invents) stays blocked for protected
 # facts: fail conservative in the destructive direction.
 #
-# These two are deliberately trusted UNVERIFIED, unlike the citation-checked
-# ``contradicted_by:`` below, because neither carries a claim this pass can
-# check against anything it holds:
+# TRUST BOUNDARY. Every reason here is MODEL-AUTHORED, and the model reads
+# web and tool content an attacker may control, so each override is one a
+# prompt injection can attempt to forge. Two things bound that: the demotion
+# must already target a uuid inside ``known_fact_uuids`` (a fact this pass
+# fetched), and the per-pass demotion cap limits how many land. Within those
+# bounds each override is judged on whether the pass can CHECK it:
 #
-# * ``user_signal`` relays an explicit human retraction. The graph has no
-#   record to verify it against, and refusing it would let usage protection
-#   override the user — the opposite of the intent.
-# * ``web_contradicted:{url}`` cites an external page. There is no evidence
-#   set to check the url against today because the dream web-checker has no
-#   real ``SearchBackend`` (SECRT-2485), so nothing legitimate emits this
-#   reason yet. When that lands it should carry a checkable evidence artifact
-#   and be verified like ``contradicted_by:``.
-#
-# Both remain bounded by ``known_fact_uuids`` and the per-pass demotion cap.
+# * ``user_signal`` — unverifiable by construction: it relays an explicit
+#   human retraction, and the graph holds no record to check it against.
+#   Trusted anyway, because refusing it would let usage protection override
+#   the user, which is the opposite of the intent. A forged ``user_signal``
+#   can demote one actively-used fact per pass; that is the accepted cost of
+#   honouring real retractions, and it should be revisited if the demotion
+#   cap ever widens or a non-model-authored retraction path appears.
+# * ``web_contradicted:{url}`` — REMOVED (was an unguarded bypass). It cites
+#   an external page, but the dream web-checker has no real ``SearchBackend``
+#   yet (SECRT-2485), so there is no evidence set to check the url against —
+#   and nothing legitimate emits the reason. An override that only an
+#   injection can produce is pure downside, so it is gone until SECRT-2485
+#   gives it a checkable artifact, at which point it should be verified the
+#   way ``contradicted_by:`` is rather than trusted on its prefix.
 OVERRIDE_REASONS = frozenset({"user_signal"})
-OVERRIDE_REASON_PREFIXES = ("web_contradicted:",)
+OVERRIDE_REASON_PREFIXES: tuple[str, ...] = ()
 
 # Every reason is model-authored, and the model reads web/tool content
 # that an attacker may control — so the one override carrying a
@@ -188,7 +195,12 @@ def format_usage(fact: FactRow, *, now: datetime | None = None) -> str:
     if not count and not protected:
         return "recalls=0(never)"
     verdict = "protected" if protected else "demotable-on-staleness"
+    # A protected fact whose counter is missing or zero is a partial or
+    # pre-hook write: the stamps exist, the count doesn't. Rendering a bare
+    # ``recalls=0`` beside ``usage=protected`` reads as self-contradictory
+    # guidance, so say what is actually known — stamped, count unavailable.
+    rendered_count = f"{count}" if count else "?(stamped)"
     return (
-        f"recalls={count} last_recall={fact.last_recalled_at or '?'} "
+        f"recalls={rendered_count} last_recall={fact.last_recalled_at or '?'} "
         f"prior_recall={fact.prev_recalled_at or 'none'} usage={verdict}"
     )

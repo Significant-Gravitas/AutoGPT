@@ -219,10 +219,29 @@ def test_contradiction_and_retraction_reasons_override_protection():
     demotions = [
         # Cites a fact this pass actually fetched — a verifiable claim.
         DreamDemotion(edge_uuid="hot", reason="contradicted_by:witness"),
-        DreamDemotion(edge_uuid="hot", reason="web_contradicted:https://x.test"),
         DreamDemotion(edge_uuid="hot", reason="user_signal"),
     ]
     assert drop_recently_used_demotions("p-5", demotions, facts) == demotions
+
+
+def test_web_contradicted_no_longer_overrides_protection():
+    """``web_contradicted:`` used to bypass protection on its prefix alone,
+    with no evidence to check it against and nothing legitimate emitting it
+    (SECRT-2485 has no ``SearchBackend`` yet) — an override only an injection
+    could produce. It must be treated as an ordinary reason until it carries
+    a checkable artifact."""
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
+    demotions = [
+        DreamDemotion(edge_uuid="hot", reason="web_contradicted:https://x.test")
+    ]
+    assert drop_recently_used_demotions("p-5b", demotions, facts) == []
 
 
 def test_contradiction_citing_an_unknown_uuid_does_not_override():

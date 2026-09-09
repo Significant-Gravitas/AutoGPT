@@ -502,6 +502,13 @@ def _clamp_operations(
     # Usage-protected staleness demotions are dead on arrival at apply's
     # guard — drop them before the slice too, so they can't displace a
     # demotion that would actually land (cap can floor at 1).
+    #
+    # Yes, apply runs this guard again over the same snapshot on the sync
+    # path. That second pass is deliberate and cheap (a capped list, no
+    # I/O): apply is the single chokepoint every path reaches — sync,
+    # batch callback, and any future caller — so the guard cannot be
+    # skipped by arriving another way. This one exists for CAP ORDERING,
+    # not enforcement.
     demotions = drop_recently_used_demotions(pass_id, demotions, facts)
     demotion_cap = MAX_DEMOTIONS_PER_PASS
     if active_fact_count == 0:

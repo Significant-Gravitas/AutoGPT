@@ -133,6 +133,36 @@ async def test_stamp_past_the_dedupe_interval_shifts_the_previous_stamp(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_stamping_an_already_counted_edge_increments_from_n(
+    clean_graph,
+) -> None:
+    """Every other case here starts from ``recall_count = NULL``, where
+    ``COALESCE(NULL, 0) + 1`` is the only arithmetic exercised. A fact that
+    lives for months is stamped from an existing N, so drive N -> N+1 through
+    the real Cypher — an increment that reset or overwrote the counter would
+    keep every other test in this file green while quietly erasing the usage
+    history that protection is built on.
+    """
+    driver, _ = clean_graph
+    first = _ago(days=6)
+    second = _ago(seconds=int(RECALL_DEDUPE_INTERVAL.total_seconds()) + 3600)
+    await _create_edge(
+        driver, "veteran", last_recalled_at=second, prev_recalled_at=first
+    )
+    await driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: 'veteran'}]->() SET e.recall_count = 7"
+    )
+
+    assert await _stamp_recall(driver, ["veteran"], USER_ID) == 1
+
+    edge = await _read_edge(driver, "veteran")
+    assert edge["recall_count"] == 8, "an existing count must increment, not reset"
+    assert edge["prev_recalled_at"] == second, "the shift must drop the oldest stamp"
+    assert edge["last_recalled_at"] not in (first, second)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_retracted_edges_are_never_restamped(clean_graph) -> None:
     """Re-stamping a superseded edge would misrepresent it as live."""
     driver, _ = clean_graph

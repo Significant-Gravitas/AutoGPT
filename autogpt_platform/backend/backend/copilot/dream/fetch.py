@@ -97,10 +97,23 @@ class FactRow(BaseModel):
 # Shared by the full-fact fetch and the usage-only refresh: a prop added
 # to one projection must reach the other, or the demotion guard silently
 # loses that signal on whichever path missed it.
-USAGE_PROJECTION = """
-                   e.recall_count AS recall_count,
-                   toString(e.last_recalled_at) AS last_recalled_at,
-                   toString(e.prev_recalled_at) AS prev_recalled_at"""
+USAGE_PROJECTION = (
+    "e.recall_count AS recall_count, "
+    "toString(e.last_recalled_at) AS last_recalled_at, "
+    "toString(e.prev_recalled_at) AS prev_recalled_at"
+)
+
+
+def _returning_with_usage(*columns: str) -> str:
+    """Build a ``RETURN`` clause ending in the shared usage projection.
+
+    The seams are the point: concatenating a raw constant onto a query
+    string makes validity depend on a leading newline and a trailing comma
+    living inside that constant, where a formatter or a careless edit can
+    break the Cypher with nothing to catch it. Here the commas are joined
+    in one place instead.
+    """
+    return "RETURN " + ", ".join((*columns, USAGE_PROJECTION))
 
 
 class SessionRow(BaseModel):
@@ -263,16 +276,18 @@ async def _fetch_active_facts(
             MATCH (src:Entity)-[e:RELATES_TO {group_id: $g}]->(tgt:Entity)
             WHERE (e.status IS NULL OR e.status = 'active')
               AND (e.expired_at IS NULL)
-            RETURN e.uuid AS uuid,
-                   src.name AS source,
-                   tgt.name AS target,
-                   e.name AS name,
-                   e.fact AS fact,
-                   e.scope AS scope,
-                   e.confidence AS confidence,
-                   e.status AS status,
-                   toString(e.created_at) AS created_at,"""
-            + USAGE_PROJECTION
+            """
+            + _returning_with_usage(
+                "e.uuid AS uuid",
+                "src.name AS source",
+                "tgt.name AS target",
+                "e.name AS name",
+                "e.fact AS fact",
+                "e.scope AS scope",
+                "e.confidence AS confidence",
+                "e.status AS status",
+                "toString(e.created_at) AS created_at",
+            )
             + """
             ORDER BY e.created_at DESC
             LIMIT $limit
@@ -315,7 +330,9 @@ async def fetch_usage_rows(
     The demotion guard's usage data otherwise comes from the pass's
     input bundle, which the batch path persisted hours before apply —
     a fact recalled since submission would look unprotected. This
-    re-reads ``recall_count`` / ``last_recalled_at`` for just the
+    re-reads the full usage triple — ``recall_count``,
+    ``last_recalled_at`` and ``prev_recalled_at``, the last being the
+    field ``protected_fact_uuids`` actually keys on — for just the
     demotion targets right before the guard runs.
 
     Reads the same graph the pass gathered from: ``expert_id`` selects the
@@ -351,10 +368,8 @@ async def fetch_usage_rows(
             UNWIND $uuids AS target_uuid
             MATCH ()-[e:RELATES_TO]->()
             WHERE e.uuid = target_uuid AND e.expired_at IS NULL
-            RETURN e.uuid AS uuid,"""
-            + USAGE_PROJECTION
-            + """
-            """,
+            """
+            + _returning_with_usage("e.uuid AS uuid"),
             uuids=edge_uuids,
         )
     except Exception:

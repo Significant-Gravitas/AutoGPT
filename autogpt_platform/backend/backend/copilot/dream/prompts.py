@@ -49,6 +49,14 @@ def _inline(value: str | None) -> str:
     user/tool/web content — could otherwise embed a newline and forge a
     ``- uuid=… recalls=…`` line for a different fact, faking usage
     stats to steer the sanitizer's demotions.
+
+    Only NEWLINE forgery is in scope. Untrusted text can still embed
+    inline lookalike tokens (``usage=protected``, ``recalls=0(never)``)
+    after the real ones on its own line, and that is knowingly accepted:
+    the prompt's usage guidance is a non-binding preference, while
+    enforcement is ``usage.protected_fact_uuids`` reading graph props the
+    model never authors. Forging a token can nudge the model's narration;
+    it cannot unprotect a fact.
     """
     return " ".join((value or "?").split()) or "?"
 
@@ -246,7 +254,8 @@ SANITIZE_SYSTEM = (
     "preserve.\n"
     " * USAGE SIGNAL: every active fact carries a `recalls=` count — "
     "on how many distinct occasions warm-context retrieval has pulled "
-    "it into a live conversation (same-day repeats collapse into one) "
+    "it into a live conversation (repeats within ~24h collapse into "
+    "one) "
     "— plus, when non-zero, `last_recall=`/`prior_recall=` timestamps "
     "and a `usage=` verdict. Prefer demoting facts with "
     "`recalls=0(never)`: nothing has ever needed them, so a stale one "

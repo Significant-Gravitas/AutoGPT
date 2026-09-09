@@ -4,6 +4,7 @@ is that the fetched rows carry what the dream pass needs downstream.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -141,6 +142,27 @@ async def test_fetch_usage_rows_returns_none_for_an_invalid_user_id(mocker):
 
     assert await fetch_usage_rows("", ["hot"]) is None
     ctor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_usage_rows_drops_rows_without_a_uuid(mocker, caplog):
+    """A row with no uuid can never match a demotion target, so emitting it
+    as an empty-uuid FactRow would pad the guard's input with a row that
+    silently protects nothing. Drop it, and say so."""
+    driver = _driver_returning(
+        [
+            {"uuid": "hot", "recall_count": 2},
+            {"uuid": None, "recall_count": 9},
+        ]
+    )
+    _patch_driver(mocker, driver)
+
+    with caplog.at_level(logging.WARNING):
+        rows = await fetch_usage_rows("u-1234567890ab", ["hot", "ghost"])
+
+    assert rows is not None
+    assert [r.uuid for r in rows] == ["hot"]
+    assert "Dropped 1 usage row(s) with no uuid" in caplog.text
 
 
 @pytest.mark.asyncio
