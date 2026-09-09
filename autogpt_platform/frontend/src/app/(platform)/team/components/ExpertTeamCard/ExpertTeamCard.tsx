@@ -19,8 +19,12 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import {
   BubbleChatIcon,
+  Calendar03Icon,
+  FlashIcon,
   PencilEdit02Icon,
+  PlugSocketIcon,
   PlusSignIcon,
+  SparklesIcon,
   Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
@@ -217,12 +221,30 @@ export function ExpertTeamCard({
 
         <div className="w-full px-2">
           <CardStats className="mt-3 w-full">
-            <CardStat label="Schedules">{schedules.length}</CardStat>
-            <CardStat label="Skills">{expert.skills.length}</CardStat>
-            <CardStat label="Workflows">{expert.workflows.length}</CardStat>
-            <CardStat label="Integrations">
-              {expert.credential_count ?? 0}
-            </CardStat>
+            <CardStat
+              icon={Calendar03Icon}
+              label="Schedules"
+              singular="schedule"
+              count={schedules.length}
+            />
+            <CardStat
+              icon={SparklesIcon}
+              label="Skills"
+              singular="skill"
+              count={expert.skills.length}
+            />
+            <CardStat
+              icon={FlashIcon}
+              label="Workflows"
+              singular="workflow"
+              count={expert.workflows.length}
+            />
+            <CardStat
+              icon={PlugSocketIcon}
+              label="Integrations"
+              singular="integration"
+              count={expert.credential_count ?? 0}
+            />
           </CardStats>
         </div>
       </Link>

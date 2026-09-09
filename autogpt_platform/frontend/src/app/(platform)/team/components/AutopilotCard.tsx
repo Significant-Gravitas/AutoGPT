@@ -2,7 +2,12 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { BubbleChatIcon, SparklesIcon } from "@hugeicons/core-free-icons";
+import {
+  BubbleChatIcon,
+  Calendar03Icon,
+  FlashIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -70,9 +75,24 @@ export function AutopilotCard({
 
         <div className="w-full px-2">
           <CardStats className="mt-3 w-full">
-            <CardStat label="Schedules">{scheduleCount}</CardStat>
-            <CardStat label="Skills">{skillCount}</CardStat>
-            <CardStat label="Workflows">{workflowCount}</CardStat>
+            <CardStat
+              icon={Calendar03Icon}
+              label="Schedules"
+              singular="schedule"
+              count={scheduleCount}
+            />
+            <CardStat
+              icon={SparklesIcon}
+              label="Skills"
+              singular="skill"
+              count={skillCount}
+            />
+            <CardStat
+              icon={FlashIcon}
+              label="Workflows"
+              singular="workflow"
+              count={workflowCount}
+            />
           </CardStats>
         </div>
       </Link>
