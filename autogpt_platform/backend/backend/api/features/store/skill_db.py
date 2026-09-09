@@ -4,14 +4,15 @@ Browse is rooted at :class:`SkillListingVersion` rather than the listing because
 every filter and the ordering read version columns; ``ActiveFor`` constrains the
 row to the listing's live version. Install count is displayed but is not a sort
 key — a catalogue this size gains nothing from it, and it lives on the listing
-because installs accumulate across versions.
+because installs accumulate across versions. It counts distinct installers: a
+re-install overwrites the user's copy and is not counted again.
 """
 
 import prisma.enums
 import prisma.models
 import prisma.types
 
-from backend.copilot.tools.skills import store_user_skill
+from backend.copilot.tools.skills import list_user_skills, store_user_skill
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
 
@@ -67,6 +68,9 @@ async def install_marketplace_skill(
     """
     listing = await _find_live_listing(slug)
     active = skill_model.active_version(listing)
+    # A re-install overwrites the user's existing copy, so counting it again
+    # would report installs rather than installers.
+    is_new = all(s.name != listing.slug for s in await list_user_skills(user_id))
     # The one call site the expert-owned install passes `expert_id` through
     # once #14414 lands; `store_user_skill` already takes it as a keyword.
     await store_user_skill(
@@ -77,9 +81,10 @@ async def install_marketplace_skill(
         triggers=list(active.triggers),
         version=str(active.version),
     )
-    await prisma.models.SkillListing.prisma().update(
-        where={"id": listing.id}, data={"installCount": {"increment": 1}}
-    )
+    if is_new:
+        await prisma.models.SkillListing.prisma().update(
+            where={"id": listing.id}, data={"installCount": {"increment": 1}}
+        )
     return skill_model.InstalledSkill(
         name=listing.slug, required_providers=list(active.requiredProviders)
     )

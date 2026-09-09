@@ -14692,6 +14692,7 @@
         "summary": "List marketplace skills",
         "description": "Approved skill listings, most recently updated first.",
         "operationId": "getV2List marketplace skills",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "category",
@@ -14881,6 +14882,7 @@
         "summary": "Get marketplace skill",
         "description": "One listing with the full SKILL.md body the install will copy.",
         "operationId": "getV2Get marketplace skill",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "slug",
@@ -14923,7 +14925,7 @@
         "summary": "Install marketplace skill",
         "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
         "operationId": "postV2Install marketplace skill",
-        "security": [{ "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "slug",

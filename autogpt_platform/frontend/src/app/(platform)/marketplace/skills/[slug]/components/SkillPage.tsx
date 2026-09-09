@@ -4,8 +4,10 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { ArrowLeft02Icon, BookOpen01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { InstallSkillPanel } from "./InstallSkillPanel/InstallSkillPanel";
 import { SkillBody } from "./SkillBody";
 import { useSkillPage } from "./useSkillPage";
@@ -15,9 +17,14 @@ interface Props {
 }
 
 export function SkillPage({ slug }: Props) {
+  const { enabled, ready } = useFlagStatus(Flag.SKILLS_HUB);
   const { skill, isLoading, isError } = useSkillPage(slug);
 
-  if (isLoading) {
+  // A bookmarked URL reaches this page directly, so the shelf being hidden on
+  // the marketplace is not on its own enough to keep the feature dark.
+  if (ready && !enabled) notFound();
+
+  if (!ready || isLoading) {
     return (
       <main className="container max-w-4xl space-y-6 pb-20 pt-16">
         <Skeleton className="h-10 w-2/3" />
@@ -59,7 +66,7 @@ export function SkillPage({ slug }: Props) {
             <Text variant="body" className="!mt-2 !text-zinc-600">
               {skill.description}
             </Text>
-            <Text variant="small" className="!mt-2 !text-zinc-400">
+            <Text variant="small" className="!mt-2 !text-zinc-500">
               {skill.creator ? `By ${skill.creator} · ` : ""}
               {skill.install_count} installed
             </Text>

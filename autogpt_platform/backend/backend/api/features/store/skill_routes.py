@@ -2,13 +2,32 @@
 
 import autogpt_libs.auth
 import fastapi
-from fastapi import Path, Query, Security
+from fastapi import Depends, Path, Query, Security
 
 from backend.copilot.tools.skills import SkillLimitError
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import skill_db, skill_model, skill_submission_db
 
-router = fastapi.APIRouter()
+# Browse is anonymous, and LaunchDarkly needs a context key: a non-UUID key is
+# evaluated as an anonymous context, which with the flag off answers False.
+_ANONYMOUS_FLAG_KEY = "anonymous"
+
+
+async def require_skills_hub_flag(
+    user_id: str | None = Security(autogpt_libs.auth.get_optional_user_id),
+) -> None:
+    """Gate every skills route on the skills-hub flag, fail-closed.
+
+    Deliberately not ``create_feature_flag_dependency``: that helper 404s
+    whenever LaunchDarkly has no SDK key, before consulting the
+    ``FORCE_FLAG_SKILLS_HUB`` override every local environment relies on.
+    """
+    if not await is_feature_enabled(Flag.SKILLS_HUB, user_id or _ANONYMOUS_FLAG_KEY):
+        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
+
+
+router = fastapi.APIRouter(dependencies=[Depends(require_skills_hub_flag)])
 
 
 @router.get(
