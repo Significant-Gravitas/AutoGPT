@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from urllib.parse import quote
 
@@ -85,16 +86,18 @@ class Slant3DBlockBase(Block):
         api_key: str,
         *,
         execution_context: ExecutionContext,
+        staging_lock: asyncio.Lock | None = None,
     ) -> str:
-        local_path = await store_media_file(
-            file=file_url,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
-        assert execution_context.graph_exec_id
-        path = Path(get_exec_file_path(execution_context.graph_exec_id, local_path))
-        async with aiofiles.open(path, "rb") as source:
-            content = await source.read()
+        async with staging_lock or asyncio.Lock():
+            local_path = await store_media_file(
+                file=file_url,
+                execution_context=execution_context,
+                return_format="for_local_processing",
+            )
+            assert execution_context.graph_exec_id
+            path = Path(get_exec_file_path(execution_context.graph_exec_id, local_path))
+            async with aiofiles.open(path, "rb") as source:
+                content = await source.read()
         name = path.name
         upload = await self._make_request(
             "POST",
@@ -143,14 +146,50 @@ class Slant3DBlockBase(Block):
                     },
                 },
             },
-            "items": [
-                await self._format_order_item(
-                    item, platform_id, api_key, execution_context=execution_context
-                )
-                for item in items
-            ],
+            "items": await self._format_order_items(
+                items, platform_id, api_key, execution_context=execution_context
+            ),
             "metadata": {"orderNumber": order_number},
         }
+
+    async def _format_order_items(
+        self,
+        items: list[OrderItem],
+        platform_id: str,
+        api_key: str,
+        *,
+        execution_context: ExecutionContext,
+    ) -> list[dict]:
+        filaments: dict[tuple[Profile, str], asyncio.Task[str]] = {}
+        staging_lock = asyncio.Lock()
+        concurrency = asyncio.Semaphore(4)
+
+        async def prepare(item: OrderItem) -> dict:
+            async with concurrency:
+                filament_id = item.filament_id
+                if not filament_id:
+                    key = (item.profile, item.color.casefold())
+                    if key not in filaments:
+                        filaments[key] = asyncio.create_task(
+                            self._resolve_filament_id(item.profile, item.color, api_key)
+                        )
+                    filament_id = await filaments[key]
+                return await self._format_order_item(
+                    item.model_copy(update={"filament_id": filament_id}),
+                    platform_id,
+                    api_key,
+                    execution_context=execution_context,
+                    staging_lock=staging_lock,
+                )
+
+        tasks = [asyncio.create_task(prepare(item)) for item in items]
+        try:
+            return await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     async def _format_order_item(
         self,
@@ -159,12 +198,17 @@ class Slant3DBlockBase(Block):
         api_key: str,
         *,
         execution_context: ExecutionContext,
+        staging_lock: asyncio.Lock | None = None,
     ) -> dict:
         filament_id = item.filament_id or await self._resolve_filament_id(
             item.profile, item.color, api_key
         )
         file_id = item.file_id or await self._upload_file(
-            item.file_url, platform_id, api_key, execution_context=execution_context
+            item.file_url,
+            platform_id,
+            api_key,
+            execution_context=execution_context,
+            staging_lock=staging_lock,
         )
         return {
             "type": "PRINT",

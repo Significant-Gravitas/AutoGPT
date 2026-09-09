@@ -117,6 +117,7 @@ async def test_legacy_url_items_are_uploaded_and_use_numeric_quantity():
         "platform-1",
         "key",
         execution_context=TEST_EXECUTION_CONTEXT,
+        staging_lock=None,
     )
     assert result == {
         "type": "PRINT",
