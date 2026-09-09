@@ -118,9 +118,15 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
 # PRs add 1,763) rather than against whatever sits on dev today, because each
 # branch's CI only ever sees its own delta. Registry measures 62,747 with all
-# ten merged; 2,253 headroom. On a conflict here, keep the HIGHER value: a
-# branch's CI only measures its own delta, so the lower one is sized for a
-# tree that no longer exists.
+# ten merged; 2,253 headroom.
+# list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
+# under 65_000 without a bump of their own; merged registry measures 62,694.
+#
+# ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
+# both look correct: each one's CI only measures its own delta against dev, while
+# the budget has to cover what every in-flight PR adds together. Taking the
+# incoming side lowers a ceiling that has already ejected a green PR.
+#
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.

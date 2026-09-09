@@ -14611,6 +14611,166 @@
         }
       }
     },
+    "/api/store/skills": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List marketplace skills",
+        "description": "Approved skill listings, most recently updated first.",
+        "operationId": "getV2List marketplace skills",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get marketplace skill",
+        "description": "One listing with the full SKILL.md body the install will copy.",
+        "operationId": "getV2Get marketplace skill",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillDetails"
+                }
+              }
+            }
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}/install": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Install marketplace skill",
+        "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
+        "operationId": "postV2Install marketplace skill",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InstalledSkill" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "409": { "description": "Per-user skill limit reached" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
@@ -22507,6 +22667,24 @@
         "title": "InstallWorkflowRequest",
         "description": "One workflow source: a marketplace listing, or the caller's own agent."
       },
+      "InstalledSkill": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name the skill was installed under, for a link into the library."
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume. Not a precondition — the install has already succeeded."
+          }
+        },
+        "type": "object",
+        "required": ["name", "required_providers"],
+        "title": "InstalledSkill"
+      },
       "IntroCardResponse": {
         "properties": {
           "path": { "type": "string", "title": "Path" },
@@ -23476,6 +23654,110 @@
         "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
+      },
+      "MarketplaceSkill": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count"
+        ],
+        "title": "MarketplaceSkill"
+      },
+      "MarketplaceSkillDetails": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          },
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "body": { "type": "string", "title": "Body" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count",
+          "skill_listing_version_id",
+          "body",
+          "triggers",
+          "updated_at"
+        ],
+        "title": "MarketplaceSkillDetails"
+      },
+      "MarketplaceSkillsResponse": {
+        "properties": {
+          "skills": {
+            "items": { "$ref": "#/components/schemas/MarketplaceSkill" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["skills", "pagination"],
+        "title": "MarketplaceSkillsResponse"
       },
       "MemoryFact": {
         "properties": {
@@ -26052,7 +26334,9 @@
           "expert_soul_updated",
           "expert_change_proposed",
           "expert_change_applied",
-          "team_roster"
+          "team_roster",
+          "expert_chat_list",
+          "expert_chat_transcript"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
