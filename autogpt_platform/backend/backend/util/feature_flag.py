@@ -106,6 +106,13 @@ class Flag(str, Enum):
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
 
+    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
+    # dump also produces expert recommendations, the copilot greeting
+    # grows a team section, and AutoPilot's empty-roster context tells
+    # it that it is the Head of AI. Effective only when both are on;
+    # fail-closed (default False).
+    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
+
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
     # facts ride the ratification loop as tentative. Off on the

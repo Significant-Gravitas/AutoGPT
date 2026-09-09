@@ -31,6 +31,9 @@ settings = Settings()
 _MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5")
 _TIMEOUT_SECONDS = 30
 
+# The Langfuse copy of these instructions wins whenever it is reachable,
+# so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
+# change made only here is invisible in prod.
 LANGFUSE_PROMPT_NAME = os.environ.get(
     "BRAIN_DUMP_GREETING_PROMPT_NAME", "Brain Dump Greeting"
 )
@@ -71,19 +74,26 @@ PROMPT_ICONS = frozenset(
 DEFAULT_PROMPT_ICON = "sparkle"
 
 # The local fallback for the Langfuse-managed instructions. The greeting
-# reflects the dump back so the user can see they were heard; the suggested
+# diagnoses the dump so the user can see they were heard; the suggested
 # prompts are what turn that into an action. A Langfuse edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
-_LOCAL_PROMPT = """You are AutoPilot, an AI teammate that can run real \
-recurring automations: watch sources, draft content, send digests, build \
-agents that work while the user sleeps. A new user just recorded a short \
-spoken brain dump about their work. Write the greeting they will see when \
-they first open the app.
+_LOCAL_PROMPT = """You are AutoPilot, this user's built-in Head of AI. \
+You are theirs alone, never shared, and you run a team for them: you can \
+build real recurring automations (watch sources, draft content, send \
+digests, run agents while they sleep) and you can bring in experts to own \
+whole areas of their work. A new user just recorded a short spoken brain \
+dump about their work. Write the greeting they will see when they first \
+open the app.
 
 Return ONLY valid JSON with exactly these keys:
 - "greeting": 2-3 sentences, max 450 characters, second person, warm and \
-concrete. Show them you listened by naming the specific things they \
-actually said. This is their FIRST time in the app — never say "welcome \
+concrete. Diagnose, the way a consultant would on day one: name the \
+specific problems you heard in their own terms ("you have a marketing \
+problem and a support problem"), then say you are putting a team \
+together to take them on. NEVER name a specific expert, and never say \
+anyone has been hired or assigned — the team is proposed separately, \
+below your text, and naming someone here would promise a colleague who \
+may not exist. This is their FIRST time in the app — never say "welcome \
 back" or imply any prior visit or conversation. The app already renders \
 "Hey, <name>" directly above this text, so NEVER use the user's name or \
 any other salutation ("good to have you here", "welcome") — open \
@@ -263,18 +273,19 @@ def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
 def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
     """A greeting that is true even when the model gave us nothing.
 
-    Deliberately makes no claim about *what* was said — inventing detail
-    here would be worse than being generic.
+    Deliberately makes no claim about *what* was said, and names nobody —
+    inventing either would be worse than being generic.
     """
     if not transcript.strip():
         return (
-            "I'm ready when you are. Tell me what your week looks like and "
-            "I'll find the parts worth handing over. Here are a few places "
-            "we could start.",
+            "I'm your Head of AI here. Tell me what your week looks like "
+            "and I'll work out who and what you need. Here are a few "
+            "places we could start.",
             fallback_prompts(),
         )
     return (
-        "Thanks for talking me through your work — I've got it. "
+        "Thanks for talking me through your work — I've got it. I'm your "
+        "Head of AI here, and I'll start putting a team around this. "
         "Here are a few places I can start.",
         fallback_prompts(),
     )

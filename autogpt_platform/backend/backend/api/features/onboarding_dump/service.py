@@ -13,19 +13,25 @@ from fastapi import BackgroundTasks
 from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
+from pydantic import ValidationError
 
+from backend.api.features.experts.experts_db import list_templates
+from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
     prompts,
     quality,
     recommend,
+    recommend_experts,
     storage,
     transcription,
 )
 from backend.api.features.onboarding_dump.models import (
+    ExpertRecommendations,
     FinalizeResponse,
     IntroCardResponse,
+    RecommendedExpertsResponse,
     RecommendedProvider,
     RecommendedProvidersResponse,
     SuggestedPrompt,
@@ -38,6 +44,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.virus_scanner import scan_content_safe
 
 logger = logging.getLogger(__name__)
@@ -327,17 +334,18 @@ async def _run_background_jobs(
     transcript: str,
     input_mode: BrainDumpInputMode,
 ) -> None:
-    """Run the greeting pipeline and the recommendation job side by side.
+    """Run the greeting pipeline and the recommendation jobs side by side.
 
-    One background task, not two: ``BackgroundTasks`` awaits what it is
+    One background task, not three: ``BackgroundTasks`` awaits what it is
     given strictly in order, so a second entry would not start until the
     greeting's LLM calls had finished — and would never start at all if
     something escaped the first one. Gathered here they are genuinely
-    concurrent, and neither can take the other down.
+    concurrent, and none can take the others down.
     """
     await asyncio.gather(
         _run_completion(user_id, recording_id, transcript, input_mode),
         _run_provider_recommendations(user_id, recording_id, transcript),
+        _run_expert_recommendations(user_id, recording_id, transcript),
         return_exceptions=True,
     )
 
@@ -414,6 +422,137 @@ def _stored_recommendations(raw: object) -> list[RecommendedProvider]:
         for item in raw
         if isinstance(item, dict) and isinstance(item.get("provider"), str)
     ]
+
+
+async def _run_expert_recommendations(
+    user_id: str, recording_id: str, transcript: str
+) -> None:
+    """The team job, third leg of the background gather.
+
+    Like the provider job it writes one column and never the dump status,
+    so it cannot strand the loading screen. It always writes *something*:
+    a row left with a null column is "still running" to the reader, and
+    the client would poll it until its own ceiling.
+    """
+    if not await _expert_team_enabled(user_id):
+        # Flag off: recorded rather than skipped, so the reader can tell
+        # "the feature was off" apart from a job that died — and so no
+        # roster read or LLM call is paid for a team nobody will see.
+        await _store_team(
+            user_id, recording_id, ExpertRecommendations(source="disabled")
+        )
+        return
+
+    user_role, pain_points = await _safe_understanding(user_id)
+    team = await recommend_experts.generate_expert_recommendations(
+        transcript,
+        user_role=user_role,
+        pain_points=pain_points,
+        templates=await _safe_templates(),
+    )
+    await _store_team(user_id, recording_id, team)
+
+
+async def _store_team(
+    user_id: str, recording_id: str, team: ExpertRecommendations
+) -> None:
+    try:
+        await db.update_dump(
+            user_id, recording_id, recommendedExperts=Json(team.model_dump())
+        )
+    except Exception as e:  # background task, nowhere to raise
+        logger.warning(
+            "Brain dump expert recommendations not stored for user %s: %s", user_id, e
+        )
+
+
+async def _expert_team_enabled(user_id: str) -> bool:
+    """Whether the expert-team feature is on for ``user_id``.
+
+    ``ONBOARDING_EXPERT_TEAM`` is a child of ``HIRE_EXPERTS``: a user who
+    cannot hire must not be shown hire cards.
+    """
+    return await is_feature_enabled(
+        Flag.HIRE_EXPERTS, user_id, default=False
+    ) and await is_feature_enabled(Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False)
+
+
+async def _safe_understanding(user_id: str) -> tuple[str | None, list[str]]:
+    """``(user_role, pain_points)`` from the signup wizard's answers.
+
+    A read that fails costs the recommendation its wizard context, not
+    the recommendation.
+    """
+    try:
+        understanding = await get_business_understanding(user_id)
+    except Exception as e:
+        logger.warning("Brain dump team: understanding read failed: %s", e)
+        return None, []
+    if understanding is None:
+        return None, []
+    return understanding.user_role, understanding.pain_points
+
+
+async def _safe_templates() -> list[Expert]:
+    try:
+        return await list_templates()
+    except Exception as e:
+        logger.warning("Brain dump team: roster read failed: %s", e)
+        return []
+
+
+async def get_recommended_experts(user_id: str) -> RecommendedExpertsResponse:
+    """The team section's content, polled by the onboarding loading screen.
+
+    ``ready=false`` only while the job is still running; every other
+    state — flag off, no dump, a dump the job never got to — resolves to
+    a final answer here rather than leaving the client polling.
+    """
+    dump = await db.get_dump(user_id)
+    team, pending = await _team_for_intro(user_id, dump)
+    return RecommendedExpertsResponse(ready=not pending, team=team)
+
+
+async def _team_for_intro(
+    user_id: str, dump: OnboardingBrainDump | None
+) -> tuple[ExpertRecommendations | None, bool]:
+    """``(team, pending)`` for one user, shared by /intro and this reader.
+
+    The invariant both surfaces rely on: with the flag on, a team that is
+    not pending is always an object — possibly with no experts — so the
+    "raise your own" door is always there to render.
+    """
+    if not await _expert_team_enabled(user_id):
+        return None, False
+    if dump is None or _nothing_to_reflect(dump):
+        # Path B and every other take with nothing to read: the job never
+        # ran, and the wizard's answers are the whole basis for a team.
+        return await _fallback_team(user_id), False
+
+    stored = dump.recommendedExperts
+    if stored is None:
+        if dump.status not in (BrainDumpStatus.completed, BrainDumpStatus.failed):
+            return None, True
+        # Terminal with nothing written: the job died with the process.
+        return await _fallback_team(user_id), False
+
+    try:
+        team = ExpertRecommendations.model_validate(stored)
+    except ValidationError as e:
+        logger.warning("Brain dump team: stored value unusable: %s", e)
+        return await _fallback_team(user_id), False
+    if team.source == "disabled":
+        # Written while the flag was off, and it is on now. Recomputing
+        # costs one roster read and strands nobody behind a flag flip.
+        return await _fallback_team(user_id), False
+    return team, False
+
+
+async def _fallback_team(user_id: str) -> ExpertRecommendations:
+    user_role, pain_points = await _safe_understanding(user_id)
+    return recommend_experts.fallback_expert_recommendations(
+        user_role, pain_points, await _safe_templates()
+    )
 
 
 async def _extract_and_complete(
@@ -558,16 +697,21 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         # the personalised one that is seconds away. Answered before the
         # session lookup below so that poll does not re-run it every
         # cycle: someone whose dump is mid-pipeline just recorded it.
-        return IntroCardResponse(path="A", greeting="", greeting_pending=True)
+        return IntroCardResponse(
+            path="A", greeting="", greeting_pending=True, team_pending=True
+        )
 
     if await _retire_greeting_if_chatted(user_id):
         return IntroCardResponse(path="A", greeting="", greeting_done=True)
 
+    team, team_pending = await _team_for_intro(user_id, dump)
     if dump is None or _nothing_to_reflect(dump):
         return IntroCardResponse(
             path="B",
             greeting=prompts.PATH_B_GREETING,
             prompts=intro.fallback_prompts(),
+            team=team,
+            team_pending=team_pending,
         )
 
     greeting = (dump.greeting or "").strip()
@@ -580,6 +724,8 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         greeting=greeting,
         prompts=_stored_prompts(dump.suggestedPrompts),
         transcript=dump.transcript,
+        team=team,
+        team_pending=team_pending,
     )
 
 

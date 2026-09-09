@@ -7,8 +7,8 @@ prompts under it are the generic set from ``intro.fallback_prompts``.
 """
 
 PATH_B_GREETING = (
-    "No rush — you can tell me about your work whenever you like. "
-    "Tap the microphone below and talk for a couple of minutes, and I'll "
-    "start finding the things worth taking off your plate. Until then, "
-    "here are a few places we could start."
+    "I'm your Head of AI — I build the team that does the work you don't "
+    "want to. From what you've told me so far, here's who I'd hire first. "
+    "Hire them now, raise your own, or tap the microphone and tell me about "
+    "your week, and I'll sharpen the team around it."
 )
