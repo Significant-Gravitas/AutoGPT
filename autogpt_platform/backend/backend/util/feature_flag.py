@@ -106,6 +106,11 @@ class Flag(str, Enum):
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
 
+    # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
+    # browse and install end-to-end: the routes 404 when off, so the dark
+    # launch is not reachable by URL with the shelf hidden. Fail-closed.
+    SKILLS_HUB = "skills-hub"
+
     # Per-feature gate for the web-fact-check tool (P0.5). The tool
     # can only DEMOTE memories on contradiction; new web-derived
     # facts ride the ratification loop as tentative. Off on the
