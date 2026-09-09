@@ -28,6 +28,7 @@ import { creditsToUsdLabel } from "@/lib/credits";
 import Link from "next/link";
 import { MouseEvent } from "react";
 
+import { SHOW_PODS } from "../../constants";
 import { ExpertCover } from "./components/ExpertCover";
 import { SpendMeter } from "./components/SpendMeter";
 import {
@@ -83,7 +84,7 @@ export function ExpertTeamCard({
     <div className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
-        {pods.length > 0 ? (
+        {SHOW_PODS && pods.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

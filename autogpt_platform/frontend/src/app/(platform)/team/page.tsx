@@ -24,6 +24,7 @@ import { PodBoard } from "./components/PodBoard/PodBoard";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
+import { SHOW_PODS } from "./constants";
 import { TEAM_GRID_CLASS } from "./helpers";
 import { useTeamPage } from "./useTeamPage";
 
@@ -125,15 +126,17 @@ export default function TeamPage() {
 
         <TabsLine variant="compact" defaultValue="overview">
           <TabsLineList className="overflow-x-auto border-b-transparent">
-            {TABS.map((tab) => (
-              <TabsLineTrigger
-                key={tab.value}
-                value={tab.value}
-                icon={tab.icon}
-              >
-                {tab.label}
-              </TabsLineTrigger>
-            ))}
+            {TABS.filter((tab) => SHOW_PODS || tab.value !== "pods").map(
+              (tab) => (
+                <TabsLineTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  icon={tab.icon}
+                >
+                  {tab.label}
+                </TabsLineTrigger>
+              ),
+            )}
           </TabsLineList>
 
           <TabsLineContent value="overview" className="space-y-6">
@@ -150,14 +153,16 @@ export default function TeamPage() {
             ) : null}
           </TabsLineContent>
 
-          <TabsLineContent value="pods">
-            <PodBoard
-              isLoading={isLoading}
-              podGroups={podGroups}
-              onNewPod={openNewPod}
-              renderCard={renderCard}
-            />
-          </TabsLineContent>
+          {SHOW_PODS ? (
+            <TabsLineContent value="pods">
+              <PodBoard
+                isLoading={isLoading}
+                podGroups={podGroups}
+                onNewPod={openNewPod}
+                renderCard={renderCard}
+              />
+            </TabsLineContent>
+          ) : null}
         </TabsLine>
 
         <InstallWorkflowPicker
@@ -166,12 +171,14 @@ export default function TeamPage() {
           open={pickerExpertId !== null}
           onClose={closeWorkflowPicker}
         />
-        <NewPodDialog
-          open={isNewPodOpen}
-          onClose={closeNewPod}
-          onCreate={createPod}
-          isCreating={isCreatingPod}
-        />
+        {SHOW_PODS ? (
+          <NewPodDialog
+            open={isNewPodOpen}
+            onClose={closeNewPod}
+            onCreate={createPod}
+            isCreating={isCreatingPod}
+          />
+        ) : null}
       </main>
 
       <SoulDrawer key={soulDrawerKey} expert={soulExpert} onClose={closeSoul} />

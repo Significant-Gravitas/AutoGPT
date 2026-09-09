@@ -13,6 +13,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
+vi.mock("../constants", () => ({ SHOW_PODS: true }));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<

@@ -7,6 +7,8 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 
+import { SHOW_PODS } from "../constants";
+
 interface Props {
   onNewPod: () => void;
 }
@@ -32,14 +34,16 @@ export function TeamHeaderActions({ onNewPod }: Props) {
       >
         Hire expert
       </Button>
-      <Button
-        variant="outline"
-        size="xs"
-        onClick={onNewPod}
-        leadingIcon={UserGroupIcon}
-      >
-        New Pod
-      </Button>
+      {SHOW_PODS ? (
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={onNewPod}
+          leadingIcon={UserGroupIcon}
+        >
+          New Pod
+        </Button>
+      ) : null}
     </div>
   );
 }

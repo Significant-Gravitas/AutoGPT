@@ -36,6 +36,8 @@ import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
+vi.mock("../constants", () => ({ SHOW_PODS: true }));
+
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
