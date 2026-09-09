@@ -62,6 +62,7 @@ import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
+import backend.api.features.subscriptions.routes as subscriptions_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -414,6 +415,11 @@ app.include_router(
 )
 app.include_router(
     credits_routes.router,
+    tags=["v1", "credits"],
+    prefix="/api",
+)
+app.include_router(
+    subscriptions_routes.router,
     tags=["v1", "credits"],
     prefix="/api",
 )

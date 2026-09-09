@@ -16,10 +16,10 @@ from backend.data.credit import (
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 
-from .v1 import _claim_stripe_event, _release_stripe_event, v1_router
+from .subscriptions.routes import _claim_stripe_event, _release_stripe_event, router
 
 app = fastapi.FastAPI()
-app.include_router(v1_router)
+app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
 
@@ -41,20 +41,20 @@ def stub_lifecycle_emails(mocker: pytest_mock.MockFixture):
         # re-run `fulfill_checkout`. The consumer re-reads the session from
         # Stripe and sends it, with retries and a DLQ.
         "checkout": mocker.patch(
-            "backend.api.features.v1.queue_pass_work",
+            "backend.api.features.subscriptions.routes.queue_pass_work",
             new_callable=AsyncMock,
             return_value=NotificationResult(success=True),
         ),
         "payment_failed": mocker.patch(
-            "backend.api.features.v1.lifecycle.on_payment_failed",
+            "backend.api.features.subscriptions.routes.lifecycle.on_payment_failed",
             new_callable=AsyncMock,
         ),
         "updated": mocker.patch(
-            "backend.api.features.v1.lifecycle.on_subscription_updated",
+            "backend.api.features.subscriptions.routes.lifecycle.on_subscription_updated",
             new_callable=AsyncMock,
         ),
         "deleted": mocker.patch(
-            "backend.api.features.v1.lifecycle.on_subscription_deleted",
+            "backend.api.features.subscriptions.routes.lifecycle.on_subscription_deleted",
             new_callable=AsyncMock,
         ),
     }
@@ -86,14 +86,15 @@ def test_stripe_webhook_checkout_calls_sync_tier_helper(
         return_value=_make_checkout_event("subscription", "sub_123"),
     )
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
     )
     mock_sync = mocker.patch(
-        "backend.api.features.v1.sync_tier_from_checkout_session",
+        "backend.api.features.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
     )
 
@@ -124,20 +125,21 @@ def test_stripe_webhook_skips_handlers_on_replayed_event(
         return_value=event,
     )
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     # Simulate "this event was already processed".
     mocker.patch(
-        "backend.api.features.v1._claim_stripe_event",
+        "backend.api.features.subscriptions.routes._claim_stripe_event",
         new_callable=AsyncMock,
         return_value=False,
     )
     mock_fulfill = mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
     )
     mock_sync = mocker.patch(
-        "backend.api.features.v1.sync_tier_from_checkout_session",
+        "backend.api.features.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
     )
 
@@ -161,14 +163,15 @@ def test_stripe_webhook_checkout_propagates_sync_failure(
         return_value=_make_checkout_event("subscription", "sub_err"),
     )
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.sync_tier_from_checkout_session",
+        "backend.api.features.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
         side_effect=stripe.StripeError("network error"),
     )
@@ -200,23 +203,24 @@ def test_stripe_webhook_releases_dedup_claim_on_handler_failure(
         return_value=event,
     )
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1._claim_stripe_event",
+        "backend.api.features.subscriptions.routes._claim_stripe_event",
         new_callable=AsyncMock,
         return_value=True,
     )
     mock_release = mocker.patch(
-        "backend.api.features.v1._release_stripe_event",
+        "backend.api.features.subscriptions.routes._release_stripe_event",
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.sync_tier_from_checkout_session",
+        "backend.api.features.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
         side_effect=stripe.StripeError("downstream blew up"),
     )
@@ -252,20 +256,20 @@ def test_stripe_webhook_releases_dedup_on_invoice_retrieve_failure(
         return_value=event,
     )
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     mocker.patch(
-        "backend.api.features.v1._claim_stripe_event",
+        "backend.api.features.subscriptions.routes._claim_stripe_event",
         new_callable=AsyncMock,
         return_value=True,
     )
     mock_release = mocker.patch(
-        "backend.api.features.v1._release_stripe_event",
+        "backend.api.features.subscriptions.routes._release_stripe_event",
         new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.stripe.Invoice.retrieve_async",
+        "backend.api.features.subscriptions.routes.stripe.Invoice.retrieve_async",
         side_effect=stripe.StripeError("stripe down"),
     )
 
@@ -296,7 +300,7 @@ async def test_claim_stripe_event_first_delivery_returns_true(
     redis_mock = MagicMock()
     redis_mock.set = AsyncMock(return_value=True)
     mocker.patch(
-        "backend.api.features.v1.get_redis_async",
+        "backend.api.features.subscriptions.routes.get_redis_async",
         new_callable=AsyncMock,
         return_value=redis_mock,
     )
@@ -316,7 +320,7 @@ async def test_claim_stripe_event_replay_returns_false(
     redis_mock = MagicMock()
     redis_mock.set = AsyncMock(return_value=None)
     mocker.patch(
-        "backend.api.features.v1.get_redis_async",
+        "backend.api.features.subscriptions.routes.get_redis_async",
         new_callable=AsyncMock,
         return_value=redis_mock,
     )
@@ -338,7 +342,7 @@ async def test_claim_stripe_event_redis_error_falls_open(
     """Redis unavailable → fall open and let processing continue. Better to
     risk a rare duplicate than to drop a real event during a Redis outage."""
     mocker.patch(
-        "backend.api.features.v1.get_redis_async",
+        "backend.api.features.subscriptions.routes.get_redis_async",
         new_callable=AsyncMock,
         side_effect=RuntimeError("redis cluster down"),
     )
@@ -355,7 +359,7 @@ async def test_release_stripe_event_deletes_key(
     redis_mock = MagicMock()
     redis_mock.delete = AsyncMock()
     mocker.patch(
-        "backend.api.features.v1.get_redis_async",
+        "backend.api.features.subscriptions.routes.get_redis_async",
         new_callable=AsyncMock,
         return_value=redis_mock,
     )
@@ -378,7 +382,7 @@ async def test_release_stripe_event_swallows_redis_error(
     """Redis errors during release must not propagate — we're already on
     the failure path and re-raising would mask the original error."""
     mocker.patch(
-        "backend.api.features.v1.get_redis_async",
+        "backend.api.features.subscriptions.routes.get_redis_async",
         new_callable=AsyncMock,
         side_effect=RuntimeError("redis cluster down"),
     )
@@ -736,7 +740,7 @@ async def test_reconcile_stripe_tier_active_sub_unchanged_returns_false(
 def _post_event(mocker: pytest_mock.MockFixture, event: dict) -> None:
     mocker.patch("stripe.Webhook.construct_event", return_value=event)
     mocker.patch(
-        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        "backend.api.features.subscriptions.routes.settings.secrets.stripe_webhook_secret",
         new="whsec_test",
     )
     response = client.post(
@@ -752,10 +756,11 @@ def test_welcome_email_hangs_off_checkout_not_subscription_created(
 ) -> None:
     """Both events fire at signup; listening to both would double-send."""
     mocker.patch(
-        "backend.api.features.v1.UserCredit.fulfill_checkout", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.UserCredit.fulfill_checkout",
+        new_callable=AsyncMock,
     )
     mocker.patch(
-        "backend.api.features.v1.sync_tier_from_checkout_session",
+        "backend.api.features.subscriptions.routes.sync_tier_from_checkout_session",
         new_callable=AsyncMock,
     )
     _post_event(mocker, _make_checkout_event("subscription", "sub_123"))
@@ -769,7 +774,8 @@ def test_welcome_email_hangs_off_checkout_not_subscription_created(
 
     stub_lifecycle_emails["checkout"].reset_mock()
     mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.sync_subscription_from_stripe",
+        new_callable=AsyncMock,
     )
     _post_event(
         mocker,
@@ -787,7 +793,8 @@ def test_subscription_updated_passes_previous_attributes_through(
     """The cancel/resume emails fire on the flip, which is only visible in
     previous_attributes."""
     mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.sync_subscription_from_stripe",
+        new_callable=AsyncMock,
     )
     _post_event(
         mocker,
@@ -808,7 +815,8 @@ def test_subscription_deleted_triggers_the_plan_ended_email(
     mocker: pytest_mock.MockFixture, stub_lifecycle_emails
 ) -> None:
     mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.sync_subscription_from_stripe",
+        new_callable=AsyncMock,
     )
     _post_event(
         mocker,
@@ -824,7 +832,7 @@ def test_payment_failure_triggers_the_payment_email(
     mocker: pytest_mock.MockFixture, stub_lifecycle_emails
 ) -> None:
     mocker.patch(
-        "backend.api.features.v1.handle_subscription_payment_failure",
+        "backend.api.features.subscriptions.routes.handle_subscription_payment_failure",
         new_callable=AsyncMock,
     )
     _post_event(
@@ -841,11 +849,11 @@ def test_trial_ending_event_reconciles_and_queues_trial_reminder(
     mocker: pytest_mock.MockFixture, stub_lifecycle_emails
 ) -> None:
     sync = mocker.patch(
-        "backend.api.features.v1.sync_subscription_from_stripe",
+        "backend.api.features.subscriptions.routes.sync_subscription_from_stripe",
         new_callable=AsyncMock,
     )
     notify = mocker.patch(
-        "backend.api.features.v1.notify_trial", new_callable=AsyncMock
+        "backend.api.features.subscriptions.routes.notify_trial", new_callable=AsyncMock
     )
     subscription = {
         "id": "sub_1",
