@@ -217,6 +217,14 @@ async def test_create_subscription_checkout_attaches_datafast_metadata():
     create_mock = AsyncMock(return_value=mock_session)
     with (
         patch(
+            "backend.data.credit.subscription_checkout_lock",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial",
+            new_callable=AsyncMock,
+        ),
+        patch(
             "backend.data.credit.get_subscription_price_id",
             new_callable=AsyncMock,
             return_value="price_pro_monthly",

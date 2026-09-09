@@ -112,11 +112,21 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-# Bumped 61_000 -> 63_000 for list_expert_chats / read_expert_chat, the
-# Autopilot-side read of a hired expert's chats (SECRT-2581). Adds 1,706
-# chars: the paging contract is what the model has to get right, so
-# ``before_sequence`` spends its description on the cursor round-trip.
-_CHAR_BUDGET = 63_000
+# Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
+# nine tools grew 50-400 chars each with no single PR at fault, dev reached
+# 60,984, and the next PR to add anything was ejected from the merge queue.
+# Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
+# PRs add 1,763) rather than against whatever sits on dev today, because each
+# branch's CI only ever sees its own delta. Registry measures 62,747 with all
+# ten merged; 2,253 headroom.
+# list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
+# under 65_000 without a bump of their own; merged registry measures 62,694.
+#
+# ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
+# both look correct: each one's CI only measures its own delta against dev, while
+# the budget has to cover what every in-flight PR adds together. Taking the
+# incoming side lowers a ceiling that has already ejected a green PR.
+_CHAR_BUDGET = 65_000
 
 
 @pytest.fixture(scope="module")

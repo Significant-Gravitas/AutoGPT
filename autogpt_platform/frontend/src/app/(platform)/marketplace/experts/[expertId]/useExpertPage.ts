@@ -11,18 +11,17 @@ interface Args {
 }
 
 /** The template behind a marketplace expert page, plus whether this viewer
- *  can hire it. Templates are public, so a signed-out visitor sees the
- *  profile with a sign-up prompt; the hired roster and the hire itself need
- *  a session and the experts flag. Signed in without the flag, the page
- *  shows its coming-soon face. */
+ *  can hire it. Templates are public, so the profile loads for everyone; the
+ *  hired roster and the hire itself need a session and the experts flag.
+ *  With the flag off the header shows its coming-soon label instead. */
 export function useExpertPage({ expertId }: Args) {
   const { isLoggedIn, isUserLoading } = useAuth();
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
-  const canHire = isLoggedIn && Boolean(enabled);
-  const canView = !isUserLoading && (!isLoggedIn || canHire);
+  const isHiringOpen = Boolean(enabled);
+  const canHire = isLoggedIn && isHiringOpen;
 
   const templatesQuery = useListExpertTemplates({
-    query: { select: (x) => x.data as Expert[], enabled: canView },
+    query: { select: (x) => x.data as Expert[] },
   });
   const expertsQuery = useListExperts({
     query: { select: (x) => x.data as Expert[], enabled: canHire },
@@ -40,9 +39,12 @@ export function useExpertPage({ expertId }: Args) {
     expert,
     hiredExpert,
     isLoggedIn,
-    isComingSoon: isLoggedIn && !enabled,
-    isReady: !isUserLoading && (!isLoggedIn || ready),
-    isLoading: canView && templatesQuery.isLoading,
+    isHiringOpen,
+    // Which header action to show is only decided once LaunchDarkly has
+    // answered: rendering "Coming soon" first would flash the wrong state at
+    // the users who do have hiring.
+    isActionReady: !isUserLoading && ready,
+    isLoading: templatesQuery.isLoading,
     isError: templatesQuery.isError,
     refetch: templatesQuery.refetch,
   };

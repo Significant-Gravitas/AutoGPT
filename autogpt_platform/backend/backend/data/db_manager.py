@@ -93,6 +93,7 @@ from backend.data.credit import (
     get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
+    sync_subscription_from_stripe,
 )
 from backend.data.execution import (
     create_graph_execution,
@@ -148,6 +149,10 @@ from backend.data.push_subscription import (
     increment_fail_count,
 )
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
+from backend.data.subscription_trial import (
+    get_subscription_trial,
+    record_subscription_trial_cost,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -179,6 +184,7 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     get_workspace_total_size,
     list_workspace_files,
+    resolve_expert_workspace_scope,
     soft_delete_workspace_file,
 )
 from backend.platform_linking import db as platform_linking_db
@@ -337,6 +343,9 @@ class DatabaseManager(AppService):
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_subscription_trial = _(get_subscription_trial)
+    sync_subscription_from_stripe = _(sync_subscription_from_stripe)
+    record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -441,6 +450,7 @@ class DatabaseManager(AppService):
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+    resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
@@ -717,6 +727,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_subscription_trial = d.get_subscription_trial
+    sync_subscription_from_stripe = d.sync_subscription_from_stripe
+    record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -831,6 +844,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
+    resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #
     spend_credits = d.spend_credits
