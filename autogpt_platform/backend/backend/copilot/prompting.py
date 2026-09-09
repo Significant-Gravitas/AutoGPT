@@ -361,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -396,6 +396,11 @@ picker-backed field, see above). Collect every other input in the chat:
 if you do not have a value, ask the user for it via `ask_question`, then
 call the tool with it once they connect. Do not tell the user to fill
 anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -701,6 +706,28 @@ def get_delegation_supplement() -> str:
 - A `block` is not a veto you can ignore quietly. Remove the flagged
   lines, or tell the user in your reply that you are overriding the
   objection and why. `insufficient` is not approval either.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Autopilot session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
 """
 
 
