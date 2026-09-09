@@ -24,8 +24,15 @@ from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.db_accessors import credit_db, review_db, user_db, workspace_db
+from backend.data.db_accessors import (
+    credit_db,
+    review_db,
+    spend_approval_db,
+    user_db,
+    workspace_db,
+)
 from backend.data.execution import ExecutionContext
+from backend.data.expert_spend import add_weekly_spend
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
@@ -39,6 +46,7 @@ from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockError, InsufficientBalanceError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
@@ -149,12 +157,14 @@ async def _charge_block_credits(
     cost_filter: dict[str, Any],
     synthetic_graph_id: str,
     synthetic_node_id: str,
+    expert_id: str | None = None,
 ) -> None:
     """Charge credits for a block execution and log any billing leak.
 
     Centralised so the normal-path charge and the cancellation-recovery charge
     (see ``execute_block``'s finally) use the same metadata and the same
-    leak-logging contract.
+    leak-logging contract. ``expert_id`` also meters the charge on the
+    expert's spend counters.
     """
     try:
         await _credit_db.spend_credits(
@@ -171,6 +181,8 @@ async def _charge_block_credits(
                 reason="copilot_block_execution",
             ),
         )
+        if expert_id:
+            await add_weekly_spend(expert_id, cost)
     except Exception as e:
         # Block already executed (with possible side effects). Never
         # return ErrorResponse here — the user received output and
@@ -503,6 +515,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
 
@@ -562,6 +575,7 @@ async def execute_block(
                             cost_filter=cost_filter,
                             synthetic_graph_id=synthetic_graph_id,
                             synthetic_node_id=synthetic_node_id,
+                            expert_id=await metered_expert_id(user_id, expert_id),
                         )
                     )
         finally:
@@ -1042,6 +1056,59 @@ async def check_hitl_review(
         )
 
     return synthetic_node_exec_id, input_data
+
+
+async def check_spend_approval(
+    prep: BlockPreparation, user_id: str, session: ChatSession
+) -> "ReviewRequiredResponse | None":
+    """Park a paid block once the session's expert has reached her spend
+    threshold (SECRT-2599). None means the block may run."""
+    if session.expert_id is None:
+        return None
+    cost, _ = block_usage_cost(
+        prep.block, prep.input_data, use_preflight_estimate=False
+    )
+    if cost <= 0:
+        return None
+    needed = await spend_approval_db().spend_approval_required(
+        user_id, session.expert_id
+    )
+    if needed is None:
+        return None
+    review_id = await spend_approval_db().open_chat_spend_review(
+        user_id=user_id,
+        session_id=session.session_id,
+        needed=needed,
+        block_name=prep.block.name,
+        organization_id=session.organization_id,
+        team_id=session.team_id,
+    )
+    return ReviewRequiredResponse(
+        message=(
+            f"{needed.headline}. Tell the user, and after they approve "
+            "call run_block again with the same input."
+        ),
+        session_id=session.session_id,
+        block_id=prep.block_id,
+        block_name=prep.block.name,
+        review_id=review_id,
+        graph_exec_id=prep.synthetic_graph_id,
+        input_data=prep.input_data,
+    )
+
+
+async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
+    """The expert whose spend counters a chat block charge lands on; None
+    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
+
+    Narrower than the scope id ``execute_block`` takes: the flag gates who
+    gets metered, never whose file scope a ``workspace://`` input resolves in.
+    """
+    if expert_id is None:
+        return None
+    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
+        return None
+    return expert_id
 
 
 def _resolve_discriminated_credentials(
