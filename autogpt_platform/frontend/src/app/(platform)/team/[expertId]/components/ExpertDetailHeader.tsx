@@ -34,14 +34,14 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             </h1>
             {/* Same pill as the marketplace expert card. */}
             <Text
-              variant="body-medium"
+              variant="small-medium"
               as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1",
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5",
                 accent.pill,
               )}
             >
-              <Icon icon={accent.roleIcon} size={14} />
+              <Icon icon={accent.roleIcon} size={12} />
               {expert.role}
             </Text>
           </div>

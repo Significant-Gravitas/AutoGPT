@@ -200,14 +200,14 @@ export function ExpertTeamCard({
           </Text>
           {/* Same pill as the expert page header and the marketplace card. */}
           <Text
-            variant="body-medium"
+            variant="small-medium"
             as="span"
             className={cn(
-              "inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-3 py-1",
+              "inline-flex max-w-full items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
               accent.pill,
             )}
           >
-            <Icon icon={accent.roleIcon} size={14} className="shrink-0" />
+            <Icon icon={accent.roleIcon} size={12} className="shrink-0" />
             <span className="truncate">{expert.role}</span>
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-2">

@@ -53,14 +53,14 @@ export function AutopilotCard({
             Autopilot
           </Text>
           <Text
-            variant="body-medium"
+            variant="small-medium"
             as="span"
             className={cn(
-              "inline-flex items-center gap-1.5 self-start rounded-full px-3 py-1",
+              "inline-flex items-center gap-1.5 self-start rounded-full px-2.5 py-0.5",
               AUTOPILOT_PILL_CLASS,
             )}
           >
-            <Icon icon={SparklesIcon} size={14} />
+            <Icon icon={SparklesIcon} size={12} />
             {AUTOPILOT_ROLE}
           </Text>
           <Text variant="body" tone="muted" className="mt-1 line-clamp-3">
