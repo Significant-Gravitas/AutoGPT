@@ -1,13 +1,8 @@
 import { expect, test, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import {
-  getGetV2ListLibraryAgentsMockHandler,
-  getGetV2ListLibraryAgentsResponseMock,
-} from "@/app/api/__generated__/endpoints/library/library.msw";
-import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getGetBriefingsGetLatestBriefingMockHandler200 } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import { EmptySession } from "../../EmptySession/EmptySession";
 
@@ -27,36 +22,31 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
 });
 
 const baseProps = {
-  inputLayoutId: "test-layout",
   isCreatingSession: false,
   onCreateSession: vi.fn(),
   onSend: vi.fn(),
 };
 
-// Guarantees the pulse strip has at least one chip regardless of faker's
-// random defaults — an agent with an external trigger always produces a
-// "listening" sitrep item.
-function mockPulseStripAgent() {
-  const base = getGetV2ListLibraryAgentsResponseMock();
-  server.use(
-    getGetV2ListLibraryAgentsMockHandler({
-      ...base,
-      agents: [
-        { ...base.agents[0], graph_id: "g-1", has_external_trigger: true },
-      ],
-      pagination: {
-        total_items: 1,
-        total_pages: 1,
-        current_page: 1,
-        page_size: 100,
-      },
-    }),
-    getGetV1ListAllExecutionsMockHandler([]),
-  );
+// The recap renders nothing until its briefing request settles, so tests
+// that assert its absence wait for the mocked response rather than trusting
+// a blank screen that may only mean "still loading".
+function trackResponses() {
+  const paths: string[] = [];
+  function record({ request }: { request: Request }) {
+    paths.push(new URL(request.url).pathname);
+  }
+  server.events.on("response:mocked", record);
+  return {
+    paths,
+    briefingSettled: () =>
+      waitFor(() =>
+        expect(paths.some((path) => path.includes("briefings"))).toBe(true),
+      ),
+    stop: () => server.events.removeListener("response:mocked", record),
+  };
 }
 
 test("renders greeting and composer", async () => {
-  mockPulseStripAgent();
   render(<EmptySession {...baseProps} />);
   expect(await screen.findByPlaceholderText(/./)).toBeDefined();
 });
@@ -70,17 +60,25 @@ test("shows a named kickoff status and withholds the empty composer", () => {
   expect(screen.queryByPlaceholderText(/./)).toBeNull();
 });
 
-test("falls back to pulse strip when there is no briefing", async () => {
-  mockPulseStripAgent();
+test("leaves the space under the composer empty when there is no briefing", async () => {
+  // The workflow-runs strip that used to fill this gap lives on /home now,
+  // under the briefing tile.
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
-  render(<EmptySession {...baseProps} />);
-  expect(
-    await screen.findByText("What's happening with your agents"),
-  ).toBeDefined();
+  const responses = trackResponses();
+
+  try {
+    render(<EmptySession {...baseProps} />);
+    expect(await screen.findByPlaceholderText(/./)).toBeDefined();
+    await responses.briefingSettled();
+
+    expect(screen.queryByText("Recap")).toBeNull();
+    expect(screen.queryByText("What's happening with your agents")).toBeNull();
+  } finally {
+    responses.stop();
+  }
 });
 
 test("renders briefing sections when a briefing is available", async () => {
-  mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
@@ -146,7 +144,6 @@ test("renders briefing sections when a briefing is available", async () => {
 });
 
 test("shows three runs, then all of them behind the show-all toggle", async () => {
-  mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
@@ -191,7 +188,6 @@ test("shows three runs, then all of them behind the show-all toggle", async () =
 });
 
 test("links each row straight at its run", async () => {
-  mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
@@ -232,29 +228,23 @@ test("keeps the decisions inbox and team status off the copilot recap", async ()
   // what keeps the inbox from creeping back in: absent text alone would
   // also pass while the request was still in flight. (The experts query has
   // no such tell — the composer's recipient picker still needs it.)
-  mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
-
-  const requestedPaths: string[] = [];
-  function record({ request }: { request: Request }) {
-    requestedPaths.push(new URL(request.url).pathname);
-  }
-  server.events.on("request:start", record);
+  const responses = trackResponses();
 
   try {
     render(<EmptySession {...baseProps} />);
-    await screen.findByText("What's happening with your agents");
+    await screen.findByPlaceholderText(/./);
+    await responses.briefingSettled();
 
-    expect(requestedPaths.some((path) => path.includes("review"))).toBe(false);
+    expect(responses.paths.some((path) => path.includes("review"))).toBe(false);
     expect(screen.queryByText(/Needs your attention/)).toBeNull();
     expect(screen.queryByRole("link", { name: /Chat with/ })).toBeNull();
   } finally {
-    server.events.removeListener("request:start", record);
+    responses.stop();
   }
 });
 
-test("shows an error card instead of the pulse strip when the briefing fetch fails", async () => {
-  mockPulseStripAgent();
+test("shows an error card when the briefing fetch fails", async () => {
   server.use(
     http.get("/api/proxy/api/briefings/latest", () =>
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
@@ -263,14 +253,12 @@ test("shows an error card instead of the pulse strip when the briefing fetch fai
   render(<EmptySession {...baseProps} />);
 
   expect(await screen.findByText("Failed to load your briefing")).toBeDefined();
-  expect(screen.queryByText("What's happening with your agents")).toBeNull();
 });
 
 test("keeps the onboarding surface and recipient picker with the experts flag on", async () => {
   // hire-experts and onboarding-brain-dump are independent flags aimed at
   // overlapping beta cohorts; the briefing recap must not cancel the other
   // rollout out from under a brand-new user.
-  mockPulseStripAgent();
   server.use(getGetBriefingsGetLatestBriefingMockHandler200(null));
   render(<EmptySession {...baseProps} />);
 
@@ -282,7 +270,6 @@ test("keeps the onboarding surface and recipient picker with the experts flag on
 });
 
 test("renders a run row without a link when the briefing has no deep link", async () => {
-  mockPulseStripAgent();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
@@ -321,7 +308,7 @@ test("renders a run row without a link when the briefing has no deep link", asyn
 test("does not render a hollow briefing card when there are no runs", async () => {
   // A run paused on an approval is not terminal, so it never lands in the
   // run list — leaving a card that would show only a date.
-  mockPulseStripAgent();
+  const responses = trackResponses();
   server.use(
     getGetBriefingsGetLatestBriefingMockHandler200({
       id: "briefing-1",
@@ -348,13 +335,17 @@ test("does not render a hollow briefing card when there are no runs", async () =
       },
     }),
   );
-  render(<EmptySession {...baseProps} />);
 
-  // The pulse strip has to take over: the decisions inbox that used to carry
-  // this case is on /home now, so without it the empty state is blank.
-  expect(
-    await screen.findByText("What's happening with your agents"),
-  ).toBeDefined();
-  expect(screen.queryByText("This morning")).toBeNull();
-  expect(screen.queryByText("Recap")).toBeNull();
+  try {
+    render(<EmptySession {...baseProps} />);
+    await screen.findByPlaceholderText(/./);
+    await responses.briefingSettled();
+
+    // The decisions inbox that used to carry this case is on /home now, so
+    // the empty state stays blank rather than showing a dated, empty card.
+    expect(screen.queryByText("This morning")).toBeNull();
+    expect(screen.queryByText("Recap")).toBeNull();
+  } finally {
+    responses.stop();
+  }
 });

@@ -3,7 +3,7 @@
 Blocks that create All Quiet incidents and move them through their lifecycle. Use these when an agent needs to raise an alert that reaches a human, or to acknowledge, resolve, escalate or comment on one it already raised.
 <!-- END MANUAL -->
 
-## All Quiet Create Incident
+## AllQuiet Create Incident
 
 ### What it is
 Creates an incident in All Quiet and pages the on-call responder
@@ -44,7 +44,7 @@ An agent monitoring error rates notices checkout failures spiking. Rather than p
 
 ---
 
-## All Quiet Update Incident
+## AllQuiet Update Incident
 
 ### What it is
 Investigates, resolves, escalates or comments on an All Quiet incident

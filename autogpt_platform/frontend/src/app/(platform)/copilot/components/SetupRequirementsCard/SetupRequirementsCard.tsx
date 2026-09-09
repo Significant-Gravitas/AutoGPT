@@ -32,8 +32,10 @@ import {
   coerceExpectedInputs,
   extractInitialValues,
   getRequestedProviders,
+  isRejectedCredentialSelected,
   mergeInputValues,
 } from "./helpers";
+import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
 
 /**
  * Single credential/setup card rendered inline in copilot chats.
@@ -74,11 +76,14 @@ export function SetupRequirementsCard({
     Record<string, CredentialsMetaInput | undefined>
   >({});
   const [hasSent, setHasSent] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
     output.setup_info.user_readiness?.missing_credentials,
   );
+
+  const rejection = output.rejection ?? null;
 
   const expectedInputs = coerceExpectedInputs(
     (output.setup_info.requirements as Record<string, unknown>)?.inputs,
@@ -100,6 +105,7 @@ export function SetupRequirementsCard({
   }, [initialValuesKey]);
 
   const isEditMode = inputsMode === "edit";
+  const isTriggerMode = inputsMode === "trigger";
 
   const hasAdvancedFields =
     isEditMode && expectedInputs.some((i) => i.advanced);
@@ -146,9 +152,29 @@ export function SetupRequirementsCard({
   const requestedProviders = getRequestedProviders(credentialFields);
   const alreadyConnected = useAreAllConnected(sessionID, requestedProviders);
   const hasUserActionableInputs = isEditMode && needsInputs;
+  // Neither auto path may send these; the chain gives them a Proceed instead.
+  // A trigger card's message carries the account its webhook registers under,
+  // which the backend requires the user to have picked. A card with editable
+  // inputs reports ready on the first typed character, so sending on readiness
+  // would fire mid-word with a half-typed value.
+  const needsManualPick = isTriggerMode;
+  // A rejection must never self-dismiss: the provider refused a credential the
+  // session store still counts as connected, so dismissing would re-send the
+  // "I've configured the credentials" turn into the same failure, forever.
   const canAutoDismiss =
-    needsCredentials && alreadyConnected && !hasUserActionableInputs;
-
+    needsCredentials &&
+    alreadyConnected &&
+    !hasUserActionableInputs &&
+    !needsManualPick &&
+    !rejection;
+  // Inside a chain this card renders no Proceed of its own — the chain only
+  // renders one for inputs/questions — so a completed sign-in is the sole "go"
+  // signal; without this the chain stalls after the user connects. It must be
+  // the sign-in and not merely a satisfied credential: every card in the chat
+  // history re-mounts on load with its credential already in place.
+  // Standalone only: inside a chain the chain owns sending, so it can wait for
+  // every card's rows before the single follow-up turn goes out.
+  //
   // Auto-send when dismissing so the AI receives the run message and the
   // chat doesn't hang waiting for a confirmation that the user can no longer
   // provide (the Proceed button is hidden behind the early return below).
@@ -163,7 +189,7 @@ export function SetupRequirementsCard({
   // (cleanup cancels the first microtask, but the claim is still held, so
   // the second effect run can't re-claim and the send never fires).
   useEffect(() => {
-    if (!canAutoDismiss || hasSent) return;
+    if (chainActions || !canAutoDismiss || hasSent) return;
     if (!sessionID || requestedProviders.length === 0) return;
     const claimed = useConnectedProvidersStore
       .getState()
@@ -174,22 +200,22 @@ export function SetupRequirementsCard({
     }
     handleRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRun captures latest state; claim guards re-entry
-  }, [canAutoDismiss, hasSent]);
+  }, [chainActions, canAutoDismiss, hasSent]);
 
-  const canRun = checkCanRun(
-    needsCredentials,
-    isAllCredsComplete,
-    isAllInputsDone,
-  );
+  const canRun =
+    checkCanRun(needsCredentials, isAllCredsComplete, isAllInputsDone) &&
+    !isRejectedCredentialSelected(rejection, inputCredentials);
 
   // Inside a tool chain the card's own Proceed is replaced by the chain's
   // single Proceed step — register readiness + message with the chain.
   useEffect(() => {
-    if (!chainActions || hasSent || canAutoDismiss) return;
+    if (!chainActions || hasSent) return;
     if (!needsCredentials && !needsInputs) return;
     chainActions.register({
       id: actionId,
       ready: canRun,
+      manualProceed: needsManualPick || hasUserActionableInputs,
+      justConnected,
       buildMessage: () => buildProceedMessage(),
       onSent: markSent,
       connectors: needsCredentials
@@ -198,6 +224,7 @@ export function SetupRequirementsCard({
             fields: credentialFields,
             selected: inputCredentials,
             onChange: handleCredentialChange,
+            onConnected: () => setJustConnected(true),
           }
         : undefined,
       inputs:
@@ -220,7 +247,7 @@ export function SetupRequirementsCard({
   }, [
     chainActions,
     hasSent,
-    canAutoDismiss,
+    justConnected,
     canRun,
     actionId,
     needsCredentials,
@@ -231,12 +258,12 @@ export function SetupRequirementsCard({
     showAdvanced,
   ]);
 
-  if (hasSent || canAutoDismiss) {
+  if (hasSent || (!chainActions && canAutoDismiss)) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
   function buildProceedMessage() {
-    return inputsMode === "trigger"
+    return isTriggerMode
       ? buildTriggerSetupMessage(inputCredentials)
       : isEditMode
         ? buildRunMessage(
@@ -268,6 +295,8 @@ export function SetupRequirementsCard({
   return (
     <div className="grid gap-2">
       <ContentMessage>{output.message}</ContentMessage>
+
+      {rejection && <CredentialRejectionNotice rejection={rejection} />}
 
       {/* Inside a chain the connectors are lifted out and rendered as a card
           below it; standalone the card keeps the full credentials picker. */}

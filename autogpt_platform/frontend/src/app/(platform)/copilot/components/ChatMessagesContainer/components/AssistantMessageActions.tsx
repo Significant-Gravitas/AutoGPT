@@ -19,6 +19,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   message: UIMessage<unknown, UIDataTypes, UITools>;
   sessionID: string | null;
+  className?: string;
 }
 
 function extractTextFromParts(
@@ -31,7 +32,11 @@ function extractTextFromParts(
     .trim();
 }
 
-export function AssistantMessageActions({ message, sessionID }: Props) {
+export function AssistantMessageActions({
+  message,
+  sessionID,
+  className,
+}: Props) {
   const {
     feedback,
     showFeedbackModal,
@@ -46,7 +51,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
 
   return (
     <>
-      <MessageActions className="mt-1">
+      <MessageActions className={cn("mt-1", className)}>
         <MessageAction
           tooltip="Copy"
           onClick={() => handleCopy(text)}
@@ -84,7 +89,7 @@ export function AssistantMessageActions({ message, sessionID }: Props) {
           <Icon icon={ThumbsDownIcon} size={16} />
         </MessageAction>
 
-        <TTSButton text={text} />
+        <TTSButton text={text} sessionID={sessionID} />
       </MessageActions>
 
       {showFeedbackModal && (

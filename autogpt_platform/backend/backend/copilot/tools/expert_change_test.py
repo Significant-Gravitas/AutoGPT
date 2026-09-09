@@ -46,6 +46,7 @@ _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
 _CHARTER = {
     "name": "Otto",
     "role": "Inbox triage",
+    "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
@@ -74,6 +75,7 @@ def _template(template_id: str = "tpl-scout"):
         id=template_id,
         name="Scout",
         role="Market research",
+        tagline="Tracks your competitors and reports what changed.",
         identity="You track competitors.",
         boundaries="You never contact anyone outside the team.",
         voice_preferences="Short and factual.",
@@ -87,6 +89,11 @@ def _created(name: str = "Scout", expert_id: str = "exp-1"):
         id=expert_id,
         name=name,
         role="Market research",
+        tagline="Tracks your competitors and reports what changed.",
+        identity="You track competitors.",
+        boundaries="You never contact anyone outside the team.",
+        voice_preferences="Short and factual.",
+        weekly_budget=None,
         avatar_url=None,
         color="sky-300",
     )
@@ -98,6 +105,7 @@ def _hired_otto():
         id="exp-2",
         name="Otto",
         role="Inbox triage",
+        tagline="Sorts your morning inbox.",
         identity="You group the morning inbox.",
         boundaries="You never send a reply yourself.",
         voice_preferences="Plain sentences.",
@@ -216,9 +224,25 @@ class TestPreviewNeverWrites:
             resp = await _raise(make_session(_USER), **_CHARTER)
         assert isinstance(resp, ExpertChangeProposedResponse)
         assert resp.applied is False
+        assert resp.preview.tagline == _CHARTER["tagline"]
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
+        db.create_raised_expert.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_hire_preview_carries_the_template_tagline(self):
+        with _env():
+            resp = await _hire(make_session(_USER), template_id="tpl-scout")
+        assert isinstance(resp, ExpertChangeProposedResponse)
+        assert resp.preview.tagline == _template().tagline
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_raise_without_tagline_is_refused(self):
+        with _env() as db:
+            resp = await _raise(make_session(_USER), **{**_CHARTER, "tagline": " "})
+        assert isinstance(resp, ErrorResponse)
+        assert "tagline" in resp.message
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -509,12 +533,16 @@ class TestConfirm:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
         assert resp.expert.name == "Otto"
+        assert resp.expert.tagline == _created().tagline
+        assert resp.expert.about == _created().identity
+        assert resp.expert.boundaries == _created().boundaries
         db.create_raised_expert.assert_awaited_once_with(
             _USER,
             _CHARTER["name"],
             _CHARTER["role"],
             None,
             color=_CHARTER["color"],
+            tagline=_CHARTER["tagline"],
             about=_CHARTER["about"],
             boundaries=_CHARTER["boundaries"],
             weekly_budget=2000,

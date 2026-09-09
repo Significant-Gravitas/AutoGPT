@@ -663,6 +663,123 @@ class TestRunBlockInputValidation:
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_carries_no_plain_inputs(self):
+        """A connect card is only a connect card: the block's ordinary inputs
+        are collected in chat, so the setup card must not ship a form for
+        them alongside the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="github-search-id",
+            name="GitHub Search Issues",
+            input_properties={
+                "term": {"type": "string"},
+                "limit": {"type": "integer", "default": 10, "advanced": True},
+            },
+            required_fields=["term"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"github"}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "term",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="github-search-id",
+                input_data={"term": "login bug"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+        assert response.setup_info.requirements["inputs"] == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_keeps_picker_inputs(self):
+        """Picker-backed fields are the one input the chat cannot supply, so
+        they stay on the card next to the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"google"}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "spreadsheet",
+            "range",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        names = [i["name"] for i in response.setup_info.requirements["inputs"]]
+        assert names == ["spreadsheet"]
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
@@ -1240,6 +1357,187 @@ class TestExecuteBlockUserTimezoneAccessor:
         ctx = captured["ctx"]
         assert ctx is not None
         assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
+
+
+class TestExecuteBlockCredentialRejection:
+    """A provider that refuses a stored credential mid-run must produce the
+    reconnect card, not a bare "Block execution failed"."""
+
+    @staticmethod
+    def _block(exc: Exception):
+        from backend.data.model import CredentialsFieldInfo
+
+        block = MagicMock()
+        block.name = "AyrsharePostBlock"
+        block.id = "ayrshare-block-id"
+        block.input_schema = MagicMock()
+        block.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
+        block.input_schema.get_credentials_fields.return_value = {"credentials": object}
+        block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": ["ayrshare"],
+                    "credentials_types": ["api_key"],
+                    "is_auto_credential": False,
+                },
+                by_alias=True,
+            )
+        }
+        block.input_schema.get_required_fields.return_value = {"credentials"}
+
+        async def _fail(_input, **_kwargs):
+            raise exc
+            yield  # pragma: no cover -- keeps this an async generator
+
+        block.execute = _fail
+        return block
+
+    @staticmethod
+    async def _run(exc: Exception):
+        from backend.copilot.tools.helpers import execute_block
+        from backend.data.model import CredentialsMetaInput
+
+        cred_meta = CredentialsMetaInput(
+            id="cred-1",
+            title="Work Ayrshare key",
+            provider="ayrshare",  # type: ignore[arg-type]
+            type="api_key",
+        )
+        stored = MagicMock()
+        stored.provider = "ayrshare"
+        stored.type = "api_key"
+
+        creds_manager = MagicMock()
+        creds_manager.get = AsyncMock(return_value=stored)
+
+        workspace = MagicMock()
+        workspace.get_or_create_workspace = AsyncMock(return_value=MagicMock(id="ws-1"))
+
+        with (
+            patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                return_value=creds_manager,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.acquire_auto_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+            ),
+        ):
+            return await execute_block(
+                block=TestExecuteBlockCredentialRejection._block(exc),
+                block_id="ayrshare-block-id",
+                input_data={},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials={"credentials": cred_meta},
+                dry_run=False,
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_provider_401_returns_a_card_naming_the_credential(self):
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        from .models import SetupRequirementsResponse
+
+        try:
+            raise HTTPClientError("HTTP 401 Error: token=sk-live-abc", 401)
+        except HTTPClientError as inner:
+            wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+            wrapped.__cause__ = inner
+
+        response = await self._run(wrapped)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert response.rejection is not None
+        assert response.rejection.provider == "ayrshare"
+        assert response.rejection.status_code == 401
+        assert response.rejection.credential_id == "cred-1"
+        assert "sk-live-abc" not in response.rejection.detail
+        assert "Work Ayrshare key" in response.message
+        # The picker must be offered again, or there is no way back.
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_non_auth_block_failure_still_returns_an_error(self):
+        from backend.util.exceptions import BlockExecutionError
+
+        response = await self._run(
+            BlockExecutionError("bad input", "AyrsharePostBlock", "block-id")
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert "Block execution failed" in response.message
+
+
+class TestExecuteBlockExpertAttribution:
+    """A block run from an expert chat must carry the expert on its execution
+    context, so ``workspace://`` inputs resolve inside that expert's scope."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_id_is_plumbed_into_the_execution_context(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="scope-block-id",
+            name="Scope Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-scope")
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.user_db", return_value=rpc_client),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="scope-block-id",
+                input_data={},
+                user_id="u-scope",
+                session_id="s-scope",
+                node_exec_id="n-scope",
+                matched_credentials={},
+                dry_run=False,
+                expert_id="expert-a",
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.expert_id == "expert-a"  # type: ignore[attr-defined]
+        assert ctx.session_id == "s-scope"  # type: ignore[attr-defined]
 
 
 class _StubCreditDB:

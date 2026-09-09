@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.library.db import (
@@ -52,6 +53,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
     get_briefing_alert_conditions,
@@ -91,6 +93,7 @@ from backend.data.credit import (
     get_recent_daily_spend,
     get_user_credit_model,
     reconcile_stripe_tier_for_user,
+    sync_subscription_from_stripe,
 )
 from backend.data.execution import (
     create_graph_execution,
@@ -146,6 +149,10 @@ from backend.data.push_subscription import (
     increment_fail_count,
 )
 from backend.data.stripe_reconciliation import reconcile_all_stripe_tiers
+from backend.data.subscription_trial import (
+    get_subscription_trial,
+    record_subscription_trial_cost,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -177,6 +184,7 @@ from backend.data.workspace import (
     get_workspace_file_by_path,
     get_workspace_total_size,
     list_workspace_files,
+    resolve_expert_workspace_scope,
     soft_delete_workspace_file,
 )
 from backend.platform_linking import db as platform_linking_db
@@ -335,6 +343,9 @@ class DatabaseManager(AppService):
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_subscription_trial = _(get_subscription_trial)
+    sync_subscription_from_stripe = _(sync_subscription_from_stripe)
+    record_subscription_trial_cost = _(record_subscription_trial_cost)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full LaunchDarkly context — see backend/util/feature_flag.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -439,6 +450,7 @@ class DatabaseManager(AppService):
     get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+    resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
@@ -450,6 +462,9 @@ class DatabaseManager(AppService):
 
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = _(log_platform_cost)
+
+    # ============ Activity Events ============ #
+    create_activity_event = _(create_activity_event)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -516,6 +531,7 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
     update_soul_fields = _(experts_db.update_soul_fields)
@@ -552,6 +568,7 @@ class DatabaseManager(AppService):
     update_chat_message_stamps = _(chat_db.update_chat_message_stamps)
     update_chat_message_tool_calls = _(chat_db.update_chat_message_tool_calls)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    update_chat_session_llm_route = _(chat_db.update_chat_session_llm_route)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
     # ChatSession lifecycle primitives.  Three functions cover the
@@ -648,6 +665,9 @@ class DatabaseManagerClient(AppServiceClient):
     append_expert_run_message = _(d.append_expert_run_message)
     get_library_agent_id_by_graph_id = _(d.get_library_agent_id_by_graph_id)
 
+    # Activity events (executor completion hook)
+    create_activity_event = _(d.create_activity_event)
+
     # Morning briefing (scheduler cron; runs Prisma-less)
     append_plain_session_message = _(d.append_plain_session_message)
     create_briefing = _(d.create_briefing)
@@ -707,6 +727,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_subscription_trial = d.get_subscription_trial
+    sync_subscription_from_stripe = d.sync_subscription_from_stripe
+    record_subscription_trial_cost = d.record_subscription_trial_cost
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
@@ -821,6 +844,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
+    resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #
     spend_credits = d.spend_credits
@@ -838,6 +862,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = d.log_platform_cost
+
+    # ============ Activity Events ============ #
+    create_activity_event = d.create_activity_event
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
@@ -889,6 +916,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    expert_allowed_credential_ids = d.expert_allowed_credential_ids
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current
     update_soul_fields = d.update_soul_fields
@@ -920,6 +948,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_message_stamps = d.update_chat_message_stamps
     update_chat_message_tool_calls = d.update_chat_message_tool_calls
     update_chat_session_title = d.update_chat_session_title
+    update_chat_session_llm_route = d.update_chat_session_llm_route
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
     count_chat_sessions_by_status = d.count_chat_sessions_by_status

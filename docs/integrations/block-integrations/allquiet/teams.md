@@ -3,7 +3,7 @@
 A block for listing All Quiet teams. Mainly used to resolve the team IDs that the incident and on-call blocks accept as inputs.
 <!-- END MANUAL -->
 
-## All Quiet List Teams
+## AllQuiet List Teams
 
 ### What it is
 Lists All Quiet teams and their IDs
