@@ -94,6 +94,16 @@ export function MicButton({
   const [isFolding, setIsFolding] = useState(false);
 
   useEffect(() => {
+    if (reduceMotion) {
+      pitch.set(0);
+      setPitchOffset(0);
+    }
+    const target = isRecording ? 1 : 0;
+    if (collapse.get() === target && split.get() === target) {
+      setIsFolding(false);
+      return;
+    }
+    let pauseTimer: ReturnType<typeof setTimeout> | undefined;
     const running: AnimationPlaybackControls[] = [];
     let cancelled = false;
     const step = (value: typeof collapse, to: number, physics: object) => {
@@ -101,18 +111,19 @@ export function MicButton({
       running.push(controls);
       return controls;
     };
-    // Angles accumulate: a tumble forward and one back leave the face front.
     const tumble = (direction: 1 | -1) => {
       if (reduceMotion) return;
       running.push(
-        animate(pitch, pitch.get() + direction * Math.PI * 2, {
+        animate(pitch, direction === 1 ? Math.PI * 2 : 0, {
           ...TUMBLE,
           onUpdate: (value) => setPitchOffset(value),
         }),
       );
     };
     const pause = () =>
-      new Promise<void>((resolve) => setTimeout(resolve, OVERLAP_MS));
+      new Promise<void>((resolve) => {
+        pauseTimer = setTimeout(resolve, OVERLAP_MS);
+      });
     async function fold() {
       setIsFolding(true);
       tumble(1);
@@ -136,6 +147,7 @@ export function MicButton({
     void (isRecording ? fold() : unfold());
     return () => {
       cancelled = true;
+      clearTimeout(pauseTimer);
       running.forEach((controls) => controls.stop());
     };
   }, [isRecording, reduceMotion, collapse, split, pitch]);
