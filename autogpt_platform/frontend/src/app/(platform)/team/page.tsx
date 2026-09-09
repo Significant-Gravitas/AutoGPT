@@ -35,7 +35,7 @@ const MAIN_CLASS =
   "mx-auto min-h-screen w-full max-w-[1180px] space-y-5 px-4 pb-16 pt-6 duration-500 sm:px-8 md:px-12 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none";
 
 const TABS = [
-  { value: "overview", label: "Team Overview", icon: UserGroupIcon },
+  { value: "overview", label: "Overview", icon: UserGroupIcon },
   { value: "pods", label: "Pod board", icon: KanbanIcon },
 ] as const;
 
@@ -113,12 +113,9 @@ export default function TeamPage() {
       <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Icon icon={UserGroupIcon} size={18} className="text-zinc-950" />
-              <Text variant="large-medium" as="h5" tone="primary">
-                Team
-              </Text>
-            </div>
+            <Text variant="lead-medium" as="h5" tone="primary">
+              Team
+            </Text>
             <Text variant="body" tone="secondary" className="max-w-prose">
               Autopilot and your hired experts, ready to work.
             </Text>

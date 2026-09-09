@@ -82,18 +82,18 @@ beforeEach(() => {
 });
 
 describe("TeamPage tabs", () => {
-  test("opens on Team Overview and offers Pod board", async () => {
+  test("opens on Overview and offers Pod board", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
 
-    const overview = await screen.findByRole("tab", { name: "Team Overview" });
+    const overview = await screen.findByRole("tab", { name: "Overview" });
     expect(overview.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tab", { name: "Pod board" })).toBeDefined();
     expect(screen.queryByRole("tab", { name: "All tasks" })).toBeNull();
   });
 
-  test("Team Overview lists every expert without pod sections", async () => {
+  test("Overview lists every expert without pod sections", async () => {
     const growth: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
