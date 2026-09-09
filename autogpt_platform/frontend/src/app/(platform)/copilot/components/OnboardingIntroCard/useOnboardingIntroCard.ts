@@ -1,10 +1,6 @@
 import { useGetBrainDumpIntro } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import {
-  Flag,
-  useFlagStatus,
-  useGetFlag,
-} from "@/services/feature-flags/use-get-flag";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   clearWelcomePending,
@@ -38,12 +34,6 @@ export function useOnboardingIntroCard() {
   const { enabled: isBrainDumpEnabled, ready: isFlagReady } = useFlagStatus(
     Flag.ONBOARDING_BRAIN_DUMP,
   );
-  // The team section is a child of HIRE_EXPERTS: with hiring off there is
-  // nowhere for a Hire button to lead, so the section stays dark.
-  const isExpertTeamFlagOn = useGetFlag(Flag.ONBOARDING_EXPERT_TEAM);
-  const isHireExpertsFlagOn = useGetFlag(Flag.HIRE_EXPERTS);
-  const isTeamEnabled = Boolean(isExpertTeamFlagOn && isHireExpertsFlagOn);
-
   // localStorage answers first so a returning user never flashes the
   // greeting; only when it has no answer do we ask the server. The flag
   // is keyed to the user id, so a fresh account on the same browser
@@ -122,10 +112,6 @@ export function useOnboardingIntroCard() {
         const body = latest.data;
         if (body.greeting_done) return false;
         if (body.greeting_pending) return PENDING_POLL_MS;
-        // The greeting lands first and the card is already on screen by
-        // then; the team job finishes on its own schedule, so the poll
-        // outlives the greeting to fill the skeleton row in place.
-        if (isTeamEnabled && body.team_pending) return PENDING_POLL_MS;
         return false;
       },
     },
@@ -148,14 +134,12 @@ export function useOnboardingIntroCard() {
     intro && !intro.greeting_done && intro.greeting_pending,
   );
   const isPendingGeneration = isPendingPerServer && !gaveUpWaiting;
-  const isTeamPendingPerServer = Boolean(isTeamEnabled && intro?.team_pending);
-  const isWaitingOnPipeline = isPendingPerServer || isTeamPendingPerServer;
 
   useEffect(() => {
-    if (!isWaitingOnPipeline) return;
+    if (!isPendingPerServer) return;
     const timer = setTimeout(() => setGaveUpWaiting(true), PENDING_GIVE_UP_MS);
     return () => clearTimeout(timer);
-  }, [isWaitingOnPipeline]);
+  }, [isPendingPerServer]);
 
   useEffect(() => {
     // The server already saw the first message (possibly from another
@@ -216,9 +200,5 @@ export function useOnboardingIntroCard() {
     prompts: intro?.prompts ?? [],
     transcript: typeof intro?.transcript === "string" ? intro.transcript : "",
     path: intro?.path ?? "B",
-    // Never waits for the team: the greeting shows the moment it exists and
-    // the section renders its own skeleton row underneath.
-    team: isTeamEnabled ? (intro?.team ?? null) : null,
-    isTeamPending: isTeamPendingPerServer && !gaveUpWaiting,
   };
 }
