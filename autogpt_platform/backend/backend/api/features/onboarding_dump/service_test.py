@@ -1544,10 +1544,20 @@ async def test_the_intro_card_carries_the_stored_team(
 
 
 @pytest.mark.asyncio
-async def test_a_greeting_still_being_written_marks_the_team_pending_too(
-    dumps: DumpStore, team_flag: AsyncMock, templates: AsyncMock
+@pytest.mark.parametrize(
+    "hire_enabled,team_enabled",
+    [(False, False), (False, True), (True, False), (True, True)],
+)
+async def test_pending_greeting_only_waits_for_an_enabled_team(
+    dumps: DumpStore,
+    team_flag: AsyncMock,
+    templates: AsyncMock,
+    hire_enabled: bool,
+    team_enabled: bool,
 ):
-    """Both halves are still running, and the client polls both."""
+    team_flag.side_effect = lambda flag, *args, **kwargs: (
+        hire_enabled if flag == service.Flag.HIRE_EXPERTS else team_enabled
+    )
     await start_voice_take(dumps)
     await dumps.update_dump(
         USER_ID,
@@ -1559,5 +1569,5 @@ async def test_a_greeting_still_being_written_marks_the_team_pending_too(
     card = await service.get_intro_card(USER_ID)
 
     assert card.greeting_pending is True
-    assert card.team_pending is True
+    assert card.team_pending is (hire_enabled and team_enabled)
     assert card.team is None

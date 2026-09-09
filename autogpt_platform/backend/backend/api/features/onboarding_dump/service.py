@@ -698,7 +698,10 @@ async def get_intro_card(user_id: str) -> IntroCardResponse:
         # session lookup below so that poll does not re-run it every
         # cycle: someone whose dump is mid-pipeline just recorded it.
         return IntroCardResponse(
-            path="A", greeting="", greeting_pending=True, team_pending=True
+            path="A",
+            greeting="",
+            greeting_pending=True,
+            team_pending=await _expert_team_enabled(user_id),
         )
 
     if await _retire_greeting_if_chatted(user_id):
