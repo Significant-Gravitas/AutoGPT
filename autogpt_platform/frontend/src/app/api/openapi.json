@@ -6504,27 +6504,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/experts/templates": {
-      "get": {
-        "tags": ["v2", "experts", "experts"],
-        "summary": "List Expert Templates",
-        "operationId": "list_expert_templates",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": { "$ref": "#/components/schemas/Expert" },
-                  "type": "array",
-                  "title": "Response List Expert Templates"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/experts/setup": {
       "get": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -6549,6 +6528,27 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/templates": {
+      "get": {
+        "tags": ["v2", "experts", "experts"],
+        "summary": "List Expert Templates",
+        "operationId": "list_expert_templates",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/Expert" },
+                  "type": "array",
+                  "title": "Response List Expert Templates"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experts/{expert_id}": {
