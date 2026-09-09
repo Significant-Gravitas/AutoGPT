@@ -41,9 +41,10 @@ export function FolderRows({ onSelectFolder }: Props) {
 
   return (
     <>
-      {folders.map((folder) => (
+      {folders.map((folder, index) => (
         <FolderRow
           key={folder.id}
+          index={index}
           id={folder.id}
           name={folder.name}
           fileCount={folder.file_count ?? 0}

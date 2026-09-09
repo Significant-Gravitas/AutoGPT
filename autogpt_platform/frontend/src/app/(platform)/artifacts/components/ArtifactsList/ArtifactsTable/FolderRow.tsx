@@ -33,6 +33,8 @@ interface Props {
   onEdit: () => void;
   onDelete: () => void;
   onFileDrop: (fileIds: string[]) => void;
+  /** Position in the list; drives the small entrance stagger. */
+  index?: number;
 }
 
 const ACTION_BUTTON_CLASS =
@@ -47,6 +49,7 @@ export function FolderRow({
   onEdit,
   onDelete,
   onFileDrop,
+  index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [isDragOver, setIsDragOver] = useState(false);
@@ -74,8 +77,13 @@ export function FolderRow({
   }
 
   return (
+    // Animates on its own mount (see row-layout.ts) so a folder created
+    // while the list is already showing doesn't stay in the hidden state.
     <motion.li
       variants={reduceMotion ? REDUCED_ROW_VARIANTS : ROW_VARIANTS}
+      custom={index}
+      initial={reduceMotion ? false : "hidden"}
+      animate="show"
       className={cn(
         ROW_GRID_CLASS,
         "group cursor-pointer px-2 transition-colors hover:bg-zinc-50",
