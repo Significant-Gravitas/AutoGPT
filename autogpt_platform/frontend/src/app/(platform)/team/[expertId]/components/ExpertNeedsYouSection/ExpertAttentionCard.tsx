@@ -2,7 +2,6 @@
 
 import { AttentionRowActions } from "@/app/(platform)/home/components/NeedsYou/components/AttentionRowActions";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -20,9 +19,6 @@ interface Props {
   item: HomeAttentionItem;
   isProcessing: boolean;
   onDecision: (item: HomeAttentionItem, approved: boolean) => void;
-  /** Replaces the setup item's link (which points at this very page) with an
-   *  in-page action. */
-  onFinishSetup?: () => void;
 }
 
 const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
@@ -35,12 +31,7 @@ const ICONS: Record<HomeAttentionItem["kind"], IconSvgElement> = {
 
 /** Compact card version of the home page's AttentionRow, styled like the
  *  chat sidebar's mini cards. */
-export function ExpertAttentionCard({
-  item,
-  isProcessing,
-  onDecision,
-  onFinishSetup,
-}: Props) {
+export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
   const [confirmDecline, setConfirmDecline] = useState(false);
 
   function handleDecline() {
@@ -95,20 +86,14 @@ export function ExpertAttentionCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 self-end sm:self-center">
-        {item.kind === "setup" && onFinishSetup ? (
-          <Button variant="secondary" size="xs" onClick={onFinishSetup}>
-            {item.primary_action.label}
-          </Button>
-        ) : (
-          <AttentionRowActions
-            item={item}
-            isProcessing={isProcessing}
-            confirmDecline={confirmDecline}
-            onApprove={() => onDecision(item, true)}
-            onDecline={handleDecline}
-            onDeclineBlur={() => setConfirmDecline(false)}
-          />
-        )}
+        <AttentionRowActions
+          item={item}
+          isProcessing={isProcessing}
+          confirmDecline={confirmDecline}
+          onApprove={() => onDecision(item, true)}
+          onDecline={handleDecline}
+          onDeclineBlur={() => setConfirmDecline(false)}
+        />
       </div>
       <span className="sr-only" aria-live="polite">
         {confirmDecline ? `Press again to decline ${item.title}` : ""}

@@ -21,6 +21,7 @@ import { ExpertTeamCard } from "./components/ExpertTeamCard/ExpertTeamCard";
 import { ExpertTeamCardSkeleton } from "./components/ExpertTeamCardSkeleton";
 import { NewPodDialog } from "./components/NewPodDialog/NewPodDialog";
 import { PodBoard } from "./components/PodBoard/PodBoard";
+import { SetupNeeded } from "./components/SetupNeeded/SetupNeeded";
 import { SoulDrawer } from "./components/SoulDrawer/SoulDrawer";
 import { TeamHeaderActions } from "./components/TeamHeaderActions";
 import { TeamRoster } from "./components/TeamRoster/TeamRoster";
@@ -137,6 +138,7 @@ export default function TeamPage() {
           </TabsLineList>
 
           <TabsLineContent value="overview" className="space-y-6">
+            <SetupNeeded enabled={Boolean(enabled) && ready} />
             <TeamRoster
               isLoading={isLoading}
               experts={hiredExperts}

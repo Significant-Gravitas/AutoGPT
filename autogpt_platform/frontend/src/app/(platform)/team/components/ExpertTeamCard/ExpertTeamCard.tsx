@@ -6,7 +6,6 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -33,7 +32,6 @@ import { SpendMeter } from "./components/SpendMeter";
 import {
   getExpertBlurb,
   getExpertRosterStatus,
-  getNeedsSetupCount,
   getWeeklySpend,
 } from "../../helpers";
 import { CardStat, CardStats } from "../CardStats";
@@ -63,8 +61,7 @@ export function ExpertTeamCard({
   onAssignPod,
 }: Props) {
   const blurb = getExpertBlurb(expert);
-  const needsSetupCount = getNeedsSetupCount(expert, schedules);
-  const rosterStatus = getExpertRosterStatus(expert, needsSetupCount);
+  const rosterStatus = getExpertRosterStatus(expert);
   const weeklySpend = getWeeklySpend(expert);
   const { handleResume, isResuming, isFireOpen, openFire, closeFire } =
     useExpertTeamCard(expert.id);
@@ -204,11 +201,6 @@ export function ExpertTeamCard({
           <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
             {blurb}
           </Text>
-          {needsSetupCount > 0 ? (
-            <Badge variant="warning" size="small" className="mt-1">
-              {needsSetupCount} {needsSetupCount === 1 ? "needs" : "need"} setup
-            </Badge>
-          ) : null}
         </div>
 
         <div className="w-full px-2">

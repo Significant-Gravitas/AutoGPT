@@ -293,18 +293,18 @@ function attentionItem(
 ): HomeAttentionItem {
   return {
     id,
-    kind: "setup",
-    priority: "normal",
+    kind: "paused",
+    priority: "high",
     title,
-    description: "Waiting on a connection.",
-    why_it_matters: "Runs are blocked until this is done.",
+    description: "Scheduled work is paused.",
+    why_it_matters: "Upcoming tasks will not run while this agent is paused.",
     expert: {
       id: expertId,
       name: expertId === "expert-maria" ? "Maria" : "Other",
       role: "Marketing Strategist",
       avatar_url: null,
     },
-    primary_action: { label: "Finish setup", href: `/team/${expertId}` },
+    primary_action: { label: "Review budget", href: `/team/${expertId}` },
   };
 }
 
@@ -1378,18 +1378,37 @@ describe("ExpertDetailPage", () => {
       }),
     ).toBeDefined();
 
-    // The feed's link points at this very page, so here Finish setup opens
-    // the schedule dialog with only the workflows still missing a schedule.
-    const user = userEvent.setup();
-    await user.click(
-      within(section).getByRole("button", { name: "Finish setup" }),
+    expect(
+      within(section)
+        .getByRole("link", { name: "Review budget" })
+        .getAttribute("href"),
+    ).toBe("/team/expert-maria");
+  });
+
+  test("leaves setup items to the Team page's Setup needed card", async () => {
+    server.use(
+      getGetHomeDashboardMockHandler(
+        getGetHomeDashboardResponseMock200({
+          attention: [
+            {
+              ...attentionItem(
+                "att-1",
+                "expert-maria",
+                "Finish setting up Maria",
+              ),
+              kind: "setup",
+              priority: "normal",
+              primary_action: { label: "Finish setup", href: "/team" },
+            },
+          ],
+        }),
+      ),
     );
-    const dialog = await screen.findByRole("dialog", { name: "Finish setup" });
-    const list = within(dialog).getByRole("list", {
-      name: "Schedulable workflows",
-    });
-    expect(within(list).getByText("SEO Audit")).toBeDefined();
-    expect(within(list).queryByText("Content Calendar")).toBeNull();
+
+    render(<ExpertDetailPage />);
+
+    expect(await screen.findByRole("heading", { name: "Maria" })).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 
   test("hides the Needs you block when nothing is waiting on the user", async () => {

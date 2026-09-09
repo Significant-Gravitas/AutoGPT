@@ -1,9 +1,6 @@
 "use client";
 
 import type { Expert } from "@/app/api/__generated__/models/expert";
-import { useState } from "react";
-import { workflowNeedsSetup } from "../../../helpers";
-import { CreateScheduleDialog } from "../CreateScheduleDialog";
 import { ExpertAttentionCard } from "./ExpertAttentionCard";
 import { useExpertNeedsYou } from "./useExpertNeedsYou";
 
@@ -12,18 +9,19 @@ interface Props {
   enabled: boolean;
 }
 
-/** One card per item, styled like the stack sections in the chat sidebar. */
+/** One card per item, styled like the stack sections in the chat sidebar.
+ *  Setup items are left to the Team page's Setup needed card, which names
+ *  the missing connection and offers the fix. */
 export function ExpertNeedsYouSection({ expert, enabled }: Props) {
-  const { items, pendingIDs, decide } = useExpertNeedsYou({
+  const {
+    items: allItems,
+    pendingIDs,
+    decide,
+  } = useExpertNeedsYou({
     expertId: expert.id,
     enabled,
   });
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
-  // "Needs setup" means a scheduled workflow with no schedule yet, so
-  // finishing setup is creating that schedule.
-  const workflowsNeedingSetup = expert.workflows.filter((workflow) =>
-    workflowNeedsSetup(workflow),
-  );
+  const items = allItems.filter((item) => item.kind !== "setup");
 
   if (items.length === 0) return null;
 
@@ -41,17 +39,9 @@ export function ExpertNeedsYouSection({ expert, enabled }: Props) {
             item={item}
             isProcessing={pendingIDs.has(item.id)}
             onDecision={decide}
-            onFinishSetup={() => setIsSetupOpen(true)}
           />
         ))}
       </div>
-      <CreateScheduleDialog
-        expertId={expert.id}
-        workflows={workflowsNeedingSetup}
-        open={isSetupOpen}
-        onClose={() => setIsSetupOpen(false)}
-        title="Finish setup"
-      />
     </section>
   );
 }

@@ -39,6 +39,8 @@ const reducedVariants = {
 interface Props {
   open: boolean;
   expertName: string;
+  /** Open straight on this provider's connect step instead of the picker. */
+  initialProviderId?: string | null;
   onClose: () => void;
   onConnected: (credential: CredentialsMetaResponse) => void;
 }
@@ -49,6 +51,7 @@ interface Props {
 export function ExpertConnectServiceDialog({
   open,
   expertName,
+  initialProviderId,
   onClose,
   onConnected,
 }: Props) {
@@ -75,7 +78,7 @@ export function ExpertConnectServiceDialog({
     handleBackToList,
     handleContinue,
     handleSuccess,
-  } = useExpertConnectServiceDialog({ open, onConnected });
+  } = useExpertConnectServiceDialog({ open, initialProviderId, onConnected });
   const reduceMotion = useReducedMotion();
   const variants = reduceMotion ? reducedVariants : stepVariants;
   const [contentRef, contentHeight] = useMeasuredHeight<HTMLDivElement>();
