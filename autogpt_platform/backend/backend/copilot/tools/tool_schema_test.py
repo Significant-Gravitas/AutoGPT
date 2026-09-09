@@ -119,11 +119,16 @@ from backend.copilot.tools import TOOL_REGISTRY
 # PRs add 1,763) rather than against whatever sits on dev today, because each
 # branch's CI only ever sees its own delta. Registry measures 62,747 with all
 # ten merged; 2,253 headroom.
-# On a merge conflict with another PR's bump, keep the HIGHER value: taking the
-# incoming side lowers a ceiling sized for every in-flight PR at once. #11220
-# resolved its own 62_000 that way, and was NOT among the ten measured above —
-# its `constant_inputs` and `trigger_config`, net of a 303-char trim to both
-# tools' wording, add 178 on top of dev's 60,984.
+# list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
+# under 65_000 without a bump of their own; merged registry measures 62,694.
+# #11220's `constant_inputs` and `trigger_config`, net of a 303-char trim to
+# both tools' wording, add 178: 62,747 for dev alone against 62,925 here, both
+# read on the same machine (the line above was measured elsewhere).
+#
+# ON CONFLICT, KEEP THE HIGHER VALUE. Two branches tuning this line independently
+# both look correct: each one's CI only measures its own delta against dev, while
+# the budget has to cover what every in-flight PR adds together. Taking the
+# incoming side lowers a ceiling that has already ejected a green PR.
 _CHAR_BUDGET = 65_000
 
 
