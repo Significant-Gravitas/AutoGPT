@@ -5,11 +5,25 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useAdminSkillSubmissions } from "./useAdminSkillSubmissions";
 
 export function AdminSkillSubmissions() {
-  const { submissions, isLoading, isReviewing, approve, reject } =
-    useAdminSkillSubmissions();
+  const {
+    submissions,
+    isLoading,
+    isUnavailable,
+    isReviewing,
+    approve,
+    reject,
+  } = useAdminSkillSubmissions();
 
   if (isLoading) {
     return <div className="py-6 text-center">Loading skill submissions…</div>;
+  }
+
+  if (isUnavailable) {
+    return (
+      <Text variant="body" className="!text-zinc-500">
+        Skill submissions are unavailable right now.
+      </Text>
+    );
   }
 
   if (submissions.length === 0) {

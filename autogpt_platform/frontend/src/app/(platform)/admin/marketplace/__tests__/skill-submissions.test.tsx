@@ -85,6 +85,21 @@ describe("admin skill submissions", () => {
     await waitFor(() => expect(approved).toBe(false));
   });
 
+  test("a 404 reads as unavailable, not as an empty queue", async () => {
+    server.use(
+      http.get("*/api/store/admin/skills/submissions", () =>
+        HttpResponse.json({ detail: "Feature not available" }, { status: 404 }),
+      ),
+    );
+
+    render(<AdminSkillSubmissions />);
+
+    expect(
+      await screen.findByText(/Skill submissions are unavailable/),
+    ).toBeDefined();
+    expect(screen.queryByText(/No skill submissions are waiting/)).toBeNull();
+  });
+
   test("says the queue is empty rather than rendering an empty list", async () => {
     server.use(getGetV2AdminListPendingSkillSubmissionsMockHandler200([]));
 

@@ -13811,9 +13811,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewSubmissionRequest"
-              }
+              "schema": { "$ref": "#/components/schemas/SkillReviewRequest" }
             }
           }
         },
@@ -27446,6 +27444,20 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SkillReviewRequest": {
+        "properties": {
+          "is_approved": { "type": "boolean", "title": "Is Approved" },
+          "comments": { "type": "string", "title": "Comments" },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": ["is_approved", "comments"],
+        "title": "SkillReviewRequest",
+        "description": "An admin's verdict on one submission; the version comes from the path."
       },
       "SkillSubmission": {
         "properties": {

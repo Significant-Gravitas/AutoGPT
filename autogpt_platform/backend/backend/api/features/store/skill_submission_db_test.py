@@ -225,3 +225,66 @@ async def test_the_review_queue_holds_only_pending_submissions(creator, reviewer
     )
 
     assert await skill_submission_db.list_pending_skill_submissions() == []
+
+
+async def test_editing_cannot_repoint_the_submission_at_another_skill(creator, mocker):
+    submission = await skill_submission_db.submit_skill(creator, _request())
+    mocker.patch.object(
+        skill_submission_db,
+        "read_user_skill_with_body",
+        return_value=ParsedSkill(
+            name="other-skill",
+            description="Someone else's content.",
+            body="# Other\n",
+            triggers=(),
+        ),
+    )
+
+    with pytest.raises(PreconditionFailed, match="brand-voice-guide"):
+        await skill_submission_db.edit_skill_submission(
+            creator,
+            submission.skill_listing_version_id,
+            _request(skill_name="other-skill"),
+        )
+
+    unchanged = await skill_submission_db.list_my_skill_submissions(creator)
+    assert unchanged[0].description == LIBRARY_SKILL.description
+
+
+async def test_a_rejected_submission_cannot_be_re_approved(creator, reviewer):
+    submission = await skill_submission_db.submit_skill(creator, _request())
+    await skill_submission_db.review_skill_submission(
+        submission.skill_listing_version_id,
+        is_approved=False,
+        reviewer_id=reviewer,
+        comments="Needs work",
+    )
+
+    with pytest.raises(PreconditionFailed, match="pending"):
+        await skill_submission_db.review_skill_submission(
+            submission.skill_listing_version_id,
+            is_approved=True,
+            reviewer_id=reviewer,
+            comments="Changed my mind",
+        )
+
+    browse = await skill_db.get_marketplace_skills()
+    assert browse.skills == []
+
+
+async def test_a_deleted_listing_is_not_in_the_review_queue(creator):
+    submission = await skill_submission_db.submit_skill(creator, _request())
+    await prisma.models.SkillListing.prisma().update(
+        where={"slug": "brand-voice-guide"}, data={"isDeleted": True}
+    )
+
+    assert await skill_submission_db.list_pending_skill_submissions() == []
+
+    await prisma.models.SkillListing.prisma().update(
+        where={"slug": "brand-voice-guide"}, data={"isDeleted": False}
+    )
+    await prisma.models.SkillListingVersion.prisma().update(
+        where={"id": submission.skill_listing_version_id}, data={"isDeleted": True}
+    )
+
+    assert await skill_submission_db.list_pending_skill_submissions() == []

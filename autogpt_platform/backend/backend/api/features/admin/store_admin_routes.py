@@ -196,7 +196,7 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
 )
 async def review_skill_submission(
     skill_listing_version_id: str,
-    request: store_model.ReviewSubmissionRequest,
+    request: skill_model.SkillReviewRequest,
     user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
 ) -> skill_model.SkillSubmission:
     """Approve or reject a skill submission.

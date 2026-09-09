@@ -10,11 +10,7 @@ export function useAdminSkillSubmissions() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const query = useGetV2AdminListPendingSkillSubmissions({
-    query: {
-      select: (response) => (response.status === 200 ? response.data : []),
-    },
-  });
+  const query = useGetV2AdminListPendingSkillSubmissions();
 
   const { mutate: review, isPending } = usePostV2ReviewSkillSubmission({
     mutation: {
@@ -36,16 +32,20 @@ export function useAdminSkillSubmissions() {
     review({
       skillListingVersionId: versionId,
       data: {
-        store_listing_version_id: versionId,
         is_approved: isApproved,
         comments: isApproved ? "Approved" : "Rejected",
       },
     });
   }
 
+  // A 404 here is the skills-hub flag being off, not an empty queue — reporting
+  // "nothing to review" would tell an admin the opposite of the truth.
+  const loaded = query.data?.status === 200 ? query.data.data : null;
+
   return {
-    submissions: query.data ?? [],
+    submissions: loaded ?? [],
     isLoading: query.isLoading,
+    isUnavailable: !query.isLoading && loaded === null,
     isReviewing: isPending,
     approve: (versionId: string) => submitReview(versionId, true),
     reject: (versionId: string) => submitReview(versionId, false),

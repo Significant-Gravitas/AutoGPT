@@ -87,6 +87,14 @@ def active_version(
     return listing.ActiveVersion
 
 
+class SkillReviewRequest(pydantic.BaseModel):
+    """An admin's verdict on one submission; the version comes from the path."""
+
+    is_approved: bool
+    comments: str
+    internal_comments: str | None = None
+
+
 class SkillSubmissionRequest(pydantic.BaseModel):
     """Publish one of the caller's own library skills as a marketplace listing."""
 

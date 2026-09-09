@@ -95,9 +95,17 @@ async def edit_skill_submission(
     version, listing = await _owned_version(user_id, skill_listing_version_id)
     if version.submissionStatus != prisma.enums.SubmissionStatus.PENDING:
         raise PreconditionFailed("Only a pending submission can be edited")
-    skill = await read_user_skill_with_body(user_id, request.skill_name.strip().lower())
+    # The slug and sourceSkillSlug were fixed at submit time, so re-pointing the
+    # edit at another skill would serve b's content under a's slug.
+    slug = request.skill_name.strip().lower()
+    if slug != listing.slug:
+        raise PreconditionFailed(
+            f"This submission publishes '{listing.slug}'. Publish '{slug}' as "
+            "its own listing instead."
+        )
+    skill = await read_user_skill_with_body(user_id, slug)
     if skill is None:
-        raise NotFoundError(f"Skill '{request.skill_name}' is not in your library")
+        raise NotFoundError(f"Skill '{slug}' is not in your library")
 
     updated = await prisma.models.SkillListingVersion.prisma().update(
         where={"id": version.id},
@@ -124,25 +132,24 @@ async def review_skill_submission(
     comments: str,
     internal_comments: str = "",
 ) -> skill_model.SkillSubmission:
-    """Approve or reject a submission.
+    """Approve or reject a pending submission.
 
     Approval promotes this version to the one the marketplace serves; a
     rejection records the verdict and leaves the live version alone.
     """
-    version = await prisma.models.SkillListingVersion.prisma().find_unique(
-        where={"id": skill_listing_version_id}, include={"SkillListing": True}
-    )
-    if version is None or version.SkillListing is None:
-        raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
-
     status = (
         prisma.enums.SubmissionStatus.APPROVED
         if is_approved
         else prisma.enums.SubmissionStatus.REJECTED
     )
     async with transaction() as tx:
-        updated = await prisma.models.SkillListingVersion.prisma(tx).update(
-            where={"id": version.id},
+        # PENDING sits in the WHERE so a second verdict cannot overwrite the
+        # first; without it, re-approving a rejected version re-promotes it.
+        reviewed = await prisma.models.SkillListingVersion.prisma(tx).update_many(
+            where={
+                "id": skill_listing_version_id,
+                "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            },
             data={
                 "submissionStatus": status,
                 "reviewerId": reviewer_id,
@@ -150,23 +157,32 @@ async def review_skill_submission(
                 "internalComments": internal_comments,
             },
         )
-        listing = version.SkillListing
+        updated = await prisma.models.SkillListingVersion.prisma(tx).find_unique(
+            where={"id": skill_listing_version_id}, include={"SkillListing": True}
+        )
+        if updated is None or updated.SkillListing is None:
+            raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
+        if reviewed == 0:
+            raise PreconditionFailed("Only a pending submission can be reviewed")
+        listing = updated.SkillListing
         if is_approved:
             listing = (
                 await prisma.models.SkillListing.prisma(tx).update(
                     where={"id": listing.id},
-                    data={"activeVersionId": version.id, "hasApprovedVersion": True},
+                    data={"activeVersionId": updated.id, "hasApprovedVersion": True},
                 )
                 or listing
             )
-    if updated is None:
-        raise NotFoundError(f"Submission #{skill_listing_version_id} not found")
     return skill_model.SkillSubmission.from_db(updated, listing)
 
 
 async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     versions = await prisma.models.SkillListingVersion.prisma().find_many(
-        where={"submissionStatus": prisma.enums.SubmissionStatus.PENDING},
+        where={
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+            "isDeleted": False,
+            "SkillListing": {"is": {"isDeleted": False}},
+        },
         include={"SkillListing": True},
         order={"createdAt": "asc"},
     )
