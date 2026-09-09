@@ -9,6 +9,7 @@ import {
   Activity01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import Image from "next/image";
 import NextLink from "next/link";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
@@ -64,14 +65,24 @@ export function ExpertWorkflowListItem({
         />
       ) : null}
 
-      <div
-        className={cn(
-          accentClassName,
-          "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
-        )}
-      >
-        <Icon icon={WorkflowSquare01Icon} size={18} aria-hidden="true" />
-      </div>
+      {libraryAgent?.image_url ? (
+        <Image
+          src={libraryAgent.image_url}
+          alt=""
+          width={56}
+          height={36}
+          className="pointer-events-none h-9 w-14 flex-shrink-0 rounded-md bg-zinc-100 object-cover"
+        />
+      ) : (
+        <div
+          className={cn(
+            accentClassName,
+            "pointer-events-none flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border-0",
+          )}
+        >
+          <Icon icon={WorkflowSquare01Icon} size={18} aria-hidden="true" />
+        </div>
+      )}
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
