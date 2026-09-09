@@ -112,3 +112,22 @@ describe("trackOnboardingStep", () => {
     expect(() => trackOnboardingStep("role")).not.toThrow();
   });
 });
+
+it.each([false, true])(
+  "tracks the optional connection step once, with intro=%s",
+  (hasIntro) => {
+    sessionStorage.clear();
+    sendDatafastEvent.mockReset();
+    const steps = buildStepLayout({ hasIntro, hasConnect: true });
+    const key = onboardingStepKey(steps, steps.connect!);
+    expect(key).toBe("connect");
+    if (key) {
+      trackOnboardingStep(key);
+      trackOnboardingStep(key);
+    }
+    expect(sendDatafastEvent).toHaveBeenCalledExactlyOnceWith(
+      "onboarding_connect",
+      {},
+    );
+  },
+);

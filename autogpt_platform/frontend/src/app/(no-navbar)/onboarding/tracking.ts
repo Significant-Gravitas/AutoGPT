@@ -6,6 +6,7 @@ export type OnboardingStepKey =
   | "autopilot"
   | "role"
   | "pain_points"
+  | "connect"
   | "hire"
   | "preparing";
 
@@ -27,6 +28,7 @@ export function onboardingStepKey(
   if (step === steps.autopilot) return "autopilot";
   if (step === steps.role) return "role";
   if (step === steps.painPoints) return "pain_points";
+  if (step === steps.connect) return "connect";
   if (step === steps.hire) return "hire";
   if (step === steps.preparing) return "preparing";
   return null;
