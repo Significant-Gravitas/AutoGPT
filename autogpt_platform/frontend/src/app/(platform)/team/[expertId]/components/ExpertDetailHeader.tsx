@@ -32,11 +32,12 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             <h1 className="text-2xl font-semibold tracking-[-0.02em] text-zinc-900">
               {expert.name}
             </h1>
+            {/* Same pill as the marketplace expert card. */}
             <Text
               variant="body-medium"
               as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1",
                 accent.pill,
               )}
             >
