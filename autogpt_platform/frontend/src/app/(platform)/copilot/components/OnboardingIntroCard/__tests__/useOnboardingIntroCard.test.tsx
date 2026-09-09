@@ -21,7 +21,11 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 const flags = vi.hoisted(() => ({ current: {} as Record<string, boolean> }));
 const flagsReady = vi.hoisted(() => ({ current: true }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump" },
+  Flag: {
+    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
+    ONBOARDING_EXPERT_TEAM: "onboarding-expert-team",
+    HIRE_EXPERTS: "hire-experts",
+  },
   useGetFlag: (flag: string) => flags.current[flag] ?? false,
   useFlagStatus: (flag: string) => ({
     enabled: flags.current[flag] ?? false,
@@ -46,6 +50,34 @@ const READY_INTRO: IntroCardResponse = {
   greeting_done: false,
   prompts: [{ title: "Summarise my inbox", prompt: "Summarise my inbox" }],
   transcript: "I rebuild the same report every Monday.",
+};
+
+const TEAM = {
+  diagnosis: "You have a marketing problem.",
+  source: "llm" as const,
+  experts: [
+    {
+      template_id: "tpl-maria",
+      name: "Maria",
+      role: "Marketing",
+      avatar_url: null,
+      reason: "Your posts eat a day a week.",
+      workflow_names: ["Weekly LinkedIn post"],
+    },
+  ],
+  raise_suggestion: null,
+};
+
+const TEAM_PENDING_INTRO: IntroCardResponse = {
+  ...READY_INTRO,
+  team: null,
+  team_pending: true,
+};
+
+const TEAM_READY_INTRO: IntroCardResponse = {
+  ...READY_INTRO,
+  team: TEAM,
+  team_pending: false,
 };
 
 const PENDING_INTRO: IntroCardResponse = {
@@ -456,5 +488,86 @@ describe("useOnboardingIntroCard — the greeting itself", () => {
 
     expect(result.current.isVisible).toBe(false);
     expect(result.current.greeting).toBe("");
+  });
+});
+
+describe("useOnboardingIntroCard — the team", () => {
+  beforeEach(() => {
+    flags.current = {
+      "onboarding-brain-dump": true,
+      "onboarding-expert-team": true,
+      "hire-experts": true,
+    };
+  });
+
+  it("shows the greeting immediately and keeps polling until the team lands", async () => {
+    let calls = 0;
+    server.use(
+      http.get(INTRO_URL, () => {
+        calls += 1;
+        return HttpResponse.json(
+          calls === 1 ? TEAM_PENDING_INTRO : TEAM_READY_INTRO,
+        );
+      }),
+    );
+
+    const { result } = renderIntro();
+    // The team never holds the greeting back — the section renders its own
+    // skeleton row under a card that is already on screen.
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(result.current.isTeamPending).toBe(true);
+    expect(result.current.team).toBeNull();
+
+    await waitFor(() => expect(result.current.team).not.toBeNull(), {
+      timeout: 6000,
+    });
+    expect(calls).toBeGreaterThan(1);
+    expect(result.current.team?.experts?.[0].name).toBe("Maria");
+    expect(result.current.isTeamPending).toBe(false);
+  }, 10_000);
+
+  it("hides the team and stops polling for it when the flag is off", async () => {
+    flags.current = { "onboarding-brain-dump": true };
+    let calls = 0;
+    server.use(
+      http.get(INTRO_URL, () => {
+        calls += 1;
+        return HttpResponse.json(TEAM_PENDING_INTRO);
+      }),
+    );
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+
+    expect(result.current.team).toBeNull();
+    expect(result.current.isTeamPending).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    expect(calls).toBe(1);
+  }, 10_000);
+
+  it("needs the hire flag as well as the team flag", async () => {
+    flags.current = {
+      "onboarding-brain-dump": true,
+      "onboarding-expert-team": true,
+    };
+    server.use(getGetBrainDumpIntroMockHandler200(TEAM_READY_INTRO));
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+
+    expect(result.current.team).toBeNull();
+  });
+
+  it("exposes the team the server already has", async () => {
+    server.use(getGetBrainDumpIntroMockHandler200(TEAM_READY_INTRO));
+
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+
+    expect(result.current.team?.diagnosis).toBe(
+      "You have a marketing problem.",
+    );
+    expect(result.current.isTeamPending).toBe(false);
   });
 });
