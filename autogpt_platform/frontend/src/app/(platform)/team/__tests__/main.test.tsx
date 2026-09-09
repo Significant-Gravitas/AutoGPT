@@ -873,12 +873,18 @@ describe("TeamPage", () => {
     ).toBe("/raise");
   });
 
-  test("shows an error card when loading experts fails", async () => {
+  test("shows an error card and retries when loading experts fails", async () => {
     server.use(getListExpertsMockHandler401());
 
     render(<TeamPage />);
 
     expect(await screen.findByText("Something went wrong")).toBeDefined();
+
+    server.use(getListExpertsMockHandler([hiredMaria]));
+    await userEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
   });
 
   test("renders the roster without waiting for pods", async () => {
