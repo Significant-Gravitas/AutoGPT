@@ -186,7 +186,7 @@ export function Face({
             strokeLinecap="round"
             strokeLinejoin="round"
             initial={false}
-            animate={{ d: spec.mouth }}
+            d={spec.mouth}
             transition={SPRING}
           />
         </g>
