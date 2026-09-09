@@ -128,6 +128,10 @@ from backend.copilot.tools import TOOL_REGISTRY
 # both look correct: each one's CI only measures its own delta against dev, while
 # the budget has to cover what every in-flight PR adds together. Taking the
 # incoming side lowers a ceiling that has already ejected a green PR.
+#
+# Measure it the way this test does — one json.dumps over the whole list —
+# not by summing per-tool lengths, which misses ~142 chars of array
+# separators and overstates the headroom.
 _CHAR_BUDGET = 65_000
 
 
