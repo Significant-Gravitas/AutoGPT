@@ -172,6 +172,10 @@ class TestReportCredentialFailure:
                         captured.append(item.payload.json)
 
         logger = logging.getLogger(ROUTER_LOGGER)
+        # `init(dsn=None)` leaves the client bound and `is_active()` True, so
+        # restoring the original is the only teardown that does not leak into
+        # `metrics_test.py::test_no_sentry_client_is_active_under_pytest`.
+        original_client = sentry_sdk.get_client()
         sentry_sdk.init(
             dsn="https://public@example.invalid/1",
             transport=Recorder(),
@@ -189,7 +193,7 @@ class TestReportCredentialFailure:
             )
             logger.error("an unrelated later error")
         finally:
-            sentry_sdk.init(dsn=None)
+            sentry_sdk.get_global_scope().set_client(original_client)
 
         assert len(captured) == 2
         tagged, unrelated = captured
