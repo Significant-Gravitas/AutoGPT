@@ -181,6 +181,10 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
+    # Shrinks what AutoPilot reads: strips builder-UI annotations from the
+    # block schemas, and digests oversized tool results to the workspace.
+    AUTOPILOT_CONTEXT_TRIMMING = "autopilot-context-trimming"
+
 
 def is_configured() -> bool:
     """Check if LaunchDarkly is configured with an SDK key."""
