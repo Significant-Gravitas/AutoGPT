@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import re
 import sys
 import time
 import unittest
@@ -132,12 +133,25 @@ def write_junit(
                 tag = "error"
             else:
                 tag = "failure"
-            message = record.detail.splitlines()[0] if record.detail else record.outcome
+            detail = xml_safe(record.detail)
+            message = detail.splitlines()[0] if detail else record.outcome
             child = ET.SubElement(case, tag, {"message": message})
-            child.text = record.detail
+            child.text = detail
 
     path.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(suite).write(path, encoding="utf-8", xml_declaration=True)
+
+
+def xml_safe(text: str) -> str:
+    # unittest colourises tracebacks on Python 3.13+, and ANSI escapes are
+    # not valid XML 1.0 characters, so a failing run would emit an
+    # unparseable report.
+    return _XML_FORBIDDEN.sub("", text)
+
+
+_XML_FORBIDDEN = re.compile(
+    "[^\x09\x0a\x0d\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+)
 
 
 def parse_args() -> argparse.Namespace:
