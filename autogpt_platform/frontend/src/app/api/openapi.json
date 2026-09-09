@@ -14132,6 +14132,28 @@
         }
       }
     },
+    "/api/store/categories": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store categories",
+        "description": "The canonical categories a listing can be filed under.",
+        "operationId": "getV2List store categories",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreCategoryInfo" },
+                  "type": "array",
+                  "title": "Response Getv2List Store Categories"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/creators": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -27220,6 +27242,16 @@
         "enum": ["rating", "runs", "name", "updated_at"],
         "title": "StoreAgentsSortOptions"
       },
+      "StoreCategoryInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["value", "label", "description"],
+        "title": "StoreCategoryInfo"
+      },
       "StoreCreatorsSortOptions": {
         "type": "string",
         "enum": ["agent_rating", "agent_runs", "num_agents"],
@@ -27548,8 +27580,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27561,7 +27592,7 @@
           }
         },
         "type": "object",
-        "required": ["name", "sub_heading"],
+        "required": ["name", "sub_heading", "categories"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
@@ -27607,8 +27638,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27625,7 +27655,8 @@
           "graph_version",
           "slug",
           "name",
-          "sub_heading"
+          "sub_heading",
+          "categories"
         ],
         "title": "StoreSubmissionRequest"
       },
