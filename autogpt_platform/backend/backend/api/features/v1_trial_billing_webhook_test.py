@@ -10,19 +10,25 @@ import fastapi
 import fastapi.testclient
 import pytest
 
-from backend.api.features import v1
+from backend.api.features.subscriptions import routes as subscriptions_routes
 
 app = fastapi.FastAPI()
-app.include_router(v1.v1_router)
+app.include_router(subscriptions_routes.router)
 client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 TEST_SECRET = "whsec_trial_billing_test_only"
 
 
 @pytest.fixture
 def billing_refresh(mocker):
-    mocker.patch.object(v1.settings.secrets, "stripe_webhook_secret", TEST_SECRET)
-    mocker.patch.object(v1, "_claim_stripe_event", AsyncMock(return_value=True))
-    return mocker.patch.object(v1, "sync_trials_for_billing_event", AsyncMock())
+    mocker.patch.object(
+        subscriptions_routes.settings.secrets, "stripe_webhook_secret", TEST_SECRET
+    )
+    mocker.patch.object(
+        subscriptions_routes, "_claim_stripe_event", AsyncMock(return_value=True)
+    )
+    return mocker.patch.object(
+        subscriptions_routes, "sync_trials_for_billing_event", AsyncMock()
+    )
 
 
 def signed_request(event_type, data=None, secret=TEST_SECRET):
@@ -82,7 +88,9 @@ def test_invalid_signature_cannot_refresh_trial(billing_refresh):
 
 
 def test_unconfigured_webhook_cannot_refresh_trial(billing_refresh, mocker):
-    mocker.patch.object(v1.settings.secrets, "stripe_webhook_secret", "")
+    mocker.patch.object(
+        subscriptions_routes.settings.secrets, "stripe_webhook_secret", ""
+    )
     response = signed_request("customer.updated")
     assert response.status_code == 503
     billing_refresh.assert_not_awaited()
@@ -95,7 +103,7 @@ def test_unrelated_event_does_not_refresh_trial(billing_refresh):
 
 def test_repeated_billing_event_always_refreshes_current_state(billing_refresh, mocker):
     claim = mocker.patch.object(
-        v1, "_claim_stripe_event", AsyncMock(return_value=False)
+        subscriptions_routes, "_claim_stripe_event", AsyncMock(return_value=False)
     )
     assert signed_request("customer.updated").status_code == 200
     assert signed_request("customer.updated").status_code == 200
