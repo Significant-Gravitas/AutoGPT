@@ -1,9 +1,9 @@
 "use client";
 
-import { AttentionRow } from "@/app/(platform)/home/components/NeedsYou/components/AttentionRow";
-import { HomeTile } from "@/app/(platform)/home/components/HomeTile/HomeTile";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
+import { ExpertAttentionCard } from "./ExpertAttentionCard";
 import { useExpertNeedsYou } from "./useExpertNeedsYou";
 
 interface Props {
@@ -11,6 +11,8 @@ interface Props {
   enabled: boolean;
 }
 
+/** Label outside, one card per item: the same shape as the stack sections in
+ *  the chat sidebar. */
 export function ExpertNeedsYouSection({ expertId, enabled }: Props) {
   const { items, pendingIDs, decide } = useExpertNeedsYou({
     expertId,
@@ -20,25 +22,28 @@ export function ExpertNeedsYouSection({ expertId, enabled }: Props) {
   if (items.length === 0) return null;
 
   return (
-    <HomeTile
-      icon={AlertCircleIcon}
-      title="Needs you"
-      badge={
-        <Text
-          variant="small-medium"
-          as="span"
-          tone="secondary"
-          role="status"
-          aria-label={`${items.length} ${items.length === 1 ? "item needs" : "items need"} your attention`}
-          className="rounded-md bg-zinc-100 px-1.5 py-0.5 tabular-nums"
-        >
-          {items.length}
+    <section aria-label="Needs you" className="flex min-w-0 flex-col">
+      <div className="mb-1.5 flex items-center gap-1.5 px-3.5">
+        <Icon
+          icon={AlertCircleIcon}
+          size={14}
+          className="text-zinc-500"
+          aria-hidden
+        />
+        <Text variant="small-medium" as="h2" className="!text-zinc-700">
+          Needs you{" "}
+          <span
+            role="status"
+            aria-label={`${items.length} ${items.length === 1 ? "item needs" : "items need"} your attention`}
+            className="tabular-nums"
+          >
+            ({items.length})
+          </span>
         </Text>
-      }
-    >
-      <div className="divide-y divide-zinc-100">
+      </div>
+      <div className="flex flex-col gap-2">
         {items.map((item) => (
-          <AttentionRow
+          <ExpertAttentionCard
             key={item.id}
             item={item}
             isProcessing={pendingIDs.has(item.id)}
@@ -46,6 +51,6 @@ export function ExpertNeedsYouSection({ expertId, enabled }: Props) {
           />
         ))}
       </div>
-    </HomeTile>
+    </section>
   );
 }
