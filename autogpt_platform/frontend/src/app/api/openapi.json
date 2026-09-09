@@ -13789,7 +13789,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
       }
     },
     "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
@@ -13798,7 +13798,7 @@
         "summary": "Review Skill Submission",
         "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
         "operationId": "postV2Review skill submission",
-        "security": [{ "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",
@@ -14781,7 +14781,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
       },
       "post": {
         "tags": ["v2", "store", "private"],
@@ -14823,7 +14823,7 @@
             "description": "Marketplace profile required, or slug taken"
           }
         },
-        "security": [{ "HTTPBearerJWT": [] }]
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/skills/submissions/{skill_listing_version_id}": {
@@ -14832,7 +14832,7 @@
         "summary": "Edit skill submission",
         "description": "Update a pending submission and re-snapshot the library skill.",
         "operationId": "putV2Edit skill submission",
-        "security": [{ "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "skill_listing_version_id",

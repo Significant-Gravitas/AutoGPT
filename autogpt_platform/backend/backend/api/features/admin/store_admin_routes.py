@@ -13,6 +13,7 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.api.features.store.skill_model as skill_model
+import backend.api.features.store.skill_routes as skill_routes
 import backend.api.features.store.skill_submission_db as skill_submission_db
 import backend.util.json
 
@@ -179,6 +180,7 @@ async def admin_add_agent_to_library(
     "/skills/submissions",
     summary="Admin List Pending Skill Submissions",
     tags=["store", "admin"],
+    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     """Skill submissions awaiting review, oldest first."""
@@ -190,6 +192,7 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     summary="Review Skill Submission",
     tags=["store", "admin"],
     responses={404: {"description": "Submission not found"}},
+    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def review_skill_submission(
     skill_listing_version_id: str,
