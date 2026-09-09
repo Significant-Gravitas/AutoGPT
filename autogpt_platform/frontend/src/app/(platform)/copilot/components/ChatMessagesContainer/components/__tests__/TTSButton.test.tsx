@@ -37,12 +37,14 @@ function render(ui: React.ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
-/** speechPlayer keeps one module-level <audio>, so this outlives a single test. */
+/** speechPlayer keeps one module-level <audio>, so these outlive a single test. */
 let autoEndPlayback = true;
+const audioPause = vi.fn();
 
 describe("TTSButton", () => {
   beforeEach(() => {
     autoEndPlayback = true;
+    audioPause.mockClear();
     stubSpeechSynthesis([]);
     stubAudio();
     global.URL.createObjectURL = vi.fn(() => "blob:chunk");
@@ -134,6 +136,9 @@ describe("TTSButton", () => {
 
     await userEvent.click(screen.getByRole("button"));
 
+    // Stop has to actually stop our audio — `speak` alone stays uncalled when
+    // the click does nothing at all, which is the same dead control.
+    expect(audioPause).toHaveBeenCalled();
     expect(speak).not.toHaveBeenCalled();
   });
 });
@@ -175,7 +180,7 @@ function stubAudio() {
       src = "";
       preload = "";
       play = vi.fn(async () => undefined);
-      pause = vi.fn();
+      pause = audioPause;
       addEventListener = vi.fn(
         (event: string, handler: () => void) =>
           autoEndPlayback && event === "ended" && setTimeout(handler, 0),
