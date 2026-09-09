@@ -534,32 +534,16 @@ async def _refresh_follow_up_warm_context(
 ) -> str | None:
     """Fill in warm context on a follow-up user turn (SECRT-2378).
 
-    Parallels the SDK engine's ``_append_follow_up_warm_context`` gate (with
-    the documented divergence below) so both engines read alike and this one
-    is independently testable.
+    Returns the refreshed block, or ``warm_ctx`` UNCHANGED whenever the
+    refresh yields nothing — fall back, never overwrite. Called after the
+    pending fold, so the query is the combined message (a queued substantive
+    request paired with a short "ok" must still drive recall), and scoped by
+    ``expert_id`` to the same graph the first turn read.
 
-    Scoped to the same memory owner as the first-turn fetch: ``expert_id`` is
-    threaded through so an expert chat refreshes from the expert's graph rather
-    than the user's personal one.
-
-    Called AFTER the pending fold so the retrieval query is the COMBINED
-    message: a queued substantive request paired with a short current send
-    ("ok") must still drive recall. The first turn already loaded ``warm_ctx``
-    with the precise cross-encoder recipe; this only fills in later turns,
-    using the cheap RRF+BFS recipe gated on message substance.
-
-    Known divergence from the SDK engine: the baseline compactor doesn't
-    surface a ``was_compacted`` flag, so there is no ``force=True`` here and
-    the substance gate alone decides — a TRIVIALLY SHORT post-compaction turn
-    skips recall where the SDK path would force it. Tracked as follow-up debt;
-    a substantive post-compaction turn refreshes on both engines.
-
-    Returns the refreshed block, or ``warm_ctx`` unchanged whenever the
-    refresh produces nothing — an inner substance-gate skip and an empty
-    retrieval both fall back rather than overwrite. ``warm_ctx`` is always
-    None on follow-ups today, so this only matters if first-turn context ever
-    reaches this path; returning the inner None directly would silently wipe
-    it, which is the opposite of what the name promises.
+    Diverges from the SDK's ``_append_follow_up_warm_context`` in one respect:
+    the baseline compactor doesn't surface ``was_compacted``, so there is no
+    ``force=True`` and a trivially short post-compaction turn skips recall
+    here. Documented debt; SDK is the production engine.
     """
     if not (graphiti_enabled and user_id and is_user_message):
         return warm_ctx

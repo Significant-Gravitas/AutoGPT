@@ -42,6 +42,7 @@ from .service import (
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
+    _start_follow_up_warm_context,
     _strip_ephemeral_memory_from_cli_jsonl,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
@@ -2554,6 +2555,50 @@ class TestStripEphemeralMemoryFromCliJsonl:
         assert _strip_ephemeral_memory_from_cli_jsonl(garbage) == garbage
         assert _strip_ephemeral_memory_from_cli_jsonl(b"") == b""
 
+    def test_warns_when_a_nonce_line_is_not_valid_json(self, caplog):
+        """The fail-safe branch: a line carries THIS process's nonce but does
+        not parse. It must survive byte-identical (never eat user text) AND
+        warn — the warning is the only signal that the transcript is growing
+        and will replay stale memory on --resume."""
+        line = b'{"type":"user","message":' + _INJECTED_MEMORY_NONCE.encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_warns_when_a_nonce_line_is_not_a_cli_user_entry(self, caplog):
+        """Same fail-safe, other arm: valid JSON carrying the nonce that does
+        not match ``_CLIUserEntry`` (e.g. an assistant entry)."""
+        entry = {
+            "type": "assistant",
+            "message": {"role": "assistant", "content": _INJECTED_MEMORY_MARKER},
+        }
+        line = json.dumps(entry).encode() + b"\n"
+        with caplog.at_level(logging.WARNING):
+            result = _strip_ephemeral_memory_from_cli_jsonl(line)
+        assert result == line
+        assert "survived the transcript scrub" in caplog.text
+
+    def test_rewrites_only_the_marked_line_of_a_long_transcript(self):
+        """The ``marker not in line`` fast path is what keeps the scrub from
+        re-validating every prior line on every turn. Pin that the other lines
+        come back byte-identical, not merely semantically equal — a reformat
+        would rewrite the whole transcript each turn."""
+        block = _mark_injected_memory_block(
+            "<temporal_context>\n  - stale fact\n</temporal_context>"
+        )
+        prior = [
+            self._user_line("first question"),
+            b'{"type":"assistant","message":{"role":"assistant","content":"answer"}}\n',
+            self._user_line("second question"),
+        ]
+        marked = self._user_line(f"deploy staging now\n\n{block}")
+        result = _strip_ephemeral_memory_from_cli_jsonl(b"".join(prior + [marked]))
+
+        assert result.startswith(b"".join(prior)), "untouched lines must be verbatim"
+        assert b"stale fact" not in result
+        assert b"deploy staging now" in result
+
 
 # SECRT-2378: the follow-up-turn wiring — the branch where the bug lived.
 class TestAppendFollowUpWarmContext:
@@ -2620,6 +2665,112 @@ class TestAppendFollowUpWarmContext:
                 was_compacted=False,
             )
         assert mock_refresh.await_args.kwargs["expert_id"] == "expert-1"
+
+    @pytest.mark.asyncio
+    async def test_starter_runs_the_fetch_off_the_critical_path(self):
+        """The refresh must be in flight BEFORE the joiner is reached — that
+        is the whole point of starting it early. Pin that the joiner consumes
+        the started task rather than issuing its own second fetch."""
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+            return_value="<temporal_context>fresh</temporal_context>",
+        ) as mock_refresh:
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+            )
+            assert pending is not None
+            out = await _append_follow_up_warm_context(
+                "the query",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="what is Sarah working on this week",
+                was_compacted=False,
+                pending=pending,
+            )
+
+        assert out.startswith("the query")
+        assert _INJECTED_MEMORY_MARKER in out
+        mock_refresh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_starter_declines_turns_that_would_not_fetch(self):
+        """A declined start must not fetch — and must leave the joiner's own
+        forced path intact for the one case the starter cannot judge yet
+        (a short message that turns out to follow a compaction)."""
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new_callable=AsyncMock,
+        ) as mock_refresh:
+            for override in (
+                {"current_message": "ok"},  # substance gate
+                {"has_history": False},  # first turn
+                {"is_user_message": False},  # tool result
+                {"graphiti_enabled": False},  # memory off
+                {"user_id": None},  # anonymous
+            ):
+                base = {
+                    "graphiti_enabled": True,
+                    "has_history": True,
+                    "is_user_message": True,
+                    "user_id": "u1",
+                    "expert_id": None,
+                    "current_message": "a substantive follow-up request here",
+                }
+                base.update(override)
+                assert _start_follow_up_warm_context(**base) is None
+            mock_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unused_pending_refresh_is_cancelled(self):
+        """A started refresh the joiner does not need (cache hit on the retry
+        path, or a gate that closed in between) must be cancelled — a dangling
+        task would outlive the turn and write nothing anyone reads."""
+        started = asyncio.Event()
+
+        async def _never_finishes(*_args, **_kwargs):
+            started.set()
+            await asyncio.sleep(3600)
+
+        with patch(
+            "backend.copilot.graphiti.context.refresh_warm_context",
+            new=_never_finishes,
+        ):
+            pending = _start_follow_up_warm_context(
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+            )
+            assert pending is not None
+            await started.wait()
+            out = await _append_follow_up_warm_context(
+                "q",
+                graphiti_enabled=True,
+                has_history=True,
+                is_user_message=True,
+                user_id="u1",
+                expert_id=None,
+                current_message="a substantive follow-up request here",
+                was_compacted=False,
+                block_cache={
+                    "a substantive follow-up request here": "<temporal_context>cached</temporal_context>"
+                },
+                pending=pending,
+            )
+
+        assert out.endswith("<temporal_context>cached</temporal_context>")
+        assert pending.cancelled()
 
     @pytest.mark.asyncio
     async def test_retry_reuses_the_cached_block_without_a_second_fetch(self):

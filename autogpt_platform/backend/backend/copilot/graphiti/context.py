@@ -309,11 +309,17 @@ def _spawn_ratification_hits(user_id: str, expert_id: str | None, edges) -> None
 # inside retrieved text can't end the block, but it can plant nested
 # structure the model mis-scopes — and only the builder is entitled to emit
 # the delimiter in either direction.
-_CONTEXT_TAG_RE = re.compile(r"<\s*(/?)\s*temporal_context\b[^>]*>", re.IGNORECASE)
+# The delimiter name itself, exported so the SDK engine's scrub patterns key
+# off the same constant instead of re-spelling the tag (a rename must not be
+# able to leave one module matching and another not).
+CONTEXT_TAG_NAME = "temporal_context"
+_CONTEXT_TAG_RE = re.compile(
+    r"<\s*(/?)\s*" + CONTEXT_TAG_NAME + r"\b[^>]*>", re.IGNORECASE
+)
 
 
 def _neutralise_context_tags(text: str) -> str:
-    return _CONTEXT_TAG_RE.sub(lambda m: f"<!{m.group(1)}temporal_context>", text)
+    return _CONTEXT_TAG_RE.sub(lambda m: f"<!{m.group(1)}{CONTEXT_TAG_NAME}>", text)
 
 
 def _format_context(edges, episodes) -> str | None:
@@ -324,6 +330,11 @@ def _format_context(edges, episodes) -> str | None:
         for e in edges:
             valid_from, valid_to = extract_temporal_validity(e)
             fact = _neutralise_context_tags(extract_fact(e))
+            # The validity stamps come off the same untrusted edge as the
+            # fact, so they get the same treatment: whatever the extractor
+            # returns, nothing interpolated here may carry the delimiter.
+            valid_from = _neutralise_context_tags(str(valid_from))
+            valid_to = _neutralise_context_tags(str(valid_to))
             fact_lines.append(f"  - {fact} ({valid_from} — {valid_to})")
         sections.append("<FACTS>\n" + "\n".join(fact_lines) + "\n</FACTS>")
 
@@ -336,7 +347,7 @@ def _format_context(edges, episodes) -> str | None:
             if _is_non_global_scope(raw_body):
                 continue
             display_body = _neutralise_context_tags(extract_episode_body(ep))
-            ts = extract_episode_timestamp(ep)
+            ts = _neutralise_context_tags(str(extract_episode_timestamp(ep)))
             ep_lines.append(f"  - [{ts}] {display_body}")
         if ep_lines:
             sections.append(
@@ -347,7 +358,7 @@ def _format_context(edges, episodes) -> str | None:
         return None
 
     body = "\n\n".join(sections)
-    return f"<temporal_context>\n{body}\n</temporal_context>"
+    return f"<{CONTEXT_TAG_NAME}>\n{body}\n</{CONTEXT_TAG_NAME}>"
 
 
 def _is_non_global_scope(body: str) -> bool:

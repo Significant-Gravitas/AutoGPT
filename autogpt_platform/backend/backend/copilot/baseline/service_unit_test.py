@@ -3224,3 +3224,94 @@ class TestBaselineToolExecutorForwardsDisabledGroups:
             )
 
         assert execute_mock.await_args.kwargs["disabled_groups"] == ["expert_admin"]
+
+
+class _StopAtWarmContextRefresh(Exception):
+    """Raised by the patched refresh so the turn loop aborts the moment the
+    SECRT-2378 call site is reached."""
+
+
+@pytest.mark.asyncio
+async def test_follow_up_turn_wires_the_refresh_with_turn_state() -> None:
+    """The helper is proven in isolation above; this pins the CALL SITE — the
+    argument wiring in the turn loop, which is where SECRT-2378 actually lived.
+    A helper that gates correctly on arguments the loop never passes it would
+    leave every follow-up turn without recall and all the unit tests green."""
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "already titled"
+    session.messages = [
+        ChatMessage(role="user", content="first question"),
+        ChatMessage(role="assistant", content="first answer"),
+    ]
+    seen: dict[str, object] = {}
+
+    async def capture(warm_ctx, **kwargs):
+        seen.update(kwargs)
+        seen["warm_ctx"] = warm_ctx
+        raise _StopAtWarmContextRefresh
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        # The Graphiti gate: on for this turn, so the refresh must be wired.
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service._refresh_follow_up_warm_context",
+            new=capture,
+        ),
+        pytest.raises(_StopAtWarmContextRefresh),
+    ):
+        async for _ in stream_chat_completion_baseline(
+            session_id=session.session_id,
+            message="restart the executor and redeploy staging",
+            user_id="user-1",
+            session=session,
+        ):
+            pass
+
+    assert seen["graphiti_enabled"] is True
+    assert seen["user_id"] == "user-1"
+    assert seen["expert_id"] == session.expert_id
+    assert seen["is_user_message"] is True
+    # The pre-drain count is what distinguishes turn 1 (already loaded warm
+    # context with the precise recipe) from later turns (this refresh): two
+    # prior messages plus the current user turn.
+    assert seen["pre_drain_msg_count"] == 3
+    assert seen["message"] == "restart the executor and redeploy staging"

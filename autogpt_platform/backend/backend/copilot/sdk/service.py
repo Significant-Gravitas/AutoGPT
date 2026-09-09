@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import contextlib
 import functools
 from copy import copy
 import json
@@ -49,7 +50,7 @@ from backend.copilot.model_router import (
     resolve_codex_model_route,
     resolve_model_route,
 )
-from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context import CONTEXT_TAG_NAME, fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
@@ -1102,14 +1103,19 @@ _INJECTED_MEMORY_MARKER = f'data-agpt-injected="{_INJECTED_MEMORY_NONCE}"'
 # together with the block leaves the user's own text (its leading/trailing
 # whitespace and any intentional blank-line runs) byte-for-byte intact.
 _INJECTED_MEMORY_BLOCK_RE = re.compile(
-    r"(?:\n\n)?<temporal_context\b[^>]*"
+    r"(?:\n\n)?<"
+    + CONTEXT_TAG_NAME
+    + r"\b[^>]*"
     + re.escape(_INJECTED_MEMORY_MARKER)
-    + r"[^>]*>.*?</temporal_context>",
+    + r"[^>]*>.*?</"
+    + CONTEXT_TAG_NAME
+    + r">",
     re.DOTALL,
 )
 # Open tag matched by name, so the stamp survives attribute/spacing changes
-# in the producer. Mirrors the ``<temporal_context\b`` prefix above.
-_CONTEXT_OPEN_TAG_RE = re.compile(r"<temporal_context\b")
+# in the producer. Same ``CONTEXT_TAG_NAME`` the builder emits, so a rename
+# there cannot leave this pattern silently matching nothing.
+_CONTEXT_OPEN_TAG_RE = re.compile(r"<" + CONTEXT_TAG_NAME + r"\b")
 
 
 def _mark_injected_memory_block(block: str) -> str:
@@ -1126,7 +1132,7 @@ def _mark_injected_memory_block(block: str) -> str:
     growing every transcript.
     """
     marked, substitutions = _CONTEXT_OPEN_TAG_RE.subn(
-        f"<temporal_context {_INJECTED_MEMORY_MARKER}", block, count=1
+        f"<{CONTEXT_TAG_NAME} {_INJECTED_MEMORY_MARKER}", block, count=1
     )
     if not substitutions:
         logger.warning(
@@ -1171,6 +1177,12 @@ def _strip_ephemeral_memory_from_cli_jsonl(content: bytes) -> bytes:
     # line, so a full-marker substring test never matches. The nonce is
     # hex — unchanged by JSON escaping.
     marker = _INJECTED_MEMORY_NONCE.encode()
+    # Whole-buffer probe first: a turn that injected nothing (trivial message,
+    # memory off, first turn) skips splitlines and the per-line loop entirely
+    # and returns the transcript untouched. When a block IS present the full
+    # pass is still needed — a retry can inject a second marked line.
+    if marker not in content:
+        return content
     out: list[bytes] = []
     survived = 0
     for line in content.splitlines(keepends=True):
@@ -4677,6 +4689,49 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _discard_pending_refresh(task: "asyncio.Task[str | None] | None") -> None:
+    """Cancel an in-flight refresh whose result is no longer wanted."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+def _start_follow_up_warm_context(
+    *,
+    graphiti_enabled: bool,
+    has_history: bool,
+    is_user_message: bool,
+    user_id: str | None,
+    expert_id: str | None,
+    current_message: str,
+) -> "asyncio.Task[str | None] | None":
+    """Kick the SECRT-2378 refresh off before the query is built.
+
+    The refresh only needs the current message, so starting it here lets the
+    graph round-trip overlap compaction, attachment prep and builder context
+    instead of serializing into time-to-first-token. The result is joined by
+    ``_append_follow_up_warm_context`` right before injection.
+
+    Returns ``None`` when the turn is not a candidate — the outer gate, or a
+    message the substance gate rejects. ``was_compacted`` (the only thing that
+    forces past the substance gate) is not known until the query is built, so
+    that one rare turn — a trivially short message right after a compaction —
+    still pays for a serial fetch in the joiner.
+    """
+    if not (graphiti_enabled and has_history and is_user_message and user_id):
+        return None
+    if not graphiti_context.should_refresh_warm_context(current_message):
+        return None
+    return asyncio.create_task(
+        graphiti_context.refresh_warm_context(
+            user_id, current_message, expert_id=expert_id
+        ),
+        name=f"warm-ctx-refresh-{user_id[:12]}",
+    )
+
+
 async def _append_follow_up_warm_context(
     query_message: str,
     *,
@@ -4688,6 +4743,7 @@ async def _append_follow_up_warm_context(
     current_message: str,
     was_compacted: bool,
     block_cache: dict[str, str] | None = None,
+    pending: "asyncio.Task[str | None] | None" = None,
 ) -> str:
     """Append the SECRT-2378 follow-up warm-context refresh to *query_message*.
 
@@ -4707,15 +4763,25 @@ async def _append_follow_up_warm_context(
     second graph round-trip for an identical query. Only POPULATED results are
     cached: a first call that the substance gate skipped stores nothing, so a
     retry with ``was_compacted=True`` still performs its forced fetch.
+
+    ``pending`` is the task ``_start_follow_up_warm_context`` launched before
+    the query was built; joining it here keeps the graph round-trip off
+    time-to-first-token. Without one (the retry path, or a turn the starter
+    declined) the fetch runs inline as before.
     """
     if not (graphiti_enabled and has_history and is_user_message and user_id):
+        await _discard_pending_refresh(pending)
         return query_message
     cached = block_cache.get(current_message) if block_cache is not None else None
     if cached:
+        await _discard_pending_refresh(pending)
         return f"{query_message}\n\n{cached}"
-    refreshed = await graphiti_context.refresh_warm_context(
-        user_id, current_message, expert_id=expert_id, force=was_compacted
-    )
+    if pending is not None:
+        refreshed = await pending
+    else:
+        refreshed = await graphiti_context.refresh_warm_context(
+            user_id, current_message, expert_id=expert_id, force=was_compacted
+        )
     if refreshed:
         # Stamp the provenance nonce so ``_strip_ephemeral_memory_from_cli_jsonl``
         # can scrub THIS block from the persisted transcript without touching a
@@ -5529,6 +5595,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     request_arrival_at=request_arrival_at,
                 )
 
+        # SECRT-2378: start the follow-up warm-context refresh HERE rather
+        # than at the injection point below — ``current_message`` is final
+        # after the pending fold, so the graph round-trip overlaps compaction,
+        # attachment prep and builder context instead of adding its latency to
+        # time-to-first-token.
+        pending_warm_ctx = _start_follow_up_warm_context(
+            graphiti_enabled=graphiti_enabled,
+            has_history=has_history,
+            is_user_message=is_user_message,
+            user_id=user_id,
+            expert_id=session.expert_id,
+            current_message=current_message,
+        )
+
         forecast = _expect_pre_query_compaction(
             session.messages,
             _compression_model(),
@@ -5602,6 +5682,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             current_message=current_message,
             was_compacted=was_compacted,
             block_cache=warm_ctx_block_cache,
+            pending=pending_warm_ctx,
         )
 
         # When running without --resume and no prior transcript in storage,
