@@ -112,7 +112,7 @@ export default function TeamPage() {
       <main className={cn(MAIN_CLASS, "min-w-0 flex-1")}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <Text variant="lead-medium" as="h5" tone="primary">
+            <Text variant="lead-medium" as="h1" tone="primary">
               Team
             </Text>
             <Text variant="body" tone="secondary" className="max-w-prose">

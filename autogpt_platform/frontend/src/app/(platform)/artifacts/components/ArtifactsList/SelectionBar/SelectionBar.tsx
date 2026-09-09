@@ -91,6 +91,7 @@ export function SelectionBar({
           fileIds={selectedFiles.map((file) => file.id)}
           subject={moveSubject}
           currentFolderId={sharedFolderId}
+          canMoveToRoot={selectedFiles.some((file) => file.folder_id != null)}
           isOpen={isMoveOpen}
           setIsOpen={setIsMoveOpen}
           onMoved={onClear}

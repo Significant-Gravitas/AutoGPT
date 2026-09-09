@@ -59,6 +59,8 @@ export function ThreadHeader({
   const isResolving = isResolvingExpertIdentity && !expertIdentity;
   const name = expertIdentity?.name ?? "Autopilot";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
+  // Assistive tech gets a loading identity too, not Autopilot's.
+  const identityLabel = isResolving ? "Loading expert" : `${name}, ${role}`;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   // Only the copilot chat mounts the activity card. The builder and memory
   // panels pass a live sessionId and aren't read-only, so without the host's
@@ -140,8 +142,8 @@ export function ThreadHeader({
                     type="button"
                     aria-label={
                       spokenCounts
-                        ? `${name}, ${role}. ${spokenCounts}. Open session activity`
-                        : `${name}, ${role}. Open session activity`
+                        ? `${identityLabel}. ${spokenCounts}. Open session activity`
+                        : `${identityLabel}. Open session activity`
                     }
                     onClick={() => toggleContextPanelTab("files")}
                     className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3 transition-colors hover:bg-zinc-100/80"
@@ -155,19 +157,23 @@ export function ThreadHeader({
                   // get the role at all.
                   <div
                     tabIndex={0}
-                    aria-label={`${name} — ${role}`}
+                    aria-label={
+                      isResolving ? identityLabel : `${name} — ${role}`
+                    }
                     className="flex min-w-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
                   >
                     {chipContent}
                   </div>
                 )}
               </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="bg-zinc-900 text-zinc-50 outline-none"
-              >
-                {role}
-              </TooltipContent>
+              {isResolving ? null : (
+                <TooltipContent
+                  side="bottom"
+                  className="bg-zinc-900 text-zinc-50 outline-none"
+                >
+                  {role}
+                </TooltipContent>
+              )}
             </Tooltip>
           </TooltipProvider>
           {showIntegrations && (

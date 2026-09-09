@@ -95,7 +95,10 @@ export function useSetupNeeded({ enabled }: Args) {
 
   return {
     items: itemsQuery.data ?? [],
+    // Until the provider list has loaded nothing is knowably unconnectable,
+    // so rows offer Connect rather than flashing "Needs a platform key".
     isConnectable: (item: ExpertSetupItem) =>
+      !providersQuery.isSuccess ||
       item.providers.some((provider) => connectable.has(provider)),
     connecting,
     connect,

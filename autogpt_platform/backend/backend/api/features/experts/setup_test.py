@@ -29,19 +29,19 @@ def _field(provider: str, required: bool = True):
 
 
 def _workflow(**overrides) -> SimpleNamespace:
-    values = dict(
-        id="wf-1",
-        scheduleCron="0 9 * * 1",
-        scheduleId=None,
-        libraryAgentId="lib-1",
-        LibraryAgent=SimpleNamespace(
+    values = {
+        "id": "wf-1",
+        "scheduleCron": "0 9 * * 1",
+        "scheduleId": None,
+        "libraryAgentId": "lib-1",
+        "LibraryAgent": SimpleNamespace(
             agentGraphId="g1",
             agentGraphVersion=1,
             name=None,
             AgentGraph=SimpleNamespace(name="SEO Audit"),
         ),
-        StoreListingVersion=None,
-    )
+        "StoreListingVersion": None,
+    }
     values.update(overrides)
     return SimpleNamespace(**values)
 

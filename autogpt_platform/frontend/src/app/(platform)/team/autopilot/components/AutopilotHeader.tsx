@@ -10,7 +10,7 @@ import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 export function AutopilotHeader() {
   return (
     <header>
-      <ExpertCover className="h-36" color={undefined} />
+      <ExpertCover className="h-36" color={undefined} builtIn />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="relative z-10 -mt-12 ml-14 flex size-24 shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">

@@ -11,9 +11,12 @@ interface Props {
   fileIds: string[];
   /** What is being moved, as shown in the prompt: `“report.pdf”` or `3 files`. */
   subject: string;
-  /** Folder every file already sits in; offered as neither a destination nor
-      hidden root. `null` when the files are at the root or in mixed folders. */
+  /** Folder every file already sits in, left out of the destinations.
+      `null` when the files are at the root or spread across folders. */
   currentFolderId?: string | null;
+  /** Offer "Files (root)". Defaults to "some file is inside a folder", which
+      `currentFolderId` alone cannot express for a mixed selection. */
+  canMoveToRoot?: boolean;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   onMoved?: () => void;
@@ -23,6 +26,7 @@ export function MoveToFolderDialog({
   fileIds,
   subject,
   currentFolderId,
+  canMoveToRoot = currentFolderId != null,
   isOpen,
   setIsOpen,
   onMoved,
@@ -52,7 +56,7 @@ export function MoveToFolderDialog({
           <Text variant="small" className="mb-1 text-zinc-500">
             Move {subject} to:
           </Text>
-          {currentFolderId != null && (
+          {canMoveToRoot && (
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 px-3 py-2.5"

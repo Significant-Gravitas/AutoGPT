@@ -22,7 +22,7 @@ export function SetupNeededRow({
   onAllow,
 }: Props) {
   const provider = item.providers[0];
-  const providerName = provider ? formatProviderName(provider) : null;
+  const providerName = provider ? formatProviderName(provider) : "A service";
   const workflowName = item.workflow_name ?? "a workflow";
   const isCredential = item.resolution !== "workflow";
 
