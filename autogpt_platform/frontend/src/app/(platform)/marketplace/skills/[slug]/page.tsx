@@ -1,7 +1,9 @@
 import {
   getV2GetMarketplaceSkill,
   prefetchGetV2GetMarketplaceSkillQuery,
+  prefetchGetV2ListMarketplaceSkillsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { formatSkillTitle } from "../../components/SkillsSection/helpers";
 import type { MarketplaceSkillDetails } from "@/app/api/__generated__/models/marketplaceSkillDetails";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
@@ -24,7 +26,7 @@ export async function generateMetadata({
     const { data } = await getV2GetMarketplaceSkill(slug);
     const skill = data as MarketplaceSkillDetails;
     return {
-      title: `${skill.name} - AutoGPT Marketplace`,
+      title: `${formatSkillTitle(skill.name)} - AutoGPT Marketplace`,
       description: skill.description,
     };
   } catch {
@@ -39,7 +41,11 @@ export default async function MarketplaceSkillPage({
 }) {
   const { slug } = await _params;
   const queryClient = getQueryClient();
-  await prefetchGetV2GetMarketplaceSkillQuery(queryClient, slug);
+  await Promise.all([
+    prefetchGetV2GetMarketplaceSkillQuery(queryClient, slug),
+    // The "More skills" shelf under the body.
+    prefetchGetV2ListMarketplaceSkillsQuery(queryClient, { page_size: 3 }),
+  ]);
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
