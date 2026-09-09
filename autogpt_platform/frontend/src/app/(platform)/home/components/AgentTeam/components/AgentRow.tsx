@@ -1,5 +1,6 @@
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import { Button } from "@/components/atoms/Button/Button";
+import { BubbleChatIcon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatWeeklySpend } from "../../../helpers";
@@ -49,26 +50,23 @@ export function AgentRow({ agent }: Props) {
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* Icon-only: the atom shows the aria-label as a hover tooltip. */}
         <Button
           as="NextLink"
           href={`/copilot?expertId=${agent.expert.id}`}
-          variant="secondary"
-          size="small"
-          className="h-8 min-w-0 px-3"
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={BubbleChatIcon}
           aria-label={`Chat with ${agent.expert.name}`}
-        >
-          Chat
-        </Button>
+        />
         <Button
           as="NextLink"
           href={`/team/${agent.expert.id}`}
-          variant="secondary"
-          size="small"
-          className="h-8 min-w-0 px-3"
+          variant="icon"
+          size="icon-sm"
+          leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
-        >
-          Manage
-        </Button>
+        />
       </div>
     </div>
   );
