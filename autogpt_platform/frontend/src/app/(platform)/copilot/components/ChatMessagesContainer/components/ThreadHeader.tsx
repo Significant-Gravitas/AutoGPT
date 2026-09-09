@@ -89,6 +89,7 @@ export function ThreadHeader({
       <ExpertAvatar
         name={name}
         avatarUrl={expertIdentity?.avatarUrl ?? null}
+        color={expertIdentity?.color}
         isAutopilot={!expertIdentity}
         size="sm"
       />

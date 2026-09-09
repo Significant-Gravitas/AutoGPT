@@ -123,6 +123,7 @@ class ExpertIdentity(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    color: str | None = None
     role: str
     is_archived: bool
 

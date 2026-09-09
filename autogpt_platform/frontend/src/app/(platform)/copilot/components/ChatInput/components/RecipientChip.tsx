@@ -16,6 +16,7 @@ export interface RecipientOption {
   id: string | null;
   name: string;
   avatarUrl: string | null;
+  color?: string | null;
 }
 
 interface Props {
@@ -92,6 +93,7 @@ function RecipientAvatar({ option }: { option: RecipientOption }) {
     <ExpertAvatar
       name={option.name}
       avatarUrl={option.avatarUrl}
+      color={option.color}
       isAutopilot={option.id === null}
       size="sm"
     />

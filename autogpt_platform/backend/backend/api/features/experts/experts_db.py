@@ -304,7 +304,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     """
     return await query_raw_with_schema(
         """
-        SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",
+        SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
                "isArchived" AS "is_archived"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
