@@ -2,7 +2,7 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { SparklesIcon } from "@hugeicons/core-free-icons";
+import { Tick02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { cn } from "@/lib/utils";
 import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
@@ -10,7 +10,7 @@ import { AUTOPILOT_PILL_CLASS, AUTOPILOT_ROLE } from "../../helpers";
 export function AutopilotHeader() {
   return (
     <header>
-      <ExpertCover className="h-36" color={undefined} status="built-in" />
+      <ExpertCover className="h-36" color={undefined} />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="relative z-10 -mt-12 ml-14 flex size-24 shrink-0 items-center justify-center rounded-full bg-white ring-4 ring-white">
@@ -31,6 +31,17 @@ export function AutopilotHeader() {
             >
               <Icon icon={SparklesIcon} size={12} />
               {AUTOPILOT_ROLE}
+            </Text>
+            <Text
+              variant="small-medium"
+              as="span"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5",
+                AUTOPILOT_PILL_CLASS,
+              )}
+            >
+              <Icon icon={Tick02Icon} size={12} />
+              Built in
             </Text>
           </div>
         </div>
