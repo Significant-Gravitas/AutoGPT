@@ -332,8 +332,9 @@ async def callback(
             logger,
             CredentialFailure.PROVIDER_REGISTRATION_WRONG,
             "invalid_state_token",
-            f"Invalid or expired state token for user {user_id}",
+            "Invalid or expired state token",
             provider=provider.value,
+            user_id=user_id,
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -464,13 +465,7 @@ async def _throttle_upstream(
     try:
         return await asyncio.wait_for(_claim(), timeout=_THROTTLE_TIMEOUT_SECONDS)
     except Exception as e:
-        report_credential_failure(
-            logger,
-            CredentialFailure.DEVICE_CODE_RACE,
-            "throttle_unavailable",
-            f"Device auth throttle unavailable, allowing through: {e}",
-            provider=provider_key(provider),
-        )
+        logger.warning(f"Device auth throttle unavailable, allowing through: {e}")
         return False
 
 
@@ -1893,12 +1888,7 @@ async def list_providers(
     except Exception as e:
         # The list still returns, one provider short — every card for a missing
         # provider then renders as a permanent loading state, not an error.
-        report_credential_failure(
-            logger,
-            CredentialFailure.PROVIDER_UNKNOWN_TO_FRONTEND,
-            "block_load_failed",
-            f"Failed to load blocks for provider metadata: {e}",
-        )
+        logger.warning(f"Failed to load blocks for provider metadata: {e}")
 
     all_providers = get_all_provider_names()
     if user_id is None or not await has_codex_access_for_discovery(user_id):

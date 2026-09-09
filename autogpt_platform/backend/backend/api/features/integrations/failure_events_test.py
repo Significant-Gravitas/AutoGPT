@@ -126,6 +126,42 @@ class TestReportCredentialFailure:
         assert entry["reason"] == "sweep_timeout"
         assert entry["user_id"] == "user-1"
 
+    def test_a_reserved_context_key_does_not_raise_out_of_the_caller(self):
+        logger = logging.getLogger(ROUTER_LOGGER)
+        handler = RecordingHandler()
+        logger.addHandler(handler)
+        try:
+            report_credential_failure(
+                logger,
+                CredentialFailure.DEVICE_CODE_RACE,
+                "credential_unreadable",
+                "unreadable",
+                module="github",
+            )
+        finally:
+            logger.removeHandler(handler)
+
+        record = handler.only_failure()
+        assert record.ctx_module == "github"
+        # GCP keeps the original name, so a query on it does not change.
+        assert record.json_fields["module"] == "github"
+
+    def test_the_record_points_at_the_call_site_not_this_helper(self):
+        logger = logging.getLogger(ROUTER_LOGGER)
+        handler = RecordingHandler()
+        logger.addHandler(handler)
+        try:
+            report_credential_failure(
+                logger,
+                CredentialFailure.DEVICE_CODE_RACE,
+                "credential_unreadable",
+                "unreadable",
+            )
+        finally:
+            logger.removeHandler(handler)
+
+        assert handler.only_failure().filename == "failure_events_test.py"
+
     def test_the_sentry_event_carries_the_tags_and_does_not_leak_them(self):
         captured: list[dict] = []
 
@@ -183,6 +219,13 @@ class TestCallbackFailureEvents:
         assert record.failure_class == "class_06_provider_registration_wrong"
         assert record.reason == "invalid_state_token"
         assert record.provider == "github"
+        # The message is the Sentry grouping key: one issue for the provider's
+        # broken config, not one per user who hit it.
+        assert "Invalid or expired state token" in record.getMessage()
+        # The message is the Sentry grouping key, so the id belongs in the
+        # context and nowhere else — otherwise class 06 is one issue per user.
+        assert record.user_id
+        assert record.user_id not in record.getMessage()
 
     def test_a_granted_scope_shortfall_reports_class_08(self, router_log):
         state = OAuthState(
@@ -230,7 +273,7 @@ class TestCallbackFailureEvents:
 
 
 class TestDeviceAuthFailureEvents:
-    async def test_an_unavailable_throttle_reports_class_07(self, router_log):
+    async def test_an_unavailable_throttle_stays_a_warning(self, router_log):
         from backend.api.features.integrations.router import _throttle_upstream
 
         with patch(
@@ -241,11 +284,11 @@ class TestDeviceAuthFailureEvents:
                 "user-1", ProviderName.GITHUB, seconds=5, scope="initiate"
             )
 
-        # Fails open, and says so where someone can see it.
+        # Fails open. A Redis outage is reported by infrastructure monitoring
+        # and every ~5s poll re-enters here, so this must not raise an event.
         assert throttled is False
-        record = router_log.only_failure()
-        assert record.failure_class == "class_07_device_code_race"
-        assert record.reason == "throttle_unavailable"
+        assert router_log.failures() == []
+        assert any("throttle unavailable" in r.getMessage() for r in router_log.records)
 
     async def test_an_unreadable_stored_credential_reports_class_07(self, router_log):
         from backend.api.features.integrations.router import _credential_for_grant
@@ -300,16 +343,18 @@ class TestProvisioningAndDiscoveryFailureEvents:
         assert record.reason == "sweep_timeout"
         assert record.user_id == "user-1"
 
-    def test_a_failed_block_load_reports_class_03(self, router_log):
+    def test_a_failed_block_load_stays_a_warning(self, router_log):
         with patch(
             "backend.blocks.load_all_blocks",
             side_effect=ImportError("a provider _config.py is broken"),
         ):
             resp = client.get("/providers")
 
-        # The list still returns, one provider short — which is exactly why
-        # nothing else reports this.
+        # `load_all_blocks` caches values, not exceptions, so a broken
+        # `_config.py` re-raises on every page load fleet-wide. That volume
+        # belongs nowhere near the event quota.
         assert resp.status_code == 200
-        record = router_log.only_failure()
-        assert record.failure_class == "class_03_provider_unknown_to_frontend"
-        assert record.reason == "block_load_failed"
+        assert router_log.failures() == []
+        assert any(
+            "Failed to load blocks" in r.getMessage() for r in router_log.records
+        )

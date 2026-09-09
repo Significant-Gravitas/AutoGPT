@@ -18,11 +18,11 @@ import sentry_sdk
 class CredentialFailure(str, Enum):
     """Failure classes an alert rule groups on. Renaming one breaks that rule.
 
-    Only the classes this service can observe. Classes 5, 11 and 13 are
-    client-side terminal states and are named in the frontend's own map.
+    Only the classes this service can observe, and only where nothing else
+    reports the failure. Classes 3, 5 and 11 are client-side terminal states
+    and are named in the frontend's own map.
     """
 
-    PROVIDER_UNKNOWN_TO_FRONTEND = "class_03_provider_unknown_to_frontend"
     PROVIDER_REGISTRATION_WRONG = "class_06_provider_registration_wrong"
     DEVICE_CODE_RACE = "class_07_device_code_race"
     SCOPES_TOO_NARROW = "class_08_scopes_too_narrow"
@@ -50,8 +50,20 @@ def report_credential_failure(
     if provider is not None:
         tags["provider"] = provider
     fields = {**tags, **context}
+    # A context key that collides with a LogRecord attribute makes makeRecord
+    # raise, out of the `except` the caller is reporting from. `json_fields`
+    # has no such reservation, so Cloud Logging keeps the original name.
+    safe = {
+        (f"ctx_{k}" if k in _RESERVED_LOGRECORD_KEYS else k): v
+        for k, v in fields.items()
+    }
 
     with sentry_sdk.new_scope() as scope:
         for tag, value in tags.items():
             scope.set_tag(tag, value)
-        logger.error(message, extra={**fields, "json_fields": fields})
+        logger.error(message, extra={**safe, "json_fields": fields}, stacklevel=2)
+
+
+_RESERVED_LOGRECORD_KEYS = frozenset(
+    logging.LogRecord("", 0, "", 0, "", None, None).__dict__
+) | {"message", "asctime"}

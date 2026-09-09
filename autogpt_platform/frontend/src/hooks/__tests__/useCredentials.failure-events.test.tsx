@@ -109,6 +109,17 @@ describe("a provider the frontend has never heard of", () => {
     await waitFor(() => expect(capture).not.toHaveBeenCalled());
   });
 
+  it("counts nothing for the empty map a logged-out session publishes", async () => {
+    // `{}` is "settled, and this session has no providers" — a session that
+    // expired under an open builder page, not a provider that does not exist.
+    const { result } = renderWithProviders(
+      {} as CredentialsProvidersContextType,
+    );
+
+    expect(result.current).toBeNull();
+    await waitFor(() => expect(capture).not.toHaveBeenCalled());
+  });
+
   it("counts a provider once however often the field returns to it", async () => {
     const { rerender } = renderDiscriminated(makeProviders("slack"), "gpt");
 

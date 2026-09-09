@@ -210,6 +210,7 @@ export function SetupRequirementsCard({
       ready: canRun,
       manualProceed: needsManualPick || hasUserActionableInputs,
       justConnected,
+      credentialsReady: !needsCredentials || isAllCredsComplete,
       buildMessage: () => buildProceedMessage(),
       onSent: markSent,
       connectors: needsCredentials

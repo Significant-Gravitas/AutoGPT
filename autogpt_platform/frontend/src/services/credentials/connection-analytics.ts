@@ -18,11 +18,8 @@ type CredentialConnectionFailure =
   // Connected, stored, and then refused by the card because the provider
   // granted less than the block asked for.
   | "credential_scope_shortfall_blocked_selection"
-  // A sign-in completed on this card and the card is still not ready.
-  | "credential_proceed_stuck_after_connect"
-  // Proceed offered on a chain restored from history, where it drafts a
-  // "I've configured the required credentials" reply about nothing.
-  | "credential_proceed_stale_from_history";
+  // A sign-in completed on this card and the credential never reached it.
+  | "credential_proceed_stuck_after_connect";
 
 const FAILURE_CLASS: Record<CredentialConnectionFailure, string> = {
   credential_card_never_rendered: "class_03_provider_unknown_to_frontend",
@@ -31,7 +28,6 @@ const FAILURE_CLASS: Record<CredentialConnectionFailure, string> = {
   credential_scope_shortfall_blocked_selection: "class_08_scopes_too_narrow",
   credential_proceed_stuck_after_connect:
     "class_11_credential_not_wired_to_card",
-  credential_proceed_stale_from_history: "class_13_chain_turn_mismatch",
 };
 
 export function trackCredentialConnectionFailure(
@@ -40,8 +36,8 @@ export function trackCredentialConnectionFailure(
 ) {
   try {
     posthog.capture(event, {
-      failure_class: FAILURE_CLASS[event],
       ...properties,
+      failure_class: FAILURE_CLASS[event],
     });
   } catch {
     // A blocked analytics host must never break a connect flow.

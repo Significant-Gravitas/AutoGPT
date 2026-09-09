@@ -173,12 +173,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     [canAutoSend],
   );
 
-  useCredentialFailureCounters({
-    entries: actionEntries,
-    isStreaming,
-    offerProceed,
-    justConnectedHere,
-  });
+  useCredentialFailureCounters({ entries: actionEntries });
 
   const rows = useMemo(
     () =>

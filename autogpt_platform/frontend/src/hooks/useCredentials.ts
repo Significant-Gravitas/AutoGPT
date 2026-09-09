@@ -188,7 +188,8 @@ export default function useCredentials(
 
 /** A provider missing from the *loaded* map renders as a permanent loading
  *  state, never an error — the card silently drops the row it owes the user.
- *  A null map is still in flight and means nothing. */
+ *  A null map is still in flight and means nothing, and an empty one is what a
+ *  settled logged-out session publishes — neither says a provider is unknown. */
 function useReportProviderUnknown(
   providerName: string | null,
   allProviders: CredentialsProvidersContextType | null,
@@ -197,6 +198,7 @@ function useReportProviderUnknown(
 
   useEffect(() => {
     if (!providerName || !allProviders) return;
+    if (Object.keys(allProviders).length === 0) return;
     if (providerName in allProviders) return;
     if (reportedFor.current.has(providerName)) return;
     reportedFor.current.add(providerName);

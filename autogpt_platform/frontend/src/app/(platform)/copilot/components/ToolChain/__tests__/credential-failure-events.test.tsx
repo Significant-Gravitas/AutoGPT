@@ -3,7 +3,6 @@ import {
   act,
   cleanup,
   render as baseRender,
-  waitFor,
 } from "@/tests/integrations/test-utils";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -16,7 +15,7 @@ vi.mock("posthog-js", () => ({ default: { capture } }));
 // What the stubbed card registers with the chain — the two fields the chain's
 // terminal-state detection reads.
 const card = vi.hoisted(() => ({
-  current: { ready: false, justConnected: false },
+  current: { ready: false, justConnected: false, credentialsReady: false },
 }));
 
 vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
@@ -25,13 +24,14 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
 
   function SetupRequirementsCard() {
     const chainActions = useContext(ChainActionsContext);
-    const { ready, justConnected } = card.current;
+    const { ready, justConnected, credentialsReady } = card.current;
     useEffect(() => {
       if (!chainActions) return;
       chainActions.register({
         id: "github",
         ready,
         justConnected,
+        credentialsReady,
         buildMessage: () => "I've configured the required credentials.",
         connectors: {
           id: "github",
@@ -42,7 +42,7 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", async () => {
         },
       });
       return () => chainActions.unregister("github");
-    }, [chainActions, ready, justConnected]);
+    }, [chainActions, ready, justConnected, credentialsReady]);
     return <div>setup-card</div>;
   }
 
@@ -87,7 +87,11 @@ function capturedFailures() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  card.current = { ready: false, justConnected: false };
+  card.current = {
+    ready: false,
+    justConnected: false,
+    credentialsReady: false,
+  };
 });
 
 afterEach(() => {
@@ -96,10 +100,14 @@ afterEach(() => {
   useCopilotUIStore.setState({ initialPrompt: null, sentMessageCount: 0 });
 });
 
-describe("a card that signed in and never became ready", () => {
+describe("a sign-in that never reaches the card that asked for it", () => {
   it("counts the stuck card once the connect settles", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    card.current = { ready: false, justConnected: true };
+    card.current = {
+      ready: false,
+      justConnected: true,
+      credentialsReady: false,
+    };
 
     render(<ToolChain parts={[setupPart()]} isStreaming={false} />);
     await act(async () => {
@@ -114,7 +122,11 @@ describe("a card that signed in and never became ready", () => {
 
   it("counts nothing when the card becomes ready inside the settle window", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    card.current = { ready: false, justConnected: true };
+    card.current = {
+      ready: false,
+      justConnected: true,
+      credentialsReady: false,
+    };
 
     const { rerender } = render(
       <ToolChain parts={[setupPart()]} isStreaming={false} />,
@@ -123,7 +135,7 @@ describe("a card that signed in and never became ready", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    card.current = { ready: true, justConnected: true };
+    card.current = { ready: true, justConnected: true, credentialsReady: true };
     rerender(<ToolChain parts={[setupPart()]} isStreaming={false} />);
     await act(async () => {
       vi.advanceTimersByTime(10000);
@@ -134,7 +146,11 @@ describe("a card that signed in and never became ready", () => {
 
   it("counts nothing when the card leaves the chain before the settle window", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    card.current = { ready: false, justConnected: true };
+    card.current = {
+      ready: false,
+      justConnected: true,
+      credentialsReady: false,
+    };
 
     const { rerender } = render(
       <ToolChain parts={[setupPart()]} isStreaming={false} />,
@@ -150,31 +166,21 @@ describe("a card that signed in and never became ready", () => {
 
     expect(capturedFailures()).toHaveLength(0);
   });
-});
 
-describe("a Proceed restored from chat history", () => {
-  it("counts a chain that offers Proceed having never streamed or connected", async () => {
-    card.current = { ready: true, justConnected: false };
+  it("counts nothing while the user is still filling in the card's inputs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Signed in, credential in place, card not `ready` only because its run
+    // inputs are half-typed. Counting this measures typing speed.
+    card.current = {
+      ready: false,
+      justConnected: true,
+      credentialsReady: true,
+    };
 
     render(<ToolChain parts={[setupPart()]} isStreaming={false} />);
-
-    await waitFor(() =>
-      expect(capture).toHaveBeenCalledWith(
-        "credential_proceed_stale_from_history",
-        { failure_class: "class_13_chain_turn_mismatch" },
-      ),
-    );
-  });
-
-  it("counts nothing for a chain that streamed in this page life", async () => {
-    card.current = { ready: true, justConnected: false };
-
-    const { rerender } = render(
-      <ToolChain parts={[setupPart()]} isStreaming={true} />,
-    );
-    await act(async () => {});
-    rerender(<ToolChain parts={[setupPart()]} isStreaming={false} />);
-    await act(async () => {});
+    await act(async () => {
+      vi.advanceTimersByTime(20000);
+    });
 
     expect(capturedFailures()).toHaveLength(0);
   });
