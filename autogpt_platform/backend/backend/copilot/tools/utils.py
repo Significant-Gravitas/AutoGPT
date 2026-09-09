@@ -592,6 +592,7 @@ def sanitize_provider_message(message: str, max_chars: int = 200) -> str:
     text = " ".join(str(message).split())
     text = _BEARER_TOKEN_RE.sub("[redacted]", text)
     text = _URL_QUERY_RE.sub(r"\1", text)
+    text = _AUTH_HEADER_RE.sub("[redacted]", text)
     text = _SECRET_PARAM_RE.sub("[redacted]", text)
     if len(text) > max_chars:
         text = text[:max_chars].rstrip() + "…"
@@ -611,7 +612,14 @@ def _status_code_of(exc: BaseException) -> int | None:
 
 _BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+\S+")
 _URL_QUERY_RE = re.compile(r"(https?://[^\s\"'?]+)\?\S*")
+# An Authorization value is a scheme plus its token, so a bare \S+ would eat
+# only the scheme and leave the credential sitting behind "[redacted]".
+_AUTH_HEADER_RE = re.compile(
+    r"(?i)['\"]?\bauthorization\b['\"]?\s*[=:]\s*['\"]?(?:\w[\w-]*\s+)?\S+"
+)
+# Optional quotes around the key and value cover the JSON and dict shapes a
+# provider echoes back; without them the quote before the colon defeats the match.
 _SECRET_PARAM_RE = re.compile(
-    r"(?i)\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret"
-    r"|password|authorization)\b\s*[=:]\s*\S+"
+    r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token"
+    r"|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )

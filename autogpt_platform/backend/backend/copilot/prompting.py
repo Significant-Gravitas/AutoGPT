@@ -386,8 +386,9 @@ not promise a card — call the tool first, then describe it.
 does the job better than the sentence.
 
 **4. `rejection` on a `setup_requirements` response means the provider
-refused a credential the user already has.** Say which one and why; do
-not re-run the tool until they have reconnected.
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 

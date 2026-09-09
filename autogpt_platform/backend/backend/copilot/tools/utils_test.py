@@ -76,6 +76,9 @@ async def test_match_user_credentials_excludes_auto_creds():
     assert "github_api_key" in missing[0]
 
 
+_SECRET = "sk-live-SHOULD-NOT-APPEAR"
+
+
 @pytest.mark.parametrize(
     "raw, expected",
     [
@@ -87,12 +90,40 @@ async def test_match_user_credentials_excludes_auto_creds():
         ("bad token=sk-live-abc", "bad [redacted]"),
         ("password: hunter2", "[redacted]"),
         ("HTTP 401 Error:\n  Unauthorized", "HTTP 401 Error: Unauthorized"),
+        # The rejection reason is the point of the card, so prose that merely
+        # mentions a secret-ish word must survive intact.
+        ("Invalid API key provided.", "Invalid API key provided."),
+        ("The token has expired; reconnect.", "The token has expired; reconnect."),
+        ("Your basic plan does not allow this", "Your basic plan does not allow this"),
     ],
 )
 def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
     from backend.copilot.tools.utils import sanitize_provider_message
 
     assert sanitize_provider_message(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        f"api_key={_SECRET}",
+        f'{{"api_key": "{_SECRET}"}}',
+        f'{{"api_key":"{_SECRET}"}}',
+        f'{{"access_token": "{_SECRET}"}}',
+        f"{{'refresh_token': '{_SECRET}'}}",
+        f'headers={{"X-Api-Key": "{_SECRET}"}}',
+        f"Authorization: Bearer {_SECRET}",
+        f"Authorization: Basic {_SECRET}",
+        f"Authorization: Token {_SECRET}",
+        f'{{"authorization": "Bearer {_SECRET}"}}',
+    ],
+)
+def test_sanitize_provider_message_leaves_no_secret(raw: str):
+    """Asserts on the secret, not on "[redacted]" — the Authorization shapes
+    substituted the scheme and left the token standing next to the marker."""
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    assert _SECRET not in sanitize_provider_message(raw)
 
 
 def test_sanitize_provider_message_is_bounded():
