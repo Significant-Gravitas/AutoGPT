@@ -408,3 +408,42 @@ async def test_the_prompt_carries_the_roster_and_the_wizard_answers(
     assert "Founder/CEO" in content
     assert "Finding leads" in content
     assert TRANSCRIPT in content
+
+
+def test_fallback_prioritizes_all_matching_templates_before_truncating():
+    unrelated = [_template(f"other-{i}", f"Other{i}", "Ops") for i in range(16)]
+    first = _template("sales-first", "First", "Sales")
+    second = _template("sales-second", "Second", " SALES ")
+    team = recommend_experts.fallback_expert_recommendations(
+        "Sales/BD", ["Finding leads", "Email & outreach"], [*unrelated, first, second]
+    )
+    ids = [expert.template_id for expert in team.experts]
+    assert ids[:2] == [first.id, second.id]
+    assert len(ids) == len(set(ids)) == recommend_experts.MAX_EXPERTS
+
+
+@pytest.mark.asyncio
+async def test_prompt_treats_braces_in_user_and_roster_text_as_literal(
+    client: MagicMock,
+):
+    client.chat.completions.create.return_value = _completion(
+        {"experts": [{"template_id": "tpl-max"}]}
+    )
+    transcript = (
+        'I maintain JSON like {"customer": "{name}"} and {missing} placeholders.'
+    )
+    template = MAX.model_copy(update={"tagline": "Handles {sales} workflows"})
+    team = await recommend_experts.generate_expert_recommendations(
+        transcript,
+        user_role="{Founder}",
+        pain_points=["{Reports}"],
+        templates=[template],
+    )
+    content = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+    assert transcript in content
+    assert "{Founder}" in content
+    assert "{Reports}" in content
+    assert "{sales}" in content
+    assert f"at most {recommend_experts.MAX_EXPERTS} objects" in content
+    assert "all three slots" not in content
+    assert team.source == "llm"

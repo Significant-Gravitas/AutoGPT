@@ -28,7 +28,7 @@ from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
-# Same reasoning as the provider job: picking three names off a roster is
+# Same reasoning as the provider job: matching needs against a roster is
 # a matching task, and the onboarding loading screen waits on it.
 _MODEL = os.environ.get("BRAIN_DUMP_RECOMMEND_MODEL", "anthropic/claude-haiku-4-5")
 _TIMEOUT_SECONDS = 30
@@ -84,7 +84,7 @@ sentence, max {max_reason} characters, second person.
 
 Rules: never invent a template id or a workflow name that is not below; \
 never recommend an expert the transcript gives no evidence for (fewer, \
-better hires beat filling all three slots); do not promise anything the \
+better hires beat filling every available slot); do not promise anything the \
 listed workflows cannot do.
 
 Roster:
@@ -324,7 +324,6 @@ def fallback_expert_recommendations(
     claims nothing about what the user said, because in those cases we
     may not have heard anything at all.
     """
-    by_role = {template.role.strip().lower(): template for template in templates}
     wanted = [
         *_ROLE_TEMPLATE_ROLES.get(user_role or "", ()),
         *(
@@ -333,20 +332,20 @@ def fallback_expert_recommendations(
             for role in _PAIN_TEMPLATE_ROLES.get(point, ())
         ),
     ]
+    prioritized = [
+        template
+        for role in dict.fromkeys(wanted)
+        for template in templates
+        if template.role.strip().lower() == role
+    ]
     picked: list[Expert] = []
-    for role in wanted:
-        template = by_role.get(role)
-        if template is not None and template not in picked:
+    seen: set[str] = set()
+    for template in [*prioritized, *templates]:
+        if template.id not in seen:
             picked.append(template)
+            seen.add(template.id)
         if len(picked) == MAX_EXPERTS:
             break
-    # The role-driven picks lead; the rest of the roster fills the row so
-    # there is always a team to scroll through, not one lonely card.
-    for template in templates:
-        if len(picked) == MAX_EXPERTS:
-            break
-        if template not in picked:
-            picked.append(template)
 
     picked_roles = {template.role.strip().lower() for template in picked}
     return ExpertRecommendations(
