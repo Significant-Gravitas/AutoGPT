@@ -471,6 +471,11 @@ class AutoPilotBlock(Block):
                     f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
                     f"{session_id}"
                 )
+            if outcome == "refused":
+                # Terminal, like the branches above: nothing ran, so the
+                # SessionResult carries only the refusal and its empty
+                # response_text would otherwise render as a successful turn.
+                raise RuntimeError(result.refusal or "AutoPilot turn was refused")
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-

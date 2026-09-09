@@ -356,21 +356,21 @@ class TreeLedger:
 
     # redis-py types the async client's hash commands as ``Awaitable[T] | T``;
     # the narrowing cast is the pattern the rest of the backend uses.
-    async def _hsetnx(self, key: str, field: str, value: int) -> None:
-        await cast(Awaitable[bool], self._redis.hsetnx(key, field, str(value)))
-
     async def _hincrby(self, key: str, field: str, amount: int) -> int:
         """Always re-arm the TTL.
 
         ``HINCRBY`` on a key whose TTL fired in the meantime *recreates* it,
         and only ``open()`` ever issued ``EXPIRE`` — so a charge or release
         landing in that window left a ``copilot:tree:*`` hash with no
-        expiry, i.e. a permanent leak. Re-arming is idempotent and costs one
-        pipelined command.
+        expiry, i.e. a permanent leak. Re-arming is idempotent, and the
+        MULTI/EXEC keeps the increment and the TTL in one round-trip so a
+        crash between them cannot leave the key unexpiring.
         """
-        value = await cast(Awaitable[int], self._redis.hincrby(key, field, amount))
-        await cast(Awaitable[bool], self._redis.expire(key, MAX_TURN_LIFETIME_SECONDS))
-        return value
+        pipe = self._redis.pipeline(transaction=True)
+        pipe.hincrby(key, field, amount)
+        pipe.expire(key, MAX_TURN_LIFETIME_SECONDS)
+        value, _ = await cast(Awaitable[list], pipe.execute())
+        return int(value)
 
 
 async def get_tree_ledger() -> TreeLedger:

@@ -29,6 +29,7 @@ from backend.util.exceptions import (
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
+    validate_timezone,
 )
 
 from .base import BaseTool
@@ -39,7 +40,7 @@ from .execution_utils import (
     summarize_node_failures,
     wait_for_execution,
 )
-from .helpers import get_inputs_from_schema
+from .helpers import get_inputs_from_schema, get_picker_inputs_from_schema
 from .models import (
     AgentDetails,
     AgentDetailsResponse,
@@ -118,7 +119,7 @@ class RunAgentInput(BaseModel):
     use_defaults: bool = False
     schedule_name: str = ""
     cron: str = ""
-    timezone: str = "UTC"
+    timezone: str = ""
     wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
     save_as_preset: bool = False
@@ -209,7 +210,7 @@ class RunAgentTool(BaseTool):
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone (default: UTC).",
+                    "description": "IANA timezone for the cron expression. Omit to use the user's configured timezone.",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -529,6 +530,7 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         error: GraphValidationError,
         session_id: str,
+        inputs: dict[str, Any] | None = None,
     ) -> SetupRequirementsResponse | None:
         """Turn a credential-only ``GraphValidationError`` into the inline
         setup-requirements card; return ``None`` if *any* non-credential
@@ -566,7 +568,9 @@ class RunAgentTool(BaseTool):
                 ),
                 requirements={
                     "credentials": list(credentials_dict.values()),
-                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "inputs": get_picker_inputs_from_schema(
+                        graph.input_schema, input_data=inputs
+                    ),
                     "execution_modes": self._get_execution_modes(graph),
                 },
             ),
@@ -581,6 +585,7 @@ class RunAgentTool(BaseTool):
         user_id: str,
         session_id: str,
         action_verb: str,
+        inputs: dict[str, Any] | None = None,
     ) -> ToolResponseBase:
         """Handle a ``GraphValidationError`` that slipped past the prereq check.
 
@@ -599,6 +604,7 @@ class RunAgentTool(BaseTool):
             graph=graph,
             error=error,
             session_id=session_id,
+            inputs=inputs,
         )
         if creds_setup is not None:
             return creds_setup
@@ -673,7 +679,9 @@ class RunAgentTool(BaseTool):
                     ),
                     requirements={
                         "credentials": list(requirements_creds_dict.values()),
-                        "inputs": get_inputs_from_schema(graph.input_schema),
+                        "inputs": get_picker_inputs_from_schema(
+                            graph.input_schema, input_data=params.inputs
+                        ),
                         "execution_modes": self._get_execution_modes(graph),
                     },
                 ),
@@ -924,6 +932,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="running",
+                inputs=inputs,
             )
 
         # Track successful run (dry runs don't count against the session limit)
@@ -1162,13 +1171,30 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Precedence mirrors POST /graphs/{graph_id}/schedules: an explicit
+        # timezone wins over the user's stored preference, which wins over UTC.
+        # Resolved before the library agent, so a rejected timezone persists nothing.
+        if timezone:
+            # Never silently downgrade to UTC here — the model has already told
+            # the user which timezone it is scheduling in.
+            if not validate_timezone(timezone):
+                return ErrorResponse(
+                    message=(
+                        f"'{timezone}' is not a valid IANA timezone. Use a name "
+                        "like 'Europe/London', or omit it to use the user's "
+                        "configured timezone."
+                    ),
+                    error="invalid_timezone",
+                    session_id=session_id,
+                )
+            user_timezone = timezone
+        else:
+            user = await user_db().get_user_by_id(user_id)
+            user_timezone = get_user_timezone_or_utc(user.timezone)
+
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
         emit_tool_display_name(library_agent.name)
-
-        # Get user timezone
-        user = await user_db().get_user_by_id(user_id)
-        user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
 
         # Create schedule — the scheduler re-validates credentials via
         # ``validate_and_construct_node_execution_input`` and will raise
@@ -1212,6 +1238,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 action_verb="scheduling",
+                inputs=inputs,
             )
 
         # Convert next_run_time to user timezone for display

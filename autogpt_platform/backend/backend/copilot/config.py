@@ -359,7 +359,7 @@ class ChatConfig(BaseSettings):
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     daily_cost_limit_microdollars: int = Field(
-        default=1_000_000,
+        default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
         "0 means no spend allowed (will block); there is no unlimited tier.",
     )
@@ -476,10 +476,9 @@ class ChatConfig(BaseSettings):
         le=1_000_000,
         validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
         description="Context window the SDK subprocess is held to, in tokens "
-        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). Only "
-        "raise it on a route that really serves 1M — past the provider's real "
-        "window the compaction trigger never fires (at 1M on Moonshot it lands "
-        "at 967K against Kimi's 262,144).",
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). "
+        "Moonshot routes use the lower of this and the SKU's catalog window; "
+        "Anthropic routes take it as given.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
