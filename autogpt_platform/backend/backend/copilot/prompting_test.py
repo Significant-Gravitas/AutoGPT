@@ -91,3 +91,18 @@ class TestGraphitiMemoryScope:
         assert "Memory is private and isolated to the current assistant" in result
         assert "cannot read each other's memories" in result
         assert "Memory is private to this user — no other user can see it" not in result
+
+
+class TestDelegationSupplementTeamBuilding:
+    """The Head-of-AI hiring rules ride the delegation supplement so they
+    inherit its ``experts_enabled`` gate at both engines' call sites."""
+
+    def test_supplement_includes_building_the_team(self):
+        result = prompting.get_delegation_supplement()
+
+        assert "Building the team" in result
+        assert "hire_expert" in result
+        assert "raise_expert" in result
+        assert "One proposal at a time" in result
+        assert "Never hire silently" in result
+        assert "Delegating to a teammate" in result

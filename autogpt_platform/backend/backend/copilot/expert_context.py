@@ -259,11 +259,25 @@ async def _team_context(
     With the hire-experts flag off the roster still helps the model route a
     request, but the rule falls back to pointing at the expert's thread —
     naming a tool the turn cannot execute is worse than saying nothing.
+
+    An empty roster on a plain session is the Head-of-AI moment: instead of
+    saying nothing, hand the model the hiring roster so it can propose a
+    first teammate. The flag and the template read are paid only there — an
+    expert session's empty teammate list is just a solo roster, not a user
+    without a team.
     """
     experts = await experts_db().list_experts(user_id, with_metrics=False)
     teammates = [e for e in experts if e.id != exclude_expert_id]
     if not teammates:
-        return ""
+        if (
+            exclude_expert_id is not None
+            or not delegation_enabled
+            or not await is_feature_enabled(
+                Flag.ONBOARDING_EXPERT_TEAM, user_id, default=False
+            )
+        ):
+            return ""
+        return _empty_team_context(await experts_db().list_templates())
 
     lines = "\n".join(_team_line(e) for e in teammates)
     rule = _team_rule(
@@ -318,4 +332,46 @@ def _team_line(expert: Expert) -> str:
         f"- {escape_prompt_xml_tags(expert.name)} — "
         f"{escape_prompt_xml_tags(expert.role)} (expert id: {expert.id}); "
         f"installed workflows: {workflow_names}"
+    )
+
+
+def _empty_team_context(templates: list[Expert]) -> str:
+    """Head-of-AI block for a user who has hired nobody yet.
+
+    The roster is inlined rather than exposed as a tool: the tool schema has
+    a character budget, and this block is only ever built once per session.
+    """
+    roster = (
+        "Roster:\n" + "\n".join(_template_line(t) for t in templates)
+        if templates
+        else "Roster: none available yet — offer to raise a custom expert."
+    )
+    return (
+        "<team_context>\n"
+        "The user has not hired any experts yet. You are their Head of AI: "
+        "when recurring work shows up, propose hiring one expert from the "
+        "roster below with `hire_expert(template_id=...)`, or raising a "
+        "custom one with `raise_expert(...)`, and say why. Always offer both "
+        "paths (hire from the roster, or raise your own). Propose one hire "
+        "at a time. Never hire silently — both tools return an approval card "
+        "the user must confirm; do not describe the card's contents, the "
+        "user sees it.\n"
+        f"{roster}\n"
+        "</team_context>\n\n"
+    )
+
+
+def _template_line(template: Expert) -> str:
+    workflow_names = (
+        ", ".join(
+            escape_prompt_xml_tags(w.name or "Unnamed workflow")
+            for w in template.workflows
+        )
+        or "none installed"
+    )
+    return (
+        f"- {escape_prompt_xml_tags(template.name)} — "
+        f"{escape_prompt_xml_tags(template.role)} (template_id: {template.id}); "
+        f"{escape_prompt_xml_tags(template.tagline or 'No tagline')}; "
+        f"workflows: {workflow_names}"
     )
