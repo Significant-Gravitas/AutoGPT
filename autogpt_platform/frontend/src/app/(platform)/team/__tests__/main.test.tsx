@@ -4,7 +4,6 @@ import {
   getGetExpertDetachPreviewMockHandler,
   getListExpertCredentialsMockHandler,
   getListExpertPodsMockHandler,
-  getListExpertPodsMockHandler401,
   getListExpertsMockHandler,
   getListExpertsMockHandler401,
   getResumeExpertSchedulesMockHandler,
@@ -882,7 +881,7 @@ describe("TeamPage", () => {
     expect(await screen.findByText("Something went wrong")).toBeDefined();
   });
 
-  test("keeps the roster in loading state until pods resolve", async () => {
+  test("renders the roster without waiting for pods", async () => {
     server.use(
       getListExpertsMockHandler([hiredMaria]),
       getListExpertPodsMockHandler(() => new Promise(() => {})),
@@ -891,21 +890,24 @@ describe("TeamPage", () => {
     render(<TeamPage />);
 
     await screen.findByText("Autopilot");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    // Experts resolved but pods have not: no card may render yet, or a
-    // podded expert would flash as ungrouped.
-    expect(screen.queryByText("Maria")).toBeNull();
+    expect(await screen.findByText("Maria")).toBeDefined();
   });
 
-  test("shows an error card when loading pods fails", async () => {
+  test("renders the roster without requesting pods", async () => {
+    const podsRequest = vi.fn();
     server.use(
       getListExpertsMockHandler([hiredMaria]),
-      getListExpertPodsMockHandler401(),
+      getListExpertPodsMockHandler(() => {
+        podsRequest();
+        throw new Error("Pods must not be requested");
+      }),
     );
 
     render(<TeamPage />);
 
-    expect(await screen.findByText("Something went wrong")).toBeDefined();
+    expect(await screen.findByText("Maria")).toBeDefined();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(podsRequest).not.toHaveBeenCalled();
   });
 
   test("calls notFound() when the flag is resolved and disabled", () => {
