@@ -9,9 +9,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { WorkflowSquare01Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
+import { useState } from "react";
 import { INSTALL_WORKFLOW_SOURCES, workflowSubtitle } from "./helpers";
 import { useInstallWorkflowPicker } from "./useInstallWorkflowPicker";
 
@@ -234,24 +233,26 @@ interface WorkflowTileProps {
   imageUrl?: string | null;
 }
 
+/** The workflow's image, or a plain muted square when there is none or it
+ *  fails to load: never a broken-image outline, never a stand-in glyph. */
 function WorkflowTile({ imageUrl }: WorkflowTileProps) {
-  if (imageUrl) {
+  const [hasError, setHasError] = useState(false);
+  if (!imageUrl || hasError) {
     return (
-      <Image
-        src={imageUrl}
-        alt=""
-        width={36}
-        height={36}
-        className="size-9 shrink-0 rounded-lg bg-zinc-100 object-cover"
+      <span
+        aria-hidden="true"
+        className="size-9 shrink-0 rounded-lg bg-zinc-100"
       />
     );
   }
   return (
-    <span
-      aria-hidden="true"
-      className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600"
-    >
-      <Icon icon={WorkflowSquare01Icon} size={18} />
-    </span>
+    <Image
+      src={imageUrl}
+      alt=""
+      width={36}
+      height={36}
+      onError={() => setHasError(true)}
+      className="size-9 shrink-0 rounded-lg bg-zinc-100 object-cover"
+    />
   );
 }

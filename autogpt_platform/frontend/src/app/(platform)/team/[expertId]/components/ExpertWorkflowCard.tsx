@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
@@ -42,6 +43,7 @@ export function ExpertWorkflowCard({
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
+  const [hasImageError, setHasImageError] = useState(false);
 
   return (
     <div
@@ -57,12 +59,13 @@ export function ExpertWorkflowCard({
       ) : null}
 
       <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
-        {libraryAgent?.image_url ? (
+        {libraryAgent?.image_url && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            onError={() => setHasImageError(true)}
             className="object-cover"
           />
         ) : (

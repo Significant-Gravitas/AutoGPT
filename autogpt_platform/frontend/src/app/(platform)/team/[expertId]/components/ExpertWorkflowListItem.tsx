@@ -11,6 +11,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Image from "next/image";
 import NextLink from "next/link";
+import { useState } from "react";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
@@ -43,6 +44,7 @@ export function ExpertWorkflowListItem({
     openRun,
     openTriggers,
   } = useExpertWorkflowCard({ workflow, expertId });
+  const [hasImageError, setHasImageError] = useState(false);
   const meta = [
     workflow.schedule_cron
       ? safeHumanizeCronExpression(workflow.schedule_cron)
@@ -66,13 +68,14 @@ export function ExpertWorkflowListItem({
       ) : null}
 
       {/* A square as tall as the text column, title through meta line. */}
-      {libraryAgent?.image_url ? (
+      {libraryAgent?.image_url && !hasImageError ? (
         <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
           <Image
             src={libraryAgent.image_url}
             alt=""
             fill
             sizes="96px"
+            onError={() => setHasImageError(true)}
             className="object-cover"
           />
         </div>
