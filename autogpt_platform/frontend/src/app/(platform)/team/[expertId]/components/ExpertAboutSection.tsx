@@ -1,6 +1,6 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { ProfileEntry } from "./ProfileEntry";
 
 interface Props {
   bio: string | null;
@@ -24,28 +24,5 @@ export function ExpertAboutSection({
         <ProfileEntry label="Boundaries" value={boundaries} />
       </dl>
     </section>
-  );
-}
-
-interface ProfileEntryProps {
-  label: string;
-  value: string | null;
-}
-
-function ProfileEntry({ label, value }: ProfileEntryProps) {
-  return (
-    <div>
-      <Text variant="large-medium" as="dt" tone="primary">
-        {label}
-      </Text>
-      <Text
-        variant="body"
-        as="dd"
-        tone="secondary"
-        className="mt-1 whitespace-pre-line"
-      >
-        {value || "Not set yet."}
-      </Text>
-    </div>
   );
 }
