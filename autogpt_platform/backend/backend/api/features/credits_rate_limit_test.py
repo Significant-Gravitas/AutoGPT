@@ -199,3 +199,37 @@ async def test_per_user_keys_are_distinct(fake_redis):
     assert len(keys) == 2
     assert any("alice" in k for k in keys)
     assert any("bob" in k for k in keys)
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_over_limit_records_a_rate_limit_hit(mock_redis):
+    """The 429 must be visible to Prometheus; the counter had no callers."""
+    before = _counter(
+        "autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription"
+    )
+    mock_redis.eval.return_value = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS + 1
+    with pytest.raises(fastapi.HTTPException):
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
+    assert (
+        _counter("autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription")
+        == before + 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_under_limit_does_not_record(mock_redis):
+    before = _counter(
+        "autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription"
+    )
+    mock_redis.eval.return_value = 1
+    await rate_limit.enforce_subscription_status_rate_limit("u1")
+    assert (
+        _counter("autogpt_rate_limit_hits_total", endpoint="/api/credits/subscription")
+        == before
+    )

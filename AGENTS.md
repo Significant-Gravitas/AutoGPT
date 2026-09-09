@@ -29,9 +29,10 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
+4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only (through the `Icon` atom)
 5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
+7. **Keyboard handling**: Use `isKey(e, "Enter")` (or `isKey(e, "Enter", " ")`) from `@/lib/keyboard` instead of comparing `e.key`. It returns false while an IME is composing (Japanese, Chinese, Korean input), when Enter/Space/arrows belong to the input method, not the app. The `Input` atom drops composing keydowns before calling `onKeyDown` as a safety net; every handler on a raw `<input>`/`<textarea>`, a container, or `document` must use `isKey` itself. That atom-level guard is deliberately unconditional, so a modifier chord wired through `<Input onKeyDown>` is dropped mid-composition too — handle chords outside the atom. For focus traps and other containment handlers, which must keep holding a key even while composing, use `isKeyIgnoringComposition`. ESLint (`no-restricted-syntax`) flags direct `.key` comparisons and switches against the IME key names only; `// eslint-disable-next-line no-restricted-syntax` is the escape hatch for a domain object that merely has a `.key` field (e.g. `column.key === "Delete"`). Modifier chords like Cmd+K, `.key.toLowerCase()` and `[...].includes(e.key)` are not checked and are out of scope, since an IME never owns them. Passing `e.key` on as a function argument (e.g. into a roving-focus helper) is also invisible to the rule — guard those handlers with `isComposingEvent(e)` at the top.
 
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
 - Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
@@ -56,11 +57,24 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+## Commit attribution
+
+For every commit you create in this repository, ensure the commit message includes a `Co-authored-by:` trailer identifying the large language model and agent platform:
+
+```text
+Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
+```
+
+- Your harness may add this trailer automatically. Do not add a duplicate; ensure the resulting trailer identifies both the model and platform.
+- Replace the placeholders with the model name/version reported by your runtime and the agent platform (e.g. Codex, Claude Code, or AutoGPT). Write `unknown` for unavailable model details; do not guess.
+- Use the platform's configured co-author email, or `agent@example.invalid` if none is available.
+- Include exactly one trailer per distinct platform/model pair that contributed to the commit, after a blank line at the end of the commit message. Preserve existing human co-author trailers.
+
 ## Pull requests
 
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
 - Rely on the pre-commit checks for linting and formatting
-- Fill out the **Changes** section and the checklist.
+- Fill out the **Changes**, **Agents and large language models used**, and checklist sections. List each platform with its model name/version, or `None` if no agents were used.
 - Use conventional commit titles with a scope (e.g. `feat(frontend): add feature`).
 - Keep out-of-scope changes under 20% of the PR.
 - Ensure PR descriptions are complete.

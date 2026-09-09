@@ -2,7 +2,6 @@
 
 import { FilterHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,11 +31,9 @@ export function HomeTileFilter({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="small"
-          className="h-7 min-w-0 gap-1 rounded-md px-2 text-xs text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-          leftIcon={
-            <Icon icon={FilterHorizontalIcon} size={13} aria-hidden="true" />
-          }
+          size="xs"
+          className="gap-1 px-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+          leadingIcon={FilterHorizontalIcon}
           aria-label={`${ariaLabelPrefix}: ${activeLabel}`}
           unmask={false}
         >

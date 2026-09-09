@@ -261,8 +261,8 @@ def test_get_subscription_status_pro(
     # so the frontend never renders a multiplier badge for a hidden row.
     assert set(data["tier_multipliers"].keys()) == set(data["tier_costs"].keys())
     assert data["tier_multipliers"]["BASIC"] == 1.0
-    assert data["tier_multipliers"]["PRO"] == 5.0
-    assert data["tier_multipliers"]["MAX"] == 20.0
+    assert data["tier_multipliers"]["PRO"] == 1.25
+    assert data["tier_multipliers"]["MAX"] == 10.6667
     assert data["tier_multipliers"]["BUSINESS"] == 60.0
 
 

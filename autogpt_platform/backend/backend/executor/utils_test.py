@@ -443,6 +443,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         organization_id=None,
         team_id=None,
         expert_id=None,
+        schedule_id=None,
+        webhook_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -1914,6 +1916,19 @@ def test_make_node_credentials_input_map_excludes_auto_creds(
 
 
 # ============================================================================
+@pytest.mark.asyncio
+async def test_add_graph_execution_rejects_a_run_with_two_triggers():
+    """A run is started by a schedule or a webhook, never both; recording
+    both would let the home card report the schedule and hide the webhook."""
+    with pytest.raises(ValueError, match="schedule or a webhook"):
+        await add_graph_execution(
+            graph_id="graph-1",
+            user_id="user-1",
+            schedule_id="sched-1",
+            webhook_id="hook-1",
+        )
+
+
 # Admin-bypass paywall: requeue stuck executions for users on NO_TIER must
 # not be blocked by the paywall gate (Sentry bug prediction: admin recovery
 # would otherwise raise UserPaywalledError on the original user's behalf).
@@ -2706,3 +2721,56 @@ async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     assert create_kwargs["organization_id"] == "org-sub"
     assert create_kwargs["team_id"] == "team-sub"
     assert create_kwargs["parent_graph_exec_id"] == "parent-123"
+
+
+def _counter(name: str, **labels) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_records_outcome(mocker):
+    """Every caller of the shared execute path must feed
+    autogpt_graph_executions_total; before this only the legacy v1 route did."""
+    from unittest.mock import AsyncMock
+
+    from backend.executor import utils
+    from backend.util.exceptions import GraphValidationError, UserPaywalledError
+
+    def n(status):
+        return _counter("autogpt_graph_executions_total", status=status)
+
+    ok, verr, err = n("success"), n("validation_error"), n("error")
+
+    mocker.patch.object(utils, "_add_graph_execution", AsyncMock(return_value="row"))
+    assert await utils.add_graph_execution(graph_id="g", user_id="u") == "row"
+    assert n("success") == ok + 1
+
+    mocker.patch.object(
+        utils,
+        "_add_graph_execution",
+        AsyncMock(side_effect=GraphValidationError("bad", {})),
+    )
+    with pytest.raises(GraphValidationError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert n("validation_error") == verr + 1
+
+    mocker.patch.object(
+        utils, "_add_graph_execution", AsyncMock(side_effect=RuntimeError("boom"))
+    )
+    with pytest.raises(RuntimeError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert n("error") == err + 1
+
+    # A paywall is a policy gate, not an execute outcome: nothing is counted.
+    mocker.patch.object(
+        utils, "_add_graph_execution", AsyncMock(side_effect=UserPaywalledError("pay"))
+    )
+    with pytest.raises(UserPaywalledError):
+        await utils.add_graph_execution(graph_id="g", user_id="u")
+    assert (n("success"), n("validation_error"), n("error")) == (
+        ok + 1,
+        verr + 1,
+        err + 1,
+    )

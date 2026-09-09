@@ -141,6 +141,29 @@ class TestRedactSecretKeys:
 
 
 class TestSanitizeChatMessage:
+    def test_preserves_canonical_tool_display_name(self):
+        msg = _msg(
+            tool_calls=[
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "display_name": "Daily report",
+                    "function": {
+                        "name": "run_agent",
+                        "arguments": {
+                            "library_agent_id": "library-id",
+                            "api_key": "secret",
+                        },
+                    },
+                }
+            ],
+        )
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.tool_calls[0]["display_name"] == "Daily report"
+        assert (
+            sanitized.tool_calls[0]["function"]["arguments"]["api_key"] == "[redacted]"
+        )
+
     def test_drops_refusal_and_metadata(self):
         msg = _msg(
             role="assistant",
