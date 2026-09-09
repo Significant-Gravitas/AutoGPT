@@ -47,14 +47,11 @@ from backend.api.features.experts import experts_db
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
-    CreateAPIKeyRequest,
-    CreateAPIKeyResponse,
     CreateGraph,
     GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
-    UpdatePermissionsRequest,
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
@@ -74,7 +71,6 @@ from backend.copilot.tools.skills import (
 )
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -2930,119 +2926,3 @@ async def delete_copilot_skill(
     except SkillNotFoundError as exc:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=str(exc))
     return {"name": slug}
-
-
-########################################################
-#####################  API KEY ##############################
-########################################################
-
-
-@v1_router.post(
-    "/api-keys",
-    summary="Create new API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def create_api_key(
-    request: CreateAPIKeyRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> CreateAPIKeyResponse:
-    """Create a new API key"""
-    api_key_info, plain_text_key = await api_key_db.create_api_key(
-        name=request.name,
-        user_id=user_id,
-        permissions=request.permissions,
-        description=request.description,
-        organization_id=ctx.org_id,
-    )
-    return CreateAPIKeyResponse(api_key=api_key_info, plain_text_key=plain_text_key)
-
-
-@v1_router.get(
-    "/api-keys",
-    summary="List user API keys",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_keys(
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> list[api_key_db.APIKeyInfo]:
-    """List all API keys for the user"""
-    team_ids = await get_user_team_ids(user_id, ctx.org_id) if ctx.org_id else []
-    return await api_key_db.list_user_api_keys(
-        user_id, organization_id=ctx.org_id or None, team_ids=team_ids
-    )
-
-
-@v1_router.get(
-    "/api-keys/{key_id}",
-    summary="Get specific API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def get_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Get a specific API key"""
-    api_key = await api_key_db.get_api_key_by_id(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-    if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
-    return api_key
-
-
-@v1_router.delete(
-    "/api-keys/{key_id}",
-    summary="Revoke API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def delete_api_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Revoke an API key"""
-    return await api_key_db.revoke_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.post(
-    "/api-keys/{key_id}/suspend",
-    summary="Suspend API key",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def suspend_key(
-    key_id: str,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Suspend an API key"""
-    return await api_key_db.suspend_api_key(
-        key_id, user_id, organization_id=ctx.org_id or None
-    )
-
-
-@v1_router.put(
-    "/api-keys/{key_id}/permissions",
-    summary="Update key permissions",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def update_permissions(
-    key_id: str,
-    request: UpdatePermissionsRequest,
-    user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
-) -> api_key_db.APIKeyInfo:
-    """Update API key permissions"""
-    return await api_key_db.update_api_key_permissions(
-        key_id, user_id, request.permissions, organization_id=ctx.org_id or None
-    )
