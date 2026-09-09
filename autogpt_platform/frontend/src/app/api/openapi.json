@@ -6537,9 +6537,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ExpertSetupItem"
-                  },
+                  "items": { "$ref": "#/components/schemas/ExpertSetupItem" },
                   "type": "array",
                   "title": "Response List Expert Setup Items"
                 }
@@ -6550,11 +6548,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/experts/{expert_id}": {
@@ -20482,55 +20476,23 @@
       },
       "ExpertSetupItem": {
         "properties": {
-          "expert_id": {
-            "type": "string",
-            "title": "Expert Id"
-          },
-          "expert_name": {
-            "type": "string",
-            "title": "Expert Name"
-          },
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
           "expert_avatar_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Avatar Url"
           },
-          "workflow_id": {
-            "type": "string",
-            "title": "Workflow Id"
-          },
+          "workflow_id": { "type": "string", "title": "Workflow Id" },
           "workflow_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Workflow Name"
           },
           "library_agent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id"
           },
           "providers": {
-            "items": {
-              "type": "string"
-            },
+            "items": { "type": "string" },
             "type": "array",
             "title": "Providers"
           },
@@ -20540,14 +20502,7 @@
             "title": "Resolution"
           },
           "credential_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Credential Id"
           }
         },
