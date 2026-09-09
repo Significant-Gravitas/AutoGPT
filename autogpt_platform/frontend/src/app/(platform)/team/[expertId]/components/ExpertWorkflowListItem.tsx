@@ -54,7 +54,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex items-center gap-4 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:bg-zinc-50"
+      className="group relative flex items-center gap-4 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink

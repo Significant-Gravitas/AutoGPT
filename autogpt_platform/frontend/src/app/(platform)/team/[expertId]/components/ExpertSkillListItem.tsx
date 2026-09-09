@@ -23,7 +23,7 @@ export function ExpertSkillListItem({
   const triggers = entry.library?.triggers ?? [];
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-2xl bg-white p-3.5 smooth-shadow-ring-sm sm:flex-row sm:items-start sm:justify-between"
       data-testid="expert-skill-row"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">

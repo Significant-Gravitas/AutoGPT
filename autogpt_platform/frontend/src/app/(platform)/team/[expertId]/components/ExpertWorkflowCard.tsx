@@ -45,7 +45,7 @@ export function ExpertWorkflowCard({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex w-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl bg-white transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
     >
       {libraryHref ? (
         <NextLink

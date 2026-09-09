@@ -97,6 +97,7 @@ export function ExpertSchedulesSection({
             <li key={schedule.id}>
               <GraphScheduleListItem
                 schedule={schedule}
+                className="rounded-2xl border-0 smooth-shadow-ring-sm"
                 iconClassName={accentClassName}
                 actionClassName={ACTION_BUTTON_CLASS}
                 editAction={
