@@ -25,6 +25,7 @@ export function AttentionRowActions({
       href={item.primary_action.href}
       variant="secondary"
       size="small"
+      className="h-8 min-w-0 px-3"
     >
       {item.primary_action.label}
     </Button>

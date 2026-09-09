@@ -54,6 +54,7 @@ export function AgentRow({ agent }: Props) {
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="secondary"
           size="small"
+          className="h-8 min-w-0 px-3"
           aria-label={`Chat with ${agent.expert.name}`}
         >
           Chat
@@ -63,6 +64,7 @@ export function AgentRow({ agent }: Props) {
           href={`/team/${agent.expert.id}`}
           variant="secondary"
           size="small"
+          className="h-8 min-w-0 px-3"
           aria-label={`Manage ${agent.expert.name}`}
         >
           Manage
