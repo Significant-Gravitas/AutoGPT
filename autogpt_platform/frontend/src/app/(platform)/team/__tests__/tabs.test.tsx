@@ -122,18 +122,18 @@ describe("TeamPage tabs", () => {
     expect(await screen.findByText("No pods yet")).toBeDefined();
   });
 
-  test("Pod board still shows ungrouped experts when there are no pods", async () => {
+  test("Pod board lists only pods, never an ungrouped bucket", async () => {
     const user = userEvent.setup();
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     await user.click(await screen.findByRole("tab", { name: "Pod board" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Ungrouped" }),
-    ).toBeDefined();
-    expect(screen.getByText("Maria")).toBeDefined();
-    expect(screen.queryByText("No pods yet")).toBeNull();
+    const board = await screen.findByRole("region", { name: "Pods" });
+    expect(within(board).getByRole("heading", { name: "Pods" })).toBeDefined();
+    expect(within(board).getByText("No pods yet")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Ungrouped" })).toBeNull();
+    expect(within(board).queryByText("Maria")).toBeNull();
   });
 });
 
@@ -256,10 +256,8 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).getByText("Built in")).toBeDefined();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(
-      within(autopilot)
-        .getByRole("link", { name: "Chat" })
-        .getAttribute("href"),
-    ).toBe("/copilot");
+      within(autopilot).getByRole("button", { name: "Chat" }),
+    ).toBeDefined();
     expect(within(autopilot).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 

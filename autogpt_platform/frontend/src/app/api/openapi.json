@@ -4711,6 +4711,49 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postChatSynthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -5690,6 +5733,15 @@
               "default": 100,
               "title": "Transaction Count Limit"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
           }
         ],
         "responses": {
@@ -5713,6 +5765,139 @@
             }
           }
         }
+      }
+    },
+    "/api/credits/trial": {
+      "get": {
+        "tags": ["trials"],
+        "summary": "Get Trial Status",
+        "operationId": "getTrialsGetTrialStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["trials"],
+        "summary": "Start Trial Checkout",
+        "operationId": "postTrialsStartTrialCheckout",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "x-datafast-visitor-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Visitor-Id"
+            }
+          },
+          {
+            "name": "x-datafast-session-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Session-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TrialCheckoutRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Trial offer unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "Stripe checkout unavailable" },
+          "503": { "description": "Billing return URL not configured" }
+        }
+      }
+    },
+    "/api/credits/trial/cancel": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Cancel Trial",
+        "operationId": "postTrialsCancelTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "No cancelable trial subscription" },
+          "502": {
+            "description": "Stripe cancellation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/trial/confirm": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Confirm Trial",
+        "operationId": "postTrialsConfirmTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Trial checkout is unavailable or no longer current"
+          },
+          "502": {
+            "description": "Stripe confirmation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/{transaction_key}/refund": {
@@ -6465,6 +6650,52 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/ExpertAvatarUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Expert" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/budget": {
+      "patch": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Update Expert Budget",
+        "operationId": "update_expert_budget",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertBudgetUpdate" }
             }
           }
         },
@@ -9926,7 +10157,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth credential.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -10048,7 +10279,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Store a bearer token for an MCP server",
-        "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
+        "description": "Store a manually entered MCP credential. Accepts a bare token (sent as Bearer, unchanged from before), an explicit `Basic <value>` or `Bearer <value>`, or a complete `Authorization:` header.",
         "operationId": "postV2Store a bearer token for an mcp server",
         "requestBody": {
           "content": {
@@ -13911,6 +14142,28 @@
         }
       }
     },
+    "/api/store/categories": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store categories",
+        "description": "The canonical categories a listing can be filed under.",
+        "operationId": "getV2List store categories",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreCategoryInfo" },
+                  "type": "array",
+                  "title": "Response Getv2List Store Categories"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/creators": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -14347,6 +14600,166 @@
               }
             }
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List marketplace skills",
+        "description": "Approved skill listings, most recently updated first.",
+        "operationId": "getV2List marketplace skills",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get marketplace skill",
+        "description": "One listing with the full SKILL.md body the install will copy.",
+        "operationId": "getV2Get marketplace skill",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillDetails"
+                }
+              }
+            }
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}/install": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Install marketplace skill",
+        "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
+        "operationId": "postV2Install marketplace skill",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InstalledSkill" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -14841,7 +15254,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14927,6 +15340,20 @@
               "title": "Root Only"
             },
             "description": "Only return root-level files (not in any folder)."
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "title": "Expert Id"
+            },
+            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
           }
         ],
         "responses": {
@@ -14938,6 +15365,7 @@
               }
             }
           },
+          "400": { "description": "Conflicting filters" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -15042,6 +15470,52 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Rename a workspace file",
+        "description": "Rename a file; it stays in its folder and conversation.",
+        "operationId": "renameWorkspaceFile",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RenameFileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFileItem" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "409": { "description": "A file with this name already exists here" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -17258,6 +17732,14 @@
             "type": "integer",
             "title": "Cost Cents",
             "default": 0
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           }
         },
         "type": "object",
@@ -18483,6 +18965,32 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialRejection": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Sanitised reason; never carries a secret."
+          },
+          "status_code": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Status Code"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Title"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "detail"],
+        "title": "CredentialRejection",
+        "description": "A stored credential that the provider refused at use time."
+      },
       "CredentialsDeletionNeedsConfirmationResponse": {
         "properties": {
           "deleted": {
@@ -18586,6 +19094,14 @@
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           },
+          "mcp_auth_scheme": {
+            "anyOf": [
+              { "type": "string", "enum": ["basic", "bearer"] },
+              { "type": "null" }
+            ],
+            "title": "Mcp Auth Scheme",
+            "description": "Manual authorization scheme for MCP credentials"
+          },
           "is_managed": {
             "type": "boolean",
             "title": "Is Managed",
@@ -18596,8 +19112,61 @@
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
+      "CreditHistoryCharge": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "posted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Posted At"
+          },
+          "amount": { "type": "integer", "title": "Amount" },
+          "charge_type": {
+            "type": "string",
+            "enum": ["usage", "execution_fee", "adjustment", "transaction"],
+            "title": "Charge Type"
+          },
+          "block_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Name"
+          },
+          "node_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Execution Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "posted_at", "amount", "charge_type"],
+        "title": "CreditHistoryCharge"
+      },
+      "CreditHistoryRelatedExecution": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": ["execution_id"],
+        "title": "CreditHistoryRelatedExecution"
+      },
       "CreditTransactionItem": {
         "properties": {
+          "id": { "type": "string", "title": "Id", "default": "" },
           "transaction_key": {
             "type": "string",
             "title": "Transaction Key",
@@ -18637,7 +19206,103 @@
             "title": "Usage Start Time",
             "default": "9999-12-31T23:59:59.999999Z"
           },
-          "user_id": { "type": "string", "title": "User Id" }
+          "user_id": { "type": "string", "title": "User Id" },
+          "activity_type": {
+            "type": "string",
+            "enum": ["agent_run", "copilot_tools", "block_usage", "other"],
+            "title": "Activity Type",
+            "default": "other"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
+          "execution_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Execution Started At"
+          },
+          "execution_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Execution Status"
+          },
+          "execution_graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Execution Graph Version"
+          },
+          "execution_available": {
+            "type": "boolean",
+            "title": "Execution Available",
+            "default": false
+          },
+          "conversation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Id"
+          },
+          "conversation_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Conversation Title"
+          },
+          "parent_execution_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Execution Id"
+          },
+          "parent_agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Agent Name"
+          },
+          "parent_library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Library Agent Id"
+          },
+          "related_executions": {
+            "items": {
+              "$ref": "#/components/schemas/CreditHistoryRelatedExecution"
+            },
+            "type": "array",
+            "title": "Related Executions"
+          },
+          "related_executions_has_more": {
+            "type": "boolean",
+            "title": "Related Executions Has More",
+            "default": false
+          },
+          "usage_charge_amount": {
+            "type": "integer",
+            "title": "Usage Charge Amount",
+            "default": 0
+          },
+          "usage_fee_amount": {
+            "type": "integer",
+            "title": "Usage Fee Amount",
+            "default": 0
+          },
+          "usage_adjustment_amount": {
+            "type": "integer",
+            "title": "Usage Adjustment Amount",
+            "default": 0
+          },
+          "charges": {
+            "items": { "$ref": "#/components/schemas/CreditHistoryCharge" },
+            "type": "array",
+            "title": "Charges"
+          },
+          "charges_total_count": {
+            "type": "integer",
+            "title": "Charges Total Count",
+            "default": 0
+          },
+          "charges_truncated": {
+            "type": "boolean",
+            "title": "Charges Truncated",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["user_id"],
@@ -18801,9 +19466,18 @@
             "description": "URL of the MCP server"
           },
           "auth_token": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192,
+                "minLength": 1,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
             "title": "Auth Token",
-            "description": "Optional Bearer token for authenticated MCP servers"
+            "description": "Optional bare Bearer token, Basic/Bearer value, or complete Authorization header. Omit the field (or send null) for an unauthenticated server; an empty string is rejected."
           }
         },
         "type": "object",
@@ -19786,6 +20460,20 @@
         "title": "ExpertAvatarUpdate",
         "description": "Swap an expert's picture. ``None`` clears it back to the generated marble."
       },
+      "ExpertBudgetUpdate": {
+        "properties": {
+          "weekly_budget": {
+            "anyOf": [
+              { "type": "integer", "maximum": 1000000.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Weekly Budget"
+          }
+        },
+        "type": "object",
+        "title": "ExpertBudgetUpdate",
+        "description": "Set an expert's weekly spend cap in credits (100 = $1).\n\n``None`` falls back to the platform default; ``0`` disables the cap."
+      },
       "ExpertCredentialRef": {
         "properties": {
           "credential_id": { "type": "string", "title": "Credential Id" },
@@ -19878,6 +20566,12 @@
             "title": "Output Key"
           },
           "needs_review": { "type": "boolean", "title": "Needs Review" },
+          "source": {
+            "type": "string",
+            "enum": ["scheduled", "trigger", "manual"],
+            "title": "Source",
+            "default": "manual"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -20560,6 +21254,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20741,6 +21443,14 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
           },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -20845,6 +21555,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           },
           "stats": {
             "anyOf": [
@@ -21325,6 +22043,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -21450,6 +22172,7 @@
             "type": "array",
             "title": "Outcomes"
           },
+          "author": { "$ref": "#/components/schemas/HomeBriefingAuthor" },
           "narrative": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Narrative"
@@ -21468,9 +22191,21 @@
           "completed_count",
           "failed_count",
           "routine_count",
-          "outcomes"
+          "outcomes",
+          "author"
         ],
         "title": "HomeBriefing"
+      },
+      "HomeBriefingAuthor": {
+        "properties": {
+          "kind": { "type": "string", "const": "autopilot", "title": "Kind" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" }
+        },
+        "type": "object",
+        "required": ["kind", "name", "role"],
+        "title": "HomeBriefingAuthor",
+        "description": "Who wrote the brief. Always AutoPilot, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
       },
       "HomeBriefingOutcome": {
         "properties": {
@@ -21509,6 +22244,12 @@
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Link"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["schedule", "webhook", "manual"],
+            "title": "Trigger",
+            "default": "manual"
           }
         },
         "type": "object",
@@ -21735,6 +22476,10 @@
               { "type": "null" }
             ]
           },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
           "next_run_time": {
             "type": "string",
             "format": "date-time",
@@ -21797,6 +22542,10 @@
               { "$ref": "#/components/schemas/HomeExpert" },
               { "type": "null" }
             ]
+          },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
           },
           "link": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -21930,6 +22679,24 @@
         "type": "object",
         "title": "InstallWorkflowRequest",
         "description": "One workflow source: a marketplace listing, or the caller's own agent."
+      },
+      "InstalledSkill": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name the skill was installed under, for a link into the library."
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume. Not a precondition — the install has already succeeded."
+          }
+        },
+        "type": "object",
+        "required": ["name", "required_providers"],
+        "title": "InstalledSkill"
       },
       "IntroCardResponse": {
         "properties": {
@@ -22737,6 +23504,11 @@
             "type": "string",
             "title": "State Token",
             "description": "State token for CSRF verification"
+          },
+          "iss": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Iss",
+            "description": "Issuer identifier from the authorization response (RFC 9207). Must match the authorization server discovered at login; required when that server advertises `authorization_response_iss_parameter_supported`."
           }
         },
         "type": "object",
@@ -22772,21 +23544,22 @@
           "server_url": {
             "type": "string",
             "title": "Server Url",
-            "description": "MCP server URL the token authenticates against"
+            "description": "MCP server URL the credential authenticates against"
           },
           "token": {
             "type": "string",
+            "maxLength": 8192,
             "minLength": 1,
             "format": "password",
             "title": "Token",
-            "description": "Bearer token / API key for the MCP server",
+            "description": "Bare Bearer token, Basic/Bearer value, or complete Authorization header",
             "writeOnly": true
           }
         },
         "type": "object",
         "required": ["server_url", "token"],
         "title": "MCPStoreTokenRequest",
-        "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
+        "description": "Request to store a manual Basic/Bearer credential or Authorization header."
       },
       "MCPToolInfo": {
         "properties": {
@@ -22894,6 +23667,110 @@
         "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
+      },
+      "MarketplaceSkill": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count"
+        ],
+        "title": "MarketplaceSkill"
+      },
+      "MarketplaceSkillDetails": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          },
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "body": { "type": "string", "title": "Body" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count",
+          "skill_listing_version_id",
+          "body",
+          "triggers",
+          "updated_at"
+        ],
+        "title": "MarketplaceSkillDetails"
+      },
+      "MarketplaceSkillsResponse": {
+        "properties": {
+          "skills": {
+            "items": { "$ref": "#/components/schemas/MarketplaceSkill" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["skills", "pagination"],
+        "title": "MarketplaceSkillsResponse"
       },
       "MemoryFact": {
         "properties": {
@@ -25361,6 +26238,19 @@
         ],
         "title": "RefundRequest"
       },
+      "RenameFileRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "RenameFileRequest"
+      },
       "RequestTopUp": {
         "properties": {
           "credit_amount": { "type": "integer", "title": "Credit Amount" }
@@ -25457,7 +26347,9 @@
           "expert_soul_updated",
           "expert_change_proposed",
           "expert_change_applied",
-          "team_roster"
+          "team_roster",
+          "expert_chat_list",
+          "expert_chat_transcript"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -26191,6 +27083,12 @@
           "graph_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
+          },
+          "rejection": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CredentialRejection" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -26396,6 +27294,27 @@
         "required": ["field", "before", "after"],
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
+      },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
       },
       "Stats": {
         "properties": {
@@ -26661,6 +27580,16 @@
         "type": "string",
         "enum": ["rating", "runs", "name", "updated_at"],
         "title": "StoreAgentsSortOptions"
+      },
+      "StoreCategoryInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["value", "label", "description"],
+        "title": "StoreCategoryInfo"
       },
       "StoreCreatorsSortOptions": {
         "type": "string",
@@ -26990,8 +27919,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27003,7 +27931,7 @@
           }
         },
         "type": "object",
-        "required": ["name", "sub_heading"],
+        "required": ["name", "sub_heading", "categories"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
@@ -27049,8 +27977,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27067,7 +27994,8 @@
           "graph_version",
           "slug",
           "name",
-          "sub_heading"
+          "sub_heading",
+          "categories"
         ],
         "title": "StoreSubmissionRequest"
       },
@@ -27106,6 +28034,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [
@@ -27179,6 +28113,7 @@
             "type": "string",
             "enum": [
               "NO_TIER",
+              "TRIAL",
               "BASIC",
               "PRO",
               "MAX",
@@ -27270,7 +28205,15 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
+        "enum": [
+          "NO_TIER",
+          "TRIAL",
+          "BASIC",
+          "PRO",
+          "MAX",
+          "BUSINESS",
+          "ENTERPRISE"
+        ],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -28342,6 +29285,17 @@
               { "type": "null" }
             ],
             "title": "Next Transaction Time"
+          },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor"
+          },
+          "snapshot_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Snapshot At"
           }
         },
         "type": "object",
@@ -28415,6 +29369,124 @@
           "created_at"
         ],
         "title": "TransferResponse"
+      },
+      "TrialCheckoutRequest": {
+        "properties": {
+          "offer_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Offer Token"
+          },
+          "return_to": {
+            "type": "string",
+            "enum": ["onboarding", "billing"],
+            "title": "Return To",
+            "default": "billing"
+          }
+        },
+        "type": "object",
+        "required": ["offer_token"],
+        "title": "TrialCheckoutRequest"
+      },
+      "TrialCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "TrialCheckoutResponse"
+      },
+      "TrialOfferResponse": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "version": { "type": "string", "title": "Version" },
+          "duration_days": { "type": "integer", "title": "Duration Days" },
+          "tier": {
+            "type": "string",
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS"],
+            "title": "Tier"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "unit_amount": { "type": "integer", "title": "Unit Amount" },
+          "currency": { "type": "string", "title": "Currency" },
+          "onboarding_credit_amount": {
+            "type": "integer",
+            "title": "Onboarding Credit Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "version",
+          "duration_days",
+          "tier",
+          "billing_cycle",
+          "unit_amount",
+          "currency",
+          "onboarding_credit_amount"
+        ],
+        "title": "TrialOfferResponse"
+      },
+      "TrialRejectionReason": {
+        "type": "string",
+        "enum": ["intro_offer_already_used", "card_verification_failed"],
+        "title": "TrialRejectionReason"
+      },
+      "TrialStatusResponse": {
+        "properties": {
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible",
+            "default": false
+          },
+          "offer": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialOfferResponse" },
+              { "type": "null" }
+            ]
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialRejectionReason" },
+              { "type": "null" }
+            ]
+          },
+          "ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ends At"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End",
+            "default": false
+          },
+          "allowance_used_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Allowance Used Percent"
+          },
+          "active": { "type": "boolean", "title": "Active", "default": false },
+          "converted": {
+            "type": "boolean",
+            "title": "Converted",
+            "default": false
+          },
+          "onboarding_credits_previously_received": {
+            "type": "boolean",
+            "title": "Onboarding Credits Previously Received",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrialStatusResponse"
       },
       "TriggeredPresetSetupRequest": {
         "properties": {
@@ -29999,7 +31071,11 @@
             "enum": ["uploaded", "generated"],
             "title": "Origin"
           },
-          "created_at": { "type": "string", "title": "Created At" }
+          "created_at": { "type": "string", "title": "Created At" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          }
         },
         "type": "object",
         "required": [

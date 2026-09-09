@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import {
+  BubbleChatIcon,
   PencilEdit02Icon,
   PlusSignIcon,
   Tick02Icon,
@@ -34,20 +35,11 @@ import {
   getExpertRosterStatus,
   getNeedsSetupCount,
   getWeeklySpend,
-  ACTION_BUTTON_CLASS,
 } from "../../helpers";
-import { ChatCircle } from "@phosphor-icons/react";
 import { CardStat, CardStats } from "../CardStats";
 import { FireExpertDialog } from "../FireExpertDialog/FireExpertDialog";
 import { FireExpertMenu } from "../FireExpertMenu/FireExpertMenu";
 import { useExpertTeamCard } from "./useExpertTeamCard";
-
-const COVER_ACTION_CLASS =
-  "size-8 rounded-lg bg-white/90 p-0 text-zinc-700 backdrop-blur hover:bg-white hover:text-zinc-900";
-
-/** The card's corners are heavily rounded, so its actions are too. */
-const FOOTER_BUTTON_CLASS = `${ACTION_BUTTON_CLASS} flex-1`;
-const FOOTER_OUTLINE_BUTTON_CLASS = `${FOOTER_BUTTON_CLASS} !border-zinc-200 hover:!border-zinc-300`;
 
 interface Props {
   expert: Expert;
@@ -56,6 +48,7 @@ interface Props {
   currentPod: ExpertPod | undefined;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
+  onChat: (expertId: string) => void;
   onAssignPod: (expertId: string, podId: string | null) => void;
 }
 
@@ -66,6 +59,7 @@ export function ExpertTeamCard({
   currentPod,
   onInstallWorkflow,
   onEditSoul,
+  onChat,
   onAssignPod,
 }: Props) {
   const blurb = getExpertBlurb(expert);
@@ -93,17 +87,15 @@ export function ExpertTeamCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="icon"
-                size="small"
-                className={COVER_ACTION_CLASS}
+                variant="floating"
+                size="icon-sm"
+                leadingIcon={UserGroupIcon}
                 aria-label={
                   currentPod
                     ? `Move to pod (currently ${currentPod.name})`
                     : "Move to pod"
                 }
-              >
-                <Icon icon={UserGroupIcon} size={16} />
-              </Button>
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
@@ -134,19 +126,16 @@ export function ExpertTeamCard({
           </DropdownMenu>
         ) : null}
         <Button
-          variant="icon"
-          size="small"
+          variant="floating"
+          size="icon-sm"
           aria-label="Edit Soul"
-          className={COVER_ACTION_CLASS}
+          leadingIcon={PencilEdit02Icon}
           onClick={handleEditSoulClick}
-        >
-          <Icon icon={PencilEdit02Icon} size={16} />
-        </Button>
+        />
         <FireExpertMenu
           expertName={expert.name}
           onFire={openFire}
           testId="expert-card-actions"
-          triggerClassName={COVER_ACTION_CLASS}
         />
       </div>
 
@@ -177,13 +166,14 @@ export function ExpertTeamCard({
 
           <div className="mt-2 flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex items-baseline justify-between gap-2">
-              <Text variant="small-medium" className="text-zinc-700">
+              <Text variant="small-medium" tone="secondary">
                 Budget
               </Text>
               <Text
                 variant="small-medium"
+                tone="secondary"
                 unmask={false}
-                className="tabular-nums text-zinc-700"
+                className="tabular-nums"
               >
                 {weeklySpend
                   ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
@@ -202,13 +192,17 @@ export function ExpertTeamCard({
         <div className="mt-2 flex w-full flex-col items-start gap-1 px-2 pl-5 text-left">
           {/* `truncate` clips at the padding box, so descenders in a name like
               "Fiona Gray" need a little room below the line box. */}
-          <Text variant="h4" className="w-full truncate pb-1">
+          <Text
+            variant="lead-medium"
+            tone="primary"
+            className="w-full truncate pb-1"
+          >
             {expert.name}
           </Text>
-          <Text variant="body" className="line-clamp-2 text-zinc-500">
+          <Text variant="body" tone="muted" className="line-clamp-2">
             {expert.role}
           </Text>
-          <Text variant="body" className="mt-1 line-clamp-2 text-zinc-500">
+          <Text variant="body" tone="muted" className="mt-1 line-clamp-2">
             {blurb}
           </Text>
           {needsSetupCount > 0 ? (
@@ -237,8 +231,7 @@ export function ExpertTeamCard({
           </Text>
           <Button
             variant="secondary"
-            size="small"
-            className={ACTION_BUTTON_CLASS}
+            size="xs"
             loading={isResuming}
             onClick={handleResume}
           >
@@ -249,20 +242,19 @@ export function ExpertTeamCard({
 
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
-          as="NextLink"
-          href={`/copilot?expertId=${expert.id}`}
           variant="secondary"
-          size="small"
-          className={FOOTER_BUTTON_CLASS}
-          leftIcon={<ChatCircle size={14} />}
+          size="xs"
+          className="flex-1"
+          leadingIcon={BubbleChatIcon}
+          onClick={() => onChat(expert.id)}
         >
           Chat
         </Button>
         <Button
           variant="outline"
-          size="small"
-          className={FOOTER_OUTLINE_BUTTON_CLASS}
-          leftIcon={<Icon icon={PlusSignIcon} size={14} />}
+          size="xs"
+          className="flex-1"
+          leadingIcon={PlusSignIcon}
           onClick={handleInstallClick}
         >
           Install workflow
