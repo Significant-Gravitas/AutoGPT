@@ -40,7 +40,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="large-medium" tone="primary">
           {expert.name}&apos;s Skills
         </Text>
         <div className="flex items-center gap-2">

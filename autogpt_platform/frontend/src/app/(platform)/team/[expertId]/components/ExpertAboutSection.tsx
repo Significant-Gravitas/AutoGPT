@@ -35,7 +35,7 @@ interface ProfileEntryProps {
 function ProfileEntry({ label, value }: ProfileEntryProps) {
   return (
     <div>
-      <Text variant="body-medium" as="dt" tone="primary">
+      <Text variant="large-medium" as="dt" tone="primary">
         {label}
       </Text>
       <Text

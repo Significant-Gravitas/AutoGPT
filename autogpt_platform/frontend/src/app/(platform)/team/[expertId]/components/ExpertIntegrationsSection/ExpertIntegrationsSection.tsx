@@ -56,7 +56,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
   return (
     <section data-testid="expert-integrations-section">
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Integrations
         </Text>
         <div className="flex items-center gap-2">

@@ -12,7 +12,7 @@ interface Props {
 export function ExpertSettingsSection({ expert, onFire }: Props) {
   return (
     <section className="rounded-xl border border-red-200 bg-red-50/50 p-4">
-      <Text variant="body-medium" tone="danger">
+      <Text variant="large-medium" tone="danger">
         Danger zone
       </Text>
       <Text variant="small" tone="danger" className="mt-1">
