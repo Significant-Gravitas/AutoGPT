@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { type ReactNode, useState } from "react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const captureMock = vi.hoisted(() => vi.fn());
 const pushMock = vi.hoisted(() => vi.fn());
@@ -64,7 +64,11 @@ const hiredMaria: Expert = {
   source_template_id: "template-maria",
 };
 
-function Wrapper({ children }: { children: ReactNode }) {
+interface WrapperProps {
+  children: ReactNode;
+}
+
+function Wrapper({ children }: WrapperProps) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -89,6 +93,10 @@ function renderHireFlow(expert: Expert = mariaTemplate) {
 function capturedEvent(name: string) {
   return captureMock.mock.calls.find((call) => call[0] === name);
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("useHireFlow", () => {
   beforeEach(() => {

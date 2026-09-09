@@ -2,15 +2,10 @@ import { getGetBrainDumpRecommendedExpertsMockHandler200 } from "@/app/api/__gen
 import { getHireExpertMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ExpertRecommendations } from "@/app/api/__generated__/models/expertRecommendations";
 import { server } from "@/mocks/mock-server";
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../../store";
 import { HireStep } from "../HireStep";
 
@@ -81,10 +76,6 @@ beforeEach(() => {
   toast.mockReset();
   useOnboardingWizardStore.getState().reset();
   useOnboardingWizardStore.getState().goToStep(5);
-});
-
-afterEach(() => {
-  cleanup();
 });
 
 describe("HireStep — the team", () => {

@@ -2,9 +2,9 @@ import type { VoiceSample } from "@/app/api/__generated__/models/voiceSample";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { selectableCardClassName, type SelectableCardColors } from "../styles";
+import { selectableCardClassName, type SelectableCardColors } from "../helpers";
 
-type Props = {
+interface Props {
   sample: VoiceSample;
   choice: "a" | "b";
   choiceGroupName: string;
@@ -13,7 +13,7 @@ type Props = {
   colors?: SelectableCardColors;
   compact?: boolean;
   onSelect: () => void;
-};
+}
 
 export function SampleCard({
   sample,

@@ -1,15 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@/tests/integrations/test-utils";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { useOnboardingWizardStore } from "../../../store";
 import { IntroStep } from "../IntroStep";
 import { INTRO_SLIDES } from "../helpers";
 
-afterEach(cleanup);
 beforeEach(() => useOnboardingWizardStore.getState().reset());
 
 describe("IntroStep", () => {

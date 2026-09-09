@@ -56,7 +56,7 @@ export function ProviderBox({
           {name}
         </Text>
         {state === "connected" && (
-          <span className="inline-flex items-center gap-1 rounded-[10px] bg-[#E8F8F0] px-2 py-[2px] text-[13px] font-medium leading-[20px] text-[#157E58]">
+          <span className="inline-flex items-center gap-1 rounded-[10px] bg-emerald-50 px-2 py-[2px] text-[13px] font-medium leading-[20px] text-emerald-700">
             <Icon icon={CheckmarkCircle02Icon} size={13} />
             Connected
           </span>

@@ -7,10 +7,10 @@ import { useId } from "react";
 import { CustomVoiceOption } from "./components/CustomVoiceOption";
 import { SampleCard } from "./components/SampleCard";
 import type { VoicePickResult } from "./helpers";
-import type { SelectableCardColors } from "./styles";
+import type { SelectableCardColors } from "./helpers";
 import { useVoicePicker } from "./useVoicePicker";
 
-type Props = {
+interface Props {
   name?: string;
   samples: VoiceSample[];
   onPick: (result: VoicePickResult) => void;
@@ -24,7 +24,7 @@ type Props = {
   cardColors?: SelectableCardColors;
   // Dense layout for a small dialog: tighter spacing, smaller type.
   compact?: boolean;
-};
+}
 
 export function VoicePicker({
   name,

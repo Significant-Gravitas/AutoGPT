@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
-import { selectableCardClassName, type SelectableCardColors } from "../styles";
+import { selectableCardClassName, type SelectableCardColors } from "../helpers";
 
 const MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS = 2_000;
 const CUSTOM_VOICE_TEXTAREA_ROWS = 3;
 
-type Props = {
+interface Props {
   choiceGroupName: string;
   textareaId: string;
   customText: string;
@@ -14,7 +14,7 @@ type Props = {
   compact?: boolean;
   onFocus: () => void;
   onChange: (value: string) => void;
-};
+}
 
 export function CustomVoiceOption({
   choiceGroupName,
