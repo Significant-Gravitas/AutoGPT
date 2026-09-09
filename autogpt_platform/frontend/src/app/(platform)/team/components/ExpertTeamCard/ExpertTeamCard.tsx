@@ -276,7 +276,7 @@ export function ExpertTeamCard({
           Chat
         </Button>
         <Button
-          variant="outline"
+          variant="secondary"
           size="small"
           className="flex-1"
           leadingIcon={PlusSignIcon}
