@@ -143,7 +143,7 @@ async def _seed_store_listing(server: SpinTestServer, approved: bool = True) -> 
             video_url=None,
             image_urls=[],
             description="Seed description",
-            categories=[],
+            categories=["operations"],
         ),
         owner.id,
     )
