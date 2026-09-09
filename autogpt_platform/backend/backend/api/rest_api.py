@@ -39,6 +39,7 @@ import backend.api.features.chat.speech as chat_speech
 import backend.api.features.executions.review.routes
 import backend.api.features.executions.routes as executions_routes
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.graphs.routes as graphs_routes
 import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
@@ -406,6 +407,11 @@ app.include_router(
     prefix="/api",
 )
 app.include_router(
+    graphs_routes.router,
+    tags=["v1", "graphs"],
+    prefix="/api",
+)
+app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
@@ -670,7 +676,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.execute_graph(
+        return await graphs_routes.execute_graph(
             user_id=user_id,
             ctx=ctx,
             graph_id=graph_id,
@@ -703,13 +709,13 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.get_graph(
+        return await graphs_routes.get_graph(
             graph_id, user_id, ctx, graph_version, for_export
         )
 
     @staticmethod
     async def test_create_graph(
-        create_graph: backend.api.features.v1.CreateGraph,
+        create_graph: graphs_routes.CreateGraph,
         user_id: str,
     ):
         from autogpt_libs.auth.models import RequestContext
@@ -729,9 +735,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.create_new_graph(
-            create_graph, user_id, ctx
-        )
+        return await graphs_routes.create_new_graph(create_graph, user_id, ctx)
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
@@ -767,7 +771,7 @@ class AgentServer(backend.util.service.AppProcess):
             is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
-        return await backend.api.features.v1.delete_graph(graph_id, user_id, ctx)
+        return await graphs_routes.delete_graph(graph_id, user_id, ctx)
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
