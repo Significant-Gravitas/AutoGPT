@@ -26334,7 +26334,9 @@
           "expert_soul_updated",
           "expert_change_proposed",
           "expert_change_applied",
-          "team_roster"
+          "team_roster",
+          "expert_chat_list",
+          "expert_chat_transcript"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
