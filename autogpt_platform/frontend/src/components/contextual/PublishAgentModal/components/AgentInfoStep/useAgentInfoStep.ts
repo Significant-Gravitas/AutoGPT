@@ -115,8 +115,7 @@ export function useAgentInfoStep({
       return;
     }
 
-    const categories = data.category ? [data.category] : [];
-    const filteredCategories = categories.filter(Boolean);
+    const filteredCategories = [data.category].filter(Boolean);
 
     setIsSubmitting(true);
 

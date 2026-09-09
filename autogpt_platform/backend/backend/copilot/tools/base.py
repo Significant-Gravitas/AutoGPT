@@ -31,8 +31,8 @@ _LARGE_OUTPUT_THRESHOLD = 80_000
 # to avoid double truncation/spilling.  95K + ~300 wrapper = ~95.3K, under both.
 _PREVIEW_CHARS = 95_000
 
-# Threshold and budget for the digest, which fires when AUTOPILOT_DELEGATION is
-# on and the tool opts in.  The budget is derived from the trigger so a digest
+# Threshold and budget for the digest, which fires when AUTOPILOT_CONTEXT_TRIMMING
+# is on and the tool opts in.  The budget is derived from the trigger so a digest
 # can never be larger than the output it replaces.
 _DIGEST_THRESHOLD = 8_000
 _DIGEST_PREVIEW_CHARS = _DIGEST_THRESHOLD // 4
@@ -411,7 +411,7 @@ class BaseTool:
                 and len(raw_output) > _DIGEST_THRESHOLD
                 and user_id is not None
                 and await is_feature_enabled(
-                    Flag.AUTOPILOT_DELEGATION, user_id, default=False
+                    Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
                 )
             )
             threshold = _DIGEST_THRESHOLD if digest else _LARGE_OUTPUT_THRESHOLD

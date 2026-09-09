@@ -63,7 +63,12 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
+    CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
     GRAPHITI_MEMORY = "graphiti-memory"
+
+    # Gates AutoPilot voice mode end-to-end. The speech endpoint 404s when
+    # off so a stale frontend cannot spend TTS budget. Fail-closed.
+    COPILOT_VOICE_MODE = "copilot-voice-mode"
 
     # Gates the onboarding voice "brain dump" end-to-end.  The upload /
     # finalize / status / download endpoints 404 when off so a stale
@@ -176,10 +181,9 @@ class Flag(str, Enum):
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
 
-    # Keeps AutoPilot's transcript small: strips builder-UI annotations from
-    # the block schemas it reads, and digests any oversized tool result to the
-    # workspace. Off by default; off is byte-identical to unflagged behaviour.
-    AUTOPILOT_DELEGATION = "autopilot-delegation"
+    # Shrinks what AutoPilot reads: strips builder-UI annotations from the
+    # block schemas, and digests oversized tool results to the workspace.
+    AUTOPILOT_CONTEXT_TRIMMING = "autopilot-context-trimming"
 
 
 def is_configured() -> bool:

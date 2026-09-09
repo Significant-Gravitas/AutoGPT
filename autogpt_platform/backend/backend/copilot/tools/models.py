@@ -290,6 +290,16 @@ class SetupInfo(BaseModel):
     user_readiness: UserReadiness = Field(default_factory=UserReadiness)
 
 
+class CredentialRejection(BaseModel):
+    """A stored credential that the provider refused at use time."""
+
+    provider: str
+    detail: str = Field(description="Sanitised reason; never carries a secret.")
+    status_code: int | None = None
+    credential_id: str | None = None
+    credential_title: str | None = None
+
+
 class SetupRequirementsResponse(ToolResponseBase):
     """Response for validate action."""
 
@@ -297,6 +307,9 @@ class SetupRequirementsResponse(ToolResponseBase):
     setup_info: SetupInfo
     graph_id: str | None = None
     graph_version: int | None = None
+    # Set only when a credential we had was rejected; its absence is what
+    # "never connected" looks like, so the two cases stay distinguishable.
+    rejection: CredentialRejection | None = None
 
 
 # Execution models
@@ -437,9 +450,13 @@ class SubSessionStatusResponse(ToolResponseBase):
             "``delegate_to_expert`` runs; None for same-scope sub-AutoPilots."
         ),
     )
-    tool_calls: list[dict[str, Any]] | None = Field(
+    sub_tool_call_count: int | None = Field(
         default=None,
-        description="Tool calls made during the sub-AutoPilot run.",
+        description=(
+            "How many tool calls the sub made. The calls themselves are not "
+            "returned; read the sub's transcript at "
+            "``sub_autopilot_session_link``."
+        ),
     )
     sub_workspace_files: list[WorkspaceFileInfoData] | None = Field(
         default=None,

@@ -4,6 +4,7 @@ import logging
 import uuid
 from typing import Any
 
+from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
@@ -94,6 +95,7 @@ class RunBlockTool(BaseTool):
             or not result.success
             or result.is_dry_run
             or not result.provider
+            or result.provider in LLM_PROVIDER_NAMES
         ):
             return None
         return ActivityEventDraft(
@@ -209,6 +211,7 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -243,7 +246,7 @@ class RunBlockTool(BaseTool):
                 prep.input_schema, prep.credentials_fields
             )
             if await is_feature_enabled(
-                Flag.AUTOPILOT_DELEGATION, user_id, default=False
+                Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
             ):
                 llm_input_schema = _strip_presentation_annotations(llm_input_schema)
                 output_schema = _strip_presentation_annotations(output_schema)
@@ -300,6 +303,7 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
 

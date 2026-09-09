@@ -230,7 +230,7 @@ class ChatConfig(BaseSettings):
         "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
-        default="anthropic/claude-opus-4-8",
+        default="anthropic/claude-opus-5",
         validation_alias=AliasChoices(
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
@@ -359,7 +359,7 @@ class ChatConfig(BaseSettings):
     # These defaults act as the ceiling when LaunchDarkly is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     daily_cost_limit_microdollars: int = Field(
-        default=1_000_000,
+        default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
         "0 means no spend allowed (will block); there is no unlimited tier.",
     )
@@ -434,6 +434,16 @@ class ChatConfig(BaseSettings):
         "to wrap up gracefully when this budget is reached. "
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
+    )
+    claude_agent_context_window: int = Field(
+        default=200_000,
+        ge=100_000,
+        le=1_000_000,
+        validation_alias=AliasChoices("CHAT_CLAUDE_AGENT_CONTEXT_WINDOW"),
+        description="Context window the SDK subprocess is held to, in tokens "
+        "(sets ``CLAUDE_CODE_AUTO_COMPACT_WINDOW``; see ``sdk/env.py``). "
+        "Moonshot routes use the lower of this and the SKU's catalog window; "
+        "Anthropic routes take it as given.",
     )
     claude_agent_autocompact_pct_override: int = Field(
         default=50,
@@ -1345,6 +1355,44 @@ class ChatConfig(BaseSettings):
             f"generation routes through OpenRouter, or override "
             f"CHAT_TITLE_MODEL to an ``anthropic/`` or ``claude-`` slug."
         )
+
+    # --- Voice mode TTS (see ``copilot/speech.py``) ---
+    voice_tts_model: str = Field(
+        default="gpt-4o-mini-tts",
+        description="OpenAI speech model used for voice-mode replies.",
+    )
+    voice_tts_voice: str = Field(
+        default="marin",
+        description="Default OpenAI voice. Must be in ``speech.ALLOWED_VOICES``.",
+    )
+    voice_tts_instructions: str = Field(
+        default=(
+            "Speak like a colleague at the next desk: natural pace, warm and "
+            "engaged, never flat. Move briskly through comma-separated lists — "
+            "items get a light separation, not a pause each. No newsreader "
+            "delivery and no slowing down for emphasis."
+        ),
+        description="Delivery instruction for a spoken reply. gpt-4o-mini-tts "
+        "takes its pacing from this rather than from ``speed``.",
+    )
+    voice_tts_speed: float = Field(
+        default=1.2,
+        ge=0.25,
+        le=4.0,
+        description="Playback rate for synthesis. The instruction alone barely "
+        "moves comma-heavy listings; this does (12.6s to 10.3s at 1.3).",
+    )
+    voice_tts_usd_per_1k_chars: float = Field(
+        default=0.02,
+        ge=0,
+        # A negative or non-finite rate yields a cost the usage recorder
+        # cannot write — and TTS has no token counts to fall back on, so
+        # synthesis would keep running unmetered.
+        allow_inf_nan=False,
+        description="Metering rate for voice-mode TTS. gpt-4o-mini-tts bills "
+        "per audio token, which the request does not report; ~$0.015/min of "
+        "speech at ~750 chars/min is the estimate behind this default.",
+    )
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {

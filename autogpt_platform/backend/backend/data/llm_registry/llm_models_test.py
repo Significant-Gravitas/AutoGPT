@@ -37,6 +37,14 @@ def test_all_models_visible_when_none_disabled():
     assert len(metadata) == len(list(LLMModel))
 
 
+def test_opus_5_is_selectable_in_blocks():
+    model = LLMModel("claude-opus-5")
+    assert LLMModel("anthropic/claude-opus-5") is model
+    metadata = _schema_metadata()[model.value]
+    assert metadata["title"] == "Claude Opus 5"
+    assert metadata["provider"] == "anthropic"
+
+
 def test_default_model_survives_killing_the_recommended_entry(monkeypatch):
     """Killing the only is_recommended model must not crash boot — the
     default falls back to the first enabled block-selectable model."""

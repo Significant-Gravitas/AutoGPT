@@ -52,7 +52,7 @@ export function FireExpertPreview({
 
   return (
     <>
-      <Text variant="body" className="text-zinc-600">
+      <Text variant="body" tone="secondary">
         Here is exactly what happens when you fire {expertName}.
       </Text>
       <ul className="flex flex-col gap-2.5">
@@ -65,7 +65,7 @@ export function FireExpertPreview({
         <div className="flex justify-end">
           <Button
             variant="secondary"
-            size="small"
+            size="xs"
             onClick={handleRetry}
             data-testid="fire-preview-retry"
           >
@@ -81,14 +81,20 @@ export function FireExpertPreview({
 function PauseItemsPanel({ items }: PauseItemsPanelProps) {
   return (
     <div className="rounded-xl bg-zinc-50 px-3.5 py-3 ring-1 ring-inset ring-zinc-200/80">
-      <Text variant="small" className="text-zinc-500">
+      <Text variant="small" tone="muted">
         Pausing now
       </Text>
       <ul className="mt-1 flex flex-col gap-0.5">
         {items.map((item) => (
-          <li key={item.id} className="truncate text-sm text-zinc-700">
+          <Text
+            key={item.id}
+            variant="body"
+            as="li"
+            tone="secondary"
+            className="truncate"
+          >
             {item.name}
-          </li>
+          </Text>
         ))}
       </ul>
     </div>
@@ -104,10 +110,16 @@ export function FireExpertFooter({
 }: FooterProps) {
   return (
     <Dialog.Footer>
-      <Button variant="secondary" disabled={isFiring} onClick={onClose}>
+      <Button
+        size="xs"
+        variant="secondary"
+        disabled={isFiring}
+        onClick={onClose}
+      >
         Keep {expertName}
       </Button>
       <Button
+        size="xs"
         variant="destructive"
         loading={isFiring}
         disabled={isPreviewLoading}
@@ -127,7 +139,7 @@ function FireLine({ children }: FireLineProps) {
         aria-hidden
         className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300"
       />
-      <Text variant="body" className="text-zinc-700">
+      <Text variant="body" tone="secondary">
         {children}
       </Text>
     </li>

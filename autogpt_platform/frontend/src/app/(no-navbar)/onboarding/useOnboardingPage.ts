@@ -9,6 +9,7 @@ import { resolveResponse } from "@/app/api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackAdsConversion } from "@/services/analytics/google-ads";
 import { environment } from "@/services/environment";
+import { useTrialCheckoutReturn } from "@/services/trials/useTrialCheckoutReturn";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,6 +22,7 @@ import {
   Step,
   useOnboardingWizardStore,
 } from "./store";
+import { onboardingStepKey, trackOnboardingStep } from "./tracking";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
@@ -58,6 +60,7 @@ export function useOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoggedIn, isUserLoading, refreshSession, user } = useAuth();
+  const trialConfirmation = useTrialCheckoutReturn();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
 
@@ -116,7 +119,8 @@ export function useOnboardingPage() {
           : null,
     },
   });
-  const userHasActivePlan = !!tier && tier !== "NO_TIER";
+  const userHasActivePlan =
+    trialConfirmation.active || (!!tier && tier !== "NO_TIER");
 
   const isPaymentEnabled =
     (paymentEnabledSnapshot.current ?? false) && !userHasActivePlan;
@@ -137,12 +141,20 @@ export function useOnboardingPage() {
   // isLoggedIn is transiently false, the tier query stays disabled
   // (isTierLoading=false), and init fires with the wrong preparingStep.
   const isReady =
-    areFlagsReady && !isUserLoading && (!isLoggedIn || !isTierLoading);
+    areFlagsReady &&
+    !isUserLoading &&
+    (!isLoggedIn || !isTierLoading) &&
+    trialConfirmation.ready;
 
   const [isOnboardingStateLoading, setIsOnboardingStateLoading] =
     useState(true);
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
+  // Distinct from the `hasInitialized` ref above: that guards init running
+  // once, this says the chosen step has landed. Set in the same batch as the
+  // init effect's `goToStep`, so the first render where it is true already
+  // carries the settled step.
+  const [isStepSettled, setIsStepSettled] = useState(false);
 
   // Initialise store from URL on mount, clamp ?step= to the highest step
   // the user has actually reached. No-step URL resumes from the highest
@@ -160,7 +172,8 @@ export function useOnboardingPage() {
     // subscription step before redirect) would clamp the user back onto the
     // paywall they just paid through.
     const isSubscriptionSuccess =
-      searchParams.get("subscription") === "success";
+      searchParams.get("subscription") === "success" ||
+      trialConfirmation.active;
     const ceiling = isSubscriptionSuccess
       ? steps.welcome
       : (Math.min(readHighestStep(), preparingStep) as Step);
@@ -168,7 +181,28 @@ export function useOnboardingPage() {
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
     goToStep(target);
-  }, [isReady, searchParams, goToStep, preparingStep, steps]);
+    setIsStepSettled(true);
+  }, [
+    isReady,
+    searchParams,
+    goToStep,
+    preparingStep,
+    steps,
+    trialConfirmation.active,
+  ]);
+
+  // Report the step the wizard is actually showing. `isOnboardingStateLoading`
+  // is the same gate the page renders on — it also covers the window holding
+  // the ONBOARDING_COMPLETE check that redirects finished users to /copilot —
+  // and `isStepSettled` means the step above has landed, so a user resuming
+  // at Preparing never reports the store's default of Welcome on the way past.
+  // Repeat visits to a step are dropped by `trackOnboardingStep` itself, so
+  // going back and forward reports nothing new.
+  useEffect(() => {
+    if (isOnboardingStateLoading || !isStepSettled) return;
+    const key = onboardingStepKey(steps, currentStep);
+    if (key) trackOnboardingStep(key);
+  }, [isOnboardingStateLoading, isStepSettled, currentStep, steps]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
@@ -283,5 +317,6 @@ export function useOnboardingPage() {
     steps,
     preparingStep,
     totalSteps,
+    trialConfirmation,
   };
 }

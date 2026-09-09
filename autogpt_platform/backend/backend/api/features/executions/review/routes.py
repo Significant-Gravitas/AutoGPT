@@ -333,7 +333,9 @@ async def process_review_action(
             try:
                 user = await get_user_by_id(user_id)
                 settings = await get_graph_settings(
-                    user_id=user_id, graph_id=first_review.graph_id
+                    user_id=user_id,
+                    graph_id=first_review.graph_id,
+                    graph_version=first_review.graph_version,
                 )
 
                 user_timezone = (
