@@ -600,3 +600,88 @@ class TestEnvelopeEnforcement:
         finally:
             set_execution_context(None, None, envelope=None)
         assert tool.ran is True
+
+
+class TestGateEnforcement:
+    """`BaseTool.execute` must consult the auto-mode gate, and must consult it
+    AFTER the envelope check.
+
+    Both are early-return refusals added at the same line by different PRs, so
+    a merge can drop either without a single test going red.
+    """
+
+    @staticmethod
+    def _spy_tool():
+        class _Spy(BaseTool):
+            def __init__(self) -> None:
+                self.ran = False
+
+            @property
+            def name(self) -> str:
+                return "bash_exec"
+
+            @property
+            def description(self) -> str:
+                return "spy"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def _execute(self, user_id, session, **kwargs):
+                self.ran = True
+                raise AssertionError("_execute must not run for a gated tool")
+
+        return _Spy()
+
+    @pytest.mark.asyncio
+    async def test_a_gated_call_is_refused_and_never_executed(self):
+        from backend.copilot.gate import Decision
+
+        tool = self._spy_tool()
+        with (
+            patch(
+                "backend.copilot.gate.check_action",
+                new=AsyncMock(
+                    return_value=Decision(
+                        allowed=False, reason="needs your approval", review_id="r1"
+                    )
+                ),
+            ),
+            patch("backend.copilot.gate.note_taint_source", new=AsyncMock()),
+        ):
+            result = await tool.execute("u1", MagicMock(session_id="s1"), "call-1")
+
+        assert result.success is False
+        assert tool.ran is False, "the gated tool's body executed anyway"
+
+    @pytest.mark.asyncio
+    async def test_the_envelope_refusal_precedes_the_gate(self):
+        """A call the envelope refuses can never run, so spending a user's
+        approval on it — and marking a taint source for it — is wrong."""
+        from backend.copilot.context import set_execution_context
+        from backend.copilot.tree import TurnEnvelope
+
+        tool = self._spy_tool()
+        check = AsyncMock()
+        taint = AsyncMock()
+        set_execution_context(
+            "u1",
+            None,
+            envelope=TurnEnvelope(
+                tree_id="t", depth=1, tools=frozenset({"read_workspace_file"})
+            ),
+        )
+        try:
+            with (
+                patch("backend.copilot.gate.check_action", new=check),
+                patch("backend.copilot.gate.note_taint_source", new=taint),
+            ):
+                result = await tool.execute("u1", MagicMock(session_id="s1"), "call-2")
+        finally:
+            set_execution_context(None, None, envelope=None)
+
+        assert result.success is False
+        assert tool.ran is False
+        check.assert_not_awaited()
+        taint.assert_not_awaited()
