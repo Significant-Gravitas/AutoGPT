@@ -156,8 +156,8 @@ async def run_copilot_turn_via_queue(
     delegation to a teammate who is still working (``delegate_to_expert`` with
     ``delegated_session_id``) used to queue into their running turn; it now
     returns ``refused`` with a message telling the caller to wait or start
-    fresh. ``AutoPilotBlock`` keeps the queueing behaviour — it passes no
-    ``spawn`` and leaves ``allow_queue`` at its default.
+    fresh. ``AutoPilotBlock`` passes no ``spawn``, but it does pass
+    ``allow_queue=False`` for the same reason, and raises on ``refused``.
 
     The canonical invocation path shared by ``run_sub_session`` (the
     copilot tool), ``AutoPilotBlock`` (the graph block), and any future
