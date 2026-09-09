@@ -112,10 +112,18 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-# Bumped 61_000 -> 63_000 for consult_teammate (T10): a bounded, tool-less
-# cross-expert check — expert_id/work/authority/question params plus its own
-# description. Merged registry measures 61260 chars; ~1.7k headroom.
-_CHAR_BUDGET = 63_000
+# Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
+# nine tools grew 50-400 chars each with no single PR at fault, dev reached
+# 60,984, and the next PR to add anything was ejected from the merge queue.
+# Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
+# PRs add 1,763) rather than against whatever sits on dev today, because each
+# branch's CI only ever sees its own delta. Registry measures 62,747 with all
+# ten merged; 2,253 headroom.
+# On conflict with another branch's budget, keep the HIGHER value and this note:
+# the ceiling must cover every in-flight PR's addition together.
+# This branch adds consult_teammate (a bounded, tool-less cross-expert check);
+# the registry measures 61,965 chars with it, inside the same 65_000 ceiling.
+_CHAR_BUDGET = 65_000
 
 
 @pytest.fixture(scope="module")

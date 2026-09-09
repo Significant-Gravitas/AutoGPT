@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMeasuredHeight } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/useMeasuredHeight";
 import { ConnectToolsPanel } from "./ConnectToolsPanel";
 import { GlassPixelBackdrop } from "@/components/atoms/GlassPixelBackdrop/GlassPixelBackdrop";
+import { isKey } from "@/lib/keyboard";
 
 interface Props {
   isOpen: boolean;
@@ -105,7 +106,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
     if (!isOpen) return;
     dialogRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isConnectOpen) finish("skipped");
+      if (isKey(event, "Escape") && !isConnectOpen) finish("skipped");
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);

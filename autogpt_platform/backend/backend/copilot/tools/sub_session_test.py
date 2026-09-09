@@ -419,8 +419,8 @@ class TestRunSubSession:
         self, mock_queue, mock_waiter, mock_model
     ):
         """When the queue primitive returns 'completed' + a SessionResult,
-        the tool surfaces response_text + tool_calls directly — no DB
-        round-trip needed for the content."""
+        the tool surfaces response_text directly — no DB round-trip
+        needed for the content."""
 
         res = SessionResult()
         res.response_text = "the answer"
@@ -444,9 +444,63 @@ class TestRunSubSession:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "completed"
         assert r.response == "the answer"
-        assert r.tool_calls is not None and len(r.tool_calls) == 1
-        assert r.tool_calls[0]["tool_name"] == "foo"
+        assert r.sub_tool_call_count == 1
         mock_waiter.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_large_sub_tool_output_does_not_come_back(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """``BaseTool.execute`` serialises this whole model into the parent's
+        context, so the hand-back's serialised size is the thing to pin."""
+        res = SessionResult()
+        res.response_text = "read the schema, wrote the graph"
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="get_block_schema",
+                input={"block_id": "b-1"},
+                output="SCHEMA_BODY_" + ("x" * 200_000),
+                success=True,
+            )
+        ]
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="build it",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        serialised = r.model_dump_json(exclude_none=True)
+        assert "SCHEMA_BODY_" not in serialised
+        assert len(serialised) < 2_000, f"hand-back grew to {len(serialised)} chars"
+        assert r.sub_tool_call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_a_completed_run_with_no_tool_calls_reports_zero(
+        self, mock_queue, mock_waiter, mock_model
+    ):
+        """``BaseTool.execute`` serialises with ``exclude_none=True``, so a
+        None count would drop the field and read as "not applicable" rather
+        than "the sub used no tools"."""
+        res = SessionResult()
+        res.response_text = "answered from what I already knew"
+        res.tool_calls = []
+        mock_waiter.return_value = ("completed", res)
+
+        r = await RunSubSessionTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            prompt="what is 2+2",
+            wait_for_result=60,
+        )
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "completed"
+        assert r.sub_tool_call_count == 0
+        assert "sub_tool_call_count" in r.model_dump_json(exclude_none=True)
 
     @pytest.mark.asyncio
     async def test_completed_surfaces_workspace_file_manifest(

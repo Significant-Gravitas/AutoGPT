@@ -22,16 +22,19 @@ import backend.api.features.admin.bot_analytics_routes
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.impersonation_admin_routes
 import backend.api.features.admin.memory_admin_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.test_data_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
+import backend.api.features.chat.speech as chat_speech
 import backend.api.features.executions.review.routes
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.home.routes as home_routes
@@ -52,6 +55,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -376,6 +380,7 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
@@ -418,6 +423,11 @@ app.include_router(
     prefix="/api/executions",
 )
 app.include_router(
+    backend.api.features.admin.impersonation_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api",
+)
+app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/copilot",
@@ -442,6 +452,15 @@ app.include_router(
     tags=["v2", "admin"],
     prefix="/api",
 )
+# Dev-only surface: the test-data seeder is never mounted outside a local
+# app_env, matching how docs_url/metrics are gated above. The runtime
+# `_guard_local_only` check stays as defense-in-depth for LOCAL+CLOUD drift.
+if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+    app.include_router(
+        backend.api.features.admin.test_data_routes.router,
+        tags=["v2", "admin"],
+        prefix="/api",
+    )
 app.include_router(
     backend.api.features.executions.review.routes.router,
     tags=["v2", "executions", "review"],
@@ -475,6 +494,11 @@ app.include_router(
 app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_speech.router,
+    tags=["chat"],
     prefix="/api/chat",
 )
 app.include_router(

@@ -1,4 +1,5 @@
 import type { ToolUIPart } from "ai";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import {
   extractToolName,
@@ -85,24 +86,30 @@ const ACTION_RESPONSE_TYPES = new Set([
   "suggested_goal",
 ]);
 
-function actionLabel(output: unknown): string | null {
+function actionLabel(toolName: string, tool: ToolUIPart): string | null {
+  const output = tool.output;
   const data = asObject(output);
   if (!data) return null;
   if (typeof data.type !== "string" || !ACTION_RESPONSE_TYPES.has(data.type)) {
     return null;
   }
+  const isBlock = toolName === "run_block" || toolName === "continue_run_block";
   if (data.type === "setup_requirements") {
     const setup =
       data.setup_info && typeof data.setup_info === "object"
         ? (data.setup_info as Record<string, unknown>)
         : null;
-    const name = setup?.agent_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : setup?.agent_name;
     return typeof name === "string" && name.trim()
       ? `Connect ${name.trim()} to continue`
       : "Complete setup to continue";
   }
   if (data.type === "review_required") {
-    const name = data.block_name;
+    const name = isBlock
+      ? getBlockDisplayName(tool.title, output)
+      : data.block_name;
     return typeof name === "string" && name.trim()
       ? `Review ${name.trim()}`
       : "Review this action";
@@ -225,7 +232,7 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       : tool;
 
     const providerIconSrc = getProviderIconSrc(stableTool);
-    const requiredActionLabel = actionLabel(tool.output);
+    const requiredActionLabel = actionLabel(toolName, tool);
 
     const data = {
       tool: toolName,
@@ -233,7 +240,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state);
+    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
+      displayName: tool.title,
+      output: tool.output,
+    });
     if (catalogLabel) {
       return {
         key: tool.toolCallId,
@@ -385,4 +395,18 @@ export function buildChainSegments(
   });
 
   return segments;
+}
+
+/** A tool call whose result has not landed. Whatever it needs from the user
+ *  has not been asked for yet. A call paused on human-in-the-loop approval
+ *  is equally unresolved — only a denial or an output ends it. */
+export function isToolCallPending(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  const state = (part as ToolUIPart).state;
+  return (
+    state === "input-streaming" ||
+    state === "input-available" ||
+    state === "approval-requested" ||
+    state === "approval-responded"
+  );
 }
