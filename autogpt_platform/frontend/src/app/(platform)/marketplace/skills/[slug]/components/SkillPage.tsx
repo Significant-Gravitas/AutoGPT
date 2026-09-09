@@ -49,7 +49,7 @@ export function SkillPage({ slug }: Props) {
     <main className="container max-w-4xl space-y-8 pb-20 pt-16">
       <Link
         href="/marketplace#skills"
-        className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+        className="inline-flex items-center gap-1 text-sm text-zinc-600 hover:text-zinc-800"
         data-testid="skill-back-to-marketplace"
       >
         <Icon icon={ArrowLeft02Icon} size={14} />

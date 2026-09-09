@@ -67,7 +67,7 @@ export function InstallSkillPanel({ slug, requiredProviders }: Props) {
             </Button>
           )}
           {requiredProviders.length > 0 ? (
-            <Text variant="small" className="!text-zinc-500">
+            <Text variant="small" className="!text-zinc-600">
               Works with {providerNames.join(", ")}
             </Text>
           ) : null}

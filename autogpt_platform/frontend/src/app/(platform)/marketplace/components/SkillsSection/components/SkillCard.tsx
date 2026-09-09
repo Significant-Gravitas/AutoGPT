@@ -31,7 +31,7 @@ export function SkillCard({ skill }: Props) {
 
       <div className="mt-auto flex items-center gap-3 pt-1">
         {skill.required_providers.length > 0 ? (
-          <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+          <span className="inline-flex items-center gap-1 text-xs text-zinc-600">
             <Icon icon={PlugSocketIcon} size={13} />
             Works with{" "}
             {skill.required_providers.map(formatProviderName).join(", ")}
