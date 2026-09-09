@@ -440,8 +440,17 @@ async def _apply_demotions(
 async def _apply_entity_invalidations(
     group_id: str,
     invalidations: list[EntityInvalidation],
+    facts: list[FactRow] | None = None,
 ) -> tuple[int, list[EntityInvalidationSummary]]:
     """Single-hop demotion of every :RELATES_TO around each invalidated entity.
+
+    Usage-protected edges are spared. This is the pass's second demotion
+    path and it does NOT flow through ``_filter_demotions`` — that guard
+    only ever sees ``ops.demotions`` — so without this the most destructive
+    op in the pass could expire a fact the user recalls daily, defeating the
+    invariant the guard establishes. ``facts`` is the same fetched list the
+    guard reads; ``None`` means no usage data and nothing is spared, matching
+    the guard's fail-open posture.
 
     Returns ``(total_edges_touched, summaries)`` — summaries enumerate
     the per-entity edge uuids so callers can render or audit which
@@ -449,6 +458,7 @@ async def _apply_entity_invalidations(
     """
     if not invalidations:
         return 0, []
+    protected = protected_fact_uuids(facts) if facts else set()
     driver = AutoGPTFalkorDriver(
         host=graphiti_config.falkordb_host,
         port=graphiti_config.falkordb_port,
@@ -467,6 +477,7 @@ async def _apply_entity_invalidations(
                 group_id=group_id,
                 entity_uuid=inv.entity_uuid,
                 reason=inv.reason,
+                protected_edge_uuids=protected,
             )
             total += len(uuids)
             summaries.append(
@@ -852,7 +863,7 @@ async def apply_operations(
         Flag.DREAM_PASS_INVALIDATE_ENTITY, user_id
     ):
         entity_edges_demoted, entity_summaries = await _apply_entity_invalidations(
-            group_id, ops.entity_invalidations
+            group_id, ops.entity_invalidations, facts
         )
     else:
         entity_edges_demoted, entity_summaries = 0, []

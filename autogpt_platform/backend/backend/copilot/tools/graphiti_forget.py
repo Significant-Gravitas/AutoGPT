@@ -494,6 +494,7 @@ async def invalidate_entity_direct_neighbors(
     group_id: str,
     entity_uuid: str,
     reason: str,
+    protected_edge_uuids: set[str] | None = None,
 ) -> list[str]:
     """Demote every ``:RELATES_TO`` edge directly attached to an entity.
 
@@ -503,15 +504,27 @@ async def invalidate_entity_direct_neighbors(
     spec). Keep the single-hop discipline; ratification (P0.4) re-promotes
     good facts that get caught in the cascade.
 
+    ``protected_edge_uuids`` are spared. The dream pass passes its
+    usage-protected set here: invalidating a hub entity otherwise expires
+    every edge around it — including facts the user is recalling daily —
+    through a path that never reaches ``apply``'s demotion guard, which
+    only ever sees ``ops.demotions``. Callers with no usage data (the
+    user-facing forget tool, where the human IS the authority) pass
+    nothing and the behaviour is unchanged.
+
     Returns the list of edge UUIDs that were demoted. ``DISTINCT``
     matters: the undirected ``-[r]-`` pattern can yield the same edge
     from both traversal directions, and duplicate uuids inflate the
     demotion counts reported in ``DreamPassResult`` / the admin UI
     (the ``SET`` itself is idempotent).
     """
+    # ``NOT r.uuid IN $protected`` with an empty list matches everything,
+    # so the no-protection caller keeps the original behaviour without a
+    # second query variant to keep in sync.
     query = """
     MATCH (e:Entity {uuid: $entity_uuid, group_id: $group_id})
     MATCH (e)-[r:RELATES_TO]-(other)
+    WHERE NOT r.uuid IN $protected
     SET r.expired_at = $now,
         r.status = 'superseded',
         r.expiration_reason = $reason
@@ -524,6 +537,7 @@ async def invalidate_entity_direct_neighbors(
             group_id=group_id,
             reason=reason,
             now=_now_iso(),
+            protected=sorted(protected_edge_uuids or ()),
         )
         return [r["edge_uuid"] for r in records]
     except Exception:

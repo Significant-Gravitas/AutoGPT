@@ -532,7 +532,9 @@ async def test_failed_refresh_falls_back_to_snapshot_protection(mocker):
 
     # The unprotected target IS re-read (that's the whole point of the
     # refresh) and the lookup fails.
-    apply_mod.fetch_usage_rows.assert_awaited_once_with("u-refresh-fail", ["cold"], None)
+    apply_mod.fetch_usage_rows.assert_awaited_once_with(
+        "u-refresh-fail", ["cold"], None
+    )
     # 'hot' must still be protected by the snapshot. A refactor to
     # `combined = fresh` would pass None into the guard, which fails open
     # and demotes BOTH — losing a fact the user demonstrably still uses.
@@ -601,6 +603,50 @@ async def test_entity_invalidation_calls_single_hop_helper():
     kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
     assert kwargs["entity_uuid"] == "ent-x"
     assert kwargs["reason"] == "dead_to_us"
+
+
+@pytest.mark.asyncio
+async def test_entity_invalidation_spares_usage_protected_edges():
+    """Entity invalidation is the pass's SECOND demotion path and it never
+    reaches ``_filter_demotions`` — that guard only sees ``ops.demotions``.
+    Without the protected set threaded here, one invalidation against a hub
+    entity expires every edge around it, including facts recalled daily,
+    defeating the invariant the guard exists to establish."""
+    ops = DreamOperations(
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="ent-hub", reason="dead_to_us"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-ent-prot",
+        pass_id="p-ent-prot",
+        ops=ops,
+        facts=[_used_fact("hot"), _unused_fact("cold")],
+    )
+
+    kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
+    assert kwargs["protected_edge_uuids"] == {"hot"}, (
+        "the recently-used edge must be excluded from the invalidation; "
+        "the never-recalled one is fair game"
+    )
+
+
+@pytest.mark.asyncio
+async def test_entity_invalidation_without_usage_data_spares_nothing():
+    """Fail open, like every other usage path: no bundle means no usage
+    data, and a missing input must not silently turn invalidation into a
+    no-op."""
+    ops = DreamOperations(
+        entity_invalidations=[
+            EntityInvalidation(entity_uuid="ent-hub", reason="dead_to_us"),
+        ],
+    )
+    await apply_mod.apply_operations(
+        user_id="u-ent-none", pass_id="p-ent-none", ops=ops, facts=None
+    )
+
+    kwargs = apply_mod.invalidate_entity_direct_neighbors.await_args.kwargs
+    assert kwargs["protected_edge_uuids"] == set()
 
 
 @pytest.mark.asyncio

@@ -82,7 +82,11 @@ def _format_facts(input_bundle: DreamInput) -> str:
         )
     parts: list[str] = []
     for scope, bucket in sorted(by_scope.items()):
-        parts.append(f"[scope={scope}]")
+        # ``scope`` is model-authored free text persisted verbatim, so it is
+        # the same trust tier as the fields below and gets the same collapse:
+        # a newline here would let it forge a whole ``- uuid=… recalls=…``
+        # line, which is exactly what wrapping the others prevents.
+        parts.append(f"[scope={_inline(scope)}]")
         parts.extend(bucket)
     return "\n".join(parts)
 
@@ -265,9 +269,12 @@ SANITIZE_SYSTEM = (
     "alone (a direct contradiction or an explicit user retraction "
     "still wins). Those demotions are dropped by a code-level guard "
     "anyway, wasting a slot against the per-pass cap. "
-    "`usage=demotable-on-staleness` means the guard will NOT block a "
-    "staleness demotion, however high the recall count looks — the "
-    "fact's second-most-recent recall is outside the window.\n"
+    "`usage=demotable-on-staleness` means only that the guard will not "
+    "block a staleness demotion — the fact's second-most-recent recall "
+    "is outside the window. It is NOT a reason to demote: a high "
+    "`recalls=` or a recent `last_recall=` is still evidence the fact "
+    "is in use, and staleness must be judged on the fact's own "
+    "content.\n"
     " * Demotion edge_uuids MUST exist in the provided list of known "
     "fact uuids. Do not invent uuids.\n"
     " * Entity invalidations require an entity_uuid present in the "

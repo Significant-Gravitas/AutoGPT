@@ -31,12 +31,26 @@ logger = logging.getLogger(__name__)
 # chances to demote it once it goes quiet. Longer would ossify the
 # graph (stale-but-recently-read facts could never be pruned).
 #
-# EIGHT days, not seven, and the extra day is the whole point: for
-# weekly-cadence work (a project touched every Monday) the prior
-# deduped recall is already seven days PLUS however many hours separate
-# the recall from the nightly pass. A flat 7d window puts exactly the
-# cadence this constant exists to protect just outside it, so the
-# guarantee would read well and never fire. The +1d absorbs that offset.
+# EIGHT days, not seven, to absorb the offset between a recall and the
+# nightly pass that reads it: at a flat 7d a recall from "one week ago"
+# lands just outside the window by however many hours separate the two.
+#
+# What this window does NOT give you is continuous protection at weekly
+# cadence, and the arithmetic is worth stating because the intuition runs
+# the other way. Protection keys on ``prev_recalled_at`` — the SECOND-most
+# recent recall — so a fact recalled every Monday has a prior stamp
+# trailing ~7 days behind, and only the passes within 8 days of THAT stamp
+# see two recalls in-window. Continuous protection needs a recall cadence
+# of roughly half the window (~4 days); a weekly fact is protected on the
+# passes right after a recall and demotable on the rest.
+#
+# That is the deliberate shape — protection tracks sustained use, not any
+# use — but note the ratchet: a staleness demotion sets ``expired_at``,
+# after which ``_fetch_active_facts``, ``_stamp_recall`` and
+# ``fetch_usage_rows`` all skip the edge, so it cannot earn protection
+# back. Widening the window trades graph ossification for fewer such
+# one-way drops; SECRT-2338's open question on the two-recall threshold
+# is the same trade seen from the other side.
 RECENT_RECALL_WINDOW = timedelta(days=8)
 
 # Lives here, beside RECENT_RECALL_WINDOW, despite being consumed only
@@ -128,12 +142,17 @@ def drop_recently_used_demotions(
     if not protected:
         return demotions
 
-    citable_uuids = {f.uuid for f in facts}
+    all_uuids = {f.uuid for f in facts}
     kept = [
         d
         for d in demotions
+        # A fact cannot contradict ITSELF: the demoted edge's own uuid is
+        # rendered to the model in the fact listing, so leaving it in the
+        # citable set makes ``contradicted_by:<the same uuid>`` a
+        # self-satisfying override — the one string an injected reason needs
+        # to unprotect any fact it can see.
         if d.edge_uuid not in protected
-        or _reason_overrides_protection(d.reason, citable_uuids)
+        or _reason_overrides_protection(d.reason, all_uuids - {d.edge_uuid})
     ]
     dropped = len(demotions) - len(kept)
     if dropped:

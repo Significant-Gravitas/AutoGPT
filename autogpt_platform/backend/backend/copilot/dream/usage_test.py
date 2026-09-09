@@ -256,16 +256,35 @@ def test_contradiction_citing_an_unknown_uuid_does_not_override():
             recall_count=9,
             last_recalled_at=_ago(hours=2),
             prev_recalled_at=_ago(days=1),
-        )
+        ),
+        _fact("witness"),
     ]
     demotions = [
         DreamDemotion(edge_uuid="hot", reason="contradicted_by:never-seen-uuid"),
         DreamDemotion(edge_uuid="hot", reason="contradicted_by:"),
-        # Cites a real fetched uuid (whitespace-padded) — citation checks
-        # out, so this one is honoured.
-        DreamDemotion(edge_uuid="hot", reason="contradicted_by:  hot  "),
+        # Cites a real fetched uuid OTHER than the demotion target
+        # (whitespace-padded) — citation checks out, so this one is honoured.
+        DreamDemotion(edge_uuid="hot", reason="contradicted_by:  witness  "),
     ]
-    assert drop_recently_used_demotions("p-5b", demotions, facts) == [demotions[2]]
+    assert drop_recently_used_demotions("p-5c", demotions, facts) == [demotions[2]]
+
+
+def test_a_fact_cannot_contradict_itself():
+    """The demoted edge's own uuid is rendered to the model in the fact
+    listing, so if it stays in the citable set then
+    ``contradicted_by:<that uuid>`` is a self-satisfying override — the
+    single string an injected reason needs to unprotect any fact it can
+    see. Self-citation must fail the check like any other unverifiable one."""
+    facts = [
+        _fact(
+            "hot",
+            recall_count=9,
+            last_recalled_at=_ago(hours=2),
+            prev_recalled_at=_ago(days=1),
+        )
+    ]
+    demotions = [DreamDemotion(edge_uuid="hot", reason="contradicted_by:hot")]
+    assert drop_recently_used_demotions("p-5d", demotions, facts) == []
 
 
 def test_unknown_and_staleness_reasons_stay_blocked_for_protected_facts():
