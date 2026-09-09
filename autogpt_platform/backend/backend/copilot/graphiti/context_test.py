@@ -639,9 +639,16 @@ class TestShouldRefreshWarmContext:
         assert should_refresh_warm_context("yes thanks") is False
 
     def test_word_count_boundary(self) -> None:
-        # Pin the exact threshold so an accidental off-by-one (3 or 5) fails.
-        assert should_refresh_warm_context("one two three") is False
-        assert should_refresh_warm_context("one two three four") is True
+        # Pin the exact threshold so an accidental off-by-one (2 or 4) fails.
+        assert should_refresh_warm_context("one two") is False
+        assert should_refresh_warm_context("one two three") is True
+
+    def test_terse_task_starts_are_not_excluded(self) -> None:
+        """Cases 3-5 in SECRT-2378 are task STARTS mid-session, and they are
+        phrased tersely. A threshold that skips these skips the bug."""
+        assert should_refresh_warm_context("restart the executor") is True
+        assert should_refresh_warm_context("deploy prod now") is True
+        assert should_refresh_warm_context("resume the migration") is True
 
     def test_substantive_message_triggers_refresh(self) -> None:
         assert should_refresh_warm_context("deploy the staging environment now") is True
@@ -649,7 +656,7 @@ class TestShouldRefreshWarmContext:
     def test_cjk_message_without_whitespace_triggers_refresh(self) -> None:
         # Japanese/Chinese don't separate words with spaces — str.split() would
         # score 1 and never pass. Each ideograph counts as a signal unit.
-        assert should_refresh_warm_context("会議の予定を教えて") is True  # >= 4 chars
+        assert should_refresh_warm_context("会議の予定を教えて") is True  # >= 3 chars
         assert should_refresh_warm_context("明日の東京の天気") is True
         # A one-ideograph reply still reads as trivial.
         assert should_refresh_warm_context("はい") is False
@@ -667,13 +674,13 @@ class TestShouldRefreshWarmContext:
         else by whitespace. A mixed message straddling the threshold is where
         an off-by-one or a double-count would show up, and neither
         single-script case above can catch it."""
-        # 2 latin words + 1 ideograph = 3 units — just under.
-        assert should_refresh_warm_context("restart the 東") is False
-        # 2 latin words + 2 ideographs = 4 units — just over.
-        assert should_refresh_warm_context("restart the 東京") is True
+        # 1 latin word + 1 ideograph = 2 units — just under.
+        assert should_refresh_warm_context("restart 東") is False
+        # 1 latin word + 2 ideographs = 3 units — just over.
+        assert should_refresh_warm_context("restart 東京") is True
         # Double counting the ideographs (once individually, once as a
-        # whitespace word) would push this to 5 and wrongly pass.
-        assert should_refresh_warm_context("deploy 東京") is False
+        # whitespace word) would push this to 4 and wrongly pass.
+        assert should_refresh_warm_context("東") is False
 
 
 class TestRefreshWarmContext:

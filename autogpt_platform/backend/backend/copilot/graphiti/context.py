@@ -30,11 +30,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Minimum "signal unit" count for a follow-up user message to trigger a
-# warm-context refresh.  Short acknowledgements ("ok", "thanks", "yes go
-# ahead") carry no new retrieval signal, so refreshing on them would waste a
-# graph search + embedding call every turn.  A post-compaction turn bypasses
-# this gate via ``refresh_warm_context(..., force=True)``.
-WARM_CONTEXT_REFRESH_MIN_WORDS = 4
+# warm-context refresh.  Short acknowledgements ("ok", "thanks", "yes") carry
+# no new retrieval signal, so refreshing on them would waste a graph search +
+# embedding call every turn.  A post-compaction turn bypasses this gate via
+# ``refresh_warm_context(..., force=True)``.
+#
+# Three, not four: the failures this exists to fix are task STARTS mid-session
+# ("restart the executor", "deploy prod now", "resume the migration" — all
+# exactly three units), so a four-unit floor would exclude the very case it
+# targets.  Three lets a stray acknowledgement through ("yes go ahead"), which
+# costs one RRF graph query — no LLM calls, and since the refresh now runs
+# concurrently with the query build it is off the time-to-first-token path.
+# A missed recall costs the user the bug in SECRT-2378; the asymmetry decides.
+WARM_CONTEXT_REFRESH_MIN_WORDS = 3
 
 
 def should_refresh_warm_context(message: str | None) -> bool:
