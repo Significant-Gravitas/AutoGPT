@@ -28,12 +28,14 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
 import backend.api.features.chat.share as chat_share
+import backend.api.features.chat.speech as chat_speech
 import backend.api.features.executions.review.routes
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.home.routes as home_routes
@@ -54,6 +56,7 @@ import backend.api.features.push.routes as push_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -378,6 +381,12 @@ app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(
+    api_keys_routes.router,
+    tags=["v1", "api-keys"],
+    prefix="/api/api-keys",
+)
 app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
@@ -491,6 +500,11 @@ app.include_router(
 app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
+    prefix="/api/chat",
+)
+app.include_router(
+    chat_speech.router,
+    tags=["chat"],
     prefix="/api/chat",
 )
 app.include_router(

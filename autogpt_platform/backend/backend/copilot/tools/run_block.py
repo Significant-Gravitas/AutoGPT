@@ -9,6 +9,7 @@ from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .base import BaseTool
 from .helpers import (
@@ -30,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 class RunBlockTool(BaseTool):
     """Tool for executing a block and returning its outputs."""
+
+    digest_large_output = True
 
     @property
     def name(self) -> str:
@@ -208,6 +211,7 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                expert_id=session.expert_id,
             )
 
         # Show block details when required inputs are not yet provided
@@ -241,6 +245,11 @@ class RunBlockTool(BaseTool):
             llm_input_schema = _strip_credentials_from_schema(
                 prep.input_schema, prep.credentials_fields
             )
+            if await is_feature_enabled(
+                Flag.AUTOPILOT_CONTEXT_TRIMMING, user_id, default=False
+            ):
+                llm_input_schema = _strip_presentation_annotations(llm_input_schema)
+                output_schema = _strip_presentation_annotations(output_schema)
             if validate_only and not missing:
                 detail_msg = (
                     f"Block '{prep.block.name}' — all required inputs "
@@ -294,7 +303,41 @@ class RunBlockTool(BaseTool):
             dry_run=dry_run,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            expert_id=session.expert_id,
         )
+
+
+# Builder-UI render hints: none of them can appear in a graph, and the copilot's
+# own block-details card reads only title/type/description/required.
+_PRESENTATION_ONLY_KEYS = frozenset(
+    {"advanced", "llm_model", "llm_model_metadata", "secret"}
+)
+
+# Keys whose sub-dicts are named by the *author*, so a field called "secret"
+# must survive even though the annotation of the same name must not.
+_SCHEMA_MAP_KEYS = frozenset(
+    {"$defs", "definitions", "patternProperties", "properties"}
+)
+
+
+def _strip_presentation_annotations(node: Any) -> Any:
+    """Return *node* with the builder-UI annotation keys removed, recursively."""
+    if isinstance(node, dict):
+        cleaned: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _PRESENTATION_ONLY_KEYS:
+                continue
+            if key in _SCHEMA_MAP_KEYS and isinstance(value, dict):
+                cleaned[key] = {
+                    name: _strip_presentation_annotations(sub)
+                    for name, sub in value.items()
+                }
+            else:
+                cleaned[key] = _strip_presentation_annotations(value)
+        return cleaned
+    if isinstance(node, list):
+        return [_strip_presentation_annotations(item) for item in node]
+    return node
 
 
 def _strip_credentials_from_schema(

@@ -20,6 +20,7 @@ MAX_FILE_SIZE_BYTES = Config().max_file_size_mb * 1024 * 1024
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
+    from backend.data.workspace_scope import WorkspaceScope
 
 
 class WorkspaceUri(BaseModel):
@@ -116,6 +117,33 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
+async def _expert_workspace_scope(
+    execution_context: "ExecutionContext",
+) -> "WorkspaceScope | None":
+    """Confine blocks an expert runs from its chat to the expert's own files.
+
+    Mirrors the copilot tools: a block run inside an expert's conversation can
+    only resolve ``workspace://`` references inside that expert's
+    conversations. Expert-attributed runs without a session (schedules,
+    webhooks, presets) write their outputs at the workspace root, so they
+    keep the owner's full workspace until they get a folder of their own.
+    Runs without expert attribution keep it too.
+    """
+    if (
+        not execution_context.expert_id
+        or not execution_context.session_id
+        or not execution_context.user_id
+    ):
+        return None
+    # Import here to avoid circular import (see store_media_file)
+    from backend.data.db_accessors import workspace_db
+
+    scope = await workspace_db().resolve_expert_workspace_scope(
+        execution_context.user_id, execution_context.expert_id
+    )
+    return scope.with_session(execution_context.session_id)
+
+
 async def store_media_file(
     file: MediaFileType,
     execution_context: "ExecutionContext",
@@ -160,7 +188,10 @@ async def store_media_file(
     workspace_manager: WorkspaceManager | None = None
     if execution_context.workspace_id:
         workspace_manager = WorkspaceManager(
-            user_id, execution_context.workspace_id, execution_context.session_id
+            user_id,
+            execution_context.workspace_id,
+            execution_context.session_id,
+            scope=await _expert_workspace_scope(execution_context),
         )
     # Build base path
     base_path = Path(get_exec_file_path(graph_exec_id, ""))

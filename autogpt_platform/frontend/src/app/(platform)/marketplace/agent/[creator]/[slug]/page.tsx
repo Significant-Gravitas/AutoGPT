@@ -7,6 +7,7 @@ import {
 import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { getServerUser } from "@/lib/auth/server/getServerUser";
+import { buildPageMetadata } from "@/lib/metadata";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { MainAgentPage } from "../../../components/MainAgentPage/MainAgentPage";
@@ -21,14 +22,16 @@ export async function generateMetadata({
   params: Promise<MarketplaceAgentPageParams>;
 }): Promise<Metadata> {
   const params = await _params;
-  const { data: creator_agent } = await getV2GetSpecificAgent(
-    params.creator,
-    params.slug,
-  );
-  return {
-    title: `${(creator_agent as StoreAgentDetails).agent_name} - AutoGPT Marketplace`,
-    description: (creator_agent as StoreAgentDetails).description,
-  };
+  const { data } = await getV2GetSpecificAgent(params.creator, params.slug);
+  const agent = data as StoreAgentDetails;
+
+  return buildPageMetadata({
+    title: `${agent.agent_name} - AutoGPT Marketplace`,
+    description: agent.description,
+    path: `/marketplace/agent/${params.creator}/${params.slug}`,
+    images: agent.agent_image?.slice(0, 1),
+    type: "article",
+  });
 }
 
 export default async function MarketplaceAgentPage({

@@ -50,19 +50,28 @@ let mockLiveCreds: Array<{
   host?: string | null;
   mcp_auth_scheme?: "basic" | "bearer" | null;
 }> = [];
+// Defaults to "this mount's fetch has landed cleanly" so existing cases read
+// as before; the guard cases below flip them explicitly.
+let mockLiveCredsFetched = true;
+let mockLiveCredsError = false;
 function setMockLiveCreds(
   next: Array<{
     provider: string;
     host?: string | null;
     mcp_auth_scheme?: "basic" | "bearer" | null;
   }>,
+  opts: { fetchedAfterMount?: boolean; isError?: boolean } = {},
 ) {
   mockLiveCreds = next;
+  mockLiveCredsFetched = opts.fetchedAfterMount ?? true;
+  mockLiveCredsError = opts.isError ?? false;
 }
 vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   useGetV1ListCredentials: () => ({
     data: mockLiveCreds,
     isLoading: false,
+    isFetchedAfterMount: mockLiveCredsFetched,
+    isError: mockLiveCredsError,
   }),
 }));
 
@@ -139,6 +148,35 @@ describe("MCPSetupCard", () => {
     render(<MCPSetupCard output={makeSetupOutput()} />);
     expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /reconnect/i })).toBeDefined();
+  });
+
+  it("does not show Connected from a cache whose post-mount fetch has not landed", () => {
+    // SECRT-2592: ``refetchOnMount`` does not stop React Query serving the
+    // previous cache until the refetch lands.  Right after the backend
+    // invalidated a dead row that cache still lists it, and OR-ing it in
+    // painted a green pill over the backend's authoritative
+    // ``has_all_credentials=false`` — the exact contradiction users reported
+    // (UI says Connected, agent says not connected).
+    setMockLiveCreds(
+      [{ provider: "mcp", host: "https://mcp.example.com/mcp" }],
+      {
+        fetchedAfterMount: false,
+      },
+    );
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("does not drop Connected when a background refetch fails but serves stale data", () => {
+    // A settled-but-errored refetch keeps the previous data, so ``data``
+    // alone still looks authoritative.  Treating it as unknown falls back to
+    // the persisted snapshot instead of trusting a row we can't confirm.
+    setMockLiveCreds([], { isError: true });
+    render(<MCPSetupCard output={makeSetupOutput(undefined, true)} />);
+    expect(screen.getByText(/connected to example\.com/i)).toBeDefined();
   });
 
   it("matches live creds across a trailing slash on the server URL", () => {
@@ -695,6 +733,56 @@ describe("MCPSetupCard", () => {
     });
   });
 
+  it("shows why a stored token was refused instead of the never-connected card", () => {
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          message: "example.com rejected the saved credential (HTTP 401).",
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: "Sentry token",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "HTTP 401 Error: Unauthorized",
+    );
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
+  it("keeps the Connect affordance when a stale cred list still lists the refused token", () => {
+    setMockLiveCreds([
+      { provider: "mcp", host: "https://mcp.example.com/mcp" },
+    ]);
+    render(
+      <MCPSetupCard
+        output={{
+          ...makeSetupOutput(),
+          rejection: {
+            provider: "mcp",
+            detail: "HTTP 401 Error: Unauthorized",
+            status_code: 401,
+            credential_id: "cred-1",
+            credential_title: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText(/connected to example\.com/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /connect example\.com/i }),
+    ).toBeDefined();
+  });
+
   it("does not report Connected for a credential the server rejects", async () => {
     // A 2xx from ``/mcp/token`` only says the row was written. Without a probe
     // the card claims Connected, the very next copilot call 401s, and the card,
@@ -764,6 +852,40 @@ describe("MCPSetupCard", () => {
     });
     expect(postV2DiscoverAvailableToolsOnAnMcpServer).not.toHaveBeenCalled();
     expect(postV2StoreABearerTokenForAnMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("labels the Use Token button while verification is in flight", async () => {
+    // Verification is a round-trip to the MCP server, so the button can no
+    // longer stay static and merely disabled the way it did when storing was
+    // a local write.
+    const {
+      postV2DiscoverAvailableToolsOnAnMcpServer,
+      postV2InitiateOauthLoginForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
+      status: 400,
+      data: { detail: "No OAuth" },
+      headers: new Headers(),
+    } as never);
+    // Never settles: pins the in-flight state.
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockReturnValueOnce(
+      new Promise(() => {}) as never,
+    );
+
+    render(<MCPSetupCard output={makeSetupOutput()} />);
+    fireEvent.click(screen.getByRole("button", { name: /connect example/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
+      target: { value: "some-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /use token/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /verifying/i })).toBeDefined();
+    });
   });
 
   it("re-renders not-connected branch when manual token POST fails (forceDisconnected flips on)", async () => {
