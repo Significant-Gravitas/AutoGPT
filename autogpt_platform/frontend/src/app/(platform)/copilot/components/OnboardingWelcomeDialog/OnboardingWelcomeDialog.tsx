@@ -180,7 +180,7 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
               maxWidth: isConnectOpen ? "30rem" : "20rem",
             }}
             transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
-            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.15)] outline-none"
+            className="w-full max-w-[20rem] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg outline-none"
             ref={dialogRef}
             tabIndex={-1}
           >
@@ -218,14 +218,14 @@ export function OnboardingWelcomeDialog({ isOpen, onClose }: Props) {
                       transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
                     >
                       {/* Stage: the card's icon floats here. */}
-                      <div className="relative h-36 bg-gradient-to-br from-[#e6dbff] via-[#ddccff] to-[#d0b9ff]">
+                      <div className="relative h-36 bg-gradient-to-br from-violet-100 via-violet-200 to-violet-300">
                         <GlassPixelBackdrop />
                         {cardIndex > 0 && (
                           <button
                             type="button"
                             aria-label="Previous card"
                             onClick={() => setCardIndex(cardIndex - 1)}
-                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-[#5b21b6]/70 transition-colors hover:bg-white/50"
+                            className="absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-full text-violet-800/70 transition-colors hover:bg-white/50"
                           >
                             <Icon icon={ArrowLeft01Icon} size={13} />
                           </button>

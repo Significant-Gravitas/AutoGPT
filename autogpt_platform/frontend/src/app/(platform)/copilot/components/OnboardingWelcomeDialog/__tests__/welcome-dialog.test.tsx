@@ -321,3 +321,18 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
     expect(await screen.findByText("Meet AutoPilot.")).toBeDefined();
   });
 });
+
+it("keeps the last card valid when team flags change in either direction", async () => {
+  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+  const { rerender } = render(
+    <OnboardingWelcomeDialog isOpen onClose={vi.fn()} />,
+  );
+  await advanceToCard(3);
+  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+  flags.current = {};
+  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+  expect(await screen.findByText("It remembers everything.")).toBeDefined();
+  flags.current = { "onboarding-expert-team": true, "hire-experts": true };
+  rerender(<OnboardingWelcomeDialog isOpen onClose={vi.fn()} />);
+  expect(await screen.findByText("Every morning, a briefing.")).toBeDefined();
+});
