@@ -10,11 +10,15 @@ interface Props {
 }
 
 /** A card's totals as one meta line: icon, count, word. Reads like the
- *  marketplace card's footer instead of a stats grid. */
+ *  marketplace card's footer instead of a stats grid. Kept to a single
+ *  line: 12px text, and the words give way before the counts do. */
 export function CardStats({ className, children }: Props) {
   return (
     <dl
-      className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)}
+      className={cn(
+        "flex flex-nowrap items-center gap-x-3 overflow-hidden",
+        className,
+      )}
     >
       {children}
     </dl>
@@ -36,23 +40,23 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-1",
+        "flex min-w-0 items-center gap-1",
         isZero ? "text-zinc-400" : "text-zinc-500",
       )}
     >
-      <Icon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
+      <Icon icon={icon} size={13} className="shrink-0" aria-hidden="true" />
       <Text
-        variant="body-medium"
+        variant="small-medium"
         as="dd"
         unmask={false}
         className={cn(
-          "tabular-nums",
+          "shrink-0 tabular-nums",
           isZero ? "!text-zinc-400" : "!text-zinc-800",
         )}
       >
         {count}
       </Text>
-      <Text variant="body" as="dt" className="!text-inherit">
+      <Text variant="small" as="dt" className="min-w-0 truncate !text-inherit">
         <span className="sr-only">{label}</span>
         <span aria-hidden="true">{word}</span>
       </Text>
