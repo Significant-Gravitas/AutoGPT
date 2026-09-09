@@ -6,6 +6,7 @@ from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
 from backend.api.features.experts.spend_approval import is_spend_review
 from backend.copilot.briefing.outcome import as_utc, run_link
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 
@@ -142,7 +143,7 @@ def _question_attention(
         id=f"question-{session.session_id}",
         kind="question",
         priority="normal",
-        title=f"{asker.name if asker else 'Autopilot'} has a question",
+        title=f"{asker.name if asker else AUTOPILOT_NAME} has a question",
         description=_clip(question.text),
         why_it_matters="The work is paused until you answer in the chat.",
         expert=to_home_expert(asker) if asker else None,
