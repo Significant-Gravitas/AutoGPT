@@ -1,0 +1,31 @@
+import { prefetchGetV2ListMarketplaceSkillsInfiniteQuery } from "@/app/api/__generated__/endpoints/store/store";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { Metadata } from "next";
+import { SkillsBrowsePage } from "./components/SkillsBrowsePage/SkillsBrowsePage";
+import { PAGE_SIZE } from "./components/SkillsBrowsePage/useSkillsBrowsePage";
+
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "AutoPilot Skills - AutoGPT Marketplace",
+  description:
+    "Playbooks your AutoPilot follows. Install one and it knows how.",
+};
+
+export default async function MarketplaceSkillsPage() {
+  const queryClient = getQueryClient();
+
+  // Only the unfiltered first page is worth prefetching: a category or search
+  // arrives in the URL and would miss this key anyway.
+  await prefetchGetV2ListMarketplaceSkillsInfiniteQuery(queryClient, {
+    page: 1,
+    page_size: PAGE_SIZE,
+  });
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <SkillsBrowsePage />
+    </HydrationBoundary>
+  );
+}
