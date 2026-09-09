@@ -9,6 +9,7 @@ import {
   Activity01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
 import NextLink from "next/link";
 import { useState } from "react";
@@ -68,7 +69,7 @@ export function ExpertWorkflowListItem({
       ) : null}
 
       {/* A square as tall as the text column, title through meta line. */}
-      {libraryAgent?.image_url && !hasImageError ? (
+      {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
         <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
           <Image
             src={libraryAgent.image_url}

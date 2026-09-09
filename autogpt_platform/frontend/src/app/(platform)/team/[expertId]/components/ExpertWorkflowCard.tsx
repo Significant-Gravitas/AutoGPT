@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
 import { Activity01Icon } from "@hugeicons/core-free-icons";
+import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
 import NextLink from "next/link";
 import { useState } from "react";
@@ -59,7 +60,7 @@ export function ExpertWorkflowCard({
       ) : null}
 
       <div className="pointer-events-none relative mx-1.5 mt-1.5 flex h-32 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
-        {libraryAgent?.image_url && !hasImageError ? (
+        {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
           <Image
             src={libraryAgent.image_url}
             alt=""

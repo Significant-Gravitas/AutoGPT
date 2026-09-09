@@ -30,7 +30,16 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
+
+// happy-dom ships no window.confirm, so there is nothing to spy on.
+function stubConfirm(answer: boolean) {
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => answer),
+  );
+}
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -171,7 +180,7 @@ describe("ArtifactsPage - row selection", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    stubConfirm(true);
 
     render(<ArtifactsPage />);
 
@@ -191,7 +200,7 @@ describe("ArtifactsPage - row selection", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    stubConfirm(false);
 
     render(<ArtifactsPage />);
 

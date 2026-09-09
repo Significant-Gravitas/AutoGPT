@@ -9,6 +9,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { isRenderableImageUrl } from "@/lib/next-image";
 import Image from "next/image";
 import { useState } from "react";
 import { INSTALL_WORKFLOW_SOURCES, workflowSubtitle } from "./helpers";
@@ -233,11 +234,12 @@ interface WorkflowTileProps {
   imageUrl?: string | null;
 }
 
-/** The workflow's image, or a plain muted square when there is none or it
- *  fails to load: never a broken-image outline, never a stand-in glyph. */
+/** The workflow's image, or a plain muted square when there is none, when
+ *  next/image cannot load it, or when it fails to load: never a broken-image
+ *  outline, never a stand-in glyph. */
 function WorkflowTile({ imageUrl }: WorkflowTileProps) {
   const [hasError, setHasError] = useState(false);
-  if (!imageUrl || hasError) {
+  if (!isRenderableImageUrl(imageUrl) || hasError) {
     return (
       <span
         aria-hidden="true"

@@ -391,6 +391,13 @@ describe("ExpertDetailPage", () => {
 
   test("shows the workflow's block chain with provider logos and icons", async () => {
     const user = userEvent.setup();
+    // The chain stands in for a workflow with no image of its own.
+    server.use(
+      getGetV2GetLibraryAgentMockHandler200({
+        ...ownLibraryAgent,
+        id: "lib-1",
+      } as LibraryAgent),
+    );
     render(<ExpertDetailPage />);
 
     await openTab("Workflows");
@@ -1372,10 +1379,9 @@ describe("ExpertDetailPage", () => {
     const section = await screen.findByRole("region", { name: "Needs you" });
     expect(within(section).getByText("Connect your calendar")).toBeDefined();
     expect(within(section).queryByText("Approve the budget")).toBeNull();
+    // The count is announced but has no visible heading to name it.
     expect(
-      within(section).getByRole("status", {
-        name: "1 item needs your attention",
-      }),
+      within(section).getByText("1 item needs your attention"),
     ).toBeDefined();
 
     expect(

@@ -186,8 +186,10 @@ describe("TeamRoster toolbar", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    await user.click(screen.getByRole("combobox", { name: /filter/i }));
-    await user.click(await screen.findByRole("option", { name: "Paused" }));
+    await user.click(screen.getByRole("button", { name: "Filter experts" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Paused" }),
+    );
 
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
@@ -243,16 +245,17 @@ describe("AutopilotCard", () => {
     expect(getStatValue(autopilot, "Workflows")).toBe("1");
   });
 
-  test("zeroes out the totals for a team with nothing set up", async () => {
+  test("leaves out the totals for a team with nothing set up", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
     const autopilot = screen.getByRole("region", { name: "Autopilot" });
-    expect(getStatValue(autopilot, "Skills")).toBe("0");
-    expect(getStatValue(autopilot, "Schedules")).toBe("0");
-    expect(getStatValue(autopilot, "Workflows")).toBe("0");
+    // A zero total is left out of the meta line rather than shown as "0".
+    expect(within(autopilot).queryByText("Skills")).toBeNull();
+    expect(within(autopilot).queryByText("Schedules")).toBeNull();
+    expect(within(autopilot).queryByText("Workflows")).toBeNull();
     expect(within(autopilot).getByText("Built in")).toBeDefined();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(

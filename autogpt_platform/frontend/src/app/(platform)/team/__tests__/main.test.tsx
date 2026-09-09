@@ -1294,6 +1294,8 @@ function makeSetupItem(
 
 describe("TeamPage - setup needed card", () => {
   test("stays hidden when nothing needs setup", async () => {
+    server.use(getListExpertsMockHandler([hiredMaria]));
+
     render(<TeamPage />);
 
     await screen.findByText("Maria");
@@ -1402,10 +1404,14 @@ describe("TeamPage - setup needed card", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Connect" }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findByText(/Notion/)).toBeDefined();
-    // Straight to the provider's step: no picker heading.
-    expect(
-      within(dialog).queryByText("Connect a service for Maria"),
-    ).toBeNull();
+    // Straight to the provider's step: the picker gives way to it once the
+    // provider list has loaded, so wait for the picker heading to go.
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByText("Connect a service for Maria"),
+      ).toBeNull(),
+    );
+    expect(within(dialog).getByRole("button", { name: "Back" })).toBeDefined();
+    expect(within(dialog).getAllByText(/Notion/).length).toBeGreaterThan(0);
   });
 });
