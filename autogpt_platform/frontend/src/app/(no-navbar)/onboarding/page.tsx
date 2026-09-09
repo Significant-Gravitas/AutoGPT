@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
@@ -8,15 +7,12 @@ import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
 import { ConnectStep } from "./steps/ConnectStep/ConnectStep";
 import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
-import { WelcomeStep } from "./steps/WelcomeStep";
-import {
-  PAYWALL_FIRST_STEPS,
-  SELF_HOST_STEPS,
-  useOnboardingWizardStore,
-} from "./store";
+import { IntroStep } from "./steps/IntroStep/IntroStep";
+import { HireStep } from "./steps/HireStep/HireStep";
+import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -46,13 +42,10 @@ export default function OnboardingPage() {
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  // Back is hidden on Welcome (the first profile step): going back from there
-  // when payments are on would return the user to the paywall they already
-  // paid through and let them re-trigger checkout. Also hidden while the
-  // current step is mid-flight (brain dump processing) — there is nothing
-  // coherent to go back to.
-  const showBack =
-    currentStep > steps.welcome && currentStep <= totalSteps && !isStepBusy;
+  // Back is hidden on the first step and while the current step is
+  // mid-flight (brain dump processing) — there is nothing coherent to go
+  // back to.
+  const showBack = currentStep > 1 && currentStep <= totalSteps && !isStepBusy;
   const showProgressBar = currentStep <= totalSteps;
   const showLogout = currentStep <= totalSteps;
 
@@ -70,27 +63,31 @@ export default function OnboardingPage() {
       )}
 
       {showBack && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={prevStep}
-          className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+          leadingIcon={ArrowLeft01Icon}
+          className="absolute left-6 top-6 text-zinc-500 hover:text-zinc-900"
         >
-          <Icon icon={ArrowLeft01Icon} size={16} />
           Back
-        </button>
+        </Button>
       )}
 
       <div className="flex flex-1 items-center pb-8 pt-16">
-        {isPaymentEnabled &&
-          currentStep === PAYWALL_FIRST_STEPS.subscription && (
-            <SubscriptionStep />
-          )}
-        {isSelfHostConnectEnabled &&
-          currentStep === SELF_HOST_STEPS.connect && <ConnectStep />}
-        {currentStep === steps.welcome && <WelcomeStep />}
+        {currentStep === steps.team && <IntroStep slide="team" />}
+        {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
         {currentStep === steps.painPoints &&
           (isBrainDumpEnabled ? <BrainDumpStep /> : <PainPointsStep />)}
+        {currentStep === steps.hire && <HireStep />}
+        {isSelfHostConnectEnabled && currentStep === steps.connect && (
+          <ConnectStep />
+        )}
+        {isPaymentEnabled && currentStep === steps.subscription && (
+          <SubscriptionStep />
+        )}
         {currentStep === preparingStep && (
           <PreparingStep
             onComplete={handlePreparingComplete}
@@ -106,13 +103,16 @@ export default function OnboardingPage() {
       )}
 
       {showLogout && (
-        <Link
+        <Button
+          as="NextLink"
           href="/logout"
-          className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+          variant="ghost"
+          size="xs"
+          leadingIcon={Logout03Icon}
+          className="absolute bottom-6 left-6 text-zinc-500 hover:text-zinc-900"
         >
-          <Icon icon={Logout03Icon} size={16} />
           Log out
-        </Link>
+        </Button>
       )}
     </div>
   );

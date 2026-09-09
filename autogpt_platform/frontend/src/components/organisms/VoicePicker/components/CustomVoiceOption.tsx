@@ -11,6 +11,7 @@ type Props = {
   isSelected: boolean;
   labelClassName?: string;
   colors?: SelectableCardColors;
+  compact?: boolean;
   onFocus: () => void;
   onChange: (value: string) => void;
 };
@@ -22,13 +23,16 @@ export function CustomVoiceOption({
   isSelected,
   labelClassName,
   colors,
+  compact = false,
   onFocus,
   onChange,
 }: Props) {
   const characterCountId = `${textareaId}-character-count`;
 
   return (
-    <div className={selectableCardClassName(isSelected, false, colors)}>
+    <div
+      className={selectableCardClassName(isSelected, false, colors, compact)}
+    >
       <label
         htmlFor={`${textareaId}-choice`}
         className={cn(
@@ -55,12 +59,13 @@ export function CustomVoiceOption({
         value={customText}
         onFocus={onFocus}
         onChange={(event) => onChange(event.target.value)}
-        rows={CUSTOM_VOICE_TEXTAREA_ROWS}
+        rows={compact ? 2 : CUSTOM_VOICE_TEXTAREA_ROWS}
         maxLength={MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS}
         aria-describedby={characterCountId}
         placeholder="Paste a few sentences written the way you'd like this expert to sound."
         className={cn(
-          "w-full resize-none rounded-xl border bg-background px-4 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          compact ? "rounded-md px-3 py-2" : "rounded-xl px-4 py-2.5",
           isSelected ? "border-ring" : "border-input focus:border-ring",
         )}
       />

@@ -17,7 +17,7 @@ import { ExpertPageHeader } from "./components/ExpertPageHeader";
 import { ExpertSkills } from "./components/ExpertSkills";
 import { ExpertWorkflowList } from "./components/ExpertWorkflowList";
 import { useExpertPage } from "./useExpertPage";
-import { useHireFlow } from "./useHireFlow";
+import { useHireFlow } from "@/services/experts/useHireFlow";
 
 const MAIN_CLASS =
   "mx-auto flex w-full max-w-[760px] flex-col px-6 pb-24 pt-8 md:px-8";
@@ -49,6 +49,7 @@ export default function MarketplaceExpertPage() {
   const {
     hire,
     isHiring,
+    isVoicePickOpen,
     hireResult,
     pickVoice,
     skipVoice,
@@ -131,14 +132,14 @@ export default function MarketplaceExpertPage() {
       <Dialog
         styling={{ width: "640px" }}
         controlled={{
-          isOpen: hireResult !== null,
+          isOpen: isVoicePickOpen,
           set: (open) => {
             if (!open) dismissVoicePick();
           },
         }}
       >
         <Dialog.Content>
-          {hireResult ? (
+          {isVoicePickOpen && hireResult ? (
             <VoicePicker
               name={hireResult.expert.name}
               samples={expert.voice_samples ?? []}
