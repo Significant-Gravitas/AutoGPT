@@ -406,3 +406,17 @@ def test_one_session_asking_twice_yields_one_item() -> None:
 
     assert len(items) == 1
     assert items[0].description == "latest question only"
+
+
+def test_spend_hold_is_described_as_such() -> None:
+    items = compose_attention_items(
+        now=NOW,
+        experts=[],
+        reviews=[_review(NOW, node_exec_id="expert-spend:expert:exec-9")],
+        schedules=[],
+        credits_balance=100,
+    )
+
+    assert [item.kind for item in items] == ["approval"]
+    assert items[0].title == "Send the prepared message"
+    assert items[0].description == "Spending threshold reached; this work is on hold."

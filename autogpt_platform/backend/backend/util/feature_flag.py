@@ -82,6 +82,10 @@ class Flag(str, Enum):
     # retrieval-relevance benefit is measured.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
 
+    # Parks expert work for the user's approval once her credit spend in the
+    # window reaches the approval threshold (SECRT-2599). Off by default.
+    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — LD's per-flag targeting natively

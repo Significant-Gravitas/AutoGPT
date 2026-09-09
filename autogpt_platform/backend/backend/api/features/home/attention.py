@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
 from backend.api.features.experts.models import Expert
+from backend.api.features.experts.spend_approval import is_spend_review
 from backend.copilot.briefing.outcome import as_utc, run_link
 from backend.copilot.model import ChatSessionInfo, PendingQuestion
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
@@ -44,13 +45,19 @@ def _review_attention(
 ) -> HomeAttentionItem:
     title = review.instructions or review.agent_name or "Review an agent decision"
     created_at = as_utc(review.created_at)
+    if is_spend_review(review.node_exec_id):
+        description = "Spending threshold reached; this work is on hold."
+        why_it_matters = "It runs once you approve; declining cancels it."
+    else:
+        description = "Your agent paused before taking an external action."
+        why_it_matters = "The task cannot continue until you approve or decline it."
     return HomeAttentionItem(
         id=f"approval-{review.node_exec_id}",
         kind="approval",
         priority=("high" if now - created_at > timedelta(hours=24) else "normal"),
         title=title,
-        description="Your agent paused before taking an external action.",
-        why_it_matters="The task cannot continue until you approve or decline it.",
+        description=description,
+        why_it_matters=why_it_matters,
         expert=_review_expert(review),
         agent_name=review.agent_name,
         created_at=created_at,
