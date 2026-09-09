@@ -16,15 +16,6 @@ export function TeamHeaderActions({ onNewPod }: Props) {
     <div className="flex flex-wrap items-center gap-2">
       <Button
         as="NextLink"
-        href="/raise"
-        variant="secondary"
-        size="small"
-        leadingIcon={SparklesIcon}
-      >
-        Raise expert
-      </Button>
-      <Button
-        as="NextLink"
         href="/marketplace#experts"
         variant="primary"
         size="small"
@@ -33,7 +24,16 @@ export function TeamHeaderActions({ onNewPod }: Props) {
         Hire expert
       </Button>
       <Button
-        variant="outline"
+        as="NextLink"
+        href="/raise"
+        variant="secondary"
+        size="small"
+        leadingIcon={SparklesIcon}
+      >
+        Raise expert
+      </Button>
+      <Button
+        variant="secondary"
         size="small"
         onClick={onNewPod}
         leadingIcon={UserGroupIcon}
