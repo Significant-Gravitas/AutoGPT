@@ -25,7 +25,7 @@ export function AutopilotHeader() {
               variant="body-medium"
               as="span"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1",
                 AUTOPILOT_PILL_CLASS,
               )}
             >
