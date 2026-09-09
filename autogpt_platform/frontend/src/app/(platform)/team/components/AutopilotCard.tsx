@@ -23,7 +23,7 @@ export function AutopilotCard({
   return (
     <section
       aria-label="Autopilot"
-      className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white"
+      className="flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
     >
       <Link
         href="/team/autopilot"

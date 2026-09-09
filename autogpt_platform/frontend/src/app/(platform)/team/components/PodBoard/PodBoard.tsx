@@ -114,7 +114,7 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
       type="button"
       onClick={onOpen}
       aria-label={`Open ${name} pod`}
-      className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      className="flex flex-col gap-3 rounded-2xl bg-white p-4 text-left transition-colors smooth-shadow-ring-sm hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600">

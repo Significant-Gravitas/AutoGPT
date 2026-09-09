@@ -77,7 +77,7 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
+    <div className="relative flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         {pods.length > 0 ? (
