@@ -663,6 +663,123 @@ class TestRunBlockInputValidation:
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_carries_no_plain_inputs(self):
+        """A connect card is only a connect card: the block's ordinary inputs
+        are collected in chat, so the setup card must not ship a form for
+        them alongside the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="github-search-id",
+            name="GitHub Search Issues",
+            input_properties={
+                "term": {"type": "string"},
+                "limit": {"type": "integer", "default": 10, "advanced": True},
+            },
+            required_fields=["term"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"github"}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "term",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="github-search-id",
+                input_data={"term": "login bug"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+        assert response.setup_info.requirements["inputs"] == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_keeps_picker_inputs(self):
+        """Picker-backed fields are the one input the chat cannot supply, so
+        they stay on the card next to the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"google"}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "spreadsheet",
+            "range",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        names = [i["name"] for i in response.setup_info.requirements["inputs"]]
+        assert names == ["spreadsheet"]
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.

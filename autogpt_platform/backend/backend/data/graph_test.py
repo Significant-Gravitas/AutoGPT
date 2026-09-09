@@ -409,7 +409,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         video_url=None,
         image_urls=[],
         description="Test description",
-        categories=[],
+        categories=["operations"],
     )
 
     # First we check the graph can not be accessed by a different user
