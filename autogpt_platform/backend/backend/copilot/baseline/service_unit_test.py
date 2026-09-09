@@ -35,6 +35,7 @@ from backend.copilot.baseline.service import (
     _supports_prompt_cache_markers,
     stream_chat_completion_baseline,
 )
+from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
@@ -2961,6 +2962,94 @@ async def _run_baseline_until_experts_gate(
             pass
 
     return is_feature_enabled_mock
+
+
+class _StopAtAttachments(Exception):
+    """Raised by a mocked ``_prepare_baseline_attachments`` to abort
+    ``stream_chat_completion_baseline`` the moment the attachment step runs."""
+
+
+@pytest.mark.asyncio
+async def test_execution_context_is_set_before_attachments_are_prepared() -> None:
+    """Attachment resolution derives the expert's file scope from the execution
+    context, so the context must already name the session when it runs."""
+    session = ChatSession.new("user-1", dry_run=False, expert_id="expert-1")
+    session.title = "already titled"
+    seen: list[tuple[str | None, ChatSession | None]] = []
+
+    async def capture(*_args: object, **_kwargs: object) -> None:
+        seen.append(get_execution_context())
+        raise _StopAtAttachments
+
+    with (
+        patch(
+            "backend.copilot.baseline.service.build_expert_identity_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.drain_pending_safe",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._resolve_baseline_model",
+            new=AsyncMock(
+                return_value=ResolvedModel(
+                    model="anthropic/claude-sonnet-4-6", source="env"
+                )
+            ),
+        ),
+        patch(
+            "backend.copilot.baseline.service.normalize_model_for_transport",
+            new=MagicMock(side_effect=lambda model, cfg=None: model),
+        ),
+        patch(
+            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.baseline.service._build_system_prompt",
+            new=AsyncMock(return_value=("system prompt", None)),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_enabled_for_user",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.is_feature_enabled",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.baseline.service.build_builder_system_prompt_suffix",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "backend.copilot.baseline.service.extract_context_messages",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._compress_session_messages",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.baseline.service._prepare_baseline_attachments",
+            new=AsyncMock(side_effect=capture),
+        ),
+        pytest.raises(_StopAtAttachments),
+    ):
+        try:
+            async for _ in stream_chat_completion_baseline(
+                session_id=session.session_id,
+                message=None,
+                is_user_message=False,
+                user_id="user-1",
+                session=session,
+                file_ids=["file-1"],
+            ):
+                pass
+        finally:
+            set_execution_context(None, None)
+
+    assert seen == [("user-1", session)]
 
 
 class TestBaselineExpertsFlagGuard:

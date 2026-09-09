@@ -109,6 +109,7 @@ export function useExpertMap() {
   const canAddressExperts = isExpertsEnabled && !expertsQuery.isError;
 
   return {
+    isExpertsEnabled,
     expertsById: isExpertsEnabled ? expertCollections.expertsById : EMPTY_MAP,
     activeExperts: canAddressExperts
       ? expertCollections.activeExperts

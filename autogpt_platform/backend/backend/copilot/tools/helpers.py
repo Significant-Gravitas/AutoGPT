@@ -105,6 +105,36 @@ def get_inputs_from_schema(
     return results
 
 
+def is_picker_field(schema: Any) -> bool:
+    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+
+    The picker attaches hidden credentials to the chosen resource, so a bare
+    ID or URL typed into the chat can never stand in for it.
+    """
+    return isinstance(schema, dict) and (
+        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+    )
+
+
+def get_picker_inputs_from_schema(
+    input_schema: dict[str, Any],
+    exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Inputs a setup card should render: picker-backed fields only.
+
+    Every other input is collected in the chat by the CoPilot asking the
+    user, so the card carries no form for them.
+    """
+    return [
+        entry
+        for entry in get_inputs_from_schema(
+            input_schema, exclude_fields=exclude_fields, input_data=input_data
+        )
+        if is_picker_field(entry)
+    ]
+
+
 async def _charge_block_credits(
     _credit_db: Any,
     *,
@@ -210,8 +240,12 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
+
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
 
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
@@ -290,6 +324,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -383,7 +418,7 @@ async def execute_block(
                     ),
                     requirements={
                         "credentials": [],
-                        "inputs": get_inputs_from_schema(
+                        "inputs": get_picker_inputs_from_schema(
                             input_schema,
                             exclude_fields=credentials_fields,
                             input_data=input_data,
@@ -756,11 +791,7 @@ async def prepare_block_for_execution(
     picker_fields_missing = [
         f
         for f in required_non_credential_keys - provided_input_keys
-        if isinstance(input_schema.get("properties", {}).get(f), dict)
-        and (
-            input_schema["properties"][f].get("format") == "google-drive-picker"
-            or "auto_credentials" in input_schema["properties"][f]
-        )
+        if is_picker_field(input_schema.get("properties", {}).get(f))
     ]
 
     # validate_only suppresses the setup-card early-return — the caller is
@@ -800,7 +831,7 @@ async def prepare_block_for_execution(
                 ),
                 requirements={
                     "credentials": missing_creds_list,
-                    "inputs": get_inputs_from_schema(
+                    "inputs": get_picker_inputs_from_schema(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,

@@ -3503,6 +3503,24 @@ def test_to_expert_run_reports_how_the_run_started():
     assert triggered.source == "trigger"
 
 
+@pytest.mark.parametrize(
+    "execution_status",
+    [
+        prisma.enums.AgentExecutionStatus.FAILED,
+        prisma.enums.AgentExecutionStatus.TERMINATED,
+    ],
+)
+def test_to_expert_run_never_reports_a_failed_run_as_completed(execution_status):
+    run = experts_db._to_expert_run(
+        _run_execution(executionStatus=execution_status),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+    )
+    assert run.status == execution_status.value.lower()
+
+
 def test_to_expert_run_names_a_library_only_workflow():
     run = experts_db._to_expert_run(
         _run_execution(),
