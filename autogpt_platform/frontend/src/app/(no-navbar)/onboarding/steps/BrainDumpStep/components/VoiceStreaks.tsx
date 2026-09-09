@@ -7,10 +7,10 @@ import {
   headAngle,
   hexToRgb,
   makeStreakPair,
-  MAX_STREAKS,
   orbitPoint,
   project,
-  spawnRate,
+  advanceStreaks,
+  type StreakStore,
   type Streak,
   type StreakField,
   tailSpan,
@@ -27,23 +27,16 @@ interface Props {
   store: StreakStore;
 }
 
-export interface StreakStore {
-  streaks: Streak[];
-  nextId: number;
-  budget: number;
-  lastTick: number;
-}
-
-export function createStreakStore(): StreakStore {
-  return { streaks: [], nextId: 0, budget: 0, lastTick: 0 };
-}
-
 // One canvas per depth layer. The behind layer sits under the avatar and the
 // front layer over it, so a comet on the far side of its orbit is hidden by
 // the body and reappears as it comes round. The front layer also owns the
 // spawner so streaks are only created once per frame.
 export function VoiceStreaks({ field, levels, isActive, layer, store }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const levelsRef = useRef(levels);
+  useEffect(() => {
+    levelsRef.current = levels;
+  }, [levels]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -71,17 +64,25 @@ export function VoiceStreaks({ field, levels, isActive, layer, store }: Props) {
       );
       store.nextId += 2;
       store.lastTick = 0;
+      store.budget = 0;
     }
 
     let frame = 0;
     const tick = (now: number) => {
-      if (layer === "front") spawn(store, field, levels, now);
+      if (layer === "front") {
+        const currentLevels = levelsRef.current;
+        const loudness = currentLevels.length
+          ? currentLevels.reduce((sum, level) => sum + level.get(), 0) /
+            currentLevels.length
+          : 0;
+        advanceStreaks(store, field, loudness, now);
+      }
       draw(context, field, store.streaks, now, layer);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [field, isActive, layer, levels, store]);
+  }, [field, isActive, layer, store]);
 
   return (
     <canvas
@@ -96,29 +97,6 @@ export function VoiceStreaks({ field, levels, isActive, layer, store }: Props) {
         zIndex: layer === "front" ? 20 : 0,
       }}
     />
-  );
-}
-
-function spawn(
-  store: StreakStore,
-  field: StreakField,
-  levels: MotionValue<number>[],
-  now: number,
-) {
-  const seconds = store.lastTick ? (now - store.lastTick) / 1000 : 0;
-  store.lastTick = now;
-  const loudness =
-    levels.reduce((sum, level) => sum + level.get(), 0) / levels.length;
-  store.budget += seconds * spawnRate(loudness);
-  while (store.budget >= 1) {
-    store.budget -= 1;
-    if (store.streaks.length + 2 <= MAX_STREAKS) {
-      store.streaks.push(...makeStreakPair(field, store.nextId, loudness, now));
-      store.nextId += 2;
-    }
-  }
-  store.streaks = store.streaks.filter(
-    (streak) => now - streak.bornAt < streak.durationMs,
   );
 }
 

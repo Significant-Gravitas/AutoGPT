@@ -3,12 +3,13 @@
 import type { AvatarConfig } from "@/components/molecules/BotAvatar/helpers";
 import type { MotionValue } from "framer-motion";
 import { type ReactNode, useRef } from "react";
-import { createStreakField, type StreakField } from "./streaks";
 import {
+  createStreakField,
   createStreakStore,
+  type StreakField,
   type StreakStore,
-  VoiceStreaks,
-} from "./VoiceStreaks";
+} from "./streaks";
+import { VoiceStreaks } from "./VoiceStreaks";
 
 interface Props {
   config: AvatarConfig;

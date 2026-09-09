@@ -311,3 +311,42 @@ export function hexToRgb(hex: string): [number, number, number] {
   const value = parseInt(hex.slice(1), 16);
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }
+
+export interface StreakStore {
+  streaks: Streak[];
+  nextId: number;
+  budget: number;
+  lastTick: number;
+}
+
+export function createStreakStore(): StreakStore {
+  return { streaks: [], nextId: 0, budget: 0, lastTick: 0 };
+}
+
+export function advanceStreaks(
+  store: StreakStore,
+  field: StreakField,
+  loudness: number,
+  now: number,
+) {
+  const seconds = store.lastTick
+    ? Math.min(0.1, Math.max(0, (now - store.lastTick) / 1000))
+    : 0;
+  store.lastTick = now;
+  store.streaks = store.streaks.filter(
+    (streak) => now - streak.bornAt < streak.durationMs,
+  );
+  store.budget = Math.min(
+    MAX_STREAKS / 2,
+    store.budget + seconds * spawnRate(loudness),
+  );
+  const pairs = Math.min(
+    Math.floor(store.budget),
+    Math.floor((MAX_STREAKS - store.streaks.length) / 2),
+  );
+  store.budget %= 1;
+  for (let index = 0; index < pairs; index++) {
+    store.streaks.push(...makeStreakPair(field, store.nextId, loudness, now));
+    store.nextId += 2;
+  }
+}
