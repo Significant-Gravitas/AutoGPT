@@ -1,10 +1,11 @@
-"""Pins the mounted API-key surface, which the v1.py split must not move.
+"""Pins the published API-key surface: paths, operation IDs and tags are contract.
 
-Operation IDs are derived from each route's summary and first tag, so renaming
+Operation IDs are built from each route's summary and first tag, so renaming
 either silently renames the generated frontend client's method.
 """
 
 import pytest
+from fastapi.routing import APIRoute
 
 from backend.api.rest_api import app
 
@@ -43,6 +44,6 @@ def test_api_key_path_is_served_by_this_module(path: str):
     handlers = {
         route.endpoint.__module__
         for route in app.routes
-        if getattr(route, "path", None) == path
+        if isinstance(route, APIRoute) and route.path == path
     }
     assert handlers == {"backend.api.features.api_keys.routes"}
