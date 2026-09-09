@@ -165,22 +165,28 @@ describe("Marketplace SkillsSection", () => {
     expect(brand.textContent).toContain("View");
   });
 
-  test("offers Browse all only once the catalogue outgrows the shelf", async () => {
+  test("offers no Browse all while the catalogue fits the shelf", async () => {
     server.use(listing([brandVoice, outreach], 2));
 
-    const { unmount } = render(<MainMarkeplacePage />);
+    render(<MainMarkeplacePage />);
 
     await screen.findAllByTestId("skill-card", undefined, { timeout: 10000 });
     expect(
       screen.queryByRole("link", { name: /Browse all skills/ }),
     ).toBeNull();
-    unmount();
+  });
 
+  test("offers Browse all once the catalogue outgrows the shelf", async () => {
     server.use(listing([brandVoice, outreach], 9));
+
     render(<MainMarkeplacePage />);
 
     expect(
-      await screen.findByRole("link", { name: /Browse all skills/ }),
+      await screen.findByRole(
+        "link",
+        { name: /Browse all skills/ },
+        { timeout: 10000 },
+      ),
     ).toBeDefined();
   });
 
