@@ -14,7 +14,7 @@ These blocks use the [Slant3D v2 API](https://slant3dapi.com/documentation/intro
 
 Existing block IDs and output names are retained. Order IDs are now Slant3D public IDs such as `SLANT_1234567890`. Quantity accepts existing numeric strings and sends a positive integer. `order_number` is stored as `metadata.orderNumber`; the v1 phone and residential-address inputs remain accepted but are not sent in the v2 address contract.
 
-The Filament block retains `filament`, `hexColor`, and `colorTag`, and adds the v2 public ID, material, color, and availability fields. Slicer additionally returns the uploaded file ID. Order listing follows pagination; tracking reads the order's fulfillment information.
+The Filament block retains `filament`, `hexColor`, and `colorTag`, and adds the v2 public ID, material, color, and availability fields. Slicer additionally returns the uploaded file ID. It rejects estimates priced for a different quantity instead of presenting a single-unit price as a bulk total. Order listing follows pagination; tracking reads the order's fulfillment information.
 
 New webhook subscriptions require an explicit platform ID and verify Slant3D's timestamped HMAC-SHA256 signature. Each platform has one webhook URL, so use a dedicated platform if another application already has a subscription. Existing v1 subscriptions retain their legacy payload and unsigned-delivery behavior. Reconnect the trigger with a v2 key and platform ID to migrate it. Carrier codes are empty when the provider does not supply them; dummy deliveries do not trigger workflows.
 

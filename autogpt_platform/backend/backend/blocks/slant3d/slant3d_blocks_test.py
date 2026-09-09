@@ -287,7 +287,10 @@ async def test_slicer_upload_or_reuse_and_quantity(use_existing):
         block,
         "_make_request",
         AsyncMock(
-            return_value={"message": "File Price Estimated", "data": {"total": 17.75}}
+            return_value={
+                "message": "File Price Estimated",
+                "data": {"total": 17.75, "quantity": 5},
+            }
         ),
     ) as request, patch.object(
         block, "_upload_file", AsyncMock(return_value="file-1")

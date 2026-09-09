@@ -106,6 +106,13 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
             api_key,
             json={"options": options},
         )
+        quoted_quantity = result["data"].get("quantity", 1)
+        if quoted_quantity != input_data.quantity:
+            raise ValueError(
+                f"Slant3D returned a price for {quoted_quantity} print(s), "
+                f"but {input_data.quantity} were requested. "
+                "No valid total was returned for the requested quantity."
+            )
         yield "message", result["message"]
         yield "price", float(result["data"]["total"])
         yield "file_id", file_id
