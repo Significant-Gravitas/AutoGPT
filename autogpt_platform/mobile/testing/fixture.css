@@ -1,0 +1,174 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17212b;
+  background: #f4f6f8;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 680px;
+  margin: auto;
+  padding: 28px max(20px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+.eyebrow {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  margin: 0;
+  padding: 12px 8px;
+  border-bottom: 1px solid #dce1e8;
+  background: #f4f6f8;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #58697c;
+}
+h1 {
+  font-size: clamp(28px, 6vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  margin: 12px 0;
+}
+h2 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+h2,
+h3 {
+  scroll-margin-top: calc(64px + env(safe-area-inset-top, 0px));
+}
+h3 {
+  margin: 24px 0 12px;
+  font-size: 15px;
+}
+p {
+  line-height: 1.5;
+}
+.intro {
+  color: #596677;
+  margin-bottom: 24px;
+}
+section {
+  padding: 20px;
+  margin: 16px 0;
+  border: 1px solid #dce1e8;
+  border-radius: 18px;
+  background: #fff;
+}
+section p {
+  font-size: 14px;
+}
+output {
+  display: block;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f0f3f8;
+  color: #324359;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+button + output,
+.actions + output {
+  margin-top: 14px;
+}
+#stream-text {
+  min-height: 88px;
+  margin-bottom: 0;
+  padding: 14px;
+  border: 1px solid #dce1e8;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    13px/1.6 ui-monospace,
+    monospace;
+}
+output[data-connected="true"] {
+  color: #12643f;
+  background: #e8f6ec;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+button {
+  min-height: 44px;
+  border: 0;
+  padding: 11px 15px;
+  border-radius: 10px;
+  color: #fff;
+  background: #253dce;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+button.secondary {
+  color: #253954;
+  background: #edf0f6;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #6384ef;
+  outline-offset: 3px;
+}
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 18px 0 8px;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #c8d0dc;
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  font-size: 16px;
+}
+input[type="file"] {
+  display: block;
+  max-width: 100%;
+  min-height: 44px;
+  font: inherit;
+  font-size: 14px;
+}
+.links {
+  display: grid;
+  gap: 2px;
+}
+.links a {
+  display: block;
+  padding: 12px 0;
+  min-height: 44px;
+  color: #2844c7;
+  font-size: 14px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: #637082;
+  font-size: 12px;
+}
+footer {
+  padding: 12px 0;
+  color: #6a7889;
+  font-size: 12px;
+  text-align: center;
+}

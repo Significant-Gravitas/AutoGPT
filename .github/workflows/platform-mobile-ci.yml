@@ -1,0 +1,156 @@
+name: AutoGPT Platform - Mobile CI
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/platform-mobile-ci.yml"
+      - "autogpt_platform/mobile/**"
+  push:
+    branches: [dev, master]
+    paths:
+      - ".github/workflows/platform-mobile-ci.yml"
+      - "autogpt_platform/mobile/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/ios
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Lint all Swift sources
+        run: xcrun swift-format lint --strict --recursive App Sources Tests UITests Package.swift
+      - name: Test origin and authentication policies
+        run: swift test
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build iOS simulator app without signing
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPT
+          -sdk iphonesimulator -arch arm64 -configuration Debug
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: Compile native UI regression tests
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPTUITests
+          -sdk iphonesimulator -arch arm64 -configuration Debug
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: Build unsigned iPhone app
+        run: >-
+          xcodebuild -project AutoGPT.xcodeproj -target AutoGPT
+          -sdk iphoneos -arch arm64 -configuration Release
+          SYMROOT="$RUNNER_TEMP/autogpt-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: Package simulator app
+        run: >-
+          ditto -c -k --keepParent
+          "$RUNNER_TEMP/autogpt-ios/Debug-iphonesimulator/AutoGPT.app"
+          "$RUNNER_TEMP/AutoGPT-iOS-simulator-arm64.zip"
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v7
+        with:
+          name: autogpt-ios-simulator-arm64
+          path: ${{ runner.temp }}/AutoGPT-iOS-simulator-arm64.zip
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+      - name: Run native UI regression tests
+        id: ui_tests
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          ios_sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list --json > "$RUNNER_TEMP/ios-simulators.json"
+          ios_runtime="$(jq -r --arg sdk "$ios_sdk" '
+            [.runtimes[] | select(
+              .isAvailable and
+              (.identifier | startswith("com.apple.CoreSimulator.SimRuntime.iOS-")) and
+              ((.version | split(".") | .[0:2]) == ($sdk | split(".") | .[0:2]))
+            )] | first | .identifier // empty
+          ' "$RUNNER_TEMP/ios-simulators.json")"
+          if [[ -z "$ios_runtime" ]]; then
+            echo "::error::No installed iOS runtime matches simulator SDK $ios_sdk."
+            exit 1
+          fi
+          ios_simulator="$(jq -r --arg runtime "$ios_runtime" '
+            [.devices[$runtime][]? | select(
+              .isAvailable and
+              (.deviceTypeIdentifier | startswith("com.apple.CoreSimulator.SimDeviceType.iPhone-"))
+            )] | sort_by([if .name == "iPhone 16 Pro" then 0 else 1 end, .name])
+            | first | .udid // empty
+          ' "$RUNNER_TEMP/ios-simulators.json")"
+          if [[ -z "$ios_simulator" ]]; then
+            echo "::error::No available iPhone simulator is installed for $ios_runtime."
+            exit 1
+          fi
+          echo "UI tests: SDK $ios_sdk, runtime $ios_runtime, simulator $ios_simulator"
+          echo "preflight_passed=true" >> "$GITHUB_OUTPUT"
+          xcrun simctl bootstatus "$ios_simulator" -b
+          xcodebuild -project AutoGPT.xcodeproj -scheme AutoGPT -configuration Debug \
+            -destination "platform=iOS Simulator,id=$ios_simulator" \
+            -destination-timeout 60 \
+            -derivedDataPath "$RUNNER_TEMP/autogpt-ui-derived" \
+            -resultBundlePath "$RUNNER_TEMP/autogpt-ui.xcresult" \
+            -parallel-testing-enabled NO -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
+            -only-testing:AutoGPTUITests CODE_SIGNING_ALLOWED=NO test
+      - name: Upload native UI test results
+        if: always() && steps.ui_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-ui-test-results
+          path: ${{ runner.temp }}/autogpt-ui.xcresult
+          retention-days: 7
+          if-no-files-found: ${{ steps.ui_tests.outputs.preflight_passed == 'true' && 'error' || 'ignore' }}
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/android
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test, lint, and build both Android variants
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest
+      - name: Upload Android test build
+        uses: actions/upload-artifact@v7
+        with:
+          name: autogpt-android-debug
+          path: autogpt_platform/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+      - name: Test native integration fixture
+        run: node --test autogpt_platform/mobile/testing/server.test.mjs

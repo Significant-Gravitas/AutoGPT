@@ -124,6 +124,7 @@ export default function OnboardingProvider({
   // bouncing an un-onboarded account to /onboarding would skip the password
   // change and turn the reset link into a one-time sign-in link.
   const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
+  const isOnMobileAuthRoute = pathname === "/auth/mobile";
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
@@ -165,7 +166,8 @@ export default function OnboardingProvider({
       hasInitialized.current ||
       !isLoggedIn ||
       isOnPublicTour ||
-      isOnPasswordResetRoute
+      isOnPasswordResetRoute ||
+      isOnMobileAuthRoute
     ) {
       return;
     }
@@ -233,6 +235,7 @@ export default function OnboardingProvider({
     pathname,
     isOnPublicTour,
     isOnPasswordResetRoute,
+    isOnMobileAuthRoute,
   ]);
 
   const handleOnboardingNotification = useCallback(

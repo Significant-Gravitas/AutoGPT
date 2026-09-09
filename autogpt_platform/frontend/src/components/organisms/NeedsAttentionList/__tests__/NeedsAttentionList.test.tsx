@@ -1,6 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
+import { toast } from "sonner";
 import {
   getGetV2GetPendingReviewsMockHandler200,
   getPostV2ProcessReviewActionMockHandler200,
@@ -10,6 +11,19 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { NeedsAttentionList } from "../NeedsAttentionList";
+
+afterEach(() => {
+  for (const notification of toast.getToasts()) toast.dismiss(notification.id);
+});
+
+async function waitForDecisionsToFinish() {
+  await waitFor(() => {
+    const buttons = screen.getAllByRole("button", { name: /^Approve:/ });
+    for (const button of buttons) {
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    }
+  });
+}
 
 const review: PendingHumanReviewModel = {
   node_exec_id: "ne-1",
@@ -51,6 +65,7 @@ test("renders attributed rows and approves in one tap", async () => {
       reviews: [{ node_exec_id: "ne-1", approved: true }],
     }),
   );
+  await waitForDecisionsToFinish();
 });
 
 test("only the acted row locks while its decision is in flight", async () => {
@@ -82,6 +97,7 @@ test("only the acted row locks while its decision is in flight", async () => {
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(false);
   });
+  await waitForDecisionsToFinish();
 });
 
 test("confirms a successful decision with a toast", async () => {
@@ -135,6 +151,7 @@ test("decline sends a rejection", async () => {
   // No canned reason: this surface has no field to write one in, so nothing
   // should reach the agent context / audit trail as if the user typed it.
   expect(actionBody?.reviews[0].message).toBeUndefined();
+  await waitForDecisionsToFinish();
 });
 
 test("armed decline is announced and visually distinct, not just relabelled", async () => {
@@ -247,4 +264,5 @@ test("a second row's decision does not unlock the first one mid-flight", async (
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(true);
   });
+  await waitForDecisionsToFinish();
 });

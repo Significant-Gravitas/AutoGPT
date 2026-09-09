@@ -70,6 +70,22 @@ updates:
           - "minor"
           - "patch"
 
+  - package-ecosystem: "gradle"
+    directory: "/autogpt_platform/mobile/android"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    target-branch: "dev"
+    commit-message:
+      prefix: "dx(platform)"
+    groups:
+      android-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   # infra (Terraform)
   - package-ecosystem: "terraform"
     directory: "autogpt_platform/infra"

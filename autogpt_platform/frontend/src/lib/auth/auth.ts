@@ -13,6 +13,7 @@ import {
 import { JWKS_ALG } from "./service-token";
 import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { mobileAuth } from "./mobile-auth";
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -225,6 +226,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    mobileAuth(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

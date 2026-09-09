@@ -1,3 +1,5 @@
+import { saveBlob } from "@/lib/utils/save-blob";
+
 interface SessionChatMessage {
   role: string;
   content: string | null;
@@ -45,7 +47,7 @@ export function exportChatAsMarkdown(
   _sessionId: string,
   title: string | null | undefined,
   messages: SessionChatMessage[],
-): void {
+): Promise<void> {
   const displayTitle = title || "Untitled chat";
   const date = new Date().toISOString().slice(0, 10);
 
@@ -68,14 +70,7 @@ export function exportChatAsMarkdown(
 
   const markdown = lines.join("\n");
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `chat-${sanitizeFilename(displayTitle)}-${date}.md`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  return saveBlob(blob, `chat-${sanitizeFilename(displayTitle)}-${date}.md`);
 }
 
 const EXPORT_PAGE_SIZE = 200;
@@ -121,5 +116,5 @@ export async function fetchAndExportChat(
     );
   }
 
-  exportChatAsMarkdown(id, title, allMessages);
+  await exportChatAsMarkdown(id, title, allMessages);
 }

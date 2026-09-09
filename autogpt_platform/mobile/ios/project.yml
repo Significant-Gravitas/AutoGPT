@@ -1,0 +1,72 @@
+name: AutoGPT
+options:
+  bundleIdPrefix: com.agpt
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  AutoGPTMobileCore:
+    path: .
+targets:
+  AutoGPT:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: AutoGPTMobileCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agpt.mobile
+        INFOPLIST_KEY_CFBundleDisplayName: AutoGPT
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Choose photos to attach to an AutoGPT conversation.
+        INFOPLIST_KEY_NSCameraUsageDescription: Take a photo to attach to an AutoGPT conversation.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Use voice input and attach audio in AutoGPT conversations.
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles: [AppIcon60x60]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.agpt.mobile.authentication
+            CFBundleURLSchemes: [autogpt]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+  AutoGPTUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: AutoGPT
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  AutoGPT:
+    build:
+      targets:
+        AutoGPT: all
+    test:
+      targets: [AutoGPTUITests]

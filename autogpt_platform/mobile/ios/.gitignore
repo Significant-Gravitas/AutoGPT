@@ -1,0 +1,4 @@
+/.build/
+/AutoGPT.xcodeproj/
+/DerivedData/
+*.xcuserstate

@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { ArtifactRef } from "../../../../store";
+import { saveBlob } from "@/lib/utils/save-blob";
 
 export function fileDownloadUrl(fileId: string): string {
   return `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(fileId)}`;
@@ -54,18 +55,7 @@ interface ZipEntry {
 
 interface DownloadZipDeps {
   fetchImpl?: (url: string) => Promise<Response>;
-  save?: (blob: Blob, filename: string) => void;
-}
-
-function triggerDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  save?: (blob: Blob, filename: string) => void | Promise<void>;
 }
 
 export async function downloadFilesAsZip(
@@ -73,7 +63,7 @@ export async function downloadFilesAsZip(
   deps: DownloadZipDeps = {},
 ): Promise<void> {
   const fetchImpl = deps.fetchImpl ?? ((url: string) => fetch(url));
-  const save = deps.save ?? triggerDownload;
+  const save = deps.save ?? saveBlob;
   const zip = new JSZip();
   const used = new Set<string>();
   let added = 0;
@@ -90,5 +80,5 @@ export async function downloadFilesAsZip(
     throw new Error("No files could be downloaded.");
   }
   const blob = await zip.generateAsync({ type: "blob" });
-  save(blob, "workspace-files.zip");
+  await save(blob, "workspace-files.zip");
 }

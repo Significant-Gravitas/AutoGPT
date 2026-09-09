@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="shell_background">#09090B</color>
+    <color name="shell_panel">#18181B</color>
+    <color name="shell_primary">#FAFAFA</color>
+    <color name="shell_secondary">#D4D4D8</color>
+    <color name="shell_accent">#A998FF</color>
+    <color name="shell_on_accent">#18181B</color>
+</resources>
