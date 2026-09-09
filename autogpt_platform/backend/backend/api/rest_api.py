@@ -53,6 +53,7 @@ import backend.api.features.otto.routes
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
+import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
@@ -392,6 +393,11 @@ app.include_router(
     skills_routes.router,
     tags=["v1", "skills"],
     prefix="/api/skills",
+)
+app.include_router(
+    schedules_routes.router,
+    tags=["v1", "schedules"],
+    prefix="/api",
 )
 app.include_router(
     auth_email_routes.auth_email_router,
