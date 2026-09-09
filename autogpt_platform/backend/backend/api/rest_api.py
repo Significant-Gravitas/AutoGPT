@@ -28,6 +28,7 @@ import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
+import backend.api.features.api_keys.routes as api_keys_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.briefings.routes
 import backend.api.features.builder
@@ -382,6 +383,11 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(
+    api_keys_routes.router,
+    tags=["v1", "api-keys"],
+    prefix="/api/api-keys",
+)
 app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",

@@ -361,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -396,6 +396,11 @@ picker-backed field, see above). Collect every other input in the chat:
 if you do not have a value, ask the user for it via `ask_question`, then
 call the tool with it once they connect. Do not tell the user to fill
 anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 

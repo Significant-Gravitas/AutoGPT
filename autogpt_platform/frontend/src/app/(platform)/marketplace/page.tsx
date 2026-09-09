@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { SHELF_SIZE } from "./components/SkillsSection/helpers";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { buildPageMetadata } from "@/lib/metadata";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { Suspense } from "react";
@@ -13,10 +14,17 @@ import { MainMarketplacePageLoading } from "./components/MainMarketplacePageLoad
 
 export const dynamic = "force-dynamic";
 
-// FIX: Correct metadata
+const TITLE = "Marketplace - AutoGPT Platform";
+const DESCRIPTION = "Find and use AI Agents created by our community";
+
+// No og:image: the previous /images/store-og.png and store-twitter.png were
+// never shipped and 404'd on every unfurl.
 export const metadata: Metadata = {
-  title: "Marketplace - AutoGPT Platform",
-  description: "Find and use AI Agents created by our community",
+  ...buildPageMetadata({
+    title: TITLE,
+    description: DESCRIPTION,
+    path: "/marketplace",
+  }),
   applicationName: "AutoGPT Marketplace",
   authors: [{ name: "AutoGPT Team" }],
   keywords: [
@@ -29,26 +37,6 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
-  },
-  openGraph: {
-    title: "Marketplace - AutoGPT Platform",
-    description: "Find and use AI Agents created by our community",
-    type: "website",
-    siteName: "AutoGPT Marketplace",
-    images: [
-      {
-        url: "/images/store-og.png",
-        width: 1200,
-        height: 630,
-        alt: "AutoGPT Marketplace",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Marketplace - AutoGPT Platform",
-    description: "Find and use AI Agents created by our community",
-    images: ["/images/store-twitter.png"],
   },
 };
 

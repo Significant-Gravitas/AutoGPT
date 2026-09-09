@@ -11,7 +11,7 @@ import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import MarketplaceExpertPage from "../[expertId]/page";
+import { ExpertPage as MarketplaceExpertPage } from "../[expertId]/components/ExpertPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockRouterPush = vi.hoisted(() => vi.fn());
