@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -22,6 +23,8 @@ const DEFAULT_EXPERT_ROLE = "Head of AI";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
+  /** The roster has not settled yet for an expert-scoped session. */
+  isResolvingExpertIdentity?: boolean;
   readOnly: boolean;
   /** Powers the chip's file/run counters and its click-through to the
    *  session activity card. Without it the chip is a passive label. */
@@ -45,11 +48,15 @@ interface Props {
  *  the expert's integration logos sit beside it with their own popover. */
 export function ThreadHeader({
   expertIdentity,
+  isResolvingExpertIdentity = false,
   readOnly,
   sessionId = null,
   canOpenActivity = false,
   hasFloatingControls = false,
 }: Props) {
+  // While the roster loads, the chip shows a quiet placeholder rather than
+  // Autopilot's identity, which would be wrong for an expert session.
+  const isResolving = isResolvingExpertIdentity && !expertIdentity;
   const name = expertIdentity?.name ?? "Autopilot";
   const role = expertIdentity?.role ?? DEFAULT_EXPERT_ROLE;
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
@@ -89,12 +96,17 @@ export function ThreadHeader({
       <ExpertAvatar
         name={name}
         avatarUrl={expertIdentity?.avatarUrl ?? null}
-        isAutopilot={!expertIdentity}
+        isAutopilot={!expertIdentity && !isResolving}
+        isLoading={isResolving}
         size="sm"
       />
-      <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
-        {name}
-      </span>
+      {isResolving ? (
+        <Skeleton className="h-3.5 w-16 rounded" />
+      ) : (
+        <span className="max-w-[10rem] truncate text-sm font-medium text-zinc-800">
+          {name}
+        </span>
+      )}
       {counters.map(({ icon, count, noun }) => (
         <span
           key={noun}

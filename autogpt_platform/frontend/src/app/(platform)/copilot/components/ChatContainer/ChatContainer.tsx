@@ -317,6 +317,7 @@ export const ChatContainer = ({
                   queuedMessages={queuedMessages}
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
+                  isResolvingExpertIdentity={isResolvingExpertIdentity}
                   hasFloatingControls={hasFloatingControls}
                   canOpenActivity={isArtifactsEnabled}
                   areFilesOpen={areFilesOpen}
