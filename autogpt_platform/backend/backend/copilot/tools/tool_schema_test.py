@@ -112,17 +112,19 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Bumped 59_000 -> 61_000 for update_expert (the Autopilot-side soul edit,
 # same confirm gate) and raise_expert's color palette enum + persona-name
 # guidance. Merged registry measures 59625 chars; ~1.4k headroom.
-# Bumped 61_000 -> 62_000 for presets that carry graph inputs alongside a
-# trigger: setup_agent_webhook_trigger gains `constant_inputs` and
-# update_preset gains `trigger_config`, which is what stops the model routing
-# graph inputs into the trigger config. Both tools' wording was trimmed by 303
-# chars first, so the bump pays only for the new parameters. Merged registry
-# measures 61162 chars; ~840 headroom.
-# On a merge conflict with another PR's bump, keep the HIGHER value. The budget
-# has to cover what every in-flight PR adds together, but each branch's CI only
-# ever measures its own delta against dev — which is how a green PR gets ejected
-# from the merge queue by a bump it never saw.
-_CHAR_BUDGET = 62_000
+# Bumped 61_000 -> 65_000. That 1.4k of headroom was gone 17 days later:
+# nine tools grew 50-400 chars each with no single PR at fault, dev reached
+# 60,984, and the next PR to add anything was ejected from the merge queue.
+# Sized against what concurrent in-flight PRs add in AGGREGATE (the ten v0.7.5
+# PRs add 1,763) rather than against whatever sits on dev today, because each
+# branch's CI only ever sees its own delta. Registry measures 62,747 with all
+# ten merged; 2,253 headroom.
+# On a merge conflict with another PR's bump, keep the HIGHER value: taking the
+# incoming side lowers a ceiling sized for every in-flight PR at once. #11220
+# resolved its own 62_000 that way, and was NOT among the ten measured above —
+# its `constant_inputs` and `trigger_config`, net of a 303-char trim to both
+# tools' wording, add 178 on top of dev's 60,984.
+_CHAR_BUDGET = 65_000
 
 
 @pytest.fixture(scope="module")
