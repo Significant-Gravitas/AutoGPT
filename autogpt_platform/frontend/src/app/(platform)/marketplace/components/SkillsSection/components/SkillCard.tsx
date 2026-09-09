@@ -37,7 +37,7 @@ export function SkillCard({ skill }: Props) {
             {skill.required_providers.map(formatProviderName).join(", ")}
           </span>
         ) : null}
-        <Text variant="small" className="!ml-auto !text-zinc-500">
+        <Text variant="small" className="!ml-auto !text-zinc-600">
           {skill.install_count} installed
         </Text>
       </div>

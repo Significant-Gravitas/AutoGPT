@@ -66,7 +66,7 @@ export function SkillPage({ slug }: Props) {
             <Text variant="body" className="!mt-2 !text-zinc-600">
               {skill.description}
             </Text>
-            <Text variant="small" className="!mt-2 !text-zinc-500">
+            <Text variant="small" className="!mt-2 !text-zinc-600">
               {skill.creator ? `By ${skill.creator} · ` : ""}
               {skill.install_count} installed
             </Text>
