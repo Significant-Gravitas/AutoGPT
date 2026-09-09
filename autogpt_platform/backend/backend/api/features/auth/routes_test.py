@@ -7,12 +7,14 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.models import RequestContext
+from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 
-from .v1 import v1_router
+from .routes import router
 
 
 def _test_ctx(user_id: str) -> RequestContext:
@@ -30,7 +32,7 @@ def _test_ctx(user_id: str) -> RequestContext:
 
 
 app = fastapi.FastAPI()
-app.include_router(v1_router)
+app.include_router(router)
 # Mirror rest_api.py's GraphActivationError → 400 mapping so the atomicity
 # tests below verify the same behaviour the real app exposes.
 app.add_exception_handler(GraphActivationError, handle_internal_http_error(400))
@@ -88,7 +90,7 @@ def test_get_or_create_user_route(
     mock_result = Mock(user=mock_user, was_created=False)
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user_with_status",
+        "backend.api.features.auth.routes.get_or_create_user_with_status",
         return_value=mock_result,
     )
 
@@ -116,7 +118,7 @@ def test_get_or_create_user_route_reports_creation(
     }
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user_with_status",
+        "backend.api.features.auth.routes.get_or_create_user_with_status",
         return_value=Mock(user=mock_user, was_created=True),
     )
 
@@ -141,7 +143,7 @@ def test_update_user_email_route(
 ) -> None:
     """Test update user email endpoint"""
     mocker.patch(
-        "backend.api.features.v1.update_user_email",
+        "backend.api.features.auth.routes.update_user_email",
         return_value=None,
     )
 
@@ -167,3 +169,63 @@ def test_invalid_json_request() -> None:
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 422
+
+
+# The login surface: six routes authenticate, one deliberately does not.
+# Nothing is hoisted onto this router — a router-level dependency would
+# silently authenticate the email-link route.
+AUTHENTICATED = {
+    ("post", "/api/auth/user"),
+    ("post", "/api/auth/user/email"),
+    ("get", "/api/auth/user/timezone"),
+    ("post", "/api/auth/user/timezone"),
+    ("get", "/api/auth/user/preferences"),
+    ("post", "/api/auth/user/preferences"),
+}
+UNAUTHENTICATED = {("post", "/api/auth/user/preferences/from-email")}
+
+
+@pytest.mark.parametrize("method,path", sorted(AUTHENTICATED))
+def test_auth_route_requires_a_user(method: str, path: str):
+    """Asserted on the dependency chain, not on `security` in the schema: each
+    handler's own Security(get_user_id) or get_jwt_payload puts `security`
+    there regardless, so the schema cannot tell requires_user apart."""
+    route = next(
+        r
+        for r in real_app.routes
+        if isinstance(r, APIRoute) and r.path == path and method.upper() in r.methods
+    )
+    assert "requires_user" in {
+        d.call.__name__ for d in route.dependant.dependencies if d.call
+    }
+
+
+@pytest.mark.parametrize("method,path", sorted(UNAUTHENTICATED))
+def test_email_preference_route_stays_unauthenticated(method: str, path: str):
+    """Reached from a link in an email, so it carries no user credential and
+    verifies its own signed token instead. If a dependency ever appears here,
+    every unsubscribe link in the wild breaks."""
+    route = next(
+        r
+        for r in real_app.routes
+        if isinstance(r, APIRoute) and r.path == path and method.upper() in r.methods
+    )
+    assert route.dependant.dependencies == []
+    assert "security" not in real_app.openapi()["paths"][path][method]
+
+
+def test_auth_surface_has_no_other_operations():
+    served = {
+        (method.lower(), route.path)
+        for route in real_app.routes
+        if isinstance(route, APIRoute)
+        and route.endpoint.__module__ == "backend.api.features.auth.routes"
+        for method in route.methods
+        if method != "HEAD"
+    }
+    assert served == AUTHENTICATED | UNAUTHENTICATED
+
+
+@pytest.mark.parametrize("method,path", sorted(AUTHENTICATED | UNAUTHENTICATED))
+def test_auth_operation_keeps_its_tags(method: str, path: str):
+    assert real_app.openapi()["paths"][path][method]["tags"] == ["v1", "auth"]

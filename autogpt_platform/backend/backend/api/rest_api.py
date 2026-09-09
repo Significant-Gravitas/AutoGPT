@@ -29,6 +29,7 @@ import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.admin.test_data_routes
 import backend.api.features.api_keys.routes as api_keys_routes
+import backend.api.features.auth.routes as auth_routes
 import backend.api.features.auth_email.routes as auth_email_routes
 import backend.api.features.blocks.routes as blocks_routes
 import backend.api.features.briefings.routes
@@ -66,7 +67,6 @@ import backend.api.features.store.routes
 import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.subscriptions.routes as subscriptions_routes
 import backend.api.features.transfers.routes as transfer_routes
-import backend.api.features.v1
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
 import backend.data.autopilot_migrate
@@ -388,7 +388,6 @@ app.add_exception_handler(
 app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
-app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(subscription_trial_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
@@ -432,6 +431,11 @@ app.include_router(
 )
 app.include_router(
     onboarding_routes.router,
+    tags=["v1"],
+    prefix="/api",
+)
+app.include_router(
+    auth_routes.router,
     tags=["v1"],
     prefix="/api",
 )
