@@ -59,6 +59,7 @@ from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
     queue_pending_for_http,
+    resolve_attachments_for_http,
 )
 from backend.copilot.pending_messages import (
     clear_pending_messages_unsafe,
@@ -143,7 +144,7 @@ from backend.copilot.transports import (
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block, resolve_workspace_files
+from backend.data.workspace import build_files_block
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
@@ -266,6 +267,12 @@ class StreamChatRequest(BaseModel):
     message: str = Field(max_length=64_000)
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
+    voice: bool = Field(
+        default=False,
+        description="Voice mode is waiting on speech. Adds one line asking the "
+        "reply to open with a spoken acknowledgement before any tool call; "
+        "text turns never pay for it.",
+    )
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
@@ -1229,6 +1236,8 @@ async def reset_copilot_usage(
         config.weekly_cost_limit_microdollars,
     )
 
+    if tier.value == "TRIAL":
+        raise HTTPException(409, "Trial allowances cannot be reset with credits.")
     if daily_limit <= 0:
         raise HTTPException(
             status_code=400,
@@ -1663,6 +1672,7 @@ async def stream_chat_post(
                 message=message,
                 context=request.context,
                 file_ids=request.file_ids,
+                expert_id=session.expert_id,
             )
             return _empty_ui_message_stream_response()
         except HTTPException as exc:
@@ -1721,9 +1731,16 @@ async def stream_chat_post(
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
+    # Expert sessions may only attach files from the expert's own
+    # conversations; anything else is a 400 rather than a silent drop.
     sanitized_file_ids: list[str] | None = None
     if request.file_ids:
-        files = await resolve_workspace_files(user_id, request.file_ids)
+        files = await resolve_attachments_for_http(
+            user_id,
+            request.file_ids,
+            session_id=session_id,
+            expert_id=session.expert_id,
+        )
         sanitized_file_ids = [wf.id for wf in files] or None
         message += build_files_block(files)
 
@@ -1751,6 +1768,7 @@ async def stream_chat_post(
             message_already_persisted=resume_persisted_kickoff,
             is_user_message=request.is_user_message,
             context=request.context,
+            voice=request.voice,
             file_ids=sanitized_file_ids,
             organization_id=turn_org_id,
             team_id=turn_team_id,
@@ -2002,6 +2020,7 @@ async def queue_pending_message(
         message=request.message,
         context=request.context,
         file_ids=request.file_ids,
+        expert_id=session.expert_id,
     )
 
 

@@ -81,7 +81,11 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Connect successfully in this component, ``localConnected`` stays
   // true even if the live-cred query is briefly stale.
   const normalizedServer = normalizeMcpUrl(serverUrl);
-  const { data: liveCredsRes } = useGetV1ListCredentials({
+  const {
+    data: liveCredsRes,
+    isFetchedAfterMount: liveCredsFetched,
+    isError: liveCredsError,
+  } = useGetV1ListCredentials({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
       // No staleTime — when this card mounts (e.g. immediately after the
@@ -94,12 +98,16 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       refetchOnMount: "always",
     },
   });
-  // Tri-state: ``true``/``false`` when the live API responded, ``"unknown"``
-  // while loading or after a network/auth failure (``select`` returned
-  // ``null``).  Treating an unknown live state as ``false`` would override
-  // a still-valid persisted snapshot — see review for the
-  // initiallyConnected=false + 5xx race that surfaces a bare Connect
-  // button despite an existing cred.
+  // Tri-state, because "we don't know yet" must fall back to the persisted
+  // snapshot rather than to disconnected. Unknown covers: this mount's fetch
+  // hasn't landed (React Query keeps serving the previous cache until it
+  // does, and that cache still lists rows the backend just invalidated), the
+  // refetch settled but errored (stale data is still served), and a non-200
+  // that ``select`` mapped to null.
+  //
+  // ``isFetchedAfterMount`` rather than ``isFetching``: this query key is
+  // app-wide, so ``isFetching`` also goes true on window focus and on every
+  // credential mutation elsewhere, blanking a genuinely connected card.
   const liveCredential = !Array.isArray(liveCredsRes)
     ? null
     : liveCredsRes.find(
@@ -108,9 +116,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
           typeof c.host === "string" &&
           normalizeMcpUrl(c.host) === normalizedServer,
       );
-  const liveHasCred: boolean | "unknown" = !Array.isArray(liveCredsRes)
-    ? "unknown"
-    : Boolean(liveCredential);
+  const liveHasCred: boolean | "unknown" =
+    !liveCredsFetched || liveCredsError || !Array.isArray(liveCredsRes)
+      ? "unknown"
+      : Boolean(liveCredential);
   const storedManualAuthScheme: MCPAuthScheme =
     liveCredential?.mcp_auth_scheme === "basic" ? "basic" : "bearer";
 
@@ -488,7 +497,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
                 onClick={() => handleManualToken()}
                 disabled={loading || !manualToken.trim()}
               >
-                Use Token
+                {loading ? "Verifying…" : "Use Token"}
               </Button>
             </div>
           </div>

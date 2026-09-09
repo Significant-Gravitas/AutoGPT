@@ -199,6 +199,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"

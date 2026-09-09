@@ -307,17 +307,41 @@ describe("Marketplace expert page", () => {
     expect(rosterRequested).toBe(false);
   });
 
-  test("shows the coming-soon page when experts are not enabled yet", async () => {
+  test("shows the coming-soon label instead of hire actions when the flag is off", async () => {
     flagStatusMock.mockReturnValue({ enabled: false, ready: true });
+    let rosterRequested = false;
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler(() => {
+        rosterRequested = true;
+        return [];
+      }),
+    );
 
     renderPage();
 
-    expect(await screen.findByText("Coming soon")).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Maria" })).toBeNull();
     expect(
-      screen
-        .getByRole("link", { name: "Back to marketplace" })
-        .getAttribute("href"),
-    ).toBe("/marketplace");
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(screen.getByText("Coming soon")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Get started" })).toBeNull();
+    expect(rosterRequested).toBe(false);
+  });
+
+  test("waits for the flag before showing a header action", async () => {
+    flagStatusMock.mockReturnValue({ enabled: false, ready: false });
+    server.use(
+      getListExpertTemplatesMockHandler([mariaTemplate]),
+      getListExpertsMockHandler([]),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Maria" }),
+    ).toBeDefined();
+    expect(screen.queryByText("Coming soon")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hire Maria" })).toBeNull();
   });
 });

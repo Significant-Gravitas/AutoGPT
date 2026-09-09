@@ -663,6 +663,123 @@ class TestRunBlockInputValidation:
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_carries_no_plain_inputs(self):
+        """A connect card is only a connect card: the block's ordinary inputs
+        are collected in chat, so the setup card must not ship a form for
+        them alongside the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="github-search-id",
+            name="GitHub Search Issues",
+            input_properties={
+                "term": {"type": "string"},
+                "limit": {"type": "integer", "default": 10, "advanced": True},
+            },
+            required_fields=["term"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"github"}),
+            credentials_types=frozenset({"api_key"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "term",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="github-search-id",
+                input_data={"term": "login bug"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "credentials" in response.setup_info.user_readiness.missing_credentials
+        assert response.setup_info.requirements["inputs"] == []
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_credentials_card_keeps_picker_inputs(self):
+        """Picker-backed fields are the one input the chat cannot supply, so
+        they stay on the card next to the credentials."""
+        from backend.data.model import CredentialsFieldInfo
+
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+        info = CredentialsFieldInfo(
+            credentials_provider=frozenset({"google"}),
+            credentials_types=frozenset({"oauth2"}),
+        )
+        mock_block.input_schema.get_credentials_fields_info.return_value = {
+            "credentials": info
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {
+            "credentials": MagicMock()
+        }
+        mock_block.input_schema.get_required_fields.return_value = {
+            "credentials",
+            "spreadsheet",
+            "range",
+        }
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, [MagicMock()]),
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        names = [i["name"] for i in response.setup_info.requirements["inputs"]]
+        assert names == ["spreadsheet"]
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.
@@ -1240,6 +1357,70 @@ class TestExecuteBlockUserTimezoneAccessor:
         ctx = captured["ctx"]
         assert ctx is not None
         assert ctx.user_timezone == "America/New_York"  # type: ignore[attr-defined]
+
+
+class TestExecuteBlockExpertAttribution:
+    """A block run from an expert chat must carry the expert on its execution
+    context, so ``workspace://`` inputs resolve inside that expert's scope."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_id_is_plumbed_into_the_execution_context(self):
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = make_mock_block_with_schema(
+            block_id="scope-block-id",
+            name="Scope Block",
+            input_properties={},
+            required_fields=[],
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _capture_ctx(_input, **kwargs):
+            captured["ctx"] = kwargs["execution_context"]
+            yield "result", "ok"
+
+        mock_block.execute = _capture_ctx
+
+        rpc_client = MagicMock()
+        rpc_client.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-scope")
+        )
+
+        with (
+            patch("backend.copilot.tools.helpers.user_db", return_value=rpc_client),
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_StubCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="scope-block-id",
+                input_data={},
+                user_id="u-scope",
+                session_id="s-scope",
+                node_exec_id="n-scope",
+                matched_credentials={},
+                dry_run=False,
+                expert_id="expert-a",
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        ctx = captured["ctx"]
+        assert ctx is not None
+        assert ctx.expert_id == "expert-a"  # type: ignore[attr-defined]
+        assert ctx.session_id == "s-scope"  # type: ignore[attr-defined]
 
 
 class _StubCreditDB:
