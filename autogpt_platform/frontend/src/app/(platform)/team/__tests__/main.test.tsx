@@ -248,7 +248,8 @@ describe("TeamPage", () => {
     const card = screen.getByRole("link", { name: "View Maria" });
     expect(within(card).getByText("Idle")).toBeDefined();
     expect(getStatValue(card, "Workflows")).toBe("2");
-    expect(getStatValue(card, "Skills")).toBe("0");
+    // Empty totals are left off the meta line.
+    expect(within(card).queryByText("Skills")).toBeNull();
     expect(within(card).queryByText("Content Calendar")).toBeNull();
     expect(within(card).queryByText("SEO Audit")).toBeNull();
   });
