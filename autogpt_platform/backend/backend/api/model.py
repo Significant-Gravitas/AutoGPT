@@ -52,7 +52,7 @@ class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
 
 
-class UploadFileResponse(pydantic.BaseModel):
+class CloudStorageUploadResponse(pydantic.BaseModel):
     file_uri: str
     file_name: str
     size: int

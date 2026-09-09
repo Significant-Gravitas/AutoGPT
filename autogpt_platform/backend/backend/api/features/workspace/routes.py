@@ -130,7 +130,7 @@ async def create_file_download_response(
             raise
 
 
-class UploadFileResponse(BaseModel):
+class WorkspaceFileUploadResponse(BaseModel):
     file_id: str
     name: str
     path: str
@@ -314,7 +314,7 @@ async def upload_file(
     file: UploadFile,
     session_id: str | None = Query(default=None),
     overwrite: bool = Query(default=False),
-) -> UploadFileResponse:
+) -> WorkspaceFileUploadResponse:
     """
     Upload a file to the user's workspace.
 
@@ -389,7 +389,7 @@ async def upload_file(
             ),
         )
 
-    return UploadFileResponse(
+    return WorkspaceFileUploadResponse(
         file_id=workspace_file.id,
         name=workspace_file.name,
         path=workspace_file.path,

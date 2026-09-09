@@ -12,7 +12,10 @@ from backend.api.features.executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
 )
-from backend.api.features.executions.model import ShareRequest, ShareResponse
+from backend.api.features.executions.model import (
+    ExecutionShareRequest,
+    ExecutionShareResponse,
+)
 from backend.api.features.workspace.routes import create_file_download_response
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -254,8 +257,8 @@ async def enable_execution_sharing(
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
-    _body: ShareRequest = Body(default=ShareRequest()),
-) -> ShareResponse:
+    _body: ExecutionShareRequest = Body(default=ExecutionShareRequest()),
+) -> ExecutionShareResponse:
     """Enable sharing for a graph execution."""
     # Verify the execution belongs to the user
     execution = await execution_db.get_graph_execution(
@@ -298,7 +301,7 @@ async def enable_execution_sharing(
     frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
     share_url = f"{frontend_url}/share/{share_token}"
 
-    return ShareResponse(share_url=share_url, share_token=share_token)
+    return ExecutionShareResponse(share_url=share_url, share_token=share_token)
 
 
 @router.delete(

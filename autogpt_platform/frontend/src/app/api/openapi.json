@@ -4483,9 +4483,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__chat__share__ShareResponse"
-                }
+                "schema": { "$ref": "#/components/schemas/ChatShareResponse" }
               }
             }
           },
@@ -7253,7 +7251,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__model__UploadFileResponse"
+                  "$ref": "#/components/schemas/CloudStorageUploadResponse"
                 }
               }
             }
@@ -7709,7 +7707,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ShareRequest",
+                "$ref": "#/components/schemas/ExecutionShareRequest",
                 "default": {}
               }
             }
@@ -7721,7 +7719,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__executions__model__ShareResponse"
+                  "$ref": "#/components/schemas/ExecutionShareResponse"
                 }
               }
             }
@@ -15264,7 +15262,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
+                  "$ref": "#/components/schemas/WorkspaceFileUploadResponse"
                 }
               }
             }
@@ -17756,6 +17754,15 @@
         "title": "ChatSessionMetadata",
         "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
+      "ChatShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ChatShareResponse"
+      },
       "ChatShareStateResponse": {
         "properties": {
           "is_shared": {
@@ -17869,6 +17876,24 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CloudStorageUploadResponse": {
+        "properties": {
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "size": { "type": "integer", "title": "Size" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
+        },
+        "type": "object",
+        "required": [
+          "file_uri",
+          "file_name",
+          "size",
+          "content_type",
+          "expires_in_hours"
+        ],
+        "title": "CloudStorageUploadResponse"
       },
       "CoPilotUsagePublic": {
         "properties": {
@@ -20115,6 +20140,22 @@
         "required": ["execution_id", "status", "outputs"],
         "title": "ExecutionOutputInfo",
         "description": "Summary of a single execution's outputs."
+      },
+      "ExecutionShareRequest": {
+        "properties": {},
+        "type": "object",
+        "title": "ExecutionShareRequest",
+        "description": "Optional request body for share endpoint."
+      },
+      "ExecutionShareResponse": {
+        "properties": {
+          "share_url": { "type": "string", "title": "Share Url" },
+          "share_token": { "type": "string", "title": "Share Token" }
+        },
+        "type": "object",
+        "required": ["share_url", "share_token"],
+        "title": "ExecutionShareResponse",
+        "description": "Response from share endpoints."
       },
       "ExecutionStartedResponse": {
         "properties": {
@@ -26799,12 +26840,6 @@
         "title": "SetupRequirementsResponse",
         "description": "Response for validate action."
       },
-      "ShareRequest": {
-        "properties": {},
-        "type": "object",
-        "title": "ShareRequest",
-        "description": "Optional request body for share endpoint."
-      },
       "SharedChatLinkedExecution": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -30792,6 +30827,18 @@
         ],
         "title": "WorkspaceFileItem"
       },
+      "WorkspaceFileUploadResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" }
+        },
+        "type": "object",
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
+        "title": "WorkspaceFileUploadResponse"
+      },
       "WorkspaceFolder": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -30905,55 +30952,6 @@
         "required": ["content"],
         "title": "WriteSummary",
         "description": "One line per envelope written by apply.py.\n\nCarries the durable Graphiti edge uuid so the eval / admin UI / the\nfuture inline chat-stream `dream.operations` event (P9 daydreaming)\ncan render or audit individual operations. ``edge_uuid`` is None\nwhen the underlying ``enqueue_episode`` call did not return one\n(FalkorDB unreachable, etc.) — we still record the attempted write."
-      },
-      "backend__api__features__chat__share__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse"
-      },
-      "backend__api__features__executions__model__ShareResponse": {
-        "properties": {
-          "share_url": { "type": "string", "title": "Share Url" },
-          "share_token": { "type": "string", "title": "Share Token" }
-        },
-        "type": "object",
-        "required": ["share_url", "share_token"],
-        "title": "ShareResponse",
-        "description": "Response from share endpoints."
-      },
-      "backend__api__features__workspace__routes__UploadFileResponse": {
-        "properties": {
-          "file_id": { "type": "string", "title": "File Id" },
-          "name": { "type": "string", "title": "Name" },
-          "path": { "type": "string", "title": "Path" },
-          "mime_type": { "type": "string", "title": "Mime Type" },
-          "size_bytes": { "type": "integer", "title": "Size Bytes" }
-        },
-        "type": "object",
-        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
-        "title": "UploadFileResponse"
-      },
-      "backend__api__model__UploadFileResponse": {
-        "properties": {
-          "file_uri": { "type": "string", "title": "File Uri" },
-          "file_name": { "type": "string", "title": "File Name" },
-          "size": { "type": "integer", "title": "Size" },
-          "content_type": { "type": "string", "title": "Content Type" },
-          "expires_in_hours": { "type": "integer", "title": "Expires In Hours" }
-        },
-        "type": "object",
-        "required": [
-          "file_uri",
-          "file_name",
-          "size",
-          "content_type",
-          "expires_in_hours"
-        ],
-        "title": "UploadFileResponse"
       }
     },
     "securitySchemes": {
