@@ -74,3 +74,99 @@ async def test_match_user_credentials_excludes_auto_creds():
     assert len(matched) == 0
     assert len(missing) == 1
     assert "github_api_key" in missing[0]
+
+
+_SECRET = "sk-live-SHOULD-NOT-APPEAR"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (
+            "GET https://api.example.com/me?api_key=sk-live-abc failed",
+            "GET https://api.example.com/me failed",
+        ),
+        ("Authorization: Bearer sk-live-abc rejected", "[redacted] rejected"),
+        ("bad token=sk-live-abc", "bad [redacted]"),
+        ("password: hunter2", "[redacted]"),
+        ("HTTP 401 Error:\n  Unauthorized", "HTTP 401 Error: Unauthorized"),
+        # The rejection reason is the point of the card, so prose that merely
+        # mentions a secret-ish word must survive intact.
+        ("Invalid API key provided.", "Invalid API key provided."),
+        ("The token has expired; reconnect.", "The token has expired; reconnect."),
+        ("Your basic plan does not allow this", "Your basic plan does not allow this"),
+    ],
+)
+def test_sanitize_provider_message_drops_secrets(raw: str, expected: str):
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    assert sanitize_provider_message(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        f"api_key={_SECRET}",
+        f'{{"api_key": "{_SECRET}"}}',
+        f'{{"api_key":"{_SECRET}"}}',
+        f'{{"access_token": "{_SECRET}"}}',
+        f"{{'refresh_token': '{_SECRET}'}}",
+        f'headers={{"X-Api-Key": "{_SECRET}"}}',
+        f"Authorization: Bearer {_SECRET}",
+        f"Authorization: Basic {_SECRET}",
+        f"Authorization: Token {_SECRET}",
+        f'{{"authorization": "Bearer {_SECRET}"}}',
+    ],
+)
+def test_sanitize_provider_message_leaves_no_secret(raw: str):
+    """Asserts on the secret, not on "[redacted]" — the Authorization shapes
+    substituted the scheme and left the token standing next to the marker."""
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    assert _SECRET not in sanitize_provider_message(raw)
+
+
+def test_sanitize_provider_message_is_bounded():
+    from backend.copilot.tools.utils import sanitize_provider_message
+
+    out = sanitize_provider_message("x" * 500, max_chars=50)
+    assert out == "x" * 50 + "…"
+
+
+def test_credential_rejection_status_reads_through_the_cause_chain():
+    """Blocks wrap the provider's error, so only ``__cause__`` still has it."""
+    from backend.copilot.tools.utils import credential_rejection_status
+    from backend.util.exceptions import BlockUnknownError
+    from backend.util.request import HTTPClientError
+
+    try:
+        try:
+            raise HTTPClientError("Unauthorized", 401)
+        except HTTPClientError as inner:
+            raise BlockUnknownError("failed", "Block", "block-id") from inner
+    except BlockUnknownError as wrapped:
+        assert credential_rejection_status(wrapped) == 401
+
+
+@pytest.mark.parametrize(
+    "exc, expected",
+    [
+        (type("Aiohttp", (Exception,), {"status": 401})(), 401),
+        # A 403 is a scope decision or a WAF, not a rejected credential.
+        (type("Forbidden", (Exception,), {"status_code": 403})(), None),
+        (
+            type(
+                "Requests",
+                (Exception,),
+                {"response": type("R", (), {"status_code": 401})()},
+            )(),
+            401,
+        ),
+        (type("ServerErr", (Exception,), {"status_code": 500})(), None),
+        (ValueError("no status anywhere"), None),
+    ],
+)
+def test_credential_rejection_status_only_matches_rejections(exc, expected):
+    from backend.copilot.tools.utils import credential_rejection_status
+
+    assert credential_rejection_status(exc) == expected
