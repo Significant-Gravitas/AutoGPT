@@ -44,6 +44,7 @@ from backend.util.type import coerce_inputs_to_schema
 
 from .models import (
     BlockOutputResponse,
+    CredentialRejection,
     ErrorResponse,
     InputValidationErrorResponse,
     ReviewRequiredResponse,
@@ -54,7 +55,9 @@ from .models import (
 )
 from .utils import (
     build_missing_credentials_from_field_info,
+    credential_rejection_status,
     match_credentials_to_requirements,
+    sanitize_provider_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,6 +106,36 @@ def get_inputs_from_schema(
             entry["value"] = provided[name]
         results.append(entry)
     return results
+
+
+def is_picker_field(schema: Any) -> bool:
+    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+
+    The picker attaches hidden credentials to the chosen resource, so a bare
+    ID or URL typed into the chat can never stand in for it.
+    """
+    return isinstance(schema, dict) and (
+        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+    )
+
+
+def get_picker_inputs_from_schema(
+    input_schema: dict[str, Any],
+    exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Inputs a setup card should render: picker-backed fields only.
+
+    Every other input is collected in the chat by the CoPilot asking the
+    user, so the card carries no form for them.
+    """
+    return [
+        entry
+        for entry in get_inputs_from_schema(
+            input_schema, exclude_fields=exclude_fields, input_data=input_data
+        )
+        if is_picker_field(entry)
+    ]
 
 
 async def _charge_block_credits(
@@ -210,8 +243,12 @@ async def execute_block(
     dry_run: bool,
     organization_id: str | None = None,
     team_id: str | None = None,
+    expert_id: str | None = None,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
+
+    ``expert_id`` is the session's expert; it attributes the run so
+    ``workspace://`` inputs resolve inside that expert's file scope.
 
     This is the shared execution path used by both ``run_block`` (after review
     check) and ``continue_run_block`` (after approval).
@@ -290,6 +327,7 @@ async def execute_block(
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
+            expert_id=expert_id,
         )
 
         exec_kwargs: dict[str, Any] = {
@@ -383,7 +421,7 @@ async def execute_block(
                     ),
                     requirements={
                         "credentials": [],
-                        "inputs": get_inputs_from_schema(
+                        "inputs": get_picker_inputs_from_schema(
                             input_schema,
                             exclude_fields=credentials_fields,
                             input_data=input_data,
@@ -539,6 +577,21 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        status_code = credential_rejection_status(e)
+        if status_code is not None and matched_credentials:
+            logger.warning(
+                f"Provider rejected a stored credential for block {block.name} "
+                f"with HTTP {status_code}"
+            )
+            return _build_credential_rejected_card(
+                block=block,
+                block_id=block_id,
+                input_data=input_data,
+                matched_credentials=matched_credentials,
+                session_id=session_id,
+                status_code=status_code,
+                exc=e,
+            )
         logger.warning("Block execution failed: %s", e)
         return ErrorResponse(
             message=f"Block execution failed: {e}",
@@ -552,6 +605,67 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         )
+
+
+def _build_credential_rejected_card(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int,
+    exc: BlockError,
+) -> SetupRequirementsResponse:
+    """Setup card for a credential the provider refused mid-execution.
+
+    The rejected row is kept — a 401 is not proof the secret is wrong — so
+    the ``rejection`` field is what stops the card re-offering it as ready.
+    """
+    missing_creds_dict = build_missing_credentials_from_field_info(
+        _resolve_discriminated_credentials(block, input_data), matched_keys=set()
+    )
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    return SetupRequirementsResponse(
+        message=(
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code}). Connect or pick a different one, then re-run."
+        ),
+        session_id=session_id,
+        setup_info=SetupInfo(
+            agent_id=block_id,
+            agent_name=block.name,
+            user_readiness=UserReadiness(
+                has_all_credentials=False,
+                missing_credentials=missing_creds_dict,
+                ready_to_run=False,
+            ),
+            requirements={
+                "credentials": list(missing_creds_dict.values()),
+                "inputs": [],
+                "execution_modes": ["immediate"],
+            },
+        ),
+        rejection=CredentialRejection(
+            provider=provider or "unknown",
+            detail=sanitize_provider_message(str(exc)),
+            status_code=status_code,
+            credential_id=rejected.id if rejected else None,
+            credential_title=rejected.title if rejected else None,
+        ),
+    )
 
 
 async def _collect_block_outputs(
@@ -756,11 +870,7 @@ async def prepare_block_for_execution(
     picker_fields_missing = [
         f
         for f in required_non_credential_keys - provided_input_keys
-        if isinstance(input_schema.get("properties", {}).get(f), dict)
-        and (
-            input_schema["properties"][f].get("format") == "google-drive-picker"
-            or "auto_credentials" in input_schema["properties"][f]
-        )
+        if is_picker_field(input_schema.get("properties", {}).get(f))
     ]
 
     # validate_only suppresses the setup-card early-return — the caller is
@@ -800,7 +910,7 @@ async def prepare_block_for_execution(
                 ),
                 requirements={
                     "credentials": missing_creds_list,
-                    "inputs": get_inputs_from_schema(
+                    "inputs": get_picker_inputs_from_schema(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,

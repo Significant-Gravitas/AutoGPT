@@ -1,11 +1,7 @@
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import {
-  type InfiniteData,
-  keepPreviousData,
-  useInfiniteQuery,
-} from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -13,7 +9,13 @@ const PAGE_SIZE = 50;
 
 type ListPage = Awaited<ReturnType<typeof listWorkspaceFiles>>;
 
-export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
+interface Args {
+  enabled: boolean;
+  /** Expert the chat is scoped to; lists only files that expert can attach. */
+  expertId?: string | null;
+}
+
+export function useWorkspaceFilePicker({ enabled, expertId }: Args) {
   const [searchTerm, setSearchTerm] = useState("");
   // Keep the full item (not just id) so a selection survives a search that
   // pages the file off the currently-loaded list.
@@ -28,16 +30,30 @@ export function useWorkspaceFilePicker({ enabled }: { enabled: boolean }) {
   const q = debouncedSearch || undefined;
 
   const query = useInfiniteQuery({
-    queryKey: ["workspace-file-picker", "list", { q: q ?? null }] as const,
+    queryKey: [
+      "workspace-file-picker",
+      "list",
+      { q: q ?? null, expertId: expertId ?? null },
+    ] as const,
     queryFn: ({ pageParam }) =>
-      listWorkspaceFiles({ limit: PAGE_SIZE, offset: pageParam, q }),
+      listWorkspaceFiles({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q,
+        expert_id: expertId ?? undefined,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.status !== 200) return undefined;
       if (!lastPage.data.has_more) return undefined;
       return countLoadedFiles(allPages);
     },
-    placeholderData: keepPreviousData,
+    // Keep the previous page while a search refines the same expert's list,
+    // but never show one expert's files while another's request is pending.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2].expertId === (expertId ?? null)
+        ? previousData
+        : undefined,
     enabled,
   });
 
