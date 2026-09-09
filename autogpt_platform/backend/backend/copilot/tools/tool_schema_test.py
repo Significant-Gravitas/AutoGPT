@@ -121,7 +121,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # ten merged; 2,253 headroom.
 # list_expert_chats / read_expert_chat (SECRT-2581) add 1,706 chars and fit
 # under 65_000 without a bump of their own; merged registry measures 62,694.
-# Bumped 65_000 -> 67_650 on 2026-09-09: dev's 62,747 plus the six expert PRs
+# Bumped 65_000 -> 67_651 on 2026-09-09: dev's 62,747 plus the six expert PRs
 # then in flight, which add 4,903 between them and blow the old ceiling by 2,650
 # while each branch's own CI, measuring only its own delta, stays green.
 # Measured per branch, not estimated:
@@ -134,6 +134,8 @@ from backend.copilot.tools import TOOL_REGISTRY
 # There is NO margin on top, deliberately. This limit is a brake: it exists to
 # make every increase in what AutoPilot pays per turn a decision someone took,
 # so slack for growth nobody has measured is the one thing it must not carry.
+# The assertion below is a strict <, so the ceiling is the measured total plus
+# one — 67,651 admits exactly that aggregate and nothing beyond it.
 # The next tool that does not fit raises this line itself, with its own measured
 # number and its own row above.
 #
@@ -145,7 +147,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 # Measure it the way this test does — one json.dumps over the whole list —
 # not by summing per-tool lengths, which misses ~142 chars of array
 # separators and overstates the headroom.
-_CHAR_BUDGET = 67_650
+_CHAR_BUDGET = 67_651
 
 
 @pytest.fixture(scope="module")
