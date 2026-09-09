@@ -5767,6 +5767,139 @@
         }
       }
     },
+    "/api/credits/trial": {
+      "get": {
+        "tags": ["trials"],
+        "summary": "Get Trial Status",
+        "operationId": "getTrialsGetTrialStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["trials"],
+        "summary": "Start Trial Checkout",
+        "operationId": "postTrialsStartTrialCheckout",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "x-datafast-visitor-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Visitor-Id"
+            }
+          },
+          {
+            "name": "x-datafast-session-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Session-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TrialCheckoutRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Trial offer unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "Stripe checkout unavailable" },
+          "503": { "description": "Billing return URL not configured" }
+        }
+      }
+    },
+    "/api/credits/trial/cancel": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Cancel Trial",
+        "operationId": "postTrialsCancelTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "No cancelable trial subscription" },
+          "502": {
+            "description": "Stripe cancellation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/trial/confirm": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Confirm Trial",
+        "operationId": "postTrialsConfirmTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Trial checkout is unavailable or no longer current"
+          },
+          "502": {
+            "description": "Stripe confirmation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
@@ -14041,6 +14174,28 @@
         }
       }
     },
+    "/api/store/categories": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store categories",
+        "description": "The canonical categories a listing can be filed under.",
+        "operationId": "getV2List store categories",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreCategoryInfo" },
+                  "type": "array",
+                  "title": "Response Getv2List Store Categories"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/creators": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -18681,6 +18836,32 @@
         "type": "object",
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
+      },
+      "CredentialRejection": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Sanitised reason; never carries a secret."
+          },
+          "status_code": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Status Code"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Title"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "detail"],
+        "title": "CredentialRejection",
+        "description": "A stored credential that the provider refused at use time."
       },
       "CredentialsDeletionNeedsConfirmationResponse": {
         "properties": {
@@ -26722,6 +26903,12 @@
           "graph_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
+          },
+          "rejection": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CredentialRejection" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -27214,6 +27401,16 @@
         "enum": ["rating", "runs", "name", "updated_at"],
         "title": "StoreAgentsSortOptions"
       },
+      "StoreCategoryInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["value", "label", "description"],
+        "title": "StoreCategoryInfo"
+      },
       "StoreCreatorsSortOptions": {
         "type": "string",
         "enum": ["agent_rating", "agent_runs", "num_agents"],
@@ -27542,8 +27739,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27555,7 +27751,7 @@
           }
         },
         "type": "object",
-        "required": ["name", "sub_heading"],
+        "required": ["name", "sub_heading", "categories"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
@@ -27601,8 +27797,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27619,7 +27814,8 @@
           "graph_version",
           "slug",
           "name",
-          "sub_heading"
+          "sub_heading",
+          "categories"
         ],
         "title": "StoreSubmissionRequest"
       },
@@ -27737,6 +27933,7 @@
             "type": "string",
             "enum": [
               "NO_TIER",
+              "TRIAL",
               "BASIC",
               "PRO",
               "MAX",
@@ -27828,7 +28025,15 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
+        "enum": [
+          "NO_TIER",
+          "TRIAL",
+          "BASIC",
+          "PRO",
+          "MAX",
+          "BUSINESS",
+          "ENTERPRISE"
+        ],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -28984,6 +29189,124 @@
           "created_at"
         ],
         "title": "TransferResponse"
+      },
+      "TrialCheckoutRequest": {
+        "properties": {
+          "offer_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Offer Token"
+          },
+          "return_to": {
+            "type": "string",
+            "enum": ["onboarding", "billing"],
+            "title": "Return To",
+            "default": "billing"
+          }
+        },
+        "type": "object",
+        "required": ["offer_token"],
+        "title": "TrialCheckoutRequest"
+      },
+      "TrialCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "TrialCheckoutResponse"
+      },
+      "TrialOfferResponse": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "version": { "type": "string", "title": "Version" },
+          "duration_days": { "type": "integer", "title": "Duration Days" },
+          "tier": {
+            "type": "string",
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS"],
+            "title": "Tier"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "unit_amount": { "type": "integer", "title": "Unit Amount" },
+          "currency": { "type": "string", "title": "Currency" },
+          "onboarding_credit_amount": {
+            "type": "integer",
+            "title": "Onboarding Credit Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "version",
+          "duration_days",
+          "tier",
+          "billing_cycle",
+          "unit_amount",
+          "currency",
+          "onboarding_credit_amount"
+        ],
+        "title": "TrialOfferResponse"
+      },
+      "TrialRejectionReason": {
+        "type": "string",
+        "enum": ["intro_offer_already_used", "card_verification_failed"],
+        "title": "TrialRejectionReason"
+      },
+      "TrialStatusResponse": {
+        "properties": {
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible",
+            "default": false
+          },
+          "offer": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialOfferResponse" },
+              { "type": "null" }
+            ]
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialRejectionReason" },
+              { "type": "null" }
+            ]
+          },
+          "ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ends At"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End",
+            "default": false
+          },
+          "allowance_used_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Allowance Used Percent"
+          },
+          "active": { "type": "boolean", "title": "Active", "default": false },
+          "converted": {
+            "type": "boolean",
+            "title": "Converted",
+            "default": false
+          },
+          "onboarding_credits_previously_received": {
+            "type": "boolean",
+            "title": "Onboarding Credits Previously Received",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrialStatusResponse"
       },
       "TriggeredPresetSetupRequest": {
         "properties": {
