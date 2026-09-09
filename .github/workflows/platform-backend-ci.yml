@@ -522,6 +522,7 @@ jobs:
           JWT_VERIFY_KEY: "ci-only-jwt-verify-key-with-at-least-32-characters"
           REDIS_HOST: localhost
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
+          TRIAL_TEST_DATABASE: "1"
         run: |
           export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/${DATABASE_NAME}"
           export DIRECT_URL="$DATABASE_URL"

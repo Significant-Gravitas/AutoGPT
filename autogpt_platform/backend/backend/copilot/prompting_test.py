@@ -52,6 +52,14 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_contains_rejection_rule(self):
+        """This section collects rules from several PRs at once, so a merge
+        that takes one side drops a rule silently."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "refused a credential the user already has" in result
+        assert "Connecting is not running" in result
+        assert "The card asks for credentials, not inputs" in result
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Tool Discovery Priority section must forbid claiming a capability
