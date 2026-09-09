@@ -21,7 +21,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       </Text>
       <Button
         variant="destructive"
-        size="xs"
+        size="small"
         className="mt-4"
         onClick={onFire}
         data-testid="expert-fire-button"

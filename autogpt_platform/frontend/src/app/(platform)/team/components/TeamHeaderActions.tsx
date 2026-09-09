@@ -18,7 +18,7 @@ export function TeamHeaderActions({ onNewPod }: Props) {
         as="NextLink"
         href="/raise"
         variant="secondary"
-        size="xs"
+        size="small"
         leadingIcon={SparklesIcon}
       >
         Raise expert
@@ -27,14 +27,14 @@ export function TeamHeaderActions({ onNewPod }: Props) {
         as="NextLink"
         href="/marketplace#experts"
         variant="primary"
-        size="xs"
+        size="small"
         leadingIcon={UserAdd01Icon}
       >
         Hire expert
       </Button>
       <Button
         variant="outline"
-        size="xs"
+        size="small"
         onClick={onNewPod}
         leadingIcon={UserGroupIcon}
       >

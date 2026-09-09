@@ -127,7 +127,7 @@ function ExpertRunRow({ run, onOpen }: { run: ExpertRun; onOpen: () => void }) {
           ) : null}
         </div>
       </div>
-      <Button variant="secondary" size="xs" onClick={onOpen}>
+      <Button variant="secondary" size="small" onClick={onOpen}>
         Open
       </Button>
     </div>

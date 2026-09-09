@@ -27,7 +27,7 @@ export function TeamRosterToolbar({
       <SearchInput
         value={query}
         onChange={onQueryChange}
-        size="xsmall"
+        size="small"
         placeholder="Search experts"
         aria-label="Search experts"
         className="w-full sm:w-48"
@@ -37,7 +37,6 @@ export function TeamRosterToolbar({
         label="Filter"
         hideLabel
         size="small"
-        className="h-7 rounded-md px-2.5 text-xs"
         value={filter}
         onValueChange={(next) => onFilterChange(next as TeamFilter)}
         options={FILTER_OPTIONS}

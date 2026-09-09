@@ -82,7 +82,7 @@ export function PodBoard({
           <Text variant="body" tone="secondary" className="max-w-prose">
             Group experts into pods to keep related work together.
           </Text>
-          <Button variant="primary" size="xs" onClick={onNewPod}>
+          <Button variant="primary" size="small" onClick={onNewPod}>
             New Pod
           </Button>
         </div>

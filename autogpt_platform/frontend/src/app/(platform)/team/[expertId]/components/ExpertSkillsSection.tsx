@@ -46,14 +46,14 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={PlusSignIcon}
             onClick={openAdd}
           >
             Add skill
           </Button>
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search skills"

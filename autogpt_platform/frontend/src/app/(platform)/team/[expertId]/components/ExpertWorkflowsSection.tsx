@@ -62,7 +62,7 @@ export function ExpertWorkflowsSection({
           {onInstallWorkflow ? (
             <Button
               variant="secondary"
-              size="xs"
+              size="small"
               leadingIcon={PlusSignIcon}
               onClick={onInstallWorkflow}
             >
@@ -70,7 +70,7 @@ export function ExpertWorkflowsSection({
             </Button>
           ) : null}
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search workflows"

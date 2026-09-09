@@ -38,7 +38,7 @@ export function AutopilotHeader() {
           as="NextLink"
           href="/copilot"
           variant="primary"
-          size="xs"
+          size="small"
           className="shrink-0"
         >
           Chat

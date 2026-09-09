@@ -59,7 +59,7 @@ export function ExpertSchedulesSection({
           {expertId && workflows ? (
             <Button
               variant="secondary"
-              size="xs"
+              size="small"
               leadingIcon={PlusSignIcon}
               onClick={() => setIsCreateOpen(true)}
             >
@@ -67,7 +67,7 @@ export function ExpertSchedulesSection({
             </Button>
           ) : null}
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search schedules"

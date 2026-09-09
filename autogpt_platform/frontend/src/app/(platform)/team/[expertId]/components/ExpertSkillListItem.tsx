@@ -67,7 +67,7 @@ export function ExpertSkillListItem({
             as="NextLink"
             href="/library/skills"
             variant="ghost"
-            size="xs"
+            size="small"
           >
             Open in library
           </Button>
@@ -75,7 +75,7 @@ export function ExpertSkillListItem({
         {onRemove ? (
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={Delete02Icon}
             disabled={isSaving}
             onClick={() => onRemove(entry.name)}

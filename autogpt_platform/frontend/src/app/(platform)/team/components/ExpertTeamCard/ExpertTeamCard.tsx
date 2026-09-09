@@ -231,7 +231,7 @@ export function ExpertTeamCard({
           </Text>
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             loading={isResuming}
             onClick={handleResume}
           >
@@ -243,7 +243,7 @@ export function ExpertTeamCard({
       <div className="flex items-center gap-2 px-4 pb-4">
         <Button
           variant="secondary"
-          size="xs"
+          size="small"
           className="flex-1"
           leadingIcon={BubbleChatIcon}
           onClick={() => onChat(expert.id)}
@@ -252,7 +252,7 @@ export function ExpertTeamCard({
         </Button>
         <Button
           variant="outline"
-          size="xs"
+          size="small"
           className="flex-1"
           leadingIcon={PlusSignIcon}
           onClick={handleInstallClick}

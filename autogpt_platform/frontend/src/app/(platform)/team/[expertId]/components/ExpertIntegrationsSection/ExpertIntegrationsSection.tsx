@@ -65,7 +65,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
               <span>
                 <Button
                   variant="secondary"
-                  size="xs"
+                  size="small"
                   leadingIcon={Share01Icon}
                   disabled={
                     grantable.length === 0 || isError || isGrantableError
@@ -92,14 +92,14 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           </Tooltip>
           <Button
             variant="secondary"
-            size="xs"
+            size="small"
             leadingIcon={PlusSignIcon}
             onClick={openConnect}
           >
             Add integration
           </Button>
           <SearchInput
-            size="xsmall"
+            size="small"
             value={query}
             onChange={setQuery}
             placeholder="Search integrations"
