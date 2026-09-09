@@ -13,7 +13,12 @@ import {
   type Layer,
   type Vec3,
 } from "../parts";
-import { ellipsoidFor, surfacePointAt, type Pose } from "../projection";
+import {
+  ellipsoidFor,
+  surfacePointAt,
+  type Ellipsoid,
+  type Pose,
+} from "../projection";
 
 interface Props {
   accessory: AccessoryId;
@@ -32,6 +37,96 @@ function scale([x, y, z]: Vec3, factor: number): Vec3 {
   return [x * factor, y * factor, z * factor];
 }
 
+interface ProjectionProps {
+  pose: Pose;
+  body: Ellipsoid;
+  layer: Layer;
+}
+
+interface DiscProps extends ProjectionProps {
+  center: Vec3;
+  normal: Vec3;
+  minDepth?: number;
+  hideBelow?: number;
+  children: React.ReactNode;
+}
+
+function Disc({
+  pose,
+  body,
+  layer,
+  center,
+  normal,
+  minDepth = 0.12,
+  hideBelow = -1,
+  children,
+}: DiscProps) {
+  const rotated = rotate(center, pose);
+  if (rotated[2] < hideBelow) return null;
+  if ((isInFront(rotated) ? "front" : "back") !== layer) return null;
+  const projected = discProjection(center, normal, pose, body);
+  return <g transform={discTransform(projected, minDepth)}>{children}</g>;
+}
+
+interface StrandProps extends ProjectionProps {
+  deep: string;
+  points: Vec3[];
+  width: number;
+  color?: string;
+}
+
+function Strand({
+  pose,
+  body,
+  layer,
+  deep,
+  points,
+  width,
+  color = deep,
+}: StrandProps) {
+  const path = splitPolyline(samplePolyline(points), pose, body)[layer];
+  if (!path) return null;
+  return (
+    <path
+      d={path}
+      fill="none"
+      stroke={color}
+      strokeWidth={width}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+}
+
+interface SlabProps extends ProjectionProps {
+  points: Vec3[];
+  fill?: string;
+  deep: string;
+  outline: boolean;
+}
+
+function Slab({
+  points,
+  deep,
+  fill = deep,
+  pose,
+  body,
+  layer,
+  outline,
+}: SlabProps) {
+  if (centroidLayer(points, pose) !== layer) return null;
+  return (
+    <path
+      d={polygonPath(points, pose, body)}
+      fill={fill}
+      stroke={outline ? INK : fill}
+      strokeWidth={outline ? 2 : 3.5}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    />
+  );
+}
+
 export function Accessory({
   accessory,
   anchors,
@@ -42,69 +137,13 @@ export function Accessory({
 }: Props) {
   const { cx, eyeY, eyeGap, top, bottom } = anchors;
   const body = ellipsoidFor(anchors);
+  const projection = { pose, body, layer };
   const edge = outline ? { stroke: INK, strokeWidth: 2 } : {};
   const soft = outline
     ? { stroke: INK, strokeWidth: 2 }
     : { stroke: deep, strokeWidth: 3 };
   const eyeLat = surfacePointAt(cx, eyeY, body).lat;
   const eyeLon = surfacePointAt(cx + eyeGap / 2, eyeY, body).lon;
-
-  function Disc({
-    center,
-    normal,
-    minDepth = 0.12,
-    hideBelow = -1,
-    children,
-  }: {
-    center: Vec3;
-    normal: Vec3;
-    minDepth?: number;
-    hideBelow?: number;
-    children: React.ReactNode;
-  }) {
-    const rotated = rotate(center, pose);
-    if (rotated[2] < hideBelow) return null;
-    if ((isInFront(rotated) ? "front" : "back") !== layer) return null;
-    const projected = discProjection(center, normal, pose, body);
-    return <g transform={discTransform(projected, minDepth)}>{children}</g>;
-  }
-
-  function Strand({
-    points,
-    width,
-    color = deep,
-  }: {
-    points: Vec3[];
-    width: number;
-    color?: string;
-  }) {
-    const path = splitPolyline(samplePolyline(points), pose, body)[layer];
-    if (!path) return null;
-    return (
-      <path
-        d={path}
-        fill="none"
-        stroke={color}
-        strokeWidth={width}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    );
-  }
-
-  function Slab({ points, fill = deep }: { points: Vec3[]; fill?: string }) {
-    if (centroidLayer(points, pose) !== layer) return null;
-    return (
-      <path
-        d={polygonPath(points, pose, body)}
-        fill={fill}
-        stroke={outline ? INK : fill}
-        strokeWidth={outline ? 2 : 3.5}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    );
-  }
 
   switch (accessory) {
     case "glasses": {
@@ -118,6 +157,8 @@ export function Accessory({
         <g fill="none" stroke={deep} strokeWidth={2.4} strokeLinecap="round">
           {layer === "front" && bridgeVisible ? (
             <Strand
+              {...projection}
+              deep={deep}
               points={[
                 fromSurface(-eyeLon * 0.45, eyeLat, 1.03),
                 fromSurface(eyeLon * 0.45, eyeLat, 1.03),
@@ -127,6 +168,8 @@ export function Accessory({
           ) : null}
           {[-1, 1].map((side) => (
             <Strand
+              {...projection}
+              deep={deep}
               key={side}
               points={[
                 fromSurface(side * (eyeLon + 0.32), eyeLat, 1.03),
@@ -137,6 +180,7 @@ export function Accessory({
           ))}
           {lenses.map((lens, index) => (
             <Disc
+              {...projection}
               key={index}
               center={lens}
               normal={scale(lens, 1)}
@@ -165,13 +209,14 @@ export function Accessory({
       ];
       return (
         <g>
-          <Strand points={band} width={3.4} />
-          <Strand points={mic} width={2.4} />
-          <Disc center={mic[2]} normal={[0, 0, 1]}>
+          <Strand {...projection} deep={deep} points={band} width={3.4} />
+          <Strand {...projection} deep={deep} points={mic} width={2.4} />
+          <Disc {...projection} center={mic[2]} normal={[0, 0, 1]}>
             <circle r={2.6} fill={deep} />
           </Disc>
           {pads.map((pad, index) => (
             <Disc
+              {...projection}
               key={index}
               center={pad}
               normal={[index === 0 ? -1 : 1, 0, 0]}
@@ -188,7 +233,7 @@ export function Accessory({
     case "star": {
       const center = fromSurface(0.85, -0.7, 1.01);
       return (
-        <Disc center={center} normal={center} minDepth={0.5}>
+        <Disc {...projection} center={center} normal={center} minDepth={0.5}>
           <circle r={9} fill={deep} {...edge} />
           <path
             d={STAR}
@@ -203,7 +248,7 @@ export function Accessory({
     case "bow": {
       const center = fromSurface(-0.95, 0.85, 1.02);
       return (
-        <Disc center={center} normal={center} minDepth={0.5}>
+        <Disc {...projection} center={center} normal={center} minDepth={0.5}>
           <g transform="rotate(-18)">
             <path
               d="M0,0 L-11,-6 L-11,6 Z"
@@ -225,7 +270,7 @@ export function Accessory({
     case "badge": {
       const center = fromSurface(-0.55, -0.5, 1.01);
       return (
-        <Disc center={center} normal={center} minDepth={0.3}>
+        <Disc {...projection} center={center} normal={center} minDepth={0.3}>
           <rect
             x={-9}
             y={-6}
@@ -258,9 +303,15 @@ export function Accessory({
       ]);
       return (
         <g>
-          <Strand points={base} width={5.5} />
+          <Strand {...projection} deep={deep} points={base} width={5.5} />
           {spikes.map((spike, index) => (
-            <Slab key={index} points={spike} />
+            <Slab
+              {...projection}
+              deep={deep}
+              outline={outline}
+              key={index}
+              points={spike}
+            />
           ))}
         </g>
       );
@@ -300,13 +351,15 @@ export function Accessory({
             <path d={dome} fill={deep} {...edge} strokeLinejoin="round" />
           ) : null}
           <Strand
+            {...projection}
+            deep={deep}
             points={[
               [0, capRadius, 0],
               [0, capRadius + 0.16, 0],
             ]}
             width={2.4}
           />
-          <Strand points={blades} width={4} />
+          <Strand {...projection} deep={deep} points={blades} width={4} />
           {layer === "front" ? (
             <circle
               cx={crownScreen.x}
@@ -334,8 +387,19 @@ export function Accessory({
         <g>
           {[-1, 1].map((side) => (
             <g key={side}>
-              <Slab points={ear(side)} />
-              <Slab points={inner(side)} fill="#fff" />
+              <Slab
+                {...projection}
+                deep={deep}
+                outline={outline}
+                points={ear(side)}
+              />
+              <Slab
+                {...projection}
+                deep={deep}
+                outline={outline}
+                points={inner(side)}
+                fill="#fff"
+              />
             </g>
           ))}
         </g>
@@ -344,7 +408,7 @@ export function Accessory({
     case "flower": {
       const center = fromSurface(-0.95, 0.8, 1.03);
       return (
-        <Disc center={center} normal={center} minDepth={0.5}>
+        <Disc {...projection} center={center} normal={center} minDepth={0.5}>
           {[0, 72, 144, 216, 288].map((angle) => (
             <ellipse
               key={angle}
@@ -368,7 +432,7 @@ export function Accessory({
         1.02,
       );
       return (
-        <Disc center={chin} normal={chin} minDepth={0.35}>
+        <Disc {...projection} center={chin} normal={chin} minDepth={0.35}>
           <g transform="scale(1.35)">
             <path
               d="M0,0 L-11,-6 L-11,6 Z"
@@ -403,9 +467,15 @@ export function Accessory({
       const knot = fromSurface(-1.35, bandLat, 1.05);
       return (
         <g>
-          <Strand points={band} width={5} />
-          <Strand points={band} width={1.6} color="#fff" />
-          <Disc center={knot} normal={knot} minDepth={0.4}>
+          <Strand {...projection} deep={deep} points={band} width={5} />
+          <Strand
+            {...projection}
+            deep={deep}
+            points={band}
+            width={1.6}
+            color="#fff"
+          />
+          <Disc {...projection} center={knot} normal={knot} minDepth={0.4}>
             <path
               d="M0,0 L-9,4 L-6,10 Z M0,0 L-2,10 L-7,14 Z"
               fill={deep}
