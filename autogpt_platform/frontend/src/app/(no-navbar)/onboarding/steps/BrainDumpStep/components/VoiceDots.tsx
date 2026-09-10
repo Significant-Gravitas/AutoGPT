@@ -76,6 +76,7 @@ function Dot({
     ([voice, spread]: number[]) =>
       DOT + (reduceMotion ? 0 : voice * spread * (barHeight - DOT)),
   );
+  const y = useTransform(height, (h) => (DOT - h) / 2);
 
   return (
     <motion.span
@@ -88,7 +89,7 @@ function Dot({
         left: centre.x - DOT / 2,
         top: centre.y - DOT / 2,
         x,
-        y: useTransform(height, (h) => (DOT - h) / 2),
+        y,
         scale,
         opacity,
         backgroundColor: color,
