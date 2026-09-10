@@ -108,6 +108,7 @@ export function useNewAgentLibraryView() {
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarHasError, setSidebarHasError] = useState(false);
 
   const hasAnyItems = useMemo(
     () =>
@@ -219,6 +220,7 @@ export function useNewAgentLibraryView() {
       templatesCount: number;
       triggersCount: number;
       loading?: boolean;
+      hasError?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
@@ -228,6 +230,9 @@ export function useNewAgentLibraryView() {
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);
+      }
+      if (counts.hasError !== undefined) {
+        setSidebarHasError(counts.hasError);
       }
     },
     [],
@@ -301,6 +306,7 @@ export function useNewAgentLibraryView() {
     retryTriggerLists,
     sidebarLoading,
     activeTab,
+    sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
     handleScheduleDeleted,
