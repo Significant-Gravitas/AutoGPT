@@ -133,8 +133,10 @@ class ExpertSetupItem(BaseModel):
 
     Rendered on the Team page as a row with a single fix. ``connect``: the
     user has no credential for any of ``providers``. ``allow``: they have one
-    (``credential_id``) that this expert may not use yet. ``workflow``: no
-    credential is missing, so the schedule needs creating from the workflow.
+    (``credential_id``) that this expert may not use yet. ``inputs``: the
+    workflow needs the values in ``missing_inputs`` before it can run
+    unattended. ``workflow``: nothing is missing, so the schedule needs
+    creating from the workflow.
     """
 
     expert_id: str
@@ -144,8 +146,11 @@ class ExpertSetupItem(BaseModel):
     workflow_name: str | None
     library_agent_id: str | None
     providers: list[str]
-    resolution: Literal["connect", "allow", "workflow"]
+    resolution: Literal["connect", "allow", "inputs", "workflow"]
     credential_id: str | None = None
+    # Titles of the graph inputs a scheduled run cannot supply; only set on
+    # an ``inputs`` item.
+    missing_inputs: list[str] = Field(default_factory=list)
 
 
 class ExpertCredentialRef(BaseModel):
