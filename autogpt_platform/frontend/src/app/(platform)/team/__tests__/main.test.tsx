@@ -344,8 +344,28 @@ describe("TeamPage", () => {
     expect(more.getAttribute("tabindex")).toBeNull();
     expect(more.textContent).toContain("Notion, Slack");
     await user.hover(more);
-    const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip.textContent).toContain("Notion, Slack");
+    await screen.findByRole("tooltip", { name: "Notion, Slack" });
+  });
+
+  test("a logo says on hover whose account it is", async () => {
+    const user = userEvent.setup();
+    server.use(
+      getListExpertsMockHandler([
+        {
+          ...hiredMaria,
+          credential_count: 1,
+          credential_providers: ["github"],
+        },
+      ]),
+    );
+
+    render(<TeamPage />);
+
+    const card = await screen.findByRole("link", { name: "View Maria" });
+    await user.hover(within(card).getByRole("img", { name: "GitHub" }));
+    await screen.findByRole("tooltip", {
+      name: "Maria has access to your GitHub account",
+    });
   });
 
   test("shows no integrations item on a card with none granted", async () => {

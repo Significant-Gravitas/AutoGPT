@@ -166,7 +166,10 @@ export function ExpertTeamCard({
             >
               {expert.name}
             </Text>
-            <IntegrationIcons providers={expert.credential_providers ?? []} />
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
           </div>
           {/* Same pill as the expert page header and the marketplace card. */}
           <Text

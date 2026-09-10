@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { BubbleChatIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { getRaisedExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
+import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
 
 interface Props {
@@ -44,6 +45,10 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
               <Icon icon={accent.roleIcon} size={12} />
               {expert.role}
             </Text>
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

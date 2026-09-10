@@ -13,14 +13,15 @@ import { useState } from "react";
 const VISIBLE_LOGOS = 3;
 
 interface Props {
+  expertName: string;
   providers: string[];
 }
 
 /** The services an expert can reach, as the logos the connections dialog
- *  uses. Past three, a "+N more" names the rest on hover; it sits inside the
- *  card link, so it is not focusable itself and the names are also given to
- *  screen readers inline. */
-export function IntegrationIcons({ providers }: Props) {
+ *  uses. Each logo says on hover whose account it is; past three, a "+N more"
+ *  names the rest. It all sits inside the card link, so nothing is focusable
+ *  itself and the hidden names are also given to screen readers inline. */
+export function IntegrationIcons({ expertName, providers }: Props) {
   if (providers.length === 0) return null;
   const shown = providers.slice(0, VISIBLE_LOGOS);
   const hidden = providers.slice(VISIBLE_LOGOS);
@@ -30,7 +31,17 @@ export function IntegrationIcons({ providers }: Props) {
     <ul aria-label="Integrations" className="flex shrink-0 items-center gap-1">
       {shown.map((provider) => (
         <li key={provider} className="flex">
-          <ProviderLogo provider={provider} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex">
+                <ProviderLogo provider={provider} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {expertName} has access to your {formatProviderName(provider)}{" "}
+              account
+            </TooltipContent>
+          </Tooltip>
         </li>
       ))}
       {hidden.length > 0 ? (

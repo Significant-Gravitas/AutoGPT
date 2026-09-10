@@ -1,5 +1,7 @@
 import {
+  getGetExpertQueryKey,
   getListExpertCredentialsQueryKey,
+  getListExpertsQueryKey,
   useGrantExpertCredentials,
   useListExpertCredentials,
   useRevokeExpertCredential,
@@ -39,10 +41,13 @@ export function useExpertIntegrationsSection(expertId: string) {
     (credential) => !grantedIds.has(credential.id),
   );
 
+  // The expert and the roster carry the provider logos, so they go stale too.
   function invalidate() {
     queryClient.invalidateQueries({
       queryKey: getListExpertCredentialsQueryKey(expertId),
     });
+    queryClient.invalidateQueries({ queryKey: getGetExpertQueryKey(expertId) });
+    queryClient.invalidateQueries({ queryKey: getListExpertsQueryKey() });
   }
 
   const { mutate: grant, isPending: isGranting } = useGrantExpertCredentials({
