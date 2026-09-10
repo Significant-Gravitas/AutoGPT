@@ -74,12 +74,17 @@ export function useArtifactsFolders() {
 
   const moveMutation = useBulkMoveWorkspaceFiles({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (_, variables) => {
         invalidate();
-        toast({ title: "File moved" });
+        const count = variables.data.file_ids.length;
+        toast({ title: count === 1 ? "File moved" : `${count} files moved` });
       },
-      onError: () => {
-        toast({ title: "Failed to move file", variant: "destructive" });
+      onError: (_, variables) => {
+        const count = variables.data.file_ids.length;
+        toast({
+          title: count === 1 ? "Failed to move file" : "Failed to move files",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -101,9 +106,9 @@ export function useArtifactsFolders() {
     deleteFolder: (folderId: string) =>
       deleteMutation.mutateAsync({ folderId }),
     isDeleting: deleteMutation.isPending,
-    moveFileToFolder: (args: { fileId: string; folderId: string | null }) =>
+    moveFilesToFolder: (args: { fileIds: string[]; folderId: string | null }) =>
       moveMutation.mutateAsync({
-        data: { file_ids: [args.fileId], folder_id: args.folderId },
+        data: { file_ids: args.fileIds, folder_id: args.folderId },
       }),
   };
 }
