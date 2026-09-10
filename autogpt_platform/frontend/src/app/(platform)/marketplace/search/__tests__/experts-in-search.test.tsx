@@ -202,6 +202,44 @@ describe("Experts in marketplace search", () => {
     expect(screen.getByRole("heading", { name: "Experts" })).toBeDefined();
   });
 
+  test("holds the skeleton while auth is still resolving", async () => {
+    // Until auth answers, we cannot know whether experts belong on this page,
+    // so an empty agent/creator result must not settle as "No results found".
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoggedIn: false,
+      isUserLoading: true,
+    });
+    server.use(
+      rosterHandler([maria]),
+      getGetV2ListStoreAgentsMockHandler({
+        agents: [],
+        pagination: {
+          current_page: 1,
+          total_items: 0,
+          total_pages: 0,
+          page_size: 20,
+        },
+      }),
+      getGetV2ListStoreCreatorsMockHandler({
+        creators: [],
+        pagination: {
+          current_page: 1,
+          total_items: 0,
+          total_pages: 0,
+          page_size: 20,
+        },
+      }),
+    );
+
+    render(<MainSearchResultPage searchTerm="Maria" sort="runs" />);
+
+    for (let i = 0; i < 20; i++) {
+      expect(screen.queryByText("No results found")).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  });
+
   test("asks for no experts and offers no chip outside the beta", async () => {
     hireExpertsFlag.enabled = false;
     server.use(rosterHandler([maria]));

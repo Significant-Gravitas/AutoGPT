@@ -182,7 +182,10 @@ export const useMainSearchResultPage = ({
     isAgentsLoading,
     isCreatorsLoading,
     isSkillsLoading,
-    isExpertsLoading: isExpertsVisible && isExpertsLoading,
+    // `isUserLoading` counts as pending: until auth answers, isExpertsVisible
+    // is false, so without it the gate reports "not loading" and the empty
+    // state can still paint before we know whether experts belong here.
+    isExpertsLoading: isUserLoading || (isExpertsVisible && isExpertsLoading),
     isAgentsError,
     isCreatorsError,
   };
