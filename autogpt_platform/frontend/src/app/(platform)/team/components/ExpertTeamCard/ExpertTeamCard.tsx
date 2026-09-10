@@ -1,5 +1,4 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
-import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
   Avatar,
@@ -8,21 +7,11 @@ import {
 } from "@/components/atoms/Avatar/Avatar";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import {
   BubbleChatIcon,
   PencilEdit02Icon,
   PlusSignIcon,
-  Tick02Icon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { creditsToUsdLabel } from "@/lib/credits";
 import Link from "next/link";
@@ -50,23 +39,17 @@ import { useExpertTeamCard } from "./useExpertTeamCard";
 interface Props {
   expert: Expert;
   schedules: GraphExecutionJobInfo[];
-  pods: ExpertPod[];
-  currentPod: ExpertPod | undefined;
   onInstallWorkflow: (expertId: string) => void;
   onEditSoul: (expertId: string) => void;
   onChat: (expertId: string) => void;
-  onAssignPod: (expertId: string, podId: string | null) => void;
 }
 
 export function ExpertTeamCard({
   expert,
   schedules,
-  pods,
-  currentPod,
   onInstallWorkflow,
   onEditSoul,
   onChat,
-  onAssignPod,
 }: Props) {
   const blurb = getExpertBlurb(expert);
   const needsSetupCount = getNeedsSetupCount(expert, schedules);
@@ -89,48 +72,6 @@ export function ExpertTeamCard({
     <div className="relative flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
-        {pods.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="floating"
-                size="icon-sm"
-                leadingIcon={UserGroupIcon}
-                aria-label={
-                  currentPod
-                    ? `Move to pod (currently ${currentPod.name})`
-                    : "Move to pod"
-                }
-              />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="max-h-72 w-52 overflow-y-auto"
-            >
-              {pods.map((pod) => (
-                <DropdownMenuItem
-                  key={pod.id}
-                  onSelect={() => onAssignPod(expert.id, pod.id)}
-                >
-                  <span className="flex-1 truncate">{pod.name}</span>
-                  {expert.pod_id === pod.id ? (
-                    <Icon icon={Tick02Icon} size={16} className="ml-2" />
-                  ) : null}
-                </DropdownMenuItem>
-              ))}
-              {expert.pod_id ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => onAssignPod(expert.id, null)}
-                  >
-                    Remove from pod
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
         <Button
           variant="floating"
           size="icon-sm"
