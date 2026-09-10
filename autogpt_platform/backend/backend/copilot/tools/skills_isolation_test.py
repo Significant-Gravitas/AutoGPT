@@ -2,10 +2,12 @@
 AutoPilot. Experts see and manage only their own; AutoPilot runs only its own
 but may manage any expert's."""
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.copilot.tools.skills as skills
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
@@ -21,6 +23,8 @@ from backend.copilot.tools.skills import (
     build_skills_context,
     copy_skill_to_expert,
     find_user_skill_slugs,
+    invalidate_skills_index_cache,
+    list_user_skills,
     render_skill_markdown,
 )
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
@@ -168,6 +172,96 @@ async def test_expert_index_leaves_a_name_with_no_library_folder_on_the_row(worl
 
     assert "name: a-marketplace-skill" not in ctx
     experts.remove_expert_skill_name.assert_not_awaited()
+
+
+async def test_a_name_that_can_never_resolve_is_scanned_for_once(world):
+    """A marketplace attachment resolves to no folder on any turn, so without
+    a memo every cache-cold turn re-scans AutoPilot's whole library for it."""
+    _, experts = world
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["a-marketplace-skill"]
+        )
+    )
+    scans, counted = _counting_slug_lookup()
+
+    with _cold_turns(_FakeRedis()), patch.object(
+        skills, "find_user_skill_slugs", counted
+    ):
+        first = await list_user_skills("user-1", "expert-a")
+        second = await list_user_skills("user-1", "expert-a")
+
+    assert len(scans) == 1
+    assert [s.name for s in first] == [s.name for s in second] == ["own"]
+    experts.remove_expert_skill_name.assert_not_awaited()
+
+
+async def test_a_folder_change_lets_the_heal_retry_a_remembered_name(world):
+    """The memo is dropped whenever the expert's folder changes, so a name
+    that only becomes copyable later still gets its backfill."""
+    fake, experts = world
+    experts.get_expert = AsyncMock(
+        side_effect=lambda user_id, expert_id, **_: MagicMock(
+            id=expert_id, skills=["late-arrival"]
+        )
+    )
+    scans, counted = _counting_slug_lookup()
+    redis = _FakeRedis()
+
+    with _cold_turns(redis), patch.object(skills, "find_user_skill_slugs", counted):
+        await list_user_skills("user-1", "expert-a")
+        fake.files["/skills/late-arrival/SKILL.md"] = _skill("late-arrival")
+        await invalidate_skills_index_cache("user-1", "expert-a")
+        await list_user_skills("user-1", "expert-a")
+
+    assert len(scans) == 2
+    assert "/experts/expert-a/skills/late-arrival/SKILL.md" in fake.files
+
+
+class _FakeRedis:
+    """In-memory stand-in: the heal backoff is the one cache these tests have
+    to observe, and the fixture's MagicMock swallows every write."""
+
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.values[key] = value
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.values.pop(key, None)
+
+
+@contextmanager
+def _cold_turns(redis):
+    """Make every listing a cache-cold turn, so the heal runs each time and
+    only the backoff can stop the scan."""
+    with (
+        patch(
+            "backend.copilot.tools.skills.get_redis_async",
+            new=AsyncMock(return_value=redis),
+        ),
+        patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        yield
+
+
+def _counting_slug_lookup():
+    scans: list[list[str]] = []
+    original = skills.find_user_skill_slugs
+
+    async def counted(user_id, names):
+        scans.append(list(names))
+        return await original(user_id, names)
+
+    return scans, counted
 
 
 async def test_expert_index_holds_defaults_plus_its_own_skills_only(world):

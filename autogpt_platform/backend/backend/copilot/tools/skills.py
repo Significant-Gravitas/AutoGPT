@@ -90,6 +90,13 @@ def skill_folder(expert_id: str | None) -> str:
 SKILLS_INDEX_CACHE_TTL_S = 60
 SKILLS_INDEX_CACHE_KEY = "copilot:skills_index:{user_id}"
 
+# A skill name on an expert's row that resolves to no folder in AutoPilot's
+# library — a marketplace attachment, or a skill deleted after assignment —
+# can never be copied, so the heal below remembers it and stops re-scanning.
+# The TTL bounds how long a name that becomes copyable waits for its backfill.
+SKILLS_HEAL_BACKOFF_TTL_S = 600
+SKILLS_HEAL_BACKOFF_KEY = "copilot:skills_heal_backoff:{user_id}:expert:{expert_id}"
+
 # WorkspaceFile.metadata keys for the skill index fast path — avoids the
 # storage read when the metadata was written at store time (anything
 # pre-dating this change falls back to read+parse, see
@@ -770,10 +777,16 @@ async def invalidate_skills_index_cache(
     """Drop the cached per-user skill index so the next turn rebuilds it.
     Called by ``store_skill`` / ``delete_user_skill`` so an edit shows up
     immediately rather than after the 60s TTL.
+
+    Also drops the expert's heal backoff: the folder just changed, so a name
+    that resolved to nothing before may resolve now.
     """
+    keys = [_skills_cache_key(user_id, expert_id)]
+    if expert_id is not None:
+        keys.append(_heal_backoff_key(user_id, expert_id))
     try:
         redis = await get_redis_async()
-        await redis.delete(_skills_cache_key(user_id, expert_id))
+        await redis.delete(*keys)
     except Exception:
         # Cache invalidate is best-effort — at worst the user sees stale
         # state for up to ``SKILLS_INDEX_CACHE_TTL_S`` seconds.
@@ -821,7 +834,8 @@ async def _copy_assigned_skills_not_yet_owned(
     silently drops to the built-in defaults. Runs only on a cache miss, and
     only while something is actually missing. A name that resolves to nothing
     is left on the row: a marketplace attachment has no folder to copy by
-    design, and a storage blip must not delete an assignment.
+    design, and a storage blip must not delete an assignment — but it is
+    remembered, so the next cold turn skips a scan that cannot succeed.
     """
     expert = await experts_db().get_expert(user_id, expert_id, include_workflows=False)
     if expert is None:
@@ -834,13 +848,15 @@ async def _copy_assigned_skills_not_yet_owned(
         and name.strip().lower() not in have
         and name.strip().lower() not in _DEFAULT_SKILLS_BY_NAME
     ]
-    if not missing:
+    if not missing or await _heal_backoff_covers(user_id, expert_id, missing):
         return False
     folders = await find_user_skill_slugs(user_id, missing)
     copied = False
+    unresolved: list[str] = []
     for name in missing:
         folder = folders.get(name.strip().lower())
         if folder is None:
+            unresolved.append(name.strip().lower())
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder):
@@ -851,7 +867,45 @@ async def _copy_assigned_skills_not_yet_owned(
                 name,
                 expert_id,
             )
+    # After the copies, so a copy's own cache invalidation cannot drop it.
+    await _set_heal_backoff(user_id, expert_id, unresolved)
     return copied
+
+
+def _heal_backoff_key(user_id: str, expert_id: str) -> str:
+    return SKILLS_HEAL_BACKOFF_KEY.format(user_id=user_id, expert_id=expert_id)
+
+
+async def _heal_backoff_covers(
+    user_id: str, expert_id: str, missing: list[str]
+) -> bool:
+    """True when every still-missing name was already proved uncopyable, so
+    the scan can be skipped. A name outside the marker retries immediately —
+    including one whose copy failed transiently."""
+    try:
+        redis = await get_redis_async()
+        raw = await redis.get(_heal_backoff_key(user_id, expert_id))
+        known = set(json.loads(raw)) if raw else set()
+    except Exception:
+        # Losing the marker costs one repeat scan, never correctness.
+        return False
+    return all(name.strip().lower() in known for name in missing)
+
+
+async def _set_heal_backoff(user_id: str, expert_id: str, names: list[str]) -> None:
+    """Record the names that resolved to nothing, or clear the marker when
+    none did."""
+    key = _heal_backoff_key(user_id, expert_id)
+    try:
+        redis = await get_redis_async()
+        if not names:
+            await redis.delete(key)
+            return
+        await redis.set(
+            key, json.dumps(sorted(set(names))), ex=SKILLS_HEAL_BACKOFF_TTL_S
+        )
+    except Exception:
+        pass
 
 
 async def read_user_skill_with_body(
