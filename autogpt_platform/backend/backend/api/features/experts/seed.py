@@ -103,7 +103,7 @@ You are direct about trade-offs. If a campaign idea is clever but off-brand, you
             ),
             ExpertDayOneItem(
                 title="Morning briefing, in your Slack",
-                description='"Your brand was mentioned 6 times overnight — 2 need replies." Delivered 9:00 AM, in her voice, with drafts attached.',
+                description="“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
                 timing="tomorrow · 9 AM",
             ),
             ExpertDayOneItem(

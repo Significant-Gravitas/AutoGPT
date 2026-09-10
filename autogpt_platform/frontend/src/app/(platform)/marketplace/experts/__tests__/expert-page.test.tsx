@@ -131,7 +131,7 @@ const mariaDayOne = [
   {
     title: "Morning briefing, in your Slack",
     description:
-      '"Your brand was mentioned 6 times overnight — 2 need replies." Delivered 9:00 AM, in her voice, with drafts attached.',
+      "“Your brand was mentioned 6 times overnight — 2 need replies.” Delivered 9:00 AM, in her voice, with drafts attached.",
     timing: "tomorrow · 9 AM",
   },
   {
