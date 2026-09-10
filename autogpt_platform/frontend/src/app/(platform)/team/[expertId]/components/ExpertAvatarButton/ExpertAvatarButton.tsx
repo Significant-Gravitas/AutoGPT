@@ -7,11 +7,7 @@ import {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import {
-  Camera01Icon,
-  Loading03Icon,
-  PencilIcon,
-} from "@hugeicons/core-free-icons";
+import { Camera01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { ChangeEvent, useRef } from "react";
 import { useExpertAvatarButton } from "./useExpertAvatarButton";
 
@@ -65,13 +61,6 @@ export function ExpertAvatarButton({ expert }: Props) {
           ) : (
             <Icon icon={Camera01Icon} size={20} />
           )}
-        </span>
-
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-0.5 -right-0.5 flex size-6 items-center justify-center rounded-full border-2 border-background bg-background text-foreground shadow-[0_3px_10px_-2px_rgba(15,15,20,0.25)]"
-        >
-          <Icon icon={PencilIcon} size={12} />
         </span>
       </button>
       <input
