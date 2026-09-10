@@ -27,7 +27,6 @@ from typing import (
 )
 
 import httpx2
-
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError

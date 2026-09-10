@@ -101,7 +101,8 @@ class TestProbeStrategies:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:11434/v1", "llama3.1:8b-instruct-q4_K_M"
@@ -116,7 +117,8 @@ class TestProbeStrategies:
             [_resp(200, {"models": [{"name": "other:7b", "context_length": 16_384}]})]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:11434/v1", "mymodel:8b"
@@ -135,7 +137,8 @@ class TestProbeStrategies:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:11434/v1", "llama3.1:8b"
@@ -151,7 +154,8 @@ class TestProbeStrategies:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:8080/v1", "llama-3-8b.gguf"
@@ -171,7 +175,8 @@ class TestProbeStrategies:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:1234/v1", "llama-3-8b"
@@ -188,7 +193,8 @@ class TestFallbackAndWarnings:
     async def test_all_probes_fail_returns_fallback(self):
         client = _mock_client(OSError("connection refused"))
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             window = await probe_local_context_window(
                 "http://localhost:11434/v1", "llama3.1:8b"
@@ -231,7 +237,8 @@ class TestFallbackAndWarnings:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ):
             w1 = await probe_local_context_window("http://h:11434/v1", "m")
             _probe_cache[("http://h:11434/v1", "m")] = (
@@ -255,7 +262,8 @@ class TestCaching:
             [_resp(200, {"models": [{"name": "m", "context_length": 32_768}]})]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ) as cls:
             w1 = await probe_local_context_window("http://localhost:11434/v1", "m")
             w2 = await probe_local_context_window("http://localhost:11434/v1", "m")
@@ -271,7 +279,8 @@ class TestCaching:
             ]
         )
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ) as cls:
             w1 = await probe_local_context_window("http://h:11434/v1", "m")
             _probe_cache[("http://h:11434/v1", "m")] = (
@@ -295,7 +304,8 @@ class TestCaching:
         }
         client = _mock_client([_resp(200, loaded), _resp(200, loaded)])
         with patch(
-            "backend.copilot.local_context_probe.httpx2.AsyncClient", return_value=client
+            "backend.copilot.local_context_probe.httpx2.AsyncClient",
+            return_value=client,
         ) as cls:
             wa = await probe_local_context_window("http://h:11434/v1", "modelA")
             wb = await probe_local_context_window("http://h:11434/v1", "modelB")
