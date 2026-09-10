@@ -22,7 +22,7 @@ export function AutopilotAvatar({ size = 24, className }: Props) {
     <Avatar
       style={{ width: size, height: size }}
       className={cn(
-        "shrink-0 border border-black",
+        "shrink-0 border border-zinc-800",
         AUTOPILOT_AVATAR_BG_CLASS,
         className,
       )}

@@ -70,7 +70,7 @@ export function ExpertAvatar({
   return (
     <Avatar
       style={style}
-      className={cn("shrink-0 border border-black", className)}
+      className={cn("shrink-0 border border-zinc-800", className)}
     >
       <AvatarImage src={avatarUrl ?? undefined} alt={name} />
       <AvatarFallback>{name}</AvatarFallback>
