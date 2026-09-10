@@ -2,9 +2,10 @@ import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useKeyboardNav } from "@/components/organisms/SearchCommandModal/useKeyboardNav";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { KeyboardEvent } from "react";
 import { useState } from "react";
+import { isKey } from "@/lib/keyboard";
 
 const MENTION_RE = /(?:^|\s)@([^\s@]*)$/;
 const QUERY_DEBOUNCE_MS = 200;
@@ -21,6 +22,8 @@ interface Args {
   value: string;
   setValue: (value: string) => void;
   addWorkspaceFile: (item: WorkspaceFileItem) => void;
+  /** Expert the chat is scoped to; suggests only files that expert can attach. */
+  expertId?: string | null;
 }
 
 /**
@@ -34,6 +37,7 @@ export function useChatMentions({
   value,
   setValue,
   addWorkspaceFile,
+  expertId,
 }: Args) {
   const [active, setActive] = useState<ActiveMention | null>(null);
   const isOpen = enabled && active !== null;
@@ -44,14 +48,25 @@ export function useChatMentions({
   );
 
   const search = useQuery({
-    queryKey: ["chat-mention", "workspace-files", debouncedQuery],
+    queryKey: [
+      "chat-mention",
+      "workspace-files",
+      debouncedQuery,
+      expertId ?? null,
+    ] as const,
     queryFn: () =>
       listWorkspaceFiles({
         limit: MENTION_RESULT_LIMIT,
         q: debouncedQuery || undefined,
+        expert_id: expertId ?? undefined,
       }),
     enabled: isOpen,
-    placeholderData: keepPreviousData,
+    // Keep results while the same expert's query refines; drop them when the
+    // chat switches expert so no foreign file can be picked mid-request.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[3] === (expertId ?? null)
+        ? previousData
+        : undefined,
   });
 
   const files =
@@ -92,29 +107,28 @@ export function useChatMentions({
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): boolean {
     if (!isOpen) return false;
-    if (e.key === "Escape") {
+    if (isKey(e, "Escape")) {
       e.preventDefault();
       close();
       return true;
     }
     if (files.length === 0) return false;
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        moveHighlight(1);
-        return true;
-      case "ArrowUp":
-        e.preventDefault();
-        moveHighlight(-1);
-        return true;
-      case "Enter":
-      case "Tab":
-        e.preventDefault();
-        accept(files[highlightedIndex]);
-        return true;
-      default:
-        return false;
+    if (isKey(e, "ArrowDown")) {
+      e.preventDefault();
+      moveHighlight(1);
+      return true;
     }
+    if (isKey(e, "ArrowUp")) {
+      e.preventDefault();
+      moveHighlight(-1);
+      return true;
+    }
+    if (isKey(e, "Enter", "Tab")) {
+      e.preventDefault();
+      accept(files[highlightedIndex]);
+      return true;
+    }
+    return false;
   }
 
   return {

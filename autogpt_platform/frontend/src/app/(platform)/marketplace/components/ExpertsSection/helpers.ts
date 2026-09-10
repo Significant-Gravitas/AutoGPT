@@ -1,8 +1,13 @@
 import {
   Briefcase01Icon,
   ChartIncreaseIcon,
+  Coins01Icon,
+  HeadsetIcon,
   Megaphone01Icon,
+  QuillWrite01Icon,
+  Search01Icon,
   Settings01Icon,
+  SourceCodeIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { findColorOption } from "@/app/(platform)/raise/components/ColorStep/helpers";
@@ -66,6 +71,30 @@ const ROLE_ACCENTS: Array<[RegExp, string]> = [
   [/sales|revenue/i, "amber"],
   [/ops|operations|support/i, "sky"],
 ];
+
+/** A skill's category is its identity mark, the way an expert's role is:
+ *  the eight canonical categories fold onto the same four accents, so
+ *  "Outreach playbook · Sales" carries the amber a Sales expert already has.
+ *  An unknown or missing category keeps the neutral wash and shows no pill. */
+export function getCategoryAccent(category: string | undefined): {
+  accent: ExpertAccent;
+  icon: IconSvgElement | null;
+} {
+  const entry = category ? CATEGORY_ACCENTS[category.toLowerCase()] : undefined;
+  if (!entry) return { accent: ACCENTS.zinc, icon: null };
+  return { accent: ACCENTS[entry[0]], icon: entry[1] };
+}
+
+const CATEGORY_ACCENTS: Record<string, [string, IconSvgElement]> = {
+  marketing: ["violet", Megaphone01Icon],
+  content: ["violet", QuillWrite01Icon],
+  sales: ["amber", ChartIncreaseIcon],
+  finance: ["amber", Coins01Icon],
+  operations: ["sky", Settings01Icon],
+  support: ["sky", HeadsetIcon],
+  research: ["zinc", Search01Icon],
+  development: ["zinc", SourceCodeIcon],
+};
 
 export function getExpertAccent(role: string): ExpertAccent {
   for (const [pattern, key] of ROLE_ACCENTS) {
