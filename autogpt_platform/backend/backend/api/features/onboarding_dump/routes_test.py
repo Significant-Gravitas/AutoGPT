@@ -37,6 +37,7 @@ DISCARD_URL = "/onboarding/brain-dump/"
 INTRO_URL = "/onboarding/brain-dump/intro"
 INTRO_COMPLETE_URL = "/onboarding/brain-dump/intro/complete"
 RECOMMENDED_URL = "/onboarding/brain-dump/recommended-providers"
+RECOMMENDED_EXPERTS_URL = "/onboarding/brain-dump/recommended-experts"
 
 RECORDING_ID = "rec-1"
 TRANSCRIPT = "I run a small bakery and I want the weekly order emails handled."
@@ -581,6 +582,59 @@ def test_intro_returns_greeting_and_prompts_before_completion(dumps: DumpStore):
     assert all(p["title"] and p["prompt"] for p in body["prompts"])
 
 
+def test_recommended_experts_are_withheld_while_the_team_flag_is_off(
+    dumps: DumpStore,
+):
+    """The route is gated on the brain-dump flag, the team on its own.
+
+    A user without ``ONBOARDING_EXPERT_TEAM`` gets a final answer with no
+    team rather than a section that never resolves.
+    """
+    upload_part()
+    finalize()
+
+    response = client.get(RECOMMENDED_EXPERTS_URL)
+
+    assert response.status_code == 200
+    assert response.json() == {"ready": True, "team": None}
+
+
+def test_recommended_experts_returns_the_stored_team(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    mocker.patch(
+        "backend.api.features.onboarding_dump.service.is_feature_enabled",
+        new=AsyncMock(return_value=True),
+    )
+    upload_part()
+    finalize()
+    assert dumps.row is not None
+    dumps.row.recommendedExperts = {
+        "diagnosis": "You have a marketing problem.",
+        "experts": [
+            {
+                "template_id": "tpl-maria",
+                "name": "Maria",
+                "role": "Marketing",
+                "avatar_url": "/experts/maria.svg",
+                "reason": "You post on LinkedIn weekly.",
+                "workflow_names": ["LinkedIn Post Generator"],
+            }
+        ],
+        "raise_suggestion": {"role": "support", "reason": "Tickets pile up."},
+        "source": "llm",
+    }
+
+    response = client.get(RECOMMENDED_EXPERTS_URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    assert body["team"]["source"] == "llm"
+    assert [e["name"] for e in body["team"]["experts"]] == ["Maria"]
+    assert body["team"]["raise_suggestion"]["role"] == "support"
+
+
 def test_recommended_providers_are_pending_until_the_job_writes(dumps: DumpStore):
     upload_part()
     finalize()
@@ -624,6 +678,7 @@ def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
         lambda: client.get(INTRO_URL),
         lambda: client.post(INTRO_COMPLETE_URL),
         lambda: client.get(RECOMMENDED_URL),
+        lambda: client.get(RECOMMENDED_EXPERTS_URL),
     ],
     ids=[
         "parts",
@@ -634,6 +689,7 @@ def test_recommended_providers_returns_the_stored_picks(dumps: DumpStore):
         "intro",
         "complete",
         "recommended-providers",
+        "recommended-experts",
     ],
 )
 def test_every_endpoint_is_404_when_the_flag_is_off(

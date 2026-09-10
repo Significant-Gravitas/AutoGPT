@@ -107,6 +107,7 @@ ToolName = Literal[
     "hire_expert",
     "list_agent_triggers",
     "list_chat_platform_channels",
+    "list_expert_chats",
     "list_folders",
     "list_presets",
     "list_schedules",
@@ -121,6 +122,7 @@ ToolName = Literal[
     "move_folder",
     "post_to_chat_platform",
     "raise_expert",
+    "read_expert_chat",
     "read_skill",
     "read_workspace_file",
     "run_agent",
@@ -488,8 +490,13 @@ def apply_tool_permissions(
         elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
-            # Map SDK built-in file tool to its MCP equivalent.
+            # Offer BOTH spellings and let the ``base_allowed`` filter below
+            # pick the one this mode registers: outside E2B only ``read_file``
+            # has an MCP wrapper, and the MCP spelling of Write/Edit is not in
+            # ``base_allowed``, so mapping them solely to it drops them from
+            # every filtered turn.
             names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_MCP[short]}")
+            names.append(short)
         else:
             names.append(short)  # SDK built-in — used as-is
         return names

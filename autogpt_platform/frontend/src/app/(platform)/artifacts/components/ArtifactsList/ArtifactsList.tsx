@@ -8,6 +8,7 @@ import { FileViewerModal } from "../FileViewerModal/FileViewerModal";
 import { WorkspaceFolders } from "../WorkspaceFolders/WorkspaceFolders";
 import { ArtifactsGrid } from "./ArtifactsGrid";
 import { ArtifactsTable } from "./ArtifactsTable/ArtifactsTable";
+import type { EmptyStateContent } from "./helpers";
 import { LoadMoreSentinel } from "./LoadMoreSentinel";
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
   isLoading: boolean;
   isError: boolean;
   error: unknown;
-  emptyMessage: string;
+  emptyState: EmptyStateContent;
   compactEmpty: boolean;
   hasMore: boolean;
   isLoadingMore: boolean;
@@ -31,7 +32,7 @@ export function ArtifactsList({
   isLoading,
   isError,
   error,
-  emptyMessage,
+  emptyState,
   compactEmpty,
   hasMore,
   isLoadingMore,
@@ -64,17 +65,19 @@ export function ArtifactsList({
           <ArtifactsGrid
             files={files}
             isLoading={isLoading}
-            emptyMessage={emptyMessage}
+            emptyState={emptyState}
             compactEmpty={compactEmpty}
             listKey={listKey}
             onOpen={setOpenFile}
           />
         </div>
       ) : (
+        // Keyed so the row selection resets whenever the listing changes.
         <ArtifactsTable
+          key={listKey}
           files={files}
           isLoading={isLoading}
-          emptyMessage={emptyMessage}
+          emptyState={emptyState}
           compactEmpty={compactEmpty}
           listKey={listKey}
           showFolders={showFolders}

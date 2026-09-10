@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import sys
 from enum import Enum
 from types import TracebackType
 
@@ -260,6 +262,9 @@ def _before_send(event, hint):
 
 
 def sentry_init():
+    if _running_under_pytest():
+        return
+
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
     if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
@@ -285,6 +290,13 @@ def sentry_init():
         + optional_integrations
         + integrations,
     )
+
+
+def _running_under_pytest() -> bool:
+    """sentry_init() runs at import time (AppProcess class body), before pytest
+    sets PYTEST_CURRENT_TEST; the env var covers spawned service subprocesses,
+    which do not inherit sys.modules. Self-hosted instances match neither."""
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
 
 
 def sentry_capture_error(error: BaseException):

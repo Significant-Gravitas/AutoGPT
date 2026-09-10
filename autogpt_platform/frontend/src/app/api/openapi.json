@@ -4711,6 +4711,49 @@
         }
       }
     },
+    "/api/chat/speech": {
+      "post": {
+        "tags": ["chat", "speech"],
+        "summary": "Synthesize",
+        "description": "Return *text* as MP3 audio, charging the caller for the synthesis.",
+        "operationId": "postChatSynthesize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SpeechRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "audio/mpeg": {} }
+          },
+          "400": {
+            "description": "Blank or over-long text, or an unknown voice"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "No active subscription" },
+          "404": { "description": "Voice mode is not enabled for this user" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Over the caller's usage cap" },
+          "503": {
+            "description": "Speech is unavailable, or the cap cannot be read"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/suggested-prompts": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -5724,6 +5767,139 @@
         }
       }
     },
+    "/api/credits/trial": {
+      "get": {
+        "tags": ["trials"],
+        "summary": "Get Trial Status",
+        "operationId": "getTrialsGetTrialStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["trials"],
+        "summary": "Start Trial Checkout",
+        "operationId": "postTrialsStartTrialCheckout",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "x-datafast-visitor-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Visitor-Id"
+            }
+          },
+          {
+            "name": "x-datafast-session-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "X-Datafast-Session-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TrialCheckoutRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "Trial offer unavailable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": { "description": "Stripe checkout unavailable" },
+          "503": { "description": "Billing return URL not configured" }
+        }
+      }
+    },
+    "/api/credits/trial/cancel": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Cancel Trial",
+        "operationId": "postTrialsCancelTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": { "description": "No cancelable trial subscription" },
+          "502": {
+            "description": "Stripe cancellation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/trial/confirm": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Confirm Trial",
+        "operationId": "postTrialsConfirmTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Trial checkout is unavailable or no longer current"
+          },
+          "502": {
+            "description": "Stripe confirmation temporarily unavailable"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
@@ -6323,6 +6499,32 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/setup": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "List Expert Setup Items",
+        "description": "What still stands between each expert's scheduled workflows and a schedule.",
+        "operationId": "list_expert_setup_items",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ExpertSetupItem" },
+                  "type": "array",
+                  "title": "Response List Expert Setup Items"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -11093,6 +11295,30 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/brain-dump/recommended-experts": {
+      "get": {
+        "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
+        "summary": "Get Brain Dump Recommended Experts",
+        "description": "The team AutoPilot proposes: who to hire first, and the raise door.\n\nWritten by a background job beside the greeting one; a plain read\nhere, with the deterministic fallback filled in for takes the job\nnever ran on. ``ready=false`` means keep polling. ``team`` is null\nwhen the expert-team feature is off for this user.",
+        "operationId": "get_brain_dump_recommended_experts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedExpertsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/brain-dump/recommended-providers": {
       "get": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
@@ -13590,6 +13816,79 @@
         }
       }
     },
+    "/api/store/admin/skills/submissions": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Admin List Pending Skill Submissions",
+        "description": "Skill submissions awaiting review, oldest first.",
+        "operationId": "getV2Admin list pending skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2Admin List Pending Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }]
+      }
+    },
+    "/api/store/admin/skills/submissions/{skill_listing_version_id}/review": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
+        "summary": "Review Skill Submission",
+        "description": "Approve or reject a skill submission.\n\nApproval promotes the version to the one the marketplace serves, so the\nbrowse cache is dropped; a rejection changes nothing shoppers can see.",
+        "operationId": "postV2Review skill submission",
+        "security": [{ "HTTPBearerJWT": [] }, { "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SkillReviewRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/download/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
@@ -13960,6 +14259,28 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/categories": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store categories",
+        "description": "The canonical categories a listing can be filed under.",
+        "operationId": "getV2List store categories",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreCategoryInfo" },
+                  "type": "array",
+                  "title": "Response Getv2List Store Categories"
+                }
               }
             }
           }
@@ -14402,6 +14723,284 @@
               }
             }
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List marketplace skills",
+        "description": "Approved skill listings, most recently updated first.",
+        "operationId": "getV2List marketplace skills",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/submissions": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "List my skill submissions",
+        "description": "Every version the caller has submitted, newest first per listing.",
+        "operationId": "getV2List my skill submissions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/SkillSubmission" },
+                  "type": "array",
+                  "title": "Response Getv2List My Skill Submissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Publish skill to marketplace",
+        "description": "Submit one of the caller's own library skills for marketplace review.",
+        "operationId": "postV2Publish skill to marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not in the caller's library" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": {
+            "description": "Marketplace profile required, or slug taken"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/skills/submissions/{skill_listing_version_id}": {
+      "put": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Edit skill submission",
+        "description": "Update a pending submission and re-snapshot the library skill.",
+        "operationId": "putV2Edit skill submission",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "skill_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Skill Listing Version Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillSubmissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillSubmission" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Submission not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "428": { "description": "Only a pending submission can be edited" }
+        }
+      }
+    },
+    "/api/store/skills/{slug}": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get marketplace skill",
+        "description": "One listing with the full SKILL.md body the install will copy.",
+        "operationId": "getV2Get marketplace skill",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceSkillDetails"
+                }
+              }
+            }
+          },
+          "404": { "description": "Skill not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/skills/{slug}/install": {
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Install marketplace skill",
+        "description": "Copy the listing's skill into the caller's AutoPilot skill library.",
+        "operationId": "postV2Install marketplace skill",
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the skill listing",
+              "title": "Slug"
+            },
+            "description": "Slug of the skill listing"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InstalledSkill" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Skill not found" },
+          "409": { "description": "Per-user skill limit reached" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -14896,7 +15495,7 @@
       "get": {
         "tags": ["workspace"],
         "summary": "List workspace files",
-        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.\n\nThe Artifacts page uses ``q`` for name search and ``origin`` to filter\nbetween Uploaded (user-uploaded) and Generated (agent/block output) files.\n\n``session_id`` (a per-session view) and the folder filters (``folder_id`` /\n``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and\n``root_only`` likewise conflict; passing conflicting filters returns a 400\nrather than silently yielding an empty list.\n\n``expert_id`` narrows the listing to files from that hired expert's own\nconversations. It excludes the other axes for the same reason. An expert\nthe caller does not own (or no longer has) yields an empty list.",
         "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14982,6 +15581,20 @@
               "title": "Root Only"
             },
             "description": "Only return root-level files (not in any folder)."
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ],
+              "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only.",
+              "title": "Expert Id"
+            },
+            "description": "Only return files from this hired expert's conversations. Cannot be combined with session_id, folder_id or root_only."
           }
         ],
         "responses": {
@@ -14993,6 +15606,7 @@
               }
             }
           },
+          "400": { "description": "Conflicting filters" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -15097,6 +15711,52 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["workspace"],
+        "summary": "Rename a workspace file",
+        "description": "Rename a file; it stays in its folder and conversation.",
+        "operationId": "renameWorkspaceFile",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RenameFileRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WorkspaceFileItem" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "File not found" },
+          "409": { "description": "A file with this name already exists here" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -18546,6 +19206,32 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialRejection": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Sanitised reason; never carries a secret."
+          },
+          "status_code": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Status Code"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Title"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "detail"],
+        "title": "CredentialRejection",
+        "description": "A stored credential that the provider refused at use time."
+      },
       "CredentialsDeletionNeedsConfirmationResponse": {
         "properties": {
           "deleted": {
@@ -20067,6 +20753,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
           },
+          "color": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Color"
+          },
           "role": { "type": "string", "title": "Role" },
           "is_archived": { "type": "boolean", "title": "Is Archived" }
         },
@@ -20088,6 +20778,36 @@
         "required": ["id", "name", "created_at"],
         "title": "ExpertPod",
         "description": "A named group of hired experts, scoped to the owner."
+      },
+      "ExpertRecommendations": {
+        "properties": {
+          "diagnosis": {
+            "type": "string",
+            "title": "Diagnosis",
+            "default": ""
+          },
+          "experts": {
+            "items": { "$ref": "#/components/schemas/RecommendedExpert" },
+            "type": "array",
+            "title": "Experts",
+            "default": []
+          },
+          "raise_suggestion": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RaiseSuggestion" },
+              { "type": "null" }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["llm", "fallback", "disabled"],
+            "title": "Source",
+            "default": "fallback"
+          }
+        },
+        "type": "object",
+        "title": "ExpertRecommendations",
+        "description": "The team AutoPilot proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
       "ExpertRun": {
         "properties": {
@@ -20162,6 +20882,52 @@
         ],
         "title": "ExpertRun",
         "description": "One expert-attributed execution, for the /team Work surface."
+      },
+      "ExpertSetupItem": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "expert_name": { "type": "string", "title": "Expert Name" },
+          "expert_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Avatar Url"
+          },
+          "workflow_id": { "type": "string", "title": "Workflow Id" },
+          "workflow_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Workflow Name"
+          },
+          "library_agent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Library Agent Id"
+          },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": ["connect", "allow", "workflow"],
+            "title": "Resolution"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "expert_name",
+          "expert_avatar_url",
+          "workflow_id",
+          "workflow_name",
+          "library_agent_id",
+          "providers",
+          "resolution"
+        ],
+        "title": "ExpertSetupItem",
+        "description": "One thing standing between a scheduled workflow and its schedule.\n\nRendered on the Team page as a row with a single fix. ``connect``: the\nuser has no credential for any of ``providers``. ``allow``: they have one\n(``credential_id``) that this expert may not use yet. ``workflow``: no\ncredential is missing, so the schedule needs creating from the workflow."
       },
       "ExpertSkillsUpdate": {
         "properties": {
@@ -21727,6 +22493,7 @@
             "type": "array",
             "title": "Outcomes"
           },
+          "author": { "$ref": "#/components/schemas/HomeBriefingAuthor" },
           "narrative": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Narrative"
@@ -21745,9 +22512,21 @@
           "completed_count",
           "failed_count",
           "routine_count",
-          "outcomes"
+          "outcomes",
+          "author"
         ],
         "title": "HomeBriefing"
+      },
+      "HomeBriefingAuthor": {
+        "properties": {
+          "kind": { "type": "string", "const": "autopilot", "title": "Kind" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" }
+        },
+        "type": "object",
+        "required": ["kind", "name", "role"],
+        "title": "HomeBriefingAuthor",
+        "description": "Who wrote the brief. Always AutoPilot, the account's built-in helper:\nthe brief reports the team's work, so no member of the team authors it.\n`kind` is the seam a future personal-assistant author would widen."
       },
       "HomeBriefingOutcome": {
         "properties": {
@@ -22222,6 +23001,24 @@
         "title": "InstallWorkflowRequest",
         "description": "One workflow source: a marketplace listing, or the caller's own agent."
       },
+      "InstalledSkill": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name the skill was installed under, for a link into the library."
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume. Not a precondition — the install has already succeeded."
+          }
+        },
+        "type": "object",
+        "required": ["name", "required_providers"],
+        "title": "InstalledSkill"
+      },
       "IntroCardResponse": {
         "properties": {
           "path": { "type": "string", "title": "Path" },
@@ -22245,6 +23042,17 @@
           "transcript": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript"
+          },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          },
+          "team_pending": {
+            "type": "boolean",
+            "title": "Team Pending",
+            "default": false
           }
         },
         "type": "object",
@@ -23191,6 +23999,110 @@
         "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
+      },
+      "MarketplaceSkill": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count"
+        ],
+        "title": "MarketplaceSkill"
+      },
+      "MarketplaceSkillDetails": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "install_count": { "type": "integer", "title": "Install Count" },
+          "creator": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator"
+          },
+          "creator_avatar": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Avatar"
+          },
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "body": { "type": "string", "title": "Body" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "install_count",
+          "skill_listing_version_id",
+          "body",
+          "triggers",
+          "updated_at"
+        ],
+        "title": "MarketplaceSkillDetails"
+      },
+      "MarketplaceSkillsResponse": {
+        "properties": {
+          "skills": {
+            "items": { "$ref": "#/components/schemas/MarketplaceSkill" },
+            "type": "array",
+            "title": "Skills"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["skills", "pagination"],
+        "title": "MarketplaceSkillsResponse"
       },
       "MemoryFact": {
         "properties": {
@@ -25455,6 +26367,16 @@
         "title": "RaiseResult",
         "description": "Result of raising a blank expert.\n\nAttachments are validated before the expert row is created. A later\ninstall failure is non-fatal and listed in ``failed_attachments`` so\nthe client can surface partial success."
       },
+      "RaiseSuggestion": {
+        "properties": {
+          "role": { "type": "string", "title": "Role" },
+          "reason": { "type": "string", "title": "Reason", "default": "" }
+        },
+        "type": "object",
+        "required": ["role"],
+        "title": "RaiseSuggestion",
+        "description": "The \"raise your own\" door, prefilled for a gap the roster can't fill.\n\n``role`` is one of the ``/raise`` wizard's role ids so the link can\nseed the draft; a suggestion naming anything else is dropped."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -25597,6 +26519,43 @@
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
+      "RecommendedExpert": {
+        "properties": {
+          "template_id": { "type": "string", "title": "Template Id" },
+          "name": { "type": "string", "title": "Name" },
+          "role": { "type": "string", "title": "Role" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "reason": { "type": "string", "title": "Reason", "default": "" },
+          "workflow_names": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Workflow Names",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "name", "role"],
+        "title": "RecommendedExpert",
+        "description": "One roster template AutoPilot suggests hiring first.\n\n``template_id`` is always a live template — the model only ever picks\nids off the roster it was shown, and anything else is dropped before\nstorage. ``name``/``role``/``avatar_url`` are copied from that\ntemplate server-side rather than trusted from the model, so a card\ncan never introduce an expert who does not exist."
+      },
+      "RecommendedExpertsResponse": {
+        "properties": {
+          "ready": { "type": "boolean", "title": "Ready" },
+          "team": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ExpertRecommendations" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["ready"],
+        "title": "RecommendedExpertsResponse",
+        "description": "The team section's content, polled by the onboarding loading screen.\n\n``ready`` is false only while the background job is still running.\n``team`` is null when the feature is off — a team with no experts is\na real answer, so the client cannot use emptiness to tell them apart."
+      },
       "RecommendedProvider": {
         "properties": {
           "provider": { "type": "string", "title": "Provider" },
@@ -25657,6 +26616,19 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RenameFileRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "RenameFileRequest"
       },
       "RequestTopUp": {
         "properties": {
@@ -25755,7 +26727,9 @@
           "expert_soul_updated",
           "expert_change_proposed",
           "expert_change_applied",
-          "team_roster"
+          "team_roster",
+          "expert_chat_list",
+          "expert_chat_transcript"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -26489,6 +27463,12 @@
           "graph_version": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version"
+          },
+          "rejection": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CredentialRejection" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -26669,6 +27649,93 @@
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
       },
+      "SkillReviewRequest": {
+        "properties": {
+          "is_approved": { "type": "boolean", "title": "Is Approved" },
+          "comments": { "type": "string", "title": "Comments" },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": ["is_approved", "comments"],
+        "title": "SkillReviewRequest",
+        "description": "An admin's verdict on one submission; the version comes from the path."
+      },
+      "SkillSubmission": {
+        "properties": {
+          "skill_listing_version_id": {
+            "type": "string",
+            "title": "Skill Listing Version Id"
+          },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers"
+          },
+          "version": { "type": "integer", "title": "Version" },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "is_live": {
+            "type": "boolean",
+            "title": "Is Live",
+            "description": "Whether this version is the one the marketplace serves."
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_listing_version_id",
+          "slug",
+          "name",
+          "description",
+          "categories",
+          "required_providers",
+          "version",
+          "status",
+          "is_live"
+        ],
+        "title": "SkillSubmission"
+      },
+      "SkillSubmissionRequest": {
+        "properties": {
+          "skill_name": {
+            "type": "string",
+            "title": "Skill Name",
+            "description": "Slug of the caller's library skill to publish."
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "required_providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Required Providers",
+            "description": "Integrations the skill's instructions assume are connected."
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          }
+        },
+        "type": "object",
+        "required": ["skill_name", "categories"],
+        "title": "SkillSubmissionRequest",
+        "description": "Publish one of the caller's own library skills as a marketplace listing."
+      },
       "SkippedWebhookPreset": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -26694,6 +27761,27 @@
         "required": ["field", "before", "after"],
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
+      },
+      "SpeechRequest": {
+        "properties": {
+          "text": { "type": "string", "maxLength": 4096, "title": "Text" },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "Attributes the cost to a chat session, as a text turn is."
+          },
+          "voice": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Voice",
+            "description": "Overrides the configured default voice."
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "SpeechRequest"
       },
       "Stats": {
         "properties": {
@@ -26959,6 +28047,16 @@
         "type": "string",
         "enum": ["rating", "runs", "name", "updated_at"],
         "title": "StoreAgentsSortOptions"
+      },
+      "StoreCategoryInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "description": { "type": "string", "title": "Description" }
+        },
+        "type": "object",
+        "required": ["value", "label", "description"],
+        "title": "StoreCategoryInfo"
       },
       "StoreCreatorsSortOptions": {
         "type": "string",
@@ -27288,8 +28386,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27301,7 +28398,7 @@
           }
         },
         "type": "object",
-        "required": ["name", "sub_heading"],
+        "required": ["name", "sub_heading", "categories"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
@@ -27347,8 +28444,7 @@
           "categories": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Categories",
-            "default": []
+            "title": "Categories"
           },
           "changes_summary": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27365,7 +28461,8 @@
           "graph_version",
           "slug",
           "name",
-          "sub_heading"
+          "sub_heading",
+          "categories"
         ],
         "title": "StoreSubmissionRequest"
       },
@@ -27404,6 +28501,12 @@
               { "type": "null" }
             ],
             "title": "Context"
+          },
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Voice mode is waiting on speech. Adds one line asking the reply to open with a spoken acknowledgement before any tool call; text turns never pay for it.",
+            "default": false
           },
           "file_ids": {
             "anyOf": [
@@ -27477,6 +28580,7 @@
             "type": "string",
             "enum": [
               "NO_TIER",
+              "TRIAL",
               "BASIC",
               "PRO",
               "MAX",
@@ -27568,7 +28672,15 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
+        "enum": [
+          "NO_TIER",
+          "TRIAL",
+          "BASIC",
+          "PRO",
+          "MAX",
+          "BUSINESS",
+          "ENTERPRISE"
+        ],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -28724,6 +29836,124 @@
           "created_at"
         ],
         "title": "TransferResponse"
+      },
+      "TrialCheckoutRequest": {
+        "properties": {
+          "offer_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Offer Token"
+          },
+          "return_to": {
+            "type": "string",
+            "enum": ["onboarding", "billing"],
+            "title": "Return To",
+            "default": "billing"
+          }
+        },
+        "type": "object",
+        "required": ["offer_token"],
+        "title": "TrialCheckoutRequest"
+      },
+      "TrialCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "TrialCheckoutResponse"
+      },
+      "TrialOfferResponse": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "version": { "type": "string", "title": "Version" },
+          "duration_days": { "type": "integer", "title": "Duration Days" },
+          "tier": {
+            "type": "string",
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS"],
+            "title": "Tier"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "unit_amount": { "type": "integer", "title": "Unit Amount" },
+          "currency": { "type": "string", "title": "Currency" },
+          "onboarding_credit_amount": {
+            "type": "integer",
+            "title": "Onboarding Credit Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "version",
+          "duration_days",
+          "tier",
+          "billing_cycle",
+          "unit_amount",
+          "currency",
+          "onboarding_credit_amount"
+        ],
+        "title": "TrialOfferResponse"
+      },
+      "TrialRejectionReason": {
+        "type": "string",
+        "enum": ["intro_offer_already_used", "card_verification_failed"],
+        "title": "TrialRejectionReason"
+      },
+      "TrialStatusResponse": {
+        "properties": {
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible",
+            "default": false
+          },
+          "offer": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialOfferResponse" },
+              { "type": "null" }
+            ]
+          },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialRejectionReason" },
+              { "type": "null" }
+            ]
+          },
+          "ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ends At"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End",
+            "default": false
+          },
+          "allowance_used_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Allowance Used Percent"
+          },
+          "active": { "type": "boolean", "title": "Active", "default": false },
+          "converted": {
+            "type": "boolean",
+            "title": "Converted",
+            "default": false
+          },
+          "onboarding_credits_previously_received": {
+            "type": "boolean",
+            "title": "Onboarding Credits Previously Received",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrialStatusResponse"
       },
       "TriggeredPresetSetupRequest": {
         "properties": {
@@ -30308,7 +31538,11 @@
             "enum": ["uploaded", "generated"],
             "title": "Origin"
           },
-          "created_at": { "type": "string", "title": "Created At" }
+          "created_at": { "type": "string", "title": "Created At" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          }
         },
         "type": "object",
         "required": [

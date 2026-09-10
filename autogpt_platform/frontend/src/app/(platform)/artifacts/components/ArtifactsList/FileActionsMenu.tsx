@@ -17,9 +17,11 @@ import {
   LinkSquare01Icon,
   Loading03Icon,
   MoreHorizontalIcon,
+  PencilEdit02Icon,
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { MoveToFolderDialog } from "../MoveToFolderDialog/MoveToFolderDialog";
+import { RenameFileDialog } from "../RenameFileDialog/RenameFileDialog";
 import { useFileActionsMenu } from "./useFileActionsMenu";
 
 interface Props {
@@ -33,6 +35,8 @@ export function FileActionsMenu({ file, className }: Props) {
     goHref,
     isMoveOpen,
     setIsMoveOpen,
+    isRenameOpen,
+    setIsRenameOpen,
     isDownloading,
     isDeleting,
     handleDownload,
@@ -83,6 +87,16 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault();
+              setIsRenameOpen(true);
+            }}
+            data-testid="artifacts-rename-menu"
+          >
+            <Icon icon={PencilEdit02Icon} size={16} className="mr-2" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
               setIsMoveOpen(true);
             }}
             data-testid="artifacts-move-to-folder"
@@ -110,10 +124,17 @@ export function FileActionsMenu({ file, className }: Props) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {isRenameOpen && (
+        <RenameFileDialog
+          file={file}
+          isOpen={isRenameOpen}
+          setIsOpen={setIsRenameOpen}
+        />
+      )}
       {isMoveOpen && (
         <MoveToFolderDialog
-          fileId={file.id}
-          fileName={file.name}
+          fileIds={[file.id]}
+          subject={`“${file.name}”`}
           currentFolderId={file.folder_id}
           isOpen={isMoveOpen}
           setIsOpen={setIsMoveOpen}

@@ -51,6 +51,39 @@ class ProcessCheckRunsTests(unittest.TestCase):
 
         self.assertEqual(result, (False, True))
 
+    def test_accepts_passing_concurrent_run_despite_reversed_run_order(self):
+        source = {**CANCELED_RUN, "created_at": "2026-09-09T08:51:20Z"}
+        candidate = {
+            **PASSING_RUN,
+            "run_number": 10,
+            "created_at": source["created_at"],
+        }
+        self.assertEqual(
+            process_check_runs([CANCELED_CHECK], [source, candidate]), (False, True)
+        )
+
+    def test_rejects_older_or_unrelated_passing_run(self):
+        source = {**CANCELED_RUN, "created_at": "2026-09-09T08:51:20Z"}
+        candidate = {
+            **PASSING_RUN,
+            "run_number": 10,
+            "created_at": source["created_at"],
+        }
+        for change in (
+            {"created_at": "2026-09-09T08:51:19Z"},
+            {"created_at": None},
+            {"head_sha": "different"},
+            {"event": "merge_group"},
+            {"conclusion": "failure"},
+        ):
+            with self.subTest(change=change):
+                self.assertEqual(
+                    process_check_runs(
+                        [CANCELED_CHECK], [source, {**candidate, **change}]
+                    ),
+                    (False, False),
+                )
+
     def test_rejects_cancellation_without_replacement(self):
         result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN])
 

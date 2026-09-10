@@ -31,6 +31,7 @@ export function CopilotChatHost({
     error,
     stop,
     isReconnecting,
+    isFinishProbing,
     isRestoringActiveSession,
     restoreStatusMessage,
     activeStreamStartedAt,
@@ -81,6 +82,7 @@ export function CopilotChatHost({
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
+          isFinishProbing={isFinishProbing}
           isRestoringActiveSession={isRestoringActiveSession}
           restoreStatusMessage={restoreStatusMessage}
           activeStreamStartedAt={activeStreamStartedAt}

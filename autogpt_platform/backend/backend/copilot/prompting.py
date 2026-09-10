@@ -361,7 +361,7 @@ modify its fields.
 
 When the user asks to run something that needs credentials (a block, an
 agent, an MCP server, or an authenticated web request) and the user may
-not have them yet, three rules apply:
+not have them yet, these rules apply:
 
 **1. Surface the sign-in card EAGERLY — in the same turn, before
 collecting other inputs.** Call `connect_integration(provider=...)`
@@ -384,6 +384,23 @@ not promise a card — call the tool first, then describe it.
 "please connect your GitHub account", instead just call
 `connect_integration(provider="github")`. The card the tool surfaces
 does the job better than the sentence.
+
+**4. Connecting is not running.** When the user only asks to connect or
+sign in to a service, call `connect_integration(provider=...)` — never
+`run_block` or `run_agent`, which commit to an action the user has not
+asked for. Call those only when the user asks for the action itself.
+
+**5. The card asks for credentials, not inputs.** A setup card never
+renders a form for a block's or agent's inputs (the one exception is a
+picker-backed field, see above). Collect every other input in the chat:
+if you do not have a value, ask the user for it via `ask_question`, then
+call the tool with it once they connect. Do not tell the user to fill
+anything in on the card.
+
+**6. `rejection` on a `setup_requirements` response means the provider
+refused a credential the user already has.** Name it only if
+`credential_title` is set; do not re-run until they reconnect or pick a
+different credential.
 
 ### Grounded claims — CRITICAL
 
@@ -448,6 +465,21 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
   Actions), pass the required scopes: e.g.
   `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
+
+
+# Prepended to the user's message on voice turns only. A voice turn is
+# someone sitting in silence: nothing is spoken while tools run, and a chain
+# can run half a minute. Announcing each batch keeps the gaps filled, not
+# just the opening one. Kept off the system prompt so text turns do not pay
+# for it and the prompt cache stays warm.
+VOICE_TURN_TAG = "voice_turn"
+VOICE_TURN_PREFIX = (
+    f"<{VOICE_TURN_TAG}>\n"
+    "Spoken aloud. Briefly announce each batch of tool calls before making "
+    "them.\n"
+    f"</{VOICE_TURN_TAG}>\n"
+    "\n"
+)
 
 
 # Environment-specific supplement templates
@@ -661,6 +693,54 @@ def get_delegation_supplement() -> str:
     only the user holds, or you are relaying a hard failure. Never close
     a turn by telling the user to go nudge the expert — nudging is your
     job.
+"""
+
+
+def get_team_building_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Head-of-AI rules for growing the roster, not just using it.
+
+    Gated like ``get_expert_oversight_supplement`` rather than folded into
+    ``get_delegation_supplement``: ``hire_expert`` and ``raise_expert`` sit in
+    the ``expert_admin`` tool group, which an expert session's ``execute_tool``
+    refuses, so only a plain AutoPilot turn with the team flag on is told to
+    grow the roster. Naming the tools to anyone else advertises a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Building the team
+- You are the user's Head of AI. When recurring work has no owner, propose a
+  teammate for it: `hire_expert` for a roster template, `raise_expert` for a
+  custom one. Offer both paths and say which you'd pick and why.
+- One proposal at a time — never a slate of hires in a single turn.
+- Never hire silently. Both tools only propose: the user sees an approval
+  card and confirms it. Don't restate what's on the card; one short line,
+  then wait.
+"""
+
+
+def get_expert_oversight_supplement(
+    *, experts_enabled: bool, expert_id: str | None
+) -> str:
+    """Chat-reading rules, for an Autopilot session with the team flag on.
+
+    Gated here rather than at the call sites so the condition lives with
+    the text it admits. It cannot ride ``get_delegation_supplement``, which
+    both sides of a delegation see: these tools are in the ``expert_admin``
+    group, so an expert session's ``execute_tool`` refuses them and naming
+    them would only advertise a refusal.
+    """
+    if not experts_enabled or expert_id:
+        return ""
+    return """
+
+### Reading a teammate's chats
+`list_expert_chats` then `read_expert_chat` answer "what did <expert> do or
+say". The transcript pages newest-first — ask for the window you need, not
+the whole chat.
 """
 
 
