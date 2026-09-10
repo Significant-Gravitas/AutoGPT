@@ -51,7 +51,7 @@ export function AutopilotCard({
         <ExpertCover color={undefined} status="built-in" />
 
         <div className="flex w-full items-start gap-3 px-2">
-          <Avatar className="relative z-10 -mt-12 ml-1 size-[5.5rem] shrink-0 rounded-full ring-4 ring-white">
+          <Avatar className="relative z-10 -mt-12 ml-1 size-[5.5rem] shrink-0 rounded-full border border-black ring-4 ring-white">
             <AvatarImage
               src={AUTOPILOT_AVATAR_URL}
               alt={AUTOPILOT_NAME}

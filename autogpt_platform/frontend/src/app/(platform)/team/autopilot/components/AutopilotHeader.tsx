@@ -23,7 +23,7 @@ export function AutopilotHeader() {
       <ExpertCover className="h-36" color={undefined} builtIn />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar className="relative z-10 -mt-12 ml-14 size-24 shrink-0 rounded-full ring-4 ring-white">
+        <Avatar className="relative z-10 -mt-12 ml-14 size-24 shrink-0 rounded-full border border-black ring-4 ring-white">
           <AvatarImage
             src={AUTOPILOT_AVATAR_URL}
             alt={AUTOPILOT_NAME}

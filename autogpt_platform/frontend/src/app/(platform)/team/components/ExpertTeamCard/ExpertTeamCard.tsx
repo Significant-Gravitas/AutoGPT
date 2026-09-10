@@ -101,7 +101,7 @@ export function ExpertTeamCard({
         <div className="flex w-full items-start gap-3 px-2">
           <span className="relative z-10 -mt-12 ml-1 block shrink-0">
             {isUploadedAvatar(expert.avatar_url) ? (
-              <Avatar className="size-[5.5rem] rounded-full ring-4 ring-white">
+              <Avatar className="size-[5.5rem] rounded-full border border-black ring-4 ring-white">
                 <AvatarImage
                   src={expert.avatar_url ?? undefined}
                   alt={expert.name}
@@ -114,7 +114,7 @@ export function ExpertTeamCard({
                 </AvatarFallback>
               </Avatar>
             ) : (
-              <span className="flex size-[5.5rem] items-center justify-center rounded-full bg-white ring-4 ring-white">
+              <span className="flex size-[5.5rem] items-center justify-center rounded-full border border-black bg-white ring-4 ring-white">
                 <BotAvatar
                   config={expertAvatarConfig({
                     name: expert.name,
