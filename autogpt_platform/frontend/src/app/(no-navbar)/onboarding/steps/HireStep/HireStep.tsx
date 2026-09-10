@@ -12,7 +12,7 @@ import {
   EXPERT_CARD_CLASS,
   RecommendedExpertCard,
 } from "./components/RecommendedExpertCard";
-import { continueLabel, hireTitle, raiseNote } from "./helpers";
+import { continueLabel, hireDiagnosis, hireTitle, raiseNote } from "./helpers";
 import { useHireStep } from "./useHireStep";
 import { useScrollEdges } from "./useScrollEdges";
 
@@ -29,6 +29,7 @@ const EDGE_FADE_CLASS =
 export function HireStep() {
   const step = useHireStep();
   const note = raiseNote(step.raiseRole);
+  const diagnosis = hireDiagnosis(step.team, step.isPending);
   const isHiring = step.hiringTemplateId !== null;
   const gridRef = useRef<HTMLDivElement>(null);
   const { hiddenAbove, hiddenBelow } = useScrollEdges(gridRef);
@@ -47,6 +48,16 @@ export function HireStep() {
           <Text variant="h4" as="h1">
             {hireTitle(step.team, step.isPending)}
           </Text>
+          {diagnosis ? (
+            <Text
+              variant="body"
+              tone="muted"
+              className="max-w-lg text-center"
+              data-testid="hire-step-diagnosis"
+            >
+              {diagnosis}
+            </Text>
+          ) : null}
         </div>
 
         {/* The roster can run to sixteen cards: the row wraps and scrolls
