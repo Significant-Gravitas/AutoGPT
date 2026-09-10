@@ -236,6 +236,36 @@ def _build_catalog() -> CatalogPayload:
                     provider_output_usd_per_1m=15.00,
                 ),
             ),
+            CatalogModel(
+                slug="claude-fable-5-1",
+                display_name="Claude Fable 5.1",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # $10/1M in, $50/1M out (Anthropic list price, unchanged
+                # from Fable 5) at the catalog's standard usd_per_1m x 150
+                # factor -> 1500/7500 credits, matching gpt-6-astra which
+                # ships the same $10/$50 rate. Cache reads are Fable 5.1's
+                # headline price cut: $0.25/1M (75% below Fable 5) rather
+                # than the family's usual 0.1x-of-input ratio. Cache writes
+                # keep the standard 1.25x-of-input convention ($12.50/1M).
+                cost=CatalogModelCost(
+                    run_credits=20,
+                    input_credits_per_1m=1500.0,
+                    output_credits_per_1m=7500.0,
+                    cache_read_credits_per_1m=37.5,
+                    cache_creation_credits_per_1m=1875.0,
+                    provider_input_usd_per_1m=10.00,
+                    provider_output_usd_per_1m=50.00,
+                ),
+            ),
             # ----- Groq -----
             CatalogModel(
                 slug="llama-3.1-8b-instant",
@@ -553,6 +583,20 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.8-flash",
+                display_name="Gemini 3.8 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=112.5,
+                    output_credits_per_1m=562.5,
                 ),
             ),
             CatalogModel(

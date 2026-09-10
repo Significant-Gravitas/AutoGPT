@@ -1,3 +1,4 @@
+import { getGetV2ListChatConnectionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import {
   getGetV2ListChatConnectionsMockHandler200,
   getGetV2ListProviderModelTiersMockHandler200,
@@ -5,7 +6,8 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
 import { server } from "@/mocks/mock-server";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,10 +16,14 @@ import { ConnectStep } from "../ConnectStep";
 import { hasLinkedSubscription, linkedModelsSentence } from "../helpers";
 
 const connect = vi.fn();
+let onConnected: (() => void) | undefined;
 vi.mock(
   "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect",
   () => ({
-    useOAuthConnect: () => ({ connect, isPending: false }),
+    useOAuthConnect: ({ onSuccess }: { onSuccess?: () => void }) => {
+      onConnected = onSuccess;
+      return { connect, isPending: false };
+    },
   }),
 );
 
@@ -88,24 +94,48 @@ function mockOffers(
   );
 }
 
+// Exposes the test QueryClient so a test can wait for a query to settle.
+let queryClient: QueryClient | null = null;
+function QueryClientProbe() {
+  queryClient = useQueryClient();
+  return null;
+}
+
 describe("ConnectStep", () => {
   beforeEach(() => {
     connect.mockClear();
-    useOnboardingWizardStore.setState({ currentStep: 1 });
+    useOnboardingWizardStore.setState({ currentStep: 3 });
   });
 
-  it("leads with the zero-config path", async () => {
+  it("offers ChatGPT as a box and names the rest as coming soon", async () => {
     mockOffers([offer()]);
 
     render(<ConnectStep />);
 
     expect(
-      await screen.findByRole("button", { name: /Sign in with ChatGPT/ }),
+      await screen.findByRole("button", { name: /ChatGPT/ }),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: /Skip for now/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
+    // Upcoming providers are shown, not clickable: each needs its own
+    // adapter and approval before it can become a real box.
+    expect(screen.getByText("Grok")).toBeDefined();
+    expect(screen.getByText("GitHub Copilot")).toBeDefined();
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Grok/ })).toBeNull();
   });
 
-  it("can be skipped, because API keys are a legitimate answer", async () => {
+  it("starts the ChatGPT sign-in from its box", async () => {
+    mockOffers([offer()]);
+
+    render(<ConnectStep />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /ChatGPT/ }),
+    );
+
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("can be passed with Next, because API keys are a legitimate answer", async () => {
     // A wizard that cannot be passed without linking an account would make
     // the advanced path a dead end rather than an alternative. The control
     // is named for what it does -- it skips the step; it cannot add a key --
@@ -113,12 +143,37 @@ describe("ConnectStep", () => {
     mockOffers([offer()]);
 
     render(<ConnectStep />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: /Skip for now/ }),
+    await userEvent.click(await screen.findByRole("button", { name: "Next" }));
+
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("stays on the step after a successful sign-in and shows it linked", async () => {
+    mockOffers([offer()]);
+
+    render(
+      <>
+        <QueryClientProbe />
+        <ConnectStep />
+      </>,
+    );
+    await screen.findByRole("button", { name: /ChatGPT/ });
+    // The click can only come after the page has settled: a refetch asked
+    // for while the first request is still in flight is folded into it.
+    await waitFor(() =>
+      expect(
+        queryClient?.getQueryState(getGetV2ListChatConnectionsQueryKey())
+          ?.fetchStatus,
+      ).toBe("idle"),
     );
 
-    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
-    expect(connect).not.toHaveBeenCalled();
+    // The sign-in lands; the server now lists the ChatGPT connection.
+    mockOffers([offer(), chatgpt()]);
+    onConnected?.();
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
   });
 
   it("stops asking once a subscription is linked", async () => {
@@ -126,34 +181,9 @@ describe("ConnectStep", () => {
 
     render(<ConnectStep />);
 
-    expect(
-      await screen.findByText(/Your ChatGPT plan is connected/),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Sign in with ChatGPT/ })).toBe(
-      null,
-    );
-  });
-
-  it("says a Claude subscription cannot be linked, rather than leaving it to be discovered", async () => {
-    mockOffers([offer()]);
-
-    render(<ConnectStep />);
-
-    expect(
-      await screen.findByText(/Claude subscriptions can't be linked/),
-    ).toBeDefined();
-  });
-
-  it("names what you get, from the catalog", async () => {
-    mockOffers([offer()], [chatgptTiers()]);
-
-    render(<ConnectStep />);
-
-    expect(
-      await screen.findByText(
-        /GPT-5\.6 Terra \(Balanced\) and GPT-5\.6 Sol \(Advanced\)/,
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /ChatGPT/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
   });
 });
 

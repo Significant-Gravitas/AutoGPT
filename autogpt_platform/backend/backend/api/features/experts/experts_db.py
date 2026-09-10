@@ -39,6 +39,7 @@ from backend.api.features.experts.models import (
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertRunSource,
     ExpertRunStatus,
     ExpertSoulFieldsPatch,
     ExpertSoulUpdate,
@@ -50,6 +51,7 @@ from backend.api.features.experts.models import (
 )
 from backend.api.features.experts.workflow_chain import build_workflow_chain
 from backend.api.features.library import db as library_db
+from backend.api.features.library import model as library_model
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks import get_output_block_ids
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
@@ -303,7 +305,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     """
     return await query_raw_with_schema(
         """
-        SELECT "id", "name", "avatarUrl" AS "avatar_url", "role",
+        SELECT "id", "name", "avatarUrl" AS "avatar_url", "color", "role",
                "isArchived" AS "is_archived"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
@@ -404,6 +406,7 @@ async def list_expert_runs(
         where={"userId": user_id, "expertId": expert_id, "isDeleted": False},
         order={"createdAt": "desc"},
         take=limit,
+        include={"AgentPreset": True},
     )
     if not executions:
         return []
@@ -590,6 +593,13 @@ def _node_exec_inputs(
     }
 
 
+def _run_source(execution: prisma.models.AgentGraphExecution) -> ExpertRunSource:
+    preset = getattr(execution, "AgentPreset", None)
+    if preset is None:
+        return "manual"
+    return "trigger" if preset.webhookId else "scheduled"
+
+
 def _to_expert_run(
     execution: prisma.models.AgentGraphExecution,
     workflow: prisma.models.ExpertWorkflow | None,
@@ -618,6 +628,7 @@ def _to_expert_run(
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,
+        source=_run_source(execution),
         started_at=execution.startedAt,
         ended_at=execution.endedAt,
         link=run_link(library_agent_id, execution.id),
@@ -1074,6 +1085,28 @@ async def update_avatar(user_id: str, expert_id: str, avatar_url: str | None) ->
     return expert
 
 
+async def update_budget(
+    user_id: str, expert_id: str, weekly_budget: int | None
+) -> Expert:
+    updated = await prisma.models.Expert.prisma().update_many(
+        where={
+            "id": expert_id,
+            "ownerUserId": user_id,
+            "isTemplate": False,
+            "isArchived": False,
+            "visibility": ResourceVisibility.PRIVATE,
+        },
+        data={"weeklyBudget": weekly_budget},
+    )
+    if updated == 0:
+        raise ExpertNotFoundError(expert_id)
+
+    expert = await get_expert(user_id, expert_id)
+    if expert is None:
+        raise ExpertNotFoundError(expert_id)
+    return expert
+
+
 async def update_soul_if_current(
     user_id: str,
     expert_id: str,
@@ -1242,6 +1275,16 @@ async def _install_preloads(
     if any(p.scheduleCron for p in preloads):
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
+    # Rows first, schedules second: creating a schedule resolves credentials
+    # scoped to the expert, which seeds its allow-list from the workflows
+    # installed so far. Interleaving would freeze that list after the first one.
+    installed: list[
+        tuple[
+            prisma.models.ExpertWorkflow,
+            prisma.models.ExpertWorkflow,
+            library_model.LibraryAgent,
+        ]
+    ] = []
     for preload in preloads:
         if preload.storeListingVersionId is None:
             continue
@@ -1268,18 +1311,21 @@ async def _install_preloads(
                 else preload.storeListingVersionId
             )
             continue
-        if preload.scheduleCron:
-            listing = preload.StoreListingVersion
-            await scheduling.create_workflow_schedule(
-                workflow_row_id=row.id,
-                expert_id=expert_id,
-                user_id=user_id,
-                cron=preload.scheduleCron,
-                graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
-                name=listing.name if listing else "Expert workflow",
-                user_timezone=user_timezone or "UTC",
-            )
+        installed.append((row, preload, library_agent))
+    for row, preload, library_agent in installed:
+        if not preload.scheduleCron:
+            continue
+        listing = preload.StoreListingVersion
+        await scheduling.create_workflow_schedule(
+            workflow_row_id=row.id,
+            expert_id=expert_id,
+            user_id=user_id,
+            cron=preload.scheduleCron,
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=listing.name if listing else "Expert workflow",
+            user_timezone=user_timezone or "UTC",
+        )
     return failed
 
 

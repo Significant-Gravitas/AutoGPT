@@ -6,17 +6,19 @@ import asyncio
 import logging
 import os
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from prisma.errors import UniqueViolationError
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
+from backend.copilot.db import get_chat_session_expert_ids
 from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
@@ -25,6 +27,11 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_total_size,
+    rename_workspace_file,
+)
+from backend.data.workspace_scope import (
+    resolve_expert_workspace_scope,
+    session_path_prefix,
 )
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager, format_bytes
@@ -74,6 +81,8 @@ def _create_streaming_response(
         media_type=file.mime_type,
         headers={
             "Content-Disposition": disposition,
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
             "Content-Length": str(len(content)),
         },
     )
@@ -152,12 +161,27 @@ class WorkspaceFileItem(BaseModel):
     metadata: dict = Field(default_factory=dict)
     origin: Literal["uploaded", "generated"]
     created_at: str
+    # Hired expert whose conversation the file lives in; None for personal
+    # AutoPilot chats, Builder output and uploads outside a chat.
+    expert_id: str | None = None
 
 
 class ListFilesResponse(BaseModel):
     files: list[WorkspaceFileItem]
     offset: int = 0
     has_more: bool = False
+
+
+class RenameFileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _plain_file_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name or name in {".", ".."} or "/" in name or "\\" in name:
+            raise ValueError("File name must be a plain name without slashes")
+        return name
 
 
 # Exact metadata stamped on user uploads by ``upload_file``. Used to split
@@ -250,6 +274,36 @@ async def delete_workspace_file(
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
     return DeleteFileResponse(deleted=True)
+
+
+@router.patch(
+    "/files/{file_id}",
+    summary="Rename a workspace file",
+    operation_id="renameWorkspaceFile",
+    responses={
+        404: {"description": "File not found"},
+        409: {"description": "A file with this name already exists here"},
+    },
+)
+async def rename_workspace_file_route(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    file_id: str,
+    payload: RenameFileRequest,
+) -> WorkspaceFileItem:
+    """Rename a file; it stays in its folder and conversation."""
+    workspace = await get_workspace(user_id)
+    if workspace is None:
+        raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        renamed = await rename_workspace_file(file_id, workspace.id, payload.name)
+    except UniqueViolationError:
+        raise fastapi.HTTPException(
+            status_code=409, detail="A file with this name already exists here"
+        )
+    if renamed is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
+    expert_by_session = await _expert_ids_by_session(user_id, [renamed])
+    return _to_file_item(renamed, expert_by_session)
 
 
 @router.post(
@@ -373,10 +427,49 @@ async def get_storage_usage(
     )
 
 
+_SESSION_PATH_RE = re.compile(r"^/sessions/([^/]+)/")
+
+
+def _session_id_of(path: str) -> str | None:
+    match = _SESSION_PATH_RE.match(path)
+    return match.group(1) if match else None
+
+
+async def _expert_ids_by_session(
+    user_id: str, files: list[WorkspaceFile]
+) -> dict[str, str | None]:
+    """Attribute listed files to the expert whose conversation they live in."""
+    session_ids = sorted({sid for f in files if (sid := _session_id_of(f.path))})
+    if not session_ids:
+        return {}
+    return await get_chat_session_expert_ids(user_id, session_ids)
+
+
+def _to_file_item(
+    f: WorkspaceFile, expert_by_session: dict[str, str | None]
+) -> WorkspaceFileItem:
+    session_id_of_file = _session_id_of(f.path)
+    return WorkspaceFileItem(
+        id=f.id,
+        name=f.name,
+        path=f.path,
+        mime_type=f.mime_type,
+        size_bytes=f.size_bytes,
+        folder_id=f.folder_id,
+        metadata=f.metadata or {},
+        origin=_derive_origin(f.metadata),
+        created_at=f.created_at.isoformat(),
+        expert_id=(
+            expert_by_session.get(session_id_of_file) if session_id_of_file else None
+        ),
+    )
+
+
 @router.get(
     "/files",
     summary="List workspace files",
     operation_id="listWorkspaceFiles",
+    responses={400: {"description": "Conflicting filters"}},
 )
 async def list_workspace_files(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -410,6 +503,14 @@ async def list_workspace_files(
         default=False,
         description="Only return root-level files (not in any folder).",
     ),
+    expert_id: str | None = Query(
+        default=None,
+        min_length=1,
+        description=(
+            "Only return files from this hired expert's conversations. "
+            "Cannot be combined with session_id, folder_id or root_only."
+        ),
+    ),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
@@ -425,6 +526,10 @@ async def list_workspace_files(
     ``root_only``) are distinct, mutually exclusive axes, and ``folder_id`` and
     ``root_only`` likewise conflict; passing conflicting filters returns a 400
     rather than silently yielding an empty list.
+
+    ``expert_id`` narrows the listing to files from that hired expert's own
+    conversations. It excludes the other axes for the same reason. An expert
+    the caller does not own (or no longer has) yields an empty list.
     """
     # Treat empty-string session_id the same as omitted — an empty value
     # would otherwise silently list files across every session instead of
@@ -445,6 +550,13 @@ async def list_workspace_files(
         raise fastapi.HTTPException(
             status_code=400,
             detail="folder_id and root_only are mutually exclusive",
+        )
+    if expert_id is not None and (
+        session_id is not None or folder_id is not None or root_only
+    ):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="expert_id cannot be combined with session_id, folder_id or root_only",
         )
 
     workspace = await get_or_create_workspace(user_id)
@@ -467,7 +579,7 @@ async def list_workspace_files(
     name_contains = (q or "").strip() or None
 
     # Fetch one extra to compute has_more without a separate count query.
-    files = await manager.list_files(
+    list_kwargs: dict[str, Any] = dict(
         limit=limit + 1,
         offset=offset,
         include_all_sessions=include_all,
@@ -477,24 +589,20 @@ async def list_workspace_files(
         folder_id=folder_id,
         root_only=root_only,
     )
+    if expert_id is not None:
+        # Fails closed: an unowned or archived expert resolves to no sessions,
+        # and an empty prefix list matches nothing.
+        scope = await resolve_expert_workspace_scope(user_id, expert_id)
+        list_kwargs["allowed_path_prefixes"] = [
+            session_path_prefix(sid) for sid in scope.session_ids
+        ]
+    files = await manager.list_files(**list_kwargs)
     has_more = len(files) > limit
     page = files[:limit]
+    expert_by_session = await _expert_ids_by_session(user_id, page)
 
     return ListFilesResponse(
-        files=[
-            WorkspaceFileItem(
-                id=f.id,
-                name=f.name,
-                path=f.path,
-                mime_type=f.mime_type,
-                size_bytes=f.size_bytes,
-                folder_id=f.folder_id,
-                metadata=f.metadata or {},
-                origin=_derive_origin(f.metadata),
-                created_at=f.created_at.isoformat(),
-            )
-            for f in page
-        ],
+        files=[_to_file_item(f, expert_by_session) for f in page],
         offset=offset,
         has_more=has_more,
     )

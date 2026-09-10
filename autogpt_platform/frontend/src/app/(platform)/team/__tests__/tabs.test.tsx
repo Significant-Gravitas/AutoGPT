@@ -82,18 +82,18 @@ beforeEach(() => {
 });
 
 describe("TeamPage tabs", () => {
-  test("opens on Team Overview and offers Pod board", async () => {
+  test("opens on Overview without Pod board", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
 
-    const overview = await screen.findByRole("tab", { name: "Team Overview" });
+    const overview = await screen.findByRole("tab", { name: "Overview" });
     expect(overview.getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tab", { name: "Pod board" })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "Pod board" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "All tasks" })).toBeNull();
   });
 
-  test("Team Overview lists every expert without pod sections", async () => {
+  test("Overview lists every expert without pod sections", async () => {
     const growth: ExpertPod = {
       id: "pod-growth",
       name: "Growth",
@@ -108,32 +108,7 @@ describe("TeamPage tabs", () => {
 
     expect(await screen.findByText("Maria")).toBeDefined();
     expect(screen.getByText("Lee")).toBeDefined();
-    // Pod grouping belongs to the Pod board tab, not the overview grid.
     expect(screen.queryByRole("heading", { name: "Growth" })).toBeNull();
-  });
-
-  test("Pod board tells you how to start when there are no pods and no experts", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    expect(await screen.findByText("No pods yet")).toBeDefined();
-  });
-
-  test("Pod board still shows ungrouped experts when there are no pods", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertsMockHandler([maria]));
-
-    render(<TeamPage />);
-    await user.click(await screen.findByRole("tab", { name: "Pod board" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "Ungrouped" }),
-    ).toBeDefined();
-    expect(screen.getByText("Maria")).toBeDefined();
-    expect(screen.queryByText("No pods yet")).toBeNull();
   });
 });
 
@@ -186,8 +161,10 @@ describe("TeamRoster toolbar", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    await user.click(screen.getByRole("combobox", { name: /filter/i }));
-    await user.click(await screen.findByRole("option", { name: "Paused" }));
+    await user.click(screen.getByRole("button", { name: "Filter experts" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Paused" }),
+    );
 
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
@@ -243,23 +220,22 @@ describe("AutopilotCard", () => {
     expect(getStatValue(autopilot, "Workflows")).toBe("1");
   });
 
-  test("zeroes out the totals for a team with nothing set up", async () => {
+  test("leaves out the totals for a team with nothing set up", async () => {
     server.use(getListExpertsMockHandler([maria]));
 
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
     const autopilot = screen.getByRole("region", { name: "Autopilot" });
-    expect(getStatValue(autopilot, "Skills")).toBe("0");
-    expect(getStatValue(autopilot, "Schedules")).toBe("0");
-    expect(getStatValue(autopilot, "Workflows")).toBe("0");
+    // A zero total is left out of the meta line rather than shown as "0".
+    expect(within(autopilot).queryByText("Skills")).toBeNull();
+    expect(within(autopilot).queryByText("Schedules")).toBeNull();
+    expect(within(autopilot).queryByText("Workflows")).toBeNull();
     expect(within(autopilot).getByText("Built in")).toBeDefined();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(
-      within(autopilot)
-        .getByRole("link", { name: "Chat" })
-        .getAttribute("href"),
-    ).toBe("/copilot");
+      within(autopilot).getByRole("button", { name: "Chat" }),
+    ).toBeDefined();
     expect(within(autopilot).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 

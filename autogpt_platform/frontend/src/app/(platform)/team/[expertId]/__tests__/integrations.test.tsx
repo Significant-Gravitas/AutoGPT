@@ -411,6 +411,62 @@ describe("managing an expert's integrations", () => {
     expect(within(dialog).queryByText(/Let Maria use/)).toBeNull();
   });
 
+  it("filters the connect dialog's services by connection state", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([]),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+          {
+            name: "slack",
+            description: "Team chat",
+            supported_auth_types: ["oauth2"],
+          },
+        ]),
+      ),
+      http.get("*/api/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-slack",
+            provider: "slack",
+            type: "oauth2",
+            title: "Team Slack",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Add integration/ }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const list = await within(dialog).findByRole("list", { name: "Services" });
+    expect(within(list).getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(within(list).getByRole("button", { name: /Slack/ })).toBeDefined();
+
+    const filters = within(dialog).getByRole("group", {
+      name: "Filter services",
+    });
+    await userEvent.click(
+      within(filters).getByRole("button", { name: "Connected" }),
+    );
+    expect(within(list).queryByRole("button", { name: /Notion/ })).toBeNull();
+    expect(within(list).getByRole("button", { name: /Slack/ })).toBeDefined();
+
+    await userEvent.click(
+      within(filters).getByRole("button", { name: "Not connected" }),
+    );
+    expect(within(list).getByRole("button", { name: /Notion/ })).toBeDefined();
+    expect(within(list).queryByRole("button", { name: /Slack/ })).toBeNull();
+  });
+
   it("grants only the credential the dialog created", async () => {
     const workLinkedin = {
       id: "cred-linkedin",
@@ -481,6 +537,89 @@ describe("managing an expert's integrations", () => {
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(granted).toEqual([["cred-notion"]]));
+  });
+
+  it("shows the credential the dialog created without a reload", async () => {
+    const teamNotion = {
+      id: "cred-notion",
+      provider: "notion",
+      type: "api_key",
+      title: "Team Notion",
+    };
+    const notionRef: ExpertCredentialRef = {
+      credential_id: "cred-notion",
+      provider: "notion",
+      title: "Team Notion",
+      type: "api_key",
+    };
+    let granted: ExpertCredentialRef[] = [linkedin];
+    const seoAudit = {
+      id: "wf-1",
+      store_listing_version_id: "slv-1",
+      library_agent_id: "lib-1",
+      graph_id: "graph-1",
+      name: "SEO Audit",
+      description: null,
+      schedule_cron: "0 9 * * 1",
+      schedule_id: null,
+    };
+
+    server.use(
+      // The grant is what lets the backend create the schedule this
+      // workflow was waiting on, so the expert itself changes too.
+      getGetExpertMockHandler(() => ({
+        ...maria,
+        workflows: [
+          granted.length > 1
+            ? { ...seoAudit, schedule_id: "sched-1" }
+            : seoAudit,
+        ],
+      })),
+      http.get("*/api/experts/expert-maria/credentials", () =>
+        HttpResponse.json(granted),
+      ),
+      http.get("*/api/integrations/providers", () =>
+        HttpResponse.json([
+          {
+            name: "notion",
+            description: "Docs and databases",
+            supported_auth_types: ["api_key"],
+          },
+        ]),
+      ),
+      http.post("*/api/integrations/notion/credentials", () =>
+        HttpResponse.json(teamNotion, { status: 201 }),
+      ),
+      http.post("*/api/experts/expert-maria/credentials", () => {
+        granted = [linkedin, notionRef];
+        return HttpResponse.json(granted);
+      }),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const section = await screen.findByTestId("expert-integrations-section");
+    await within(section).findByText("Work LinkedIn");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Add integration/ }),
+    );
+    await userEvent.click(await screen.findByText("Notion"));
+    expect(await screen.findByText("Connect AutoGPT to Notion")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: /API Key/ }));
+    await userEvent.type(
+      await screen.findByPlaceholderText("My Notion key"),
+      "Team Notion",
+    );
+    await userEvent.type(screen.getByPlaceholderText("sk-..."), "secret-value");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await within(section).findByText("Team Notion")).toBeDefined();
+
+    await userEvent.click(screen.getByRole("tab", { name: /workflows/i }));
+    expect(await screen.findByText("Scheduled")).toBeDefined();
+    expect(screen.queryByText("Needs setup")).toBeNull();
   });
 
   it("grants the approved device credential to the expert", async () => {

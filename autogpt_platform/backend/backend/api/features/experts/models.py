@@ -123,8 +123,29 @@ class ExpertIdentity(BaseModel):
     id: str
     name: str
     avatar_url: str | None
+    color: str | None = None
     role: str
     is_archived: bool
+
+
+class ExpertSetupItem(BaseModel):
+    """One thing standing between a scheduled workflow and its schedule.
+
+    Rendered on the Team page as a row with a single fix. ``connect``: the
+    user has no credential for any of ``providers``. ``allow``: they have one
+    (``credential_id``) that this expert may not use yet. ``workflow``: no
+    credential is missing, so the schedule needs creating from the workflow.
+    """
+
+    expert_id: str
+    expert_name: str
+    expert_avatar_url: str | None
+    workflow_id: str
+    workflow_name: str | None
+    library_agent_id: str | None
+    providers: list[str]
+    resolution: Literal["connect", "allow", "workflow"]
+    credential_id: str | None = None
 
 
 class ExpertCredentialRef(BaseModel):
@@ -186,6 +207,11 @@ class ExpertPod(BaseModel):
     created_at: datetime
 
 
+# How an expert run was started: from a cron preset, a webhook preset, or
+# by hand (including from chat).
+ExpertRunSource = Literal["scheduled", "trigger", "manual"]
+
+
 class ExpertRun(BaseModel):
     """One expert-attributed execution, for the /team Work surface."""
 
@@ -198,6 +224,7 @@ class ExpertRun(BaseModel):
     # Which output pin was classified, so the viewer opens exactly that value.
     output_key: str | None
     needs_review: bool
+    source: ExpertRunSource = "manual"
     started_at: datetime | None
     ended_at: datetime | None
     link: str | None
@@ -331,6 +358,15 @@ class ExpertSoulUpdate(BaseModel):
     @classmethod
     def strip_optional_fields(cls, value: object) -> object:
         return _strip_optional_soul_field(value)
+
+
+class ExpertBudgetUpdate(BaseModel):
+    """Set an expert's weekly spend cap in credits (100 = $1).
+
+    ``None`` falls back to the platform default; ``0`` disables the cap.
+    """
+
+    weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
 
 
 class ExpertAvatarUpdate(BaseModel):

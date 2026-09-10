@@ -187,7 +187,11 @@ afterEach(() => {
 
 function ExpertSessionHarness() {
   const [expertId] = useQueryState("expertId", parseAsString);
-  const { createSession, sessionId } = useChatSession({ expertId });
+  const [newThread] = useQueryState("new", parseAsString);
+  const { createSession, sessionId } = useChatSession({
+    expertId,
+    adoptLatestExpertThread: !newThread,
+  });
   return (
     <div>
       <div data-testid="session-id">{sessionId ?? "none"}</div>
@@ -313,6 +317,36 @@ describe("useChatSession — expert sessions", () => {
     expect(seenExpertFilters).toContain("expert-maria");
   });
 
+  it("keeps a fresh thread addressed to the expert when the link carries new=1", async () => {
+    let listedSessions = 0;
+    server.use(
+      http.get("*/api/chat/sessions", () => {
+        listedSessions += 1;
+        return HttpResponse.json({
+          sessions: [
+            makeSession({ id: "s-maria-latest", expert_id: "expert-maria" }),
+          ],
+          total: 1,
+        });
+      }),
+    );
+    const NewThreadWrapper = withNuqsTestingAdapter({
+      searchParams: "?expertId=expert-maria&new=1",
+      hasMemory: true,
+    });
+
+    render(
+      <NewThreadWrapper>
+        <ExpertSessionHarness />
+      </NewThreadWrapper>,
+    );
+
+    expect(screen.getByTestId("expert-id").textContent).toBe("expert-maria");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId("session-id").textContent).toBe("none");
+    expect(listedSessions).toBe(0);
+  });
+
   it("stays on a fresh session after New Chat instead of re-adopting the expert's thread", async () => {
     server.use(
       http.get("*/api/chat/sessions", ({ request }) => {
@@ -373,7 +407,7 @@ describe("useChatSession — expert sessions", () => {
 });
 
 describe("groupSessionsByExpert", () => {
-  it("partitions sessions by expert_id with the Autopilot group first", () => {
+  it("partitions sessions by expert_id with the AutoPilot group first", () => {
     const groups = groupSessionsByExpert([
       makeSession({ id: "s1" }),
       makeSession({ id: "s2", expert_id: "expert-maria" }),
@@ -397,7 +431,7 @@ describe("groupSessionsByExpert", () => {
 });
 
 describe("ChatSidebar — expert groups", () => {
-  it("groups expert threads under expert name headers with Autopilot as the default group", async () => {
+  it("groups expert threads under expert name headers with AutoPilot as the default group", async () => {
     server.use(
       getGetV2ListSessionsMockHandler200({
         sessions: [
@@ -426,7 +460,7 @@ describe("ChatSidebar — expert groups", () => {
     expect(mariaHeader.textContent).toBe("Maria");
     expect(
       screen.getByTestId("expert-group-header-autopilot").textContent,
-    ).toBe("Autopilot");
+    ).toBe("AutoPilot");
     expect(screen.getByText("Campaign ideas")).toBeDefined();
   });
 
@@ -533,7 +567,7 @@ describe("ChatSidebar — expert groups", () => {
     expect(
       screen.queryByTestId("expert-group-load-more-expert-maria"),
     ).toBeNull();
-    // Autopilot's single chat never needs a Load more button.
+    // AutoPilot's single chat never needs a Load more button.
     expect(screen.queryByTestId("expert-group-load-more-autopilot")).toBeNull();
   });
 
@@ -704,7 +738,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     expect(workspaceFileRequests).toBe(0);
   });
 
-  it("wears the Autopilot identity on plain sessions", () => {
+  it("wears the AutoPilot identity on plain sessions", () => {
     render(
       <ChatMessagesContainer
         messages={[assistantMessage]}
@@ -715,7 +749,7 @@ describe("ChatMessagesContainer — expert identity", () => {
     );
 
     const header = screen.getByTestId("expert-thread-header");
-    expect(header.textContent).toContain("Autopilot");
+    expect(header.textContent).toContain("AutoPilot");
     expect(screen.queryByTestId("expert-assistant-identity")).toBeNull();
   });
 
@@ -807,10 +841,10 @@ describe("recipient picker", () => {
     expect(expertListRequests).toBe(0);
   });
 
-  it("RecipientChip shows a placeholder instead of Autopilot while experts load", () => {
+  it("RecipientChip shows a placeholder instead of AutoPilot while experts load", () => {
     render(
       <RecipientChip
-        recipient={{ id: null, name: "Autopilot", avatarUrl: null }}
+        recipient={{ id: null, name: "AutoPilot", avatarUrl: null }}
         options={[]}
         onSelect={vi.fn()}
         isLoading
@@ -818,16 +852,16 @@ describe("recipient picker", () => {
     );
 
     expect(screen.getByRole("status", { name: "Loading recipient" }));
-    expect(screen.queryByText("Autopilot")).toBeNull();
+    expect(screen.queryByText("AutoPilot")).toBeNull();
   });
 
   it("RecipientChip lists the team and reports the selection", async () => {
     const onSelect = vi.fn();
     render(
       <RecipientChip
-        recipient={{ id: null, name: "Autopilot", avatarUrl: null }}
+        recipient={{ id: null, name: "AutoPilot", avatarUrl: null }}
         options={[
-          { id: null, name: "Autopilot", avatarUrl: null },
+          { id: null, name: "AutoPilot", avatarUrl: null },
           { id: "expert-maria", name: "Maria", avatarUrl: null },
         ]}
         onSelect={onSelect}
@@ -862,7 +896,7 @@ describe("recipient picker", () => {
       expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
     );
     expect(screen.getByTestId("picker-recipient").textContent).toBe(
-      "Autopilot",
+      "AutoPilot",
     );
   });
 
@@ -893,7 +927,7 @@ describe("recipient picker", () => {
       expect(screen.getByTestId("picker-expert-id").textContent).toBe("none"),
     );
     expect(screen.getByTestId("picker-recipient").textContent).toBe(
-      "Autopilot",
+      "AutoPilot",
     );
   });
 });
