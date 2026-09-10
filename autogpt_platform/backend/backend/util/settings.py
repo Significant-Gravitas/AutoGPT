@@ -2,7 +2,7 @@ import json
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -178,6 +178,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=300,
         description="The default timeout in seconds, for RPC client calls.",
     )
+    llm_request_timeout_seconds: int = Field(
+        default=600,
+        ge=30,
+        # Literal rather than an import of DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+        # (1800): util must not import blocks. test_llm.py asserts this bound
+        # stays under that cap, whatever it is set to.
+        le=1500,
+        description=(
+            "Wall-clock cap on a single LLM provider request, covering the whole "
+            "generation (the block path is non-streaming). Raising it lengthens how "
+            "long a stalled provider holds one of `num_graph_workers` slots. "
+            "AgentExecutor and AutoPilot opt out of the per-node cap, so for those "
+            "this is the only per-call wall-clock bound."
+        ),
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -209,6 +224,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
+    )
+    expert_spend_approval_threshold_default: int = Field(
+        default=250,
+        ge=0,
+        description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
+    )
+    expert_spend_approval_window: Literal["week", "day"] = Field(
+        default="week",
+        description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
     )
     refund_notification_email: str = Field(
         default="refund@agpt.co",
@@ -541,6 +565,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
+    )
+    marketplace_require_canonical_category: bool = Field(
+        default=False,
+        description="Hide listings without a canonical category from the marketplace's default view. Turn on only once the category backfill has run, or real listings disappear.",
     )
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,

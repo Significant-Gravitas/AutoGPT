@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.executions.review.model import PendingHumanReviewModel
+from backend.copilot.constants import AUTOPILOT_NAME, AUTOPILOT_ROLE
 
 
 class HomeExpert(BaseModel):
@@ -45,6 +46,26 @@ class HomeBriefingOutcome(BaseModel):
     duration_seconds: float = 0
     cost_cents: int = 0
     link: str | None = None
+    # How the run started: a scheduler job fired it, a webhook fired it, or
+    # someone started it by hand (library, chat, API).
+    trigger: Literal["schedule", "webhook", "manual"] = "manual"
+
+
+class HomeBriefingAuthor(BaseModel):
+    """Who wrote the brief. Always AutoPilot, the account's built-in helper:
+    the brief reports the team's work, so no member of the team authors it.
+    `kind` is the seam a future personal-assistant author would widen."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["autopilot"]
+    name: str
+    role: str
+
+
+AUTOPILOT_BRIEFING_AUTHOR = HomeBriefingAuthor(
+    kind="autopilot", name=AUTOPILOT_NAME, role=AUTOPILOT_ROLE
+)
 
 
 class HomeBriefing(BaseModel):
@@ -54,6 +75,7 @@ class HomeBriefing(BaseModel):
     failed_count: int
     routine_count: int
     outcomes: list[HomeBriefingOutcome]
+    author: HomeBriefingAuthor
     # The AI-voice opening the copilot thread was posted with, read off the
     # stored briefing. None on the live path (nothing was generated) and
     # whenever the AI-summary flag is off.
@@ -69,6 +91,8 @@ class HomeActiveTask(BaseModel):
     title: str
     status: Literal["running", "queued"]
     expert: HomeExpert | None = None
+    # The workflow's own picture, shown when no expert owns the run.
+    image_url: str | None = None
     started_at: datetime | None = None
     link: str | None = None
 
@@ -78,6 +102,8 @@ class HomeUpcomingTask(BaseModel):
     title: str
     kind: Literal["agent", "followup"]
     expert: HomeExpert | None = None
+    # The workflow's own picture, shown when no expert owns the schedule.
+    image_url: str | None = None
     next_run_time: datetime
 
 
@@ -122,6 +148,55 @@ class HomeWeekSummary(BaseModel):
     daily: list[HomeDailyActivity]
 
 
+class HomeWorkActor(BaseModel):
+    # "expert" = a hired expert did it, "workflow" = a library workflow ran on
+    # its own, "autopilot" = the default copilot assistant.
+    kind: Literal["expert", "workflow", "autopilot"]
+    name: str
+    expert: HomeExpert | None = None
+    # A workflow has no avatar of its own, so its library picture stands in.
+    image_url: str | None = None
+    link: str | None = None
+
+
+class HomeRecentWorkItem(BaseModel):
+    id: str
+    category: Literal["file", "integration", "schedule"]
+    event_type: str
+    title: str
+    occurred_at: datetime
+    provider: str | None = None
+    file_id: str | None = None
+    mime_type: str | None = None
+    # The copilot thread the item came out of, when there was one.
+    session_title: str | None = None
+    link: str | None = None
+
+
+class HomeRecentWorkGroup(BaseModel):
+    """Everything one actor did this week: the runs it finished and the
+    durable things it produced."""
+
+    actor: HomeWorkActor
+    latest_at: datetime
+    runs: list[HomeBriefingOutcome] = Field(default_factory=list)
+    items: list[HomeRecentWorkItem] = Field(default_factory=list)
+    # Week totals per kind, uncapped, so the header can state how much the
+    # actor did even when the rows below are a slice of it.
+    run_count: int = 0
+    file_count: int = 0
+    integration_count: int = 0
+    schedule_count: int = 0
+
+
+class HomeRecentWork(BaseModel):
+    window_started_at: datetime | None = None
+    completed_count: int = 0
+    failed_count: int = 0
+    groups: list[HomeRecentWorkGroup] = Field(default_factory=list)
+    total_count: int = 0
+
+
 class HomeDashboardResponse(BaseModel):
     generated_at: datetime
     timezone: str
@@ -132,3 +207,6 @@ class HomeDashboardResponse(BaseModel):
     team: HomeTeamSummary
     agents: list[HomeAgentStatus]
     week: HomeWeekSummary
+    # Optional with a default so pre-existing clients (and their fixtures)
+    # keep validating; the backend always populates it.
+    recent_work: HomeRecentWork = Field(default_factory=HomeRecentWork)

@@ -22,6 +22,8 @@ export enum Flag {
   CHAT_PINNING = "chat-pinning",
   TASK_PROGRESS_BAR = "task-progress-bar",
   HIRE_EXPERTS = "hire-experts",
+  // Reveals the marketplace Skills shelf and the skill listing pages.
+  SKILLS_HUB = "skills-hub",
   // Reveals the notification-preferences card on /settings/account. The card
   // is built but its design is still being reworked, so it ships dark and is
   // targeted at AGPT staff in LaunchDarkly. Until this is on for everyone,
@@ -50,6 +52,10 @@ export enum Flag {
   // Marketplace review is pending) without a deploy. Missing keys default to
   // visible — only an explicit ``false`` hides a card.
   COPILOT_BOT_PLATFORMS = "copilot-bot-platforms",
+  // Voice mode on /copilot: hands-free listen → send → speak → listen.
+  // Mirror of the backend ``Flag`` enum — the speech endpoint 404s when off,
+  // so both sides must agree. Fail-closed.
+  COPILOT_VOICE_MODE = "copilot-voice-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -71,6 +77,7 @@ const defaultFlags = {
   [Flag.CHAT_PINNING]: false,
   [Flag.TASK_PROGRESS_BAR]: false,
   [Flag.HIRE_EXPERTS]: false,
+  [Flag.SKILLS_HUB]: false,
   // Off by default so a LaunchDarkly outage or a missing key hides the card
   // rather than exposing the in-progress design to everyone.
   [Flag.SETTINGS_NOTIFICATIONS]: false,
@@ -85,6 +92,7 @@ const defaultFlags = {
   [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
+  [Flag.COPILOT_VOICE_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -114,6 +122,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.ENABLE_PLATFORM_PAYMENT:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ENABLE_PLATFORM_PAYMENT;
+    case Flag.SKILLS_HUB:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SKILLS_HUB;
     case Flag.ARTIFACTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ARTIFACTS;
     case Flag.ARTIFACTS_PAGE:
@@ -154,6 +164,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.COPILOT_VOICE_MODE:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_BOT_PLATFORMS:
       return undefined;
   }

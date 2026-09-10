@@ -52,7 +52,7 @@ function truncate(value: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max).trimEnd()}…` : clean;
 }
 
-const RESTING_SCALE = 0.4;
+const RESTING_SCALE = 0.6;
 const FALLOFF_PER_STEP = 0.2;
 
 /** Ticks rest shrunk and swell toward the cursor, tapering one step at a
@@ -67,6 +67,6 @@ export function tickScale(index: number, hovered: number | null): number {
 
 export function tickColor(distance: number | null): string {
   if (distance === 0) return "bg-zinc-800";
-  if (distance === 1) return "bg-zinc-400";
-  return "bg-zinc-300";
+  if (distance === 1) return "bg-zinc-500";
+  return "bg-zinc-400";
 }

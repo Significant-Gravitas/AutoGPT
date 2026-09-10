@@ -11,8 +11,6 @@ from claude_agent_sdk import (
     create_sdk_mcp_server,
     tool,
 )
-from openai_codex.generated.v2_all import AgentMessageDeltaNotification
-from openai_codex.models import Notification
 
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.env import build_sdk_env
@@ -20,6 +18,7 @@ from backend.integrations.codex.models import (
     CodexDynamicToolCall,
     CodexDynamicToolResult,
     CodexInvocationResult,
+    CodexStreamEvent,
     CodexTokenUsage,
 )
 from backend.integrations.credential_lease import CredentialLease
@@ -51,14 +50,8 @@ class _ClaudeHarnessAgentSession:
         )
         assert event_handler is not None
         await event_handler(
-            Notification(
-                method="item/agentMessage/delta",
-                payload=AgentMessageDeltaNotification(
-                    delta="Claude harness round trip complete",
-                    itemId="item-cli",
-                    threadId="thread-cli",
-                    turnId="turn-cli",
-                ),
+            CodexStreamEvent(
+                type="text_delta", delta="Claude harness round trip complete"
             )
         )
         return CodexInvocationResult(

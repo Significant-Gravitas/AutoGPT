@@ -42,6 +42,7 @@ from backend.copilot.tools.graphiti_forget import (
     invalidate_entity_direct_neighbors,
     mark_edges_superseded,
 )
+from backend.copilot.transports import resolve_default_chat_route
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .batch_submit import read_input_bundle
@@ -439,7 +440,16 @@ async def _create_dream_session(
         org_id, team_id = None, None
 
     session_id = str(uuidlib.uuid4())
-    metadata = ChatSessionMetadata(kind="dream", dream_pass_id=pass_id)
+    # A dream is unattended, but the user reads and replies to it, and on a
+    # self-hosted install the platform route may not exist at all — so it
+    # starts on the same connection the user chose for everything else.
+    llm_auth_provider, llm_credential_id = await resolve_default_chat_route(user_id)
+    metadata = ChatSessionMetadata(
+        kind="dream",
+        dream_pass_id=pass_id,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+    )
     await chat_db().create_chat_session(
         session_id=session_id,
         user_id=user_id,
