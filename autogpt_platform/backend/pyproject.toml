@@ -39,6 +39,10 @@ graphiti-core = "^0.28.2"
 groq = "^0.30.0"
 html2text = "^2024.2.26"
 httpx2 = "^2.12.0"
+# Pinned SDKs (openai 1.x, anthropic 0.79.x) are still httpx-0.x-based, so
+# timeout/error types crossing those SDK boundaries stay real httpx.
+# Our own HTTP clients use httpx2.
+httpx = "^0.28.1"
 jinja2 = "^3.1.6"
 jsonref = "^1.1.0"
 jsonschema = "^4.25.0"
@@ -114,10 +118,6 @@ starlette = ">=1.6.0"
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = "^38.2.0"
-# httpx stays in dev deps for tests that build error fixtures for SDKs
-# (anthropic 0.79.x, openai 1.x) which are still httpx-based themselves.
-# Production code uses httpx2 (see runtime deps above).
-httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.41.0"
 pre-commit = "^4.4.0"

@@ -601,7 +601,7 @@ def sanitize_provider_message(message: str, max_chars: int = 200) -> str:
 
 def _status_code_of(exc: BaseException) -> int | None:
     for value in (
-        getattr(exc, "status_code", None),  # HTTPClientError, openai, httpx wrappers
+        getattr(exc, "status_code", None),  # HTTPClientError, openai, httpx2 wrappers
         getattr(exc, "status", None),  # aiohttp.ClientResponseError
         getattr(getattr(exc, "response", None), "status_code", None),  # requests
     ):

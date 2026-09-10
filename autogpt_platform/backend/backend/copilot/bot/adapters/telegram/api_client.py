@@ -1,13 +1,13 @@
 """Thin async client for the Telegram Bot API.
 
-Plain HTTPS JSON calls via httpx — the Bot API surface we need is small
+Plain HTTPS JSON calls via httpx2 — the Bot API surface we need is small
 enough that a dedicated SDK dependency isn't warranted.
 """
 
 import logging
 from typing import Any, Optional
 
-import httpx2 as httpx
+import httpx2
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class TelegramClient:
         # One pooled client for the adapter's lifetime (mirrors how Slack's
         # AsyncWebClient holds its session) — avoids a TCP+TLS handshake per
         # Bot API call.
-        self._http = httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS)
+        self._http = httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS)
 
     async def call(self, method: str, **params: Any) -> Any:
         """POST a Bot API method; return its ``result`` or raise."""

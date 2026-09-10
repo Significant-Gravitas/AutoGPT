@@ -861,7 +861,7 @@ async def _generate_session_title(
         # without a parallel migration. Pass the cached
         # ``_get_aux_client()`` singleton (a Langfuse-wrapped
         # AsyncOpenAI) so the title-gen span lands in the same trace
-        # tree as the originating chat turn AND the httpx connection
+        # tree as the originating chat turn AND the httpx2 connection
         # pool stays warm across calls — building a fresh client per
         # title would cost a TCP+TLS handshake every session.
         response = await call_provider_openai_compat_sync(

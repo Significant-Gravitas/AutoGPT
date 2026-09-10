@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any
 
-import httpx2 as httpx
+import httpx2
 
 from . import auth, config
 
@@ -38,7 +38,7 @@ class TeamsClient:
         self._token_lock = asyncio.Lock()
         # One pooled client for the adapter's lifetime, matching the Telegram
         # adapter — avoids a TCP+TLS handshake per Connector call.
-        self._http = httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
+        self._http = httpx2.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
 
     async def send_activity(
         self, service_url: str, conversation_id: str, activity: dict[str, Any]

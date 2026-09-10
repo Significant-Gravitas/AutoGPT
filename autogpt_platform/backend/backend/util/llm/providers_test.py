@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
-import httpx
+import httpx2
 import pytest
 from pydantic import ValidationError
 
@@ -1462,7 +1462,7 @@ class TestUtf8Sanitization:
 
 class TestTimeoutThreading:
     """Every SDK call site reached through ``call_provider`` must receive the
-    bounded ``httpx.Timeout``.
+    bounded ``httpx2.Timeout``.
 
     A site that silently loses it reverts to the SDK default. On Anthropic
     that is worse than slow: ``_calculate_nonstreaming_timeout`` raises
@@ -1605,7 +1605,7 @@ class TestTimeoutThreading:
 
     @pytest.mark.asyncio
     async def test_sync_helper_bounds_total_duration(self):
-        """The httpx timeout is per ATTEMPT and the SDK retries on top of it,
+        """The httpx2 timeout is per ATTEMPT and the SDK retries on top of it,
         so the helper needs its own wall-clock bound like ``call_provider``."""
 
         async def hang(**kwargs):
@@ -2282,12 +2282,12 @@ class TestAnthropicTemperatureDeprecation:
     async def test_sync_retries_without_temperature_on_deprecation_error(self):
         """Self-healing for future models the deny-list doesn't know:
         one retry without the param, same call otherwise."""
-        import httpx
+        import httpx2
 
         err = anthropic.BadRequestError(
             message="`temperature` is deprecated for this model.",
-            response=httpx.Response(
-                400, request=httpx.Request("POST", "https://api.anthropic.com")
+            response=httpx2.Response(
+                400, request=httpx2.Request("POST", "https://api.anthropic.com")
             ),
             body={"error": {"message": "`temperature` is deprecated for this model."}},
         )
@@ -2316,12 +2316,12 @@ class TestAnthropicTemperatureDeprecation:
         """The deprecation message wording/casing isn't contractual — a
         future model returning 'Temperature ... Deprecated' must still
         trigger the self-healing retry, not fall through and fail."""
-        import httpx
+        import httpx2
 
         err = anthropic.BadRequestError(
             message="Temperature is Deprecated for this model.",
-            response=httpx.Response(
-                400, request=httpx.Request("POST", "https://api.anthropic.com")
+            response=httpx2.Response(
+                400, request=httpx2.Request("POST", "https://api.anthropic.com")
             ),
             body={"error": {"message": "Temperature is Deprecated for this model."}},
         )
@@ -2437,9 +2437,9 @@ class TestClaude5TemperatureRejection:
 
     @staticmethod
     def _err(msg: str) -> anthropic.BadRequestError:
-        resp = httpx.Response(
+        resp = httpx2.Response(
             400,
-            request=httpx.Request("POST", "https://api.anthropic.com"),
+            request=httpx2.Request("POST", "https://api.anthropic.com"),
             json={"error": {"message": msg}},
         )
         return anthropic.BadRequestError(msg, response=resp, body=None)

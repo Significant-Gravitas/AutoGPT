@@ -32,7 +32,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx2 as httpx
+import httpx2
 from langfuse import get_client
 
 from backend.copilot.token_tracking import persist_and_record_usage
@@ -58,7 +58,7 @@ _REQUEST_TIMEOUT = 10.0
 
 
 async def _fetch_generation_cost(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     gen_id: str,
     api_key: str,
     log_prefix: str,
@@ -71,7 +71,7 @@ async def _fetch_generation_cost(
       after the SSE stream closes)
     * HTTP 408 / 429 — timeout / rate limit
     * HTTP 5xx — transient OpenRouter outage
-    * Network / ``httpx`` exceptions — transport-level retryable
+    * Network / ``httpx2`` exceptions — transport-level retryable
 
     Fails fast on permanent client errors (401 Unauthorized,
     403 Forbidden, 400 Bad Request, etc.) since they can't recover
@@ -322,7 +322,7 @@ async def record_turn_cost_from_openrouter(
         return
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             tasks = [
                 _fetch_generation_cost(client, gen_id, api_key, log_prefix)
                 for gen_id in generation_ids

@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import get_user_id
@@ -119,15 +119,15 @@ app.dependency_overrides[get_user_id] = lambda: "test-user-id"
 
 
 @pytest_asyncio.fixture(scope="module")
-async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+async def client() -> AsyncGenerator[httpx2.AsyncClient, None]:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_discover_rejects_empty_explicit_auth_token(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
 ) -> None:
     with patch(
         "backend.api.features.mcp.routes.auto_lookup_mcp_credential",
@@ -158,7 +158,7 @@ async def test_discover_rejects_empty_explicit_auth_token(
     ],
 )
 async def test_store_manual_credential(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     token: str,
     expected: str,
     scheme: str,
@@ -193,7 +193,7 @@ async def test_store_manual_credential(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_store_rejects_header_injection(client: httpx.AsyncClient) -> None:
+async def test_store_rejects_header_injection(client: httpx2.AsyncClient) -> None:
     with patch(
         "backend.api.features.mcp.routes.validate_url_host",
         new_callable=AsyncMock,

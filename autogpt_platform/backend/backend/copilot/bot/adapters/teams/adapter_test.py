@@ -1152,7 +1152,7 @@ async def test_the_attachment_fetch_stops_at_the_size_cap(app_id):
             new=AsyncMock(),
         ),
         patch(
-            "backend.copilot.bot.adapters.teams.adapter.httpx.AsyncClient",
+            "backend.copilot.bot.adapters.teams.adapter.httpx2.AsyncClient",
             return_value=client,
         ),
         pytest.raises(ValueError, match="size limit"),
@@ -1187,7 +1187,7 @@ async def test_the_attachment_fetch_never_follows_redirects(app_id):
             "ensure_attachment_host_is_external",
             new=AsyncMock(),
         ),
-        patch("backend.copilot.bot.adapters.teams.adapter.httpx.AsyncClient", made),
+        patch("backend.copilot.bot.adapters.teams.adapter.httpx2.AsyncClient", made),
     ):
         assert await fetch() == b"ok"
 

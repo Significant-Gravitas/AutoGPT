@@ -1,6 +1,6 @@
 import time
 
-import httpx
+import httpx2
 import pytest
 from openai import (
     APIConnectionError,
@@ -18,8 +18,8 @@ from backend.util.exceptions import ExecutionFailureReason
 
 
 def _api_error(cls, status: int, headers: dict[str, str] | None = None):
-    request = httpx.Request("POST", "https://api.example.com/v1/chat/completions")
-    response = httpx.Response(status, headers=headers or {}, request=request)
+    request = httpx2.Request("POST", "https://api.example.com/v1/chat/completions")
+    response = httpx2.Response(status, headers=headers or {}, request=request)
     return cls("boom", response=response, body=None)
 
 
@@ -41,7 +41,7 @@ class TestWhatTheFailureIs:
         assert failure.kind is expected
 
     def test_a_connection_failure_is_worth_retrying(self) -> None:
-        exc = APIConnectionError(request=httpx.Request("POST", "https://x"))
+        exc = APIConnectionError(request=httpx2.Request("POST", "https://x"))
         failure = classify(exc)
         assert failure is not None
         assert failure.kind is ProviderFailureKind.TRANSIENT
@@ -133,7 +133,7 @@ class TestWhichConnectionFailed:
         # The baseline path already turns a bare connection error into
         # operator-useful advice; classifying must not throw that away.
         failure = classify(
-            APIConnectionError(request=httpx.Request("POST", "https://x")),
+            APIConnectionError(request=httpx2.Request("POST", "https://x")),
             message="Can't reach the local LLM backend at http://x/v1.",
         )
         assert failure is not None

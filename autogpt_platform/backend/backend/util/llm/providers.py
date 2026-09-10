@@ -1079,7 +1079,7 @@ async def call_provider_openai_compat_sync(
         create_kwargs["extra_body"] = extra_body
     if extra_headers:
         create_kwargs["extra_headers"] = extra_headers
-    # Same total-duration guarantee as ``call_provider``: the per-request httpx
+    # Same total-duration guarantee as ``call_provider``: the per-request httpx2
     # timeout alone is per ATTEMPT, and the SDK's own max_retries multiplies it.
     try:
         return await asyncio.wait_for(

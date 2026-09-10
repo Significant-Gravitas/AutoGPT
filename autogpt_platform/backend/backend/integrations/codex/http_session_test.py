@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI
 from pydantic import SecretStr
@@ -149,14 +149,14 @@ TOOL = CodexDynamicToolSpec(
 
 @pytest.mark.asyncio
 async def test_installed_sdk_raw_stream_is_consumed_without_awaiting_it() -> None:
-    def respond(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
+    def respond(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
             200,
             headers={"content-type": "text/event-stream"},
             content=b"data: [DONE]\n\n",
         )
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as http:
         client = AsyncOpenAI(
             api_key="test",
             base_url="https://example.test",

@@ -1167,7 +1167,7 @@ class TestRegressionStore:
 
         # _get_submission_stats uses query_raw_with_schema, which bypasses
         # the model-level prisma mocks above and would otherwise issue a
-        # real DB query — opening prisma's lazy httpx pool on whatever
+        # real DB query — opening prisma's lazy httpx2 pool on whatever
         # event loop is current (a function loop here), then leaving it
         # bound to a dead loop after the test, breaking every later
         # session-scoped integration test with "Event loop is closed".

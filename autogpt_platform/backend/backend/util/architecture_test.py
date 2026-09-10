@@ -17,7 +17,7 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 #
 # Motivation: `backend.util.cache.cached` stores its result in a process-wide
-# dict for ttl_seconds. Async clients (AsyncOpenAI, httpx.AsyncClient,
+# dict for ttl_seconds. Async clients (AsyncOpenAI, httpx2.AsyncClient,
 # AsyncRabbitMQ, ...) wrap connection pools whose internal
 # asyncio primitives lazily bind to the first event loop that uses them. The
 # executor runs two long-lived loops on separate threads; once the cache is
@@ -32,7 +32,7 @@ LOOP_BOUND_TYPES = frozenset(
     {
         "AsyncOpenAI",
         "LangfuseAsyncOpenAI",
-        "AsyncClient",  # httpx, openai internal
+        "AsyncClient",  # httpx2, openai internal
         "AsyncRabbitMQ",
         "AsyncRedisExecutionEventBus",
     }

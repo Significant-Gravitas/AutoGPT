@@ -21,7 +21,7 @@ import time
 from collections.abc import Iterator
 from typing import Any, Optional
 
-import httpx2 as httpx
+import httpx2
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.web.async_client import AsyncWebClient
@@ -410,7 +410,7 @@ class SlackAdapter(WebhookAdapter):
         # as a bearer credential (files:read scope), unlike Discord's public CDN.
         url = file_obj.get("url_private_download") or file_obj.get("url_private") or ""
         token = await self._token_for(team_id)
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx2.AsyncClient(timeout=30.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
             resp.raise_for_status()
             return resp.content

@@ -164,7 +164,7 @@ def extract_openai_tool_calls(response: Any) -> list[ToolContentBlock] | None:
 def sanitize_messages_for_utf8(messages: list[dict]) -> None:
     """Replace unpaired surrogates in message content in-place.
 
-    httpx encodes the JSON request body to UTF-8; unpaired surrogates
+    httpx2 encodes the JSON request body to UTF-8; unpaired surrogates
     (e.g., copy-pasted emojis stored as raw code points) raise
     ``UnicodeEncodeError`` before the request even leaves the process.
     Mirrors the historical sanitization in

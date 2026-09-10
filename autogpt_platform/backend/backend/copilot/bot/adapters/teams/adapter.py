@@ -24,7 +24,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-import httpx2 as httpx
+import httpx2
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -382,7 +382,7 @@ class TeamsAdapter(WebhookAdapter):
     async def start_typing(self, channel_id: str) -> None:
         try:
             await self._post(channel_id, {"type": "typing"})
-        except (TeamsApiError, httpx.HTTPError):
+        except (TeamsApiError, httpx2.HTTPError):
             # Runs in a keep-alive loop; never let it break the turn.
             logger.debug("Teams typing indicator failed", exc_info=True)
 
@@ -691,10 +691,10 @@ def _bounded_fetch(
         # not have resolved the same way when the activity arrived.
         await auth.ensure_attachment_host_is_external(download_url)
         request_headers = await headers() if headers else {}
-        # follow_redirects stays off (httpx's default, pinned here because it
+        # follow_redirects stays off (httpx2's default, pinned here because it
         # is load-bearing): a redirect would land us at an unchecked host.
         async with (
-            httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client,
+            httpx2.AsyncClient(timeout=60.0, follow_redirects=False) as client,
             client.stream("GET", download_url, headers=request_headers) as response,
         ):
             response.raise_for_status()

@@ -11,7 +11,7 @@ route handles content that fails to validate against BriefingContent.
 import datetime
 from collections.abc import AsyncGenerator
 
-import httpx2 as httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from prisma.models import UserBriefing
@@ -23,14 +23,14 @@ from .routes import router
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(server, mock_jwt_user) -> AsyncGenerator[httpx2.AsyncClient, None]:
     """Create async HTTP client with auth overrides"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
+    async with httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app),
         base_url="http://test",
     ) as http_client:
         yield http_client
@@ -112,7 +112,7 @@ def _valid_content() -> dict:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_returns_null_when_none_exists(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
 ) -> None:
     """No briefing rows for the user -> 200 with a null body."""
     response = await client.get("/api/briefings/latest")
@@ -123,7 +123,7 @@ async def test_get_latest_briefing_returns_null_when_none_exists(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_returns_typed_content(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     setup_test_user: str,
 ) -> None:
     """A seeded briefing comes back as typed content matching what was stored."""
@@ -146,7 +146,7 @@ async def test_get_latest_briefing_returns_typed_content(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_returns_only_the_latest_by_date(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     setup_test_user: str,
 ) -> None:
     """When multiple briefings exist, the one with the latest briefing_date wins."""
@@ -165,7 +165,7 @@ async def test_get_latest_briefing_returns_only_the_latest_by_date(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_returns_null_on_invalid_stored_content(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     setup_test_user: str,
 ) -> None:
     """Content that no longer validates against BriefingContent is treated as
@@ -182,7 +182,7 @@ async def test_get_latest_briefing_returns_null_on_invalid_stored_content(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_falls_back_to_the_newest_readable_briefing(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     setup_test_user: str,
 ) -> None:
     """One unreadable row on the newest date must not hide older briefings."""
@@ -203,7 +203,7 @@ async def test_get_latest_briefing_falls_back_to_the_newest_readable_briefing(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_latest_briefing_ignores_stale_briefings(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     setup_test_user: str,
 ) -> None:
     """A briefing older than yesterday is history, not "this morning" — the

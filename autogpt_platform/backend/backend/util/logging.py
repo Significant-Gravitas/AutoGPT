@@ -13,8 +13,8 @@ def configure_logging():
     else:
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=True)
 
-    # Silence httpx logger
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # Silence httpx2 logger
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
 
 
 def is_structured_logging_enabled() -> bool:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx2 as httpx
+import httpx2
 import pytest
 
 from backend.copilot.model import ChatSession
@@ -103,7 +103,7 @@ class TestRecordTurnCostFromOpenRouter:
         real_cost = 0.02900595
 
         async def _get(self, url, **kwargs):  # noqa: ARG001
-            return httpx.Response(200, json=_mock_generation_response(real_cost))
+            return httpx2.Response(200, json=_mock_generation_response(real_cost))
 
         with (
             patch(
@@ -144,7 +144,7 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, url, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -183,11 +183,11 @@ class TestRecordTurnCostFromOpenRouter:
         fallback = 0.05
         seq = iter(
             [
-                httpx.Response(200, json=_mock_generation_response(0.03)),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
-                httpx.Response(404, text="not found"),
+                httpx2.Response(200, json=_mock_generation_response(0.03)),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(404, text="not found"),
             ]
         )
 
@@ -229,7 +229,7 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
             call_count["n"] += 1
-            return httpx.Response(401, text="unauthorized")
+            return httpx2.Response(401, text="unauthorized")
 
         with (
             patch(
@@ -267,8 +267,8 @@ class TestRecordTurnCostFromOpenRouter:
         states rather than giving up on first 404."""
         seq = iter(
             [
-                httpx.Response(404, text="not found"),
-                httpx.Response(200, json=_mock_generation_response(0.025)),
+                httpx2.Response(404, text="not found"),
+                httpx2.Response(200, json=_mock_generation_response(0.025)),
             ]
         )
 
@@ -309,7 +309,7 @@ class TestRecordTurnCostFromOpenRouter:
         fallback = 0.02
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
-            raise httpx.ConnectError("no network")
+            raise httpx2.ConnectError("no network")
 
         with (
             patch(
@@ -361,7 +361,7 @@ class TestRecordTurnCostFromOpenRouter:
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -401,7 +401,7 @@ class TestRecordTurnCostFromOpenRouter:
         (tmp_path / session_id).mkdir()
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
-            return httpx.Response(200, json=_mock_generation_response(0.02))
+            return httpx2.Response(200, json=_mock_generation_response(0.02))
 
         with (
             patch(
@@ -485,7 +485,7 @@ class TestRecordTurnCostFromOpenRouter:
             # If the sweep leaks a stale/foreign ID, the test fails here
             # with a KeyError rather than silently over-billing.
             assert gen_id in costs_by_id, f"sweep leaked out-of-scope gen_id {gen_id}"
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
             )
 
@@ -531,7 +531,7 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(real_cost))
+            return httpx2.Response(200, json=_mock_generation_response(real_cost))
 
         with (
             patch(
@@ -590,8 +590,8 @@ class TestLangfuseTraceBackfill:
         async def _get(_self, _url, **_kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
-                return httpx.Response(200, json=_mock_generation_response(0.012))
-            return httpx.Response(404, json={"error": "not found"})
+                return httpx2.Response(200, json=_mock_generation_response(0.012))
+            return httpx2.Response(404, json={"error": "not found"})
 
         with (
             patch(
@@ -640,7 +640,7 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(0.01))
+            return httpx2.Response(200, json=_mock_generation_response(0.01))
 
         with (
             patch(
@@ -681,7 +681,7 @@ class TestLangfuseTraceBackfill:
         mock_lf.create_event = MagicMock(side_effect=RuntimeError("network down"))
 
         async def _get(_self, _url, **_kwargs):
-            return httpx.Response(200, json=_mock_generation_response(0.02))
+            return httpx2.Response(200, json=_mock_generation_response(0.02))
 
         with (
             patch(
