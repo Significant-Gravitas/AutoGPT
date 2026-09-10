@@ -58,6 +58,9 @@ EVENTS_PATH = "/api/copilot-webhooks/slack/events"
 COMMANDS_PATH = "/api/copilot-webhooks/slack/commands"
 INTERACTIVE_PATH = "/api/copilot-webhooks/slack/interactive"
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Slack lifecycle events that end a workspace's install — revoke its token.
 _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
@@ -261,15 +264,17 @@ class SlackAdapter(WebhookAdapter):
         team_id = (payload.get("team") or {}).get("id") or ""
         channel_id = (payload.get("channel") or {}).get("id")
         client = await self._client_for(team_id)
-        option = await choices.resolve_choice("slack", token, index)
-        if option is None:
+        clicker_id = (payload.get("user") or {}).get("id", "")
+        resolved = await choices.resolve_choice("slack", token, index, clicker_id)
+        if resolved.text is None:
             if client and channel_id:
                 await client.chat_postEphemeral(
                     channel=channel_id,
-                    user=(payload.get("user") or {}).get("id", ""),
-                    text=_EXPIRED_NOTICE,
+                    user=clicker_id,
+                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
                 )
             return
+        option = resolved.text
         message_ts = (payload.get("container") or {}).get("message_ts")
         if client and channel_id and message_ts:
             # `resolve_choice` already consumed the token, so the answer now

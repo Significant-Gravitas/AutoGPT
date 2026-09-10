@@ -52,6 +52,9 @@ logger = logging.getLogger(__name__)
 
 MESSAGES_PATH = "/api/copilot-webhooks/teams/messages"
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Conversations we keep a learned serviceUrl for. Evicting one is cheap:
 # the next reply falls back to the default host until it is relearned.
@@ -241,12 +244,20 @@ class TeamsAdapter(WebhookAdapter):
         conversation_id = (activity.get("conversation") or {}).get("id")
         if not conversation_id:
             return
-        option = await choices.resolve_choice("teams", token, index)
-        if option is None:
+        clicker_id = str((activity.get("from") or {}).get("id", ""))
+        resolved = await choices.resolve_choice("teams", token, index, clicker_id)
+        if resolved.text is None:
             await self._post(
-                conversation_id, {"type": "message", "text": _EXPIRED_NOTICE}
+                conversation_id,
+                {
+                    "type": "message",
+                    "text": (
+                        _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE
+                    ),
+                },
             )
             return
+        option = resolved.text
         # The token is already consumed, so the answer exists only here. The
         # ack is cosmetic; a Connector error must not cost the user the turn.
         try:

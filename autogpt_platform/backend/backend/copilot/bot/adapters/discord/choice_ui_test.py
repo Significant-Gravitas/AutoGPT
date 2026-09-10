@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
+from backend.copilot.bot.choices import ResolvedChoice
+
 from . import choice_ui
 from .choice_ui import _ChoiceButton, build_choice_view
 
@@ -83,7 +85,10 @@ class TestChoiceButtonCallback:
         adapter, on_message = handler
         interaction = _interaction()
 
-        with patch(f"{_CHOICES}.resolve_choice", new=AsyncMock(return_value="EU")):
+        with patch(
+            f"{_CHOICES}.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
             view = build_choice_view("tok", ["US", "EU"])
             await view.children[1].callback(interaction)
 
@@ -106,7 +111,10 @@ class TestChoiceButtonCallback:
         _, on_message = handler
         interaction = _interaction(guild_id=None)
 
-        with patch(f"{_CHOICES}.resolve_choice", new=AsyncMock(return_value="US")):
+        with patch(
+            f"{_CHOICES}.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="US")),
+        ):
             view = build_choice_view("tok", ["US"])
             await view.children[0].callback(interaction)
 
@@ -121,7 +129,10 @@ class TestChoiceButtonCallback:
         _, on_message = handler
         interaction = _interaction()
 
-        with patch(f"{_CHOICES}.resolve_choice", new=AsyncMock(return_value=None)):
+        with patch(
+            f"{_CHOICES}.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
+        ):
             view = build_choice_view("tok", ["US", "EU"])
             await view.children[0].callback(interaction)
 
@@ -141,7 +152,10 @@ class TestChoiceButtonCallback:
             side_effect=discord.HTTPException(MagicMock(status=404), "gone")
         )
 
-        with patch(f"{_CHOICES}.resolve_choice", new=AsyncMock(return_value="EU")):
+        with patch(
+            f"{_CHOICES}.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
+        ):
             view = build_choice_view("tok", ["US", "EU"])
             await view.children[1].callback(interaction)
 

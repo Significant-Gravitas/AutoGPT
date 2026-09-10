@@ -648,6 +648,9 @@ async def _send_native_choices(
     half-consumed turn, and leaves any token alive for its full TTL — with
     the question delivered in no form at all, not even as numbered text.
 
+    Each token is bound to ``ctx.user_id`` — the person who asked — so a
+    bystander in a shared channel cannot consume the question by clicking.
+
     On failure every token minted for this payload is cleared, not just the
     one that failed. A question already sent natively is about to be
     re-rendered as text, and a live button beside that text would answer the
@@ -659,7 +662,9 @@ async def _send_native_choices(
         for question in questions:
             options = _question_options(question)
             text = str(question.get("question") or "").strip()
-            token = await choices.store_choice(adapter.platform_name, options)
+            token = await choices.store_choice(
+                adapter.platform_name, options, ctx.user_id
+            )
             minted.append(token)
             if not await adapter.send_choice_buttons(
                 target_id,

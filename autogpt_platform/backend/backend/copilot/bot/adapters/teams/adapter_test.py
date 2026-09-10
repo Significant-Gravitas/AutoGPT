@@ -15,6 +15,7 @@ from backend.copilot.bot.adapters.teams.adapter import (
     _inbound_files,
 )
 from backend.copilot.bot.adapters.teams.text import mention_entities, to_teams_markdown
+from backend.copilot.bot.choices import ResolvedChoice
 from backend.copilot.bot.turn_stream import _clarification_message
 from backend.util.settings import AppEnvironment
 
@@ -439,7 +440,7 @@ async def test_choice_click_resolves_posts_confirmation_and_dispatches(app_id):
 
     with patch(
         "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
-        new=AsyncMock(return_value="EU"),
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
     ):
         await adapter._dispatch_activity(activity)
 
@@ -473,7 +474,7 @@ async def test_choice_click_in_a_channel_is_dispatched_as_mentioned(app_id):
 
     with patch(
         "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
-        new=AsyncMock(return_value="EU"),
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
     ):
         await adapter._dispatch_activity(activity)
 
@@ -495,7 +496,7 @@ async def test_choice_click_dispatches_even_if_the_ack_post_fails(app_id):
 
     with patch(
         "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
-        new=AsyncMock(return_value="EU"),
+        new=AsyncMock(return_value=ResolvedChoice(text="EU")),
     ):
         await adapter._dispatch_activity(activity)
 
@@ -519,7 +520,7 @@ async def test_choice_click_expired_token_posts_notice_and_does_not_dispatch(app
 
     with patch(
         "backend.copilot.bot.adapters.teams.adapter.choices.resolve_choice",
-        new=AsyncMock(return_value=None),
+        new=AsyncMock(return_value=ResolvedChoice(text=None)),
     ):
         await adapter._dispatch_activity(activity)
 

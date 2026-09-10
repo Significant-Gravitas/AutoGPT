@@ -29,6 +29,9 @@ from backend.copilot.bot.adapters.base import (
 logger = logging.getLogger(__name__)
 
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 # Set once by `register_choice_handler`. The click handler is reconstructed by
 # discord.py from the custom_id alone (possibly in a process that never sent
@@ -103,10 +106,16 @@ class _ChoiceButton(
         if _adapter is None or _on_message is None:
             logger.error("Choice button clicked before the handler was registered")
             return
-        option = await choices.resolve_choice("discord", self._token, self._index)
-        if option is None:
-            await interaction.response.send_message(_EXPIRED_NOTICE, ephemeral=True)
+        resolved = await choices.resolve_choice(
+            "discord", self._token, self._index, str(interaction.user.id)
+        )
+        if resolved.text is None:
+            await interaction.response.send_message(
+                _NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE,
+                ephemeral=True,
+            )
             return
+        option = resolved.text
         # The token is already consumed, so the answer exists only in this
         # call. The ack is cosmetic (a 404 on a deleted message, or 40060 on
         # a fast double-click) and must never cost the user their answer.

@@ -8,6 +8,7 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment, StreamDraftOutcome
 from backend.copilot.bot.adapters.telegram.api_client import TelegramAPIError
+from backend.copilot.bot.choices import ResolvedChoice
 from backend.copilot.bot.turn_stream import _clarification_message
 
 from .adapter import (
@@ -509,7 +510,7 @@ class TestChoiceCallbackQuery:
         }
         with patch(
             f"{_ADAPTER}.choices.resolve_choice",
-            new=AsyncMock(return_value="EU"),
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
         ):
             await a._dispatch_callback_query(callback_query)
 
@@ -534,7 +535,8 @@ class TestChoiceCallbackQuery:
             "message": {"message_id": 9, "chat": {"id": 42, "type": "private"}},
         }
         with patch(
-            f"{_ADAPTER}.choices.resolve_choice", new=AsyncMock(return_value=None)
+            f"{_ADAPTER}.choices.resolve_choice",
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
         ):
             await a._dispatch_callback_query(callback_query)
 

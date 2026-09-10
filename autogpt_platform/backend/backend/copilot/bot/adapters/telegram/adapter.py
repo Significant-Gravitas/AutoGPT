@@ -50,6 +50,9 @@ from .text import to_html
 logger = logging.getLogger(__name__)
 
 _EXPIRED_NOTICE = "This question has expired — type your answer instead."
+_NOT_YOUR_QUESTION = (
+    "This question was for someone else — they still need to answer it."
+)
 
 UPDATES_PATH = "/api/copilot-webhooks/telegram/updates"
 
@@ -198,13 +201,17 @@ class TelegramAdapter(WebhookAdapter):
                 await self._answer_callback_query(query_id)
             return
         token, index = parsed
-        option = await choices.resolve_choice("telegram", token, index)
-        if option is None:
+        clicker_id = str((callback_query.get("from") or {}).get("id", ""))
+        resolved = await choices.resolve_choice("telegram", token, index, clicker_id)
+        if resolved.text is None:
             if query_id:
                 await self._answer_callback_query(
-                    query_id, text=_EXPIRED_NOTICE, show_alert=True
+                    query_id,
+                    text=(_NOT_YOUR_QUESTION if resolved.refused else _EXPIRED_NOTICE),
+                    show_alert=True,
                 )
             return
+        option = resolved.text
         if query_id:
             await self._answer_callback_query(query_id)
         message = callback_query.get("message") or {}

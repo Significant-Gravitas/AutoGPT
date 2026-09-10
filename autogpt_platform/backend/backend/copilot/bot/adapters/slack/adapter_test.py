@@ -8,6 +8,7 @@ import pytest
 from slack_sdk.errors import SlackApiError
 
 from backend.copilot.bot.adapters.base import FileAttachment
+from backend.copilot.bot.choices import ResolvedChoice
 from backend.copilot.bot.turn_stream import _clarification_message
 from backend.data.bot_installs import BotInstallCredentials
 
@@ -511,7 +512,7 @@ class TestChoiceButtons:
         }
         with patch(
             "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value="EU"),
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
         ):
             await adapter._dispatch_block_action(payload)
 
@@ -541,7 +542,7 @@ class TestChoiceButtons:
         }
         with patch(
             "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value="<!channel> ping"),
+            new=AsyncMock(return_value=ResolvedChoice(text="<!channel> ping")),
         ):
             await adapter._dispatch_block_action(payload)
 
@@ -567,7 +568,7 @@ class TestChoiceButtons:
         }
         with patch(
             "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value="EU"),
+            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
         ):
             await adapter._dispatch_block_action(payload)
 
@@ -588,7 +589,7 @@ class TestChoiceButtons:
         }
         with patch(
             "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value=None),
+            new=AsyncMock(return_value=ResolvedChoice(text=None)),
         ):
             await adapter._dispatch_block_action(payload)
 
