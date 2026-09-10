@@ -17,6 +17,9 @@ def test_type_conversion():
 
     assert convert("True", bool) is True
     assert convert("False", bool) is False
+    assert convert(" true ", bool) is True
+    assert convert("1 ", bool) is True
+    assert convert(" false ", bool) is False
 
     assert convert(5, str) == "5"
     assert convert({"a": 1, "b": 2}, str) == '{"a": 1, "b": 2}'
