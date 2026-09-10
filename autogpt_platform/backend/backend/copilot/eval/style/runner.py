@@ -24,9 +24,7 @@ import openai
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.briefing.narrative import _MAX_NARRATIVE_CHARS, NarrativeResponse
 from backend.copilot.config import ChatConfig
-from backend.copilot.dream.llm import structured_completion
 from backend.copilot.eval.metrics import mean, percentile
 from backend.copilot.model_normalize import normalize_model_for_transport
 
@@ -35,7 +33,6 @@ from .assembly import (
     chat_system_prompt,
     fingerprint,
     fingerprint_parts,
-    lede_prompt,
     load_baseline,
     load_fixtures,
     load_rubric,
@@ -44,12 +41,7 @@ from .assembly import (
     save_baseline,
     user_prefix,
 )
-from .generation import (
-    GENERATION_TIMEOUT_SECONDS,
-    chat_client,
-    expert_tools,
-    generate_turn,
-)
+from .generation import chat_client, expert_tools, generate_turn
 from .models import (
     Arm,
     Baseline,
@@ -65,13 +57,11 @@ from .models import (
     ScoredResponse,
     Separation,
     StyleEvalResult,
-    Usage,
 )
-from .scorer import judge_response, response_score, to_usage
+from .scorer import judge_response, response_score
 
 logger = logging.getLogger(__name__)
 
-LEDE_MAX_OUTPUT_TOKENS = 200
 # Paired own-vs-wrong-spec comparisons needed before the separation verdict
 # means anything, and the share of them the own spec must win.
 MIN_PAIRED_COMPARISONS = 20
@@ -132,19 +122,13 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
     chat_route = options.model or routed.slug
     judge_route = options.judge or baseline.judge_model
     chat_model = normalize_model_for_transport(chat_route, config)
-    lede_model = normalize_model_for_transport(config.title_model, config)
     judge_model = normalize_model_for_transport(judge_route, config)
     parts = fingerprint_parts(
-        experts,
-        fixtures,
-        rubric,
-        chat_model=chat_route,
-        lede_model=config.title_model,
-        judge_model=judge_route,
+        experts, fixtures, rubric, chat_model=chat_route, judge_model=judge_route
     )
     print(
         f"chat model {chat_model} ({routed.mode}/standard via {routed.source}"
-        f"{', overridden' if options.model else ''}); lede model {lede_model}; "
+        f"{', overridden' if options.model else ''}); "
         f"judge {judge_model}; fingerprint {fingerprint(parts)}"
     )
     print(drift(parts, baseline))
@@ -153,9 +137,7 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
         return None
 
     jobs = plan_jobs(experts, fixtures, options)
-    rows = await generate_all(
-        jobs, options, config=config, chat_model=chat_model, lede_model=lede_model
-    )
+    rows = await generate_all(jobs, options, config=config, chat_model=chat_model)
     by_name = {e.name: e for e in experts}
     if options.cross_spec:
         rows += wrong_spec_rows(rows, experts)
@@ -167,7 +149,6 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
         baseline,
         fingerprint_value=fingerprint(parts),
         chat_model=chat_model,
-        lede_model=lede_model,
         judge_model=judge_model,
     )
     options.out.write_text(result.model_dump_json(indent=2), encoding="utf-8")
@@ -213,21 +194,15 @@ def plan_jobs(
             for r in range(options.repeats)
             for p in prompts
         ]
-        chat_prompts = [p for p in prompts if p.kind != "briefing_lede"]
         jobs += [
             Job(expert=expert, arm="no_suffix", prompt=p, repeat=0)
-            for p in chat_prompts[: options.control]
+            for p in prompts[: options.control]
         ]
     return jobs
 
 
 async def generate_all(
-    jobs: list[Job],
-    options: RunOptions,
-    *,
-    config: ChatConfig,
-    chat_model: str,
-    lede_model: str,
+    jobs: list[Job], options: RunOptions, *, config: ChatConfig, chat_model: str
 ) -> list[ScoredResponse]:
     semaphore = asyncio.Semaphore(options.concurrency)
     client = chat_client(config)
@@ -236,18 +211,11 @@ async def generate_all(
 
     async def one(job: Job) -> ScoredResponse:
         async with semaphore:
-            return await generate(
-                job,
-                client,
-                config,
-                roster,
-                chat_model=chat_model,
-                lede_model=lede_model,
-            )
+            return await generate(job, client, config, roster, chat_model=chat_model)
 
     # One call per distinct prompt prefix lands before the fan-out, so the
     # rest read the prompt cache instead of each paying the write.
-    groups: dict[tuple[str, str, bool], list[Job]] = {}
+    groups: dict[tuple[str, str], list[Job]] = {}
     for job in jobs:
         groups.setdefault(cache_prefix(job), []).append(job)
     firsts = [group[0] for group in groups.values()]
@@ -257,15 +225,11 @@ async def generate_all(
     return rows
 
 
-def cache_prefix(job: Job) -> tuple[str, str, bool]:
+def cache_prefix(job: Job) -> tuple[str, str]:
     """What the job's cached prompt prefix depends on. Every no-suffix job
     shares one prompt and one tool list, whichever expert's prompts it runs,
     so keying those by expert would pay the cache write three times."""
-    return (
-        job.expert.name if job.arm == "expert" else "",
-        job.arm,
-        job.prompt.kind == "briefing_lede",
-    )
+    return (job.expert.name if job.arm == "expert" else "", job.arm)
 
 
 async def generate(
@@ -275,7 +239,6 @@ async def generate(
     roster: list[Expert],
     *,
     chat_model: str,
-    lede_model: str,
 ) -> ScoredResponse:
     row = ScoredResponse(
         expert=job.expert.name,
@@ -284,34 +247,29 @@ async def generate(
         kind=job.prompt.kind,
         prompt_id=job.prompt.id,
         repeat=job.repeat,
-        model=lede_model if job.prompt.kind == "briefing_lede" else chat_model,
+        model=chat_model,
         response="",
     )
     try:
-        if job.prompt.kind == "briefing_lede":
-            row.response, row.generation = await _with_retry(
-                lambda: generate_lede(job, model=lede_model)
+        expert = job.expert if job.arm == "expert" else None
+        turn = await _with_retry(
+            lambda: generate_turn(
+                client,
+                config,
+                model=chat_model,
+                expert=expert,
+                roster=roster,
+                user_message=user_prefix(expert, roster) + job.prompt.prompt,
             )
-        else:
-            expert = job.expert if job.arm == "expert" else None
-            turn = await _with_retry(
-                lambda: generate_turn(
-                    client,
-                    config,
-                    model=chat_model,
-                    expert=expert,
-                    roster=roster,
-                    user_message=user_prefix(expert, roster) + job.prompt.prompt,
-                )
+        )
+        row.response, row.truncated = turn.text, turn.truncated
+        row.generation, row.tool_calls = turn.usage, turn.tool_calls
+        row.rounds, row.hit_round_cap = turn.rounds, turn.hit_round_cap
+        if turn.hit_round_cap:
+            raise RoundCapReached(
+                f"still calling tools after {turn.rounds} rounds "
+                f"({', '.join(turn.tool_calls)})"
             )
-            row.response, row.truncated = turn.text, turn.truncated
-            row.generation, row.tool_calls = turn.usage, turn.tool_calls
-            row.rounds, row.hit_round_cap = turn.rounds, turn.hit_round_cap
-            if turn.hit_round_cap:
-                raise RoundCapReached(
-                    f"still calling tools after {turn.rounds} rounds "
-                    f"({', '.join(turn.tool_calls)})"
-                )
     except RoundCapReached as exc:
         row.error = f"generation: {exc}"
         logger.warning(f"[style-eval] {job.prompt.id} {row.error}")
@@ -319,33 +277,6 @@ async def generate(
         row.error = f"generation: {type(exc).__name__}: {exc}"
         logger.warning(f"[style-eval] {job.prompt.id} {row.error}")
     return row
-
-
-async def generate_lede(job: Job, *, model: str) -> tuple[str, Usage]:
-    """The briefing lede the way ``narrative.compose_narrative`` makes it."""
-    if job.prompt.facts is None:
-        raise ValueError(f"{job.prompt.id} has no facts")
-    system, facts = lede_prompt(job.expert, job.prompt.facts)
-    completion = await structured_completion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": facts},
-        ],
-        response_model=NarrativeResponse,
-        max_output_tokens=LEDE_MAX_OUTPUT_TOKENS,
-        timeout_seconds=GENERATION_TIMEOUT_SECONDS,
-    )
-    narrative = " ".join(completion.value.narrative.split())[:_MAX_NARRATIVE_CHARS]
-    usage = completion.usage
-    return narrative.rstrip(), to_usage(
-        model,
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_read_tokens=usage.cache_read_tokens,
-        cache_creation_tokens=usage.cache_creation_tokens,
-        cost_usd=usage.cost_usd,
-    )
 
 
 def wrong_spec_rows(
@@ -383,10 +314,7 @@ async def judge_all(
     async def one(row: ScoredResponse) -> None:
         if row.error is not None:
             return
-        prompt = prompts[row.prompt_id]
-        prompt_text = prompt.prompt or (
-            prompt.facts.model_dump_json() if prompt.facts else ""
-        )
+        prompt_text = prompts[row.prompt_id].prompt
         async with semaphore:
             try:
                 judgement, usage = await _with_retry(
@@ -415,7 +343,6 @@ def summarize(
     *,
     fingerprint_value: str,
     chat_model: str,
-    lede_model: str,
     judge_model: str,
 ) -> StyleEvalResult:
     summaries = [summarize_expert(e.name, rows) for e in experts]
@@ -426,7 +353,6 @@ def summarize(
         ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         fingerprint=fingerprint_value,
         chat_model=chat_model,
-        lede_model=lede_model,
         judge_model=judge_model,
         experts=summaries,
         separation=separation(rows),
@@ -483,7 +409,6 @@ def new_baseline(
         run_id=result.run_id,
         ts=result.ts,
         chat_model=result.chat_model,
-        lede_model=result.lede_model,
         judge_model=result.judge_model,
         cost_usd=result.cost_usd,
         fingerprint=result.fingerprint,
@@ -663,15 +588,12 @@ def print_summary(result: StyleEvalResult, out: Path) -> None:
 def _print_dry_run(experts: list[Expert], fixtures: list[ExpertFixture]) -> None:
     by_name = {f.expert: f for f in fixtures}
     for expert in experts:
-        prompts = by_name[expert.name].prompts
-        ledes = sum(1 for p in prompts if p.kind == "briefing_lede")
-        system, facts = lede_prompt(expert, next(p.facts for p in prompts if p.facts))
         print(
-            f"{expert.name:<8} chat system prompt {len(chat_system_prompt(expert))} chars, "
+            f"{expert.name:<8} chat system prompt "
+            f"{len(chat_system_prompt(expert))} chars, "
             f"{len(expert_tools(expert))} tools, first-turn prefix "
             f"{len(user_prefix(expert, experts))} chars; "
-            f"{len(prompts) - ledes} chat prompts + {ledes} ledes "
-            f"(lede system {len(system)} chars, facts {len(facts)} chars)"
+            f"{len(by_name[expert.name].prompts)} prompts"
         )
 
 

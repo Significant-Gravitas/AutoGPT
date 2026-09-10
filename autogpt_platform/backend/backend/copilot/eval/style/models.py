@@ -4,17 +4,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-PromptKind = Literal[
-    "briefing", "briefing_lede", "reply_draft", "escalation", "failure"
-]
+PromptKind = Literal["briefing", "reply_draft", "escalation", "failure"]
 PROMPT_KINDS: tuple[PromptKind, ...] = (
     "briefing",
-    "briefing_lede",
     "reply_draft",
     "escalation",
     "failure",
 )
-PROMPTS_PER_EXPERT = 30
+PROMPTS_PER_EXPERT = 27
 
 # Which arm produced a response: the expert's own suffix judged against its
 # own spec (the number the baseline stores), the same response judged against a
@@ -23,36 +20,15 @@ PROMPTS_PER_EXPERT = 30
 Arm = Literal["expert", "wrong_spec", "no_suffix"]
 
 
-class LedeRun(BaseModel):
-    agent_name: str
-    status: Literal["COMPLETED", "FAILED"]
-    title: str
-
-
-class LedeFacts(BaseModel):
-    """Inputs to the morning-briefing narrative, in the shape ``narrative.py``
-    reads them from ``BriefingContent``."""
-
-    completed_total: int = 0
-    failed_total: int = 0
-    decision_total: int = 0
-    runs: list[LedeRun] = Field(default_factory=list)
-
-
 class ReferencePrompt(BaseModel):
     id: str
     kind: PromptKind
-    # The user message for chat kinds; ``facts`` for ``briefing_lede``.
-    prompt: str = ""
-    facts: LedeFacts | None = None
+    prompt: str
 
     @model_validator(mode="after")
-    def _one_input(self) -> "ReferencePrompt":
-        if self.kind == "briefing_lede":
-            if self.facts is None or self.prompt:
-                raise ValueError(f"{self.id}: briefing_lede takes facts, not prompt")
-        elif not self.prompt.strip() or self.facts is not None:
-            raise ValueError(f"{self.id}: {self.kind} takes a prompt, not facts")
+    def _has_a_prompt(self) -> "ReferencePrompt":
+        if not self.prompt.strip():
+            raise ValueError(f"{self.id}: {self.kind} needs a prompt")
         return self
 
 
@@ -182,7 +158,6 @@ class Baseline(BaseModel):
     run_id: str
     ts: str
     chat_model: str
-    lede_model: str
     judge_model: str
     cost_usd: float
     note: str = ""
@@ -210,7 +185,6 @@ class StyleEvalResult(BaseModel):
     ts: str
     fingerprint: str
     chat_model: str
-    lede_model: str
     judge_model: str
     experts: list[ExpertSummary]
     separation: Separation | None

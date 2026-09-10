@@ -2,10 +2,9 @@
   "run_id": "style-eca9c14e",
   "ts": "2026-09-07T16:02:48.416336Z",
   "chat_model": "anthropic/claude-sonnet-5",
-  "lede_model": "anthropic/claude-haiku-4-5",
   "judge_model": "anthropic/claude-haiku-4-5",
   "cost_usd": 5.1,
-  "note": "One pass, 2026-09-07, 30 prompts per expert with --cross-spec --control 3. Six turns that were still calling tools at the round cap are excluded as errors, and two judge calls failed; 82 of 90 responses are scored. The run predates the tool-stub fix that ended those loops, so it is a floor: a later run on the same prompts should not score below it.",
+  "note": "One pass, 2026-09-07, on the 27 chat prompts per expert. Six turns that were still calling tools at the round cap are excluded as errors and two judge calls failed, so 73 of 81 responses are scored. The run predates both the tool-stub fix and dev's current prompts, which is why a dry run reports the harness and prompt components as changed: these are recorded scores, not current ones.",
   "fingerprint": "2dd3c1d36d6f4c6efc1fa6133f67a6e844f577937859e278d4b6cb3982743959",
   "parts": {
     "autopilot": "f129fbc05802de8b326772f2de7ed45e98b6ee7ef5827cf67829d9e2ba604798",
@@ -28,11 +27,11 @@
     {
       "expert": "Maria",
       "scores": {
-        "n": 29,
-        "mean": 84.83,
-        "sd": 28.8,
+        "n": 26,
+        "mean": 85.77,
+        "sd": 28.97,
         "min": 10.0,
-        "p25": 90.0,
+        "p25": 91.25,
         "median": 100.0,
         "p75": 100.0,
         "max": 100.0
@@ -47,16 +46,6 @@
           "median": 100.0,
           "p75": 100.0,
           "max": 100.0
-        },
-        "briefing_lede": {
-          "n": 3,
-          "mean": 76.67,
-          "sd": 31.75,
-          "min": 40.0,
-          "p25": 67.5,
-          "median": 95.0,
-          "p75": 95.0,
-          "max": 95.0
         },
         "escalation": {
           "n": 6,
@@ -91,7 +80,6 @@
       },
       "by_prompt": {
         "maria-briefing-01": 100.0,
-        "maria-lede-01": 40.0,
         "maria-briefing-02": 100.0,
         "maria-briefing-03": 100.0,
         "maria-briefing-04": 100.0,
@@ -116,20 +104,18 @@
         "maria-failure-03": 95.0,
         "maria-failure-04": 10.0,
         "maria-failure-05": 95.0,
-        "maria-failure-06": 25.0,
-        "maria-lede-02": 95.0,
-        "maria-lede-03": 95.0
+        "maria-failure-06": 25.0
       }
     },
     {
       "expert": "Max",
       "scores": {
-        "n": 28,
-        "mean": 84.11,
-        "sd": 27.69,
+        "n": 25,
+        "mean": 82.8,
+        "sd": 29.05,
         "min": 20.0,
         "p25": 90.0,
-        "median": 97.5,
+        "median": 100.0,
         "p75": 100.0,
         "max": 100.0
       },
@@ -142,16 +128,6 @@
           "p25": 95.0,
           "median": 95.0,
           "p75": 100.0,
-          "max": 100.0
-        },
-        "briefing_lede": {
-          "n": 3,
-          "mean": 95.0,
-          "sd": 5.0,
-          "min": 90.0,
-          "p25": 92.5,
-          "median": 95.0,
-          "p75": 97.5,
           "max": 100.0
         },
         "escalation": {
@@ -187,7 +163,6 @@
       },
       "by_prompt": {
         "max-briefing-01": 95.0,
-        "max-lede-01": 95.0,
         "max-briefing-03": 100.0,
         "max-briefing-04": 95.0,
         "max-briefing-05": 95.0,
@@ -211,20 +186,18 @@
         "max-failure-03": 70.0,
         "max-failure-04": 20.0,
         "max-failure-05": 100.0,
-        "max-failure-06": 20.0,
-        "max-lede-02": 90.0,
-        "max-lede-03": 100.0
+        "max-failure-06": 20.0
       }
     },
     {
       "expert": "Frankie",
       "scores": {
-        "n": 25,
-        "mean": 74.2,
-        "sd": 28.6,
+        "n": 22,
+        "mean": 74.09,
+        "sd": 30.3,
         "min": 20.0,
         "p25": 45.0,
-        "median": 85.0,
+        "median": 87.5,
         "p75": 100.0,
         "max": 100.0
       },
@@ -237,16 +210,6 @@
           "p25": 23.75,
           "median": 35.0,
           "p75": 56.25,
-          "max": 90.0
-        },
-        "briefing_lede": {
-          "n": 3,
-          "mean": 75.0,
-          "sd": 13.23,
-          "min": 65.0,
-          "p25": 67.5,
-          "median": 70.0,
-          "p75": 80.0,
           "max": 90.0
         },
         "escalation": {
@@ -282,7 +245,6 @@
       },
       "by_prompt": {
         "frankie-briefing-01": 25.0,
-        "frankie-lede-01": 65.0,
         "frankie-briefing-02": 45.0,
         "frankie-briefing-04": 90.0,
         "frankie-briefing-05": 20.0,
@@ -303,25 +265,23 @@
         "frankie-failure-01": 30.0,
         "frankie-failure-02": 95.0,
         "frankie-failure-03": 45.0,
-        "frankie-failure-04": 20.0,
-        "frankie-lede-02": 70.0,
-        "frankie-lede-03": 90.0
+        "frankie-failure-04": 20.0
       }
     }
   ],
   "separation": {
-    "right_spec_mean": 81.34,
-    "right_spec_sd": 28.42,
-    "wrong_spec_mean": 53.83,
+    "right_spec_mean": 81.23,
+    "right_spec_sd": 29.4,
+    "wrong_spec_mean": 54.86,
     "no_suffix_mean": 13.57,
-    "gap": 27.52,
+    "gap": 26.37,
     "paired": {
-      "n": 82,
-      "mean": 28.11,
-      "sem": 3.39,
-      "wins": 67,
+      "n": 73,
+      "mean": 27.02,
+      "sem": 3.7,
+      "wins": 58,
       "ties": 9,
-      "win_rate": 0.817
+      "win_rate": 0.795
     },
     "separated": true
   }

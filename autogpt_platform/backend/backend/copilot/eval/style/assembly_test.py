@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.briefing.narrative import _system_prompt
 from backend.copilot.config import ChatConfig
 from backend.copilot.expert_context import (
     build_expert_context,
@@ -22,7 +21,6 @@ from .assembly import (
     fingerprint,
     fingerprint_parts,
     harness_fingerprint,
-    lede_prompt,
     load_baseline,
     load_fixtures,
     load_rubric,
@@ -30,7 +28,7 @@ from .assembly import (
     roster_experts,
     user_prefix,
 )
-from .models import PROMPT_KINDS, PROMPTS_PER_EXPERT, LedeFacts, LedeRun
+from .models import PROMPT_KINDS, PROMPTS_PER_EXPERT
 
 
 def test_rubric_has_three_anchors_per_dimension():
@@ -118,18 +116,6 @@ def test_chat_prompt_is_base_plus_sdk_supplements_plus_suffix():
     ) or ("<expert_identity>" not in chat_system_prompt(None))
 
 
-def test_lede_prompt_is_the_narrative_modules_own():
-    expert = roster_experts(["Max"])[0]
-    facts = LedeFacts(
-        completed_total=1,
-        runs=[LedeRun(agent_name="Lead Finder", status="COMPLETED", title="Found 12")],
-    )
-    system, user = lede_prompt(expert, facts)
-    assert system == _system_prompt(expert)
-    assert user.startswith("<briefing_facts>")
-    assert "Max / Lead Finder: Found 12" in user
-
-
 @pytest.mark.asyncio
 async def test_chat_model_comes_from_the_router_without_launchdarkly():
     config = ChatConfig(
@@ -170,7 +156,7 @@ def test_the_fingerprint_moves_when_the_harness_does(tmp_path):
 
     experts, fixtures, rubric = roster_experts(), load_fixtures(), load_rubric()
     parts = fingerprint_parts(
-        experts, fixtures, rubric, chat_model="m", lede_model="l", judge_model="j"
+        experts, fixtures, rubric, chat_model="m", judge_model="j"
     )
     assert parts["harness"] == harness_fingerprint(
         STYLE_DIR / name for name in HARNESS_MODULES
@@ -182,7 +168,7 @@ def test_the_fingerprint_moves_when_the_harness_does(tmp_path):
 def test_the_fingerprint_names_the_component_that_moved():
     experts = roster_experts()
     fixtures, rubric = load_fixtures(), load_rubric()
-    models = {"chat_model": "m", "lede_model": "l", "judge_model": "j"}
+    models = {"chat_model": "m", "judge_model": "j"}
     base = fingerprint_parts(experts, fixtures, rubric, **models)
     assert base == fingerprint_parts(experts, fixtures, rubric, **models)
     assert _moved(
@@ -194,9 +180,8 @@ def test_the_fingerprint_names_the_component_that_moved():
         for e in experts
     ]
     assert _moved(base, fingerprint_parts(terse, fixtures, rubric, **models)) == {
-        "prompt:Max",
-        "lede:Max",
-    }, "the voice spec reaches the chat prompt and the briefing lede"
+        "prompt:Max"
+    }
     installed = _installed(experts, fixtures)
     assert _moved(base, fingerprint_parts(installed, fixtures, rubric, **models)) == {
         "autopilot",

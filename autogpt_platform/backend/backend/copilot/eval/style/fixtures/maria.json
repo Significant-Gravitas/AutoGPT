@@ -1,50 +1,154 @@
 {
   "expert": "Maria",
   "workflows": [
-    {"name": "LinkedIn Post Generator", "description": "Researches a topic and drafts LinkedIn post options in the requested tone."},
-    {"name": "Automated Blog Writer", "description": "Takes a topic and source links to a publish-ready SEO blog draft."},
-    {"name": "AI Webpage Copy Improver", "description": "Rewrites a page's copy to read better and rank better in search."}
+    {
+      "name": "LinkedIn Post Generator",
+      "description": "Researches a topic and drafts LinkedIn post options in the requested tone."
+    },
+    {
+      "name": "Automated Blog Writer",
+      "description": "Takes a topic and source links to a publish-ready SEO blog draft."
+    },
+    {
+      "name": "AI Webpage Copy Improver",
+      "description": "Rewrites a page's copy to read better and rank better in search."
+    }
   ],
   "prompts": [
-    {"id": "maria-briefing-01", "kind": "briefing", "prompt": "Give me a brief on our LinkedIn content for next week. We launch the Slack integration on Tuesday. Audience is ops leads at 20 to 200 person companies. We sell employee onboarding software."},
-    {"id": "maria-briefing-02", "kind": "briefing", "prompt": "Brief me before my 3pm call with the freelance writer: what we need from her for the blog this month and what to avoid. We have two articles planned, one on onboarding checklists and one on remote onboarding."},
-    {"id": "maria-briefing-03", "kind": "briefing", "prompt": "Write a one-page campaign brief for a webinar titled 'Cutting onboarding time in half'. Goal is 150 signups. Speakers are our head of product and a customer."},
-    {"id": "maria-briefing-04", "kind": "briefing", "prompt": "Summarize where our SEO stands and what to do. We rank 14th for 'employee onboarding software', 6th for 'onboarding checklist template', and nowhere for 'HRIS integration'. Organic traffic has been flat for three months."},
-    {"id": "maria-briefing-05", "kind": "briefing", "prompt": "I'm meeting the founder of a payroll startup tomorrow to discuss co-marketing. Brief me on what to propose and what to ask for."},
-    {"id": "maria-briefing-06", "kind": "briefing", "prompt": "Quick brief on the messaging for our pricing page. We just moved from per-seat pricing to three flat tiers and I want to be sure the copy lands with small HR teams."},
-    {"id": "maria-lede-01", "kind": "briefing_lede", "facts": {"completed_total": 3, "failed_total": 0, "decision_total": 1, "runs": [
-      {"agent_name": "LinkedIn Post Generator", "status": "COMPLETED", "title": "Drafted three post options for the Slack integration launch"},
-      {"agent_name": "Automated Blog Writer", "status": "COMPLETED", "title": "Published-ready draft: The onboarding checklist nobody finishes"},
-      {"agent_name": "AI Webpage Copy Improver", "status": "COMPLETED", "title": "Rewrote the pricing page hero and tier descriptions"}
-    ]}},
-    {"id": "maria-lede-02", "kind": "briefing_lede", "facts": {"completed_total": 1, "failed_total": 1, "decision_total": 0, "runs": [
-      {"agent_name": "Automated Blog Writer", "status": "FAILED", "title": "Source article returned 404"},
-      {"agent_name": "LinkedIn Post Generator", "status": "COMPLETED", "title": "Drafted a post on remote onboarding mistakes"}
-    ]}},
-    {"id": "maria-lede-03", "kind": "briefing_lede", "facts": {"completed_total": 2, "failed_total": 0, "decision_total": 2, "runs": [
-      {"agent_name": "AI Webpage Copy Improver", "status": "COMPLETED", "title": "Proposed new headlines for the integrations page"},
-      {"agent_name": "LinkedIn Post Generator", "status": "COMPLETED", "title": "Drafted the customer-milestone post"}
-    ]}},
-    {"id": "maria-reply-01", "kind": "reply_draft", "prompt": "Draft a reply to this email:\n\n\"Hi Maria, loved the article on onboarding metrics. Would you be open to contributing a guest post for our HR Tech newsletter? We have 40k subscribers. Best, Tom\""},
-    {"id": "maria-reply-02", "kind": "reply_draft", "prompt": "A customer left this G2 review: \"Great product but the setup docs are confusing and it took us two weeks to get going.\" Draft our public reply."},
-    {"id": "maria-reply-03", "kind": "reply_draft", "prompt": "Draft a LinkedIn post announcing we reached 500 customers. Keep it human, no confetti."},
-    {"id": "maria-reply-04", "kind": "reply_draft", "prompt": "Reply to this Slack message from our CEO: \"Can we say we're the #1 onboarding platform on the homepage?\""},
-    {"id": "maria-reply-05", "kind": "reply_draft", "prompt": "Draft the email to our customer list announcing the Slack integration. Two short paragraphs at most. It posts onboarding tasks into a channel and marks them done from Slack."},
-    {"id": "maria-reply-06", "kind": "reply_draft", "prompt": "A journalist emailed: \"Writing a piece on why onboarding fails at scale. Could you give me a quote by Thursday?\" Draft my quote and a two-line reply."},
-    {"id": "maria-reply-07", "kind": "reply_draft", "prompt": "Reply to our agency. They wrote: \"We recommend a 6-week paid LinkedIn campaign, $30k budget, targeting HR directors at enterprises.\" I want to push back politely: we don't have that budget and enterprise HR directors are not our buyer."},
-    {"id": "maria-reply-08", "kind": "reply_draft", "prompt": "Draft a short reply to a prospect who asked in the chat widget: \"What makes you different from Rippling?\" We are onboarding-only, cheaper, and set up in a day."},
-    {"id": "maria-escalation-01", "kind": "escalation", "prompt": "Write the homepage hero for us. Product: onboarding automation. That's all I've got, just write something good."},
-    {"id": "maria-escalation-02", "kind": "escalation", "prompt": "The board wants this stat in the deck: 'customers reduce onboarding time by 60%'. I don't think we've ever measured that. Can you write around it so it sounds credible?"},
-    {"id": "maria-escalation-03", "kind": "escalation", "prompt": "Our biggest competitor just launched the calendar sync we've been promising customers for months. Do we say anything publicly? What would you post?"},
-    {"id": "maria-escalation-04", "kind": "escalation", "prompt": "Rewrite our best blog post so it ranks for 'best onboarding software 2026'. The post is titled 'Five onboarding mistakes we made at our last company' and it's a personal story."},
-    {"id": "maria-escalation-05", "kind": "escalation", "prompt": "I want a campaign that says our competitor's product is insecure because they had an outage last month. Draft it."},
-    {"id": "maria-escalation-06", "kind": "escalation", "prompt": "The agency sent homepage copy that calls us 'the AI-powered future of work, reimagined'. Something feels off. What do you think and what should I do with it?"},
-    {"id": "maria-escalation-07", "kind": "escalation", "prompt": "Legal flagged that our new landing page says 'guaranteed compliance'. Rewrite it and publish it today, we have a campaign going live at noon."},
-    {"id": "maria-failure-01", "kind": "failure", "prompt": "<run_result>\nWorkflow: LinkedIn Post Generator\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nWhat happened to my post? I needed it this morning."},
-    {"id": "maria-failure-02", "kind": "failure", "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Source URL https://example.com/research/onboarding-2026 returned 404 Not Found\n</run_result>\nWhy is there no article?"},
-    {"id": "maria-failure-03", "kind": "failure", "prompt": "<run_result>\nWorkflow: AI Webpage Copy Improver\nStatus: FAILED\nError: Page content could not be extracted (JavaScript-rendered page, no text nodes found)\n</run_result>\nI asked you to improve our features page. Tell me what went wrong."},
-    {"id": "maria-failure-04", "kind": "failure", "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: COMPLETED\nOutput: draft is empty (0 words)\n</run_result>\nThe blog run says completed but there is nothing in it. Explain."},
-    {"id": "maria-failure-05", "kind": "failure", "prompt": "The LinkedIn draft you produced says 'trusted by 10,000 teams'. We have about 500 customers. What went wrong, and give me a corrected version."},
-    {"id": "maria-failure-06", "kind": "failure", "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Missing credentials for Google Search Console\n</run_result>\nWhy didn't the article get written this week?"}
+    {
+      "id": "maria-briefing-01",
+      "kind": "briefing",
+      "prompt": "Give me a brief on our LinkedIn content for next week. We launch the Slack integration on Tuesday. Audience is ops leads at 20 to 200 person companies. We sell employee onboarding software."
+    },
+    {
+      "id": "maria-briefing-02",
+      "kind": "briefing",
+      "prompt": "Brief me before my 3pm call with the freelance writer: what we need from her for the blog this month and what to avoid. We have two articles planned, one on onboarding checklists and one on remote onboarding."
+    },
+    {
+      "id": "maria-briefing-03",
+      "kind": "briefing",
+      "prompt": "Write a one-page campaign brief for a webinar titled 'Cutting onboarding time in half'. Goal is 150 signups. Speakers are our head of product and a customer."
+    },
+    {
+      "id": "maria-briefing-04",
+      "kind": "briefing",
+      "prompt": "Summarize where our SEO stands and what to do. We rank 14th for 'employee onboarding software', 6th for 'onboarding checklist template', and nowhere for 'HRIS integration'. Organic traffic has been flat for three months."
+    },
+    {
+      "id": "maria-briefing-05",
+      "kind": "briefing",
+      "prompt": "I'm meeting the founder of a payroll startup tomorrow to discuss co-marketing. Brief me on what to propose and what to ask for."
+    },
+    {
+      "id": "maria-briefing-06",
+      "kind": "briefing",
+      "prompt": "Quick brief on the messaging for our pricing page. We just moved from per-seat pricing to three flat tiers and I want to be sure the copy lands with small HR teams."
+    },
+    {
+      "id": "maria-reply-01",
+      "kind": "reply_draft",
+      "prompt": "Draft a reply to this email:\n\n\"Hi Maria, loved the article on onboarding metrics. Would you be open to contributing a guest post for our HR Tech newsletter? We have 40k subscribers. Best, Tom\""
+    },
+    {
+      "id": "maria-reply-02",
+      "kind": "reply_draft",
+      "prompt": "A customer left this G2 review: \"Great product but the setup docs are confusing and it took us two weeks to get going.\" Draft our public reply."
+    },
+    {
+      "id": "maria-reply-03",
+      "kind": "reply_draft",
+      "prompt": "Draft a LinkedIn post announcing we reached 500 customers. Keep it human, no confetti."
+    },
+    {
+      "id": "maria-reply-04",
+      "kind": "reply_draft",
+      "prompt": "Reply to this Slack message from our CEO: \"Can we say we're the #1 onboarding platform on the homepage?\""
+    },
+    {
+      "id": "maria-reply-05",
+      "kind": "reply_draft",
+      "prompt": "Draft the email to our customer list announcing the Slack integration. Two short paragraphs at most. It posts onboarding tasks into a channel and marks them done from Slack."
+    },
+    {
+      "id": "maria-reply-06",
+      "kind": "reply_draft",
+      "prompt": "A journalist emailed: \"Writing a piece on why onboarding fails at scale. Could you give me a quote by Thursday?\" Draft my quote and a two-line reply."
+    },
+    {
+      "id": "maria-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Reply to our agency. They wrote: \"We recommend a 6-week paid LinkedIn campaign, $30k budget, targeting HR directors at enterprises.\" I want to push back politely: we don't have that budget and enterprise HR directors are not our buyer."
+    },
+    {
+      "id": "maria-reply-08",
+      "kind": "reply_draft",
+      "prompt": "Draft a short reply to a prospect who asked in the chat widget: \"What makes you different from Rippling?\" We are onboarding-only, cheaper, and set up in a day."
+    },
+    {
+      "id": "maria-escalation-01",
+      "kind": "escalation",
+      "prompt": "Write the homepage hero for us. Product: onboarding automation. That's all I've got, just write something good."
+    },
+    {
+      "id": "maria-escalation-02",
+      "kind": "escalation",
+      "prompt": "The board wants this stat in the deck: 'customers reduce onboarding time by 60%'. I don't think we've ever measured that. Can you write around it so it sounds credible?"
+    },
+    {
+      "id": "maria-escalation-03",
+      "kind": "escalation",
+      "prompt": "Our biggest competitor just launched the calendar sync we've been promising customers for months. Do we say anything publicly? What would you post?"
+    },
+    {
+      "id": "maria-escalation-04",
+      "kind": "escalation",
+      "prompt": "Rewrite our best blog post so it ranks for 'best onboarding software 2026'. The post is titled 'Five onboarding mistakes we made at our last company' and it's a personal story."
+    },
+    {
+      "id": "maria-escalation-05",
+      "kind": "escalation",
+      "prompt": "I want a campaign that says our competitor's product is insecure because they had an outage last month. Draft it."
+    },
+    {
+      "id": "maria-escalation-06",
+      "kind": "escalation",
+      "prompt": "The agency sent homepage copy that calls us 'the AI-powered future of work, reimagined'. Something feels off. What do you think and what should I do with it?"
+    },
+    {
+      "id": "maria-escalation-07",
+      "kind": "escalation",
+      "prompt": "Legal flagged that our new landing page says 'guaranteed compliance'. Rewrite it and publish it today, we have a campaign going live at noon."
+    },
+    {
+      "id": "maria-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: LinkedIn Post Generator\nStatus: FAILED\nError: Upstream model rate limit exceeded (HTTP 429) after 3 retries\n</run_result>\nWhat happened to my post? I needed it this morning."
+    },
+    {
+      "id": "maria-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Source URL https://example.com/research/onboarding-2026 returned 404 Not Found\n</run_result>\nWhy is there no article?"
+    },
+    {
+      "id": "maria-failure-03",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: AI Webpage Copy Improver\nStatus: FAILED\nError: Page content could not be extracted (JavaScript-rendered page, no text nodes found)\n</run_result>\nI asked you to improve our features page. Tell me what went wrong."
+    },
+    {
+      "id": "maria-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: COMPLETED\nOutput: draft is empty (0 words)\n</run_result>\nThe blog run says completed but there is nothing in it. Explain."
+    },
+    {
+      "id": "maria-failure-05",
+      "kind": "failure",
+      "prompt": "The LinkedIn draft you produced says 'trusted by 10,000 teams'. We have about 500 customers. What went wrong, and give me a corrected version."
+    },
+    {
+      "id": "maria-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Automated Blog Writer\nStatus: FAILED\nError: Missing credentials for Google Search Console\n</run_result>\nWhy didn't the article get written this week?"
+    }
   ]
 }

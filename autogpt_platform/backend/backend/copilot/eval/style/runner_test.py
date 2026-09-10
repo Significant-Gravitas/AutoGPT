@@ -62,13 +62,13 @@ def test_plan_assembles_each_experts_own_prompt_set():
     jobs = plan_jobs(experts, load_fixtures(), RunOptions(repeats=2, control=3))
     for expert in experts:
         own = [j for j in jobs if j.expert.name == expert.name and j.arm == "expert"]
-        assert len(own) == 60
+        assert len(own) == 54
         assert all(j.prompt.id.startswith(expert.name.lower()) for j in own)
         controls = [
             j for j in jobs if j.expert.name == expert.name and j.arm == "no_suffix"
         ]
         assert len(controls) == 3
-        assert all(j.prompt.kind != "briefing_lede" for j in controls)
+        assert all(j.arm == "no_suffix" for j in controls)
 
 
 def test_the_control_arm_warms_one_prompt_prefix_for_the_whole_roster():
@@ -78,7 +78,7 @@ def test_the_control_arm_warms_one_prompt_prefix_for_the_whole_roster():
     controls = {cache_prefix(j) for j in jobs if j.arm == "no_suffix"}
     experts = {cache_prefix(j) for j in jobs if j.arm == "expert"}
     assert len(controls) == 1
-    assert len(experts) == 6, "one per expert, chat and lede apart"
+    assert len(experts) == 3, "one per expert"
 
 
 def test_plan_filters_kinds():
@@ -214,7 +214,6 @@ def test_the_generation_cost_is_counted_once_across_the_cross_spec_copies():
         load_baseline(),
         fingerprint_value="f",
         chat_model="m",
-        lede_model="m",
         judge_model="m",
     )
     assert result.cost_usd == pytest.approx(1.0)
@@ -244,7 +243,6 @@ async def test_a_turn_still_calling_tools_at_the_cap_is_an_error_not_a_zero():
             ChatConfig(),
             [expert],
             chat_model="m",
-            lede_model="m",
         )
     assert row.score is None
     assert row.error is not None and "still calling tools after 10 rounds" in row.error
@@ -321,7 +319,6 @@ def stubbed_models(tmp_path: Path):
         patch(f"{_RUNNER}.resolve_chat_model", AsyncMock(return_value=routed)),
         patch(f"{_RUNNER}.chat_client", MagicMock()),
         patch(f"{_RUNNER}.generate_turn", AsyncMock(return_value=turn)),
-        patch(f"{_RUNNER}.generate_lede", AsyncMock(return_value=("lede", usage))),
         patch(f"{_RUNNER}.judge_response", judge),
         patch(f"{_RUNNER}.save_baseline") as save_baseline,
     ):
@@ -336,18 +333,18 @@ async def test_run_scores_every_prompt_and_reads_it_against_the_baseline(
     out = tmp_path / "r.json"
     result = await run(RunOptions(experts=["Max"], out=out))
     assert result is not None
-    assert result.experts[0].scores.n == 30
+    assert result.experts[0].scores.n == 27
     assert result.experts[0].scores.mean == 75.0
     assert result.experts[0].tool_calls == 27
-    assert judge.await_count == 30
-    assert result.cost_usd == pytest.approx(0.06)
+    assert judge.await_count == 27
+    assert result.cost_usd == pytest.approx(0.054)
     (comparison,) = result.comparison
     assert comparison.expert == "Max"
-    assert comparison.shared_prompts == 28, "the baseline's two unscored prompts"
+    assert comparison.shared_prompts == 25, "the baseline's two unscored prompts"
     save_baseline.assert_not_called()
     written = json.loads(out.read_text())
     assert written["fingerprint"] == result.fingerprint
-    assert len(written["responses"]) == 30
+    assert len(written["responses"]) == 27
 
 
 @pytest.mark.asyncio
@@ -359,7 +356,7 @@ async def test_write_baseline_stores_every_prompt_of_this_run(
     assert result is not None
     written = save_baseline.call_args.args[0]
     assert {e.expert for e in written.experts} == {e.name for e in roster_experts()}
-    assert all(len(e.by_prompt) == 30 for e in written.experts)
+    assert all(len(e.by_prompt) == 27 for e in written.experts)
     assert written.fingerprint == result.fingerprint
 
 
@@ -409,4 +406,4 @@ def test_reference_prompt_rejects_mismatched_inputs():
     with pytest.raises(ValueError):
         ReferencePrompt(id="x", kind="failure", prompt="")
     with pytest.raises(ValueError):
-        ReferencePrompt(id="x", kind="briefing_lede", prompt="p")
+        ReferencePrompt(id="x", kind="failure", prompt="   ")

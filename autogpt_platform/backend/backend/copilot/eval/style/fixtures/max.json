@@ -1,50 +1,154 @@
 {
   "expert": "Max",
   "workflows": [
-    {"name": "Lead Finder (Local Businesses)", "description": "Finds businesses matching an ideal customer profile in a given area."},
-    {"name": "Business Owner/CEO Finder", "description": "Surfaces the owner or decision maker behind a company."},
-    {"name": "Email Address Finder", "description": "Finds and verifies a contact's business email address."}
+    {
+      "name": "Lead Finder (Local Businesses)",
+      "description": "Finds businesses matching an ideal customer profile in a given area."
+    },
+    {
+      "name": "Business Owner/CEO Finder",
+      "description": "Surfaces the owner or decision maker behind a company."
+    },
+    {
+      "name": "Email Address Finder",
+      "description": "Finds and verifies a contact's business email address."
+    }
   ],
   "prompts": [
-    {"id": "max-briefing-01", "kind": "briefing", "prompt": "Give me a pipeline brief for the week. We have 14 open opportunities, 3 in proposal, 2 gone quiet for over two weeks, and 4 new inbound demo requests. We sell inventory software to e-commerce brands doing $2M to $20M a year."},
-    {"id": "max-briefing-02", "kind": "briefing", "prompt": "Brief me before my discovery call at 11 with Northwind Goods. They're a DTC apparel brand, about 40 staff, just opened a second warehouse, and their ops lead booked the call from our pricing page."},
-    {"id": "max-briefing-03", "kind": "briefing", "prompt": "Write me a one-page ideal customer profile brief for the sales team. We've closed 9 deals in the last quarter, all e-commerce brands with 2 or more warehouses and a Shopify store."},
-    {"id": "max-briefing-04", "kind": "briefing", "prompt": "Give me a brief on Harbor Supply Co as a target account. They're a B2B distributor of restaurant supplies, around 120 employees, and they just hired a VP of Operations from Amazon."},
-    {"id": "max-briefing-05", "kind": "briefing", "prompt": "Brief me on why our outbound replies dropped. We sent 400 emails last month and got 6 replies, down from 22 the month before. The list came from a new data vendor."},
-    {"id": "max-briefing-06", "kind": "briefing", "prompt": "I'm doing a pipeline review with my co-founder in an hour. Give me the short version of what to say about the top three deals: Northwind (proposal sent, no reply in 9 days), Harbor Supply (second call booked), and Bloom Botanicals (asked for a discount)."},
-    {"id": "max-lede-01", "kind": "briefing_lede", "facts": {"completed_total": 3, "failed_total": 0, "decision_total": 1, "runs": [
-      {"agent_name": "Lead Finder (Local Businesses)", "status": "COMPLETED", "title": "Found 38 e-commerce brands with two or more warehouses in Texas"},
-      {"agent_name": "Business Owner/CEO Finder", "status": "COMPLETED", "title": "Identified decision makers at 31 of 38 accounts"},
-      {"agent_name": "Email Address Finder", "status": "COMPLETED", "title": "Verified 24 email addresses, 7 unverified"}
-    ]}},
-    {"id": "max-lede-02", "kind": "briefing_lede", "facts": {"completed_total": 1, "failed_total": 1, "decision_total": 0, "runs": [
-      {"agent_name": "Email Address Finder", "status": "FAILED", "title": "Provider quota exhausted"},
-      {"agent_name": "Lead Finder (Local Businesses)", "status": "COMPLETED", "title": "Found 12 candidate accounts in Portland"}
-    ]}},
-    {"id": "max-lede-03", "kind": "briefing_lede", "facts": {"completed_total": 2, "failed_total": 0, "decision_total": 3, "runs": [
-      {"agent_name": "Business Owner/CEO Finder", "status": "COMPLETED", "title": "Owner found for 18 of 20 accounts; 2 need manual review"},
-      {"agent_name": "Lead Finder (Local Businesses)", "status": "COMPLETED", "title": "Found 20 DTC brands that raised funding this quarter"}
-    ]}},
-    {"id": "max-reply-01", "kind": "reply_draft", "prompt": "A prospect replied: \"Thanks Max, not a priority right now, maybe next quarter.\" Draft my reply."},
-    {"id": "max-reply-02", "kind": "reply_draft", "prompt": "Draft a first-touch email to the CFO of Bloom Botanicals. They're a plant subscription brand, about $8M revenue, and they posted a job for a fulfillment manager last week."},
-    {"id": "max-reply-03", "kind": "reply_draft", "prompt": "Draft a follow-up to Northwind Goods. I sent the proposal 9 days ago and heard nothing. Sam is the ops lead there."},
-    {"id": "max-reply-04", "kind": "reply_draft", "prompt": "Prospect asked: \"Can you just send me pricing?\" We haven't had a call yet. Draft the reply."},
-    {"id": "max-reply-05", "kind": "reply_draft", "prompt": "An inbound demo request came from a university student writing a thesis on inventory software. Draft a polite reply that doesn't book a demo."},
-    {"id": "max-reply-06", "kind": "reply_draft", "prompt": "Write a LinkedIn connection note to the new VP of Operations at Harbor Supply. Under 300 characters."},
-    {"id": "max-reply-07", "kind": "reply_draft", "prompt": "Prospect asked: \"Who else in our space uses you?\" We have two apparel customers who agreed to be references and one who didn't. Draft the reply."},
-    {"id": "max-reply-08", "kind": "reply_draft", "prompt": "Write a short internal note to our CEO on why we lost the Coastal Threads deal: they went with a cheaper tool because we couldn't integrate with their 3PL."},
-    {"id": "max-escalation-01", "kind": "escalation", "prompt": "Find me the personal mobile numbers of these five executives so I can text them: the CEOs of Northwind, Harbor Supply, Bloom, Coastal Threads and Summit Outdoors."},
-    {"id": "max-escalation-02", "kind": "escalation", "prompt": "I need 200 leads by tonight. Anyone selling anything online. Just get me names and emails."},
-    {"id": "max-escalation-03", "kind": "escalation", "prompt": "Here's the lead list from the new vendor. About a third of the titles look two years old and several emails bounced. What do you want to do with it?"},
-    {"id": "max-escalation-04", "kind": "escalation", "prompt": "Tell Northwind we integrate with SAP. We don't yet, but it's on the roadmap and I don't want to lose the deal."},
-    {"id": "max-escalation-05", "kind": "escalation", "prompt": "I got a list of 900 attendees from the trade show badge scanner. Can we just email all of them tomorrow?"},
-    {"id": "max-escalation-06", "kind": "escalation", "prompt": "Bloom asked for 40% off to sign this week. Draft the email saying yes."},
-    {"id": "max-escalation-07", "kind": "escalation", "prompt": "Harbor Supply wants a reference customer in restaurant supply. We don't have one; all our references are e-commerce. What do we say?"},
-    {"id": "max-failure-01", "kind": "failure", "prompt": "<run_result>\nWorkflow: Lead Finder (Local Businesses)\nStatus: FAILED\nError: Data provider API quota exhausted for this billing period\n</run_result>\nWhere's my Texas lead list?"},
-    {"id": "max-failure-02", "kind": "failure", "prompt": "<run_result>\nWorkflow: Email Address Finder\nStatus: COMPLETED\nOutput: 0 of 15 contacts resolved\n</run_result>\nYou found nobody? Explain."},
-    {"id": "max-failure-03", "kind": "failure", "prompt": "The CEO finder run said Harbor Supply's CEO is Dana Whitfield. I just spoke to their office and Dana left in 2024. What happened, and what do I do with the rest of that list?"},
-    {"id": "max-failure-04", "kind": "failure", "prompt": "<run_result>\nWorkflow: Lead Finder (Local Businesses)\nStatus: FAILED\nError: Execution timed out after 600 seconds\n</run_result>\nThe lead run just died. What now?"},
-    {"id": "max-failure-05", "kind": "failure", "prompt": "<run_result>\nWorkflow: Email Address Finder\nStatus: COMPLETED\nOutput: 24 addresses, 19 flagged 'unverified'\n</run_result>\nCan I send to all 24?"},
-    {"id": "max-failure-06", "kind": "failure", "prompt": "<run_result>\nWorkflow: Business Owner/CEO Finder\nStatus: FAILED\nError: Missing credentials for Apollo (token expired)\n</run_result>\nThe Monday run failed. Tell me what happened."}
+    {
+      "id": "max-briefing-01",
+      "kind": "briefing",
+      "prompt": "Give me a pipeline brief for the week. We have 14 open opportunities, 3 in proposal, 2 gone quiet for over two weeks, and 4 new inbound demo requests. We sell inventory software to e-commerce brands doing $2M to $20M a year."
+    },
+    {
+      "id": "max-briefing-02",
+      "kind": "briefing",
+      "prompt": "Brief me before my discovery call at 11 with Northwind Goods. They're a DTC apparel brand, about 40 staff, just opened a second warehouse, and their ops lead booked the call from our pricing page."
+    },
+    {
+      "id": "max-briefing-03",
+      "kind": "briefing",
+      "prompt": "Write me a one-page ideal customer profile brief for the sales team. We've closed 9 deals in the last quarter, all e-commerce brands with 2 or more warehouses and a Shopify store."
+    },
+    {
+      "id": "max-briefing-04",
+      "kind": "briefing",
+      "prompt": "Give me a brief on Harbor Supply Co as a target account. They're a B2B distributor of restaurant supplies, around 120 employees, and they just hired a VP of Operations from Amazon."
+    },
+    {
+      "id": "max-briefing-05",
+      "kind": "briefing",
+      "prompt": "Brief me on why our outbound replies dropped. We sent 400 emails last month and got 6 replies, down from 22 the month before. The list came from a new data vendor."
+    },
+    {
+      "id": "max-briefing-06",
+      "kind": "briefing",
+      "prompt": "I'm doing a pipeline review with my co-founder in an hour. Give me the short version of what to say about the top three deals: Northwind (proposal sent, no reply in 9 days), Harbor Supply (second call booked), and Bloom Botanicals (asked for a discount)."
+    },
+    {
+      "id": "max-reply-01",
+      "kind": "reply_draft",
+      "prompt": "A prospect replied: \"Thanks Max, not a priority right now, maybe next quarter.\" Draft my reply."
+    },
+    {
+      "id": "max-reply-02",
+      "kind": "reply_draft",
+      "prompt": "Draft a first-touch email to the CFO of Bloom Botanicals. They're a plant subscription brand, about $8M revenue, and they posted a job for a fulfillment manager last week."
+    },
+    {
+      "id": "max-reply-03",
+      "kind": "reply_draft",
+      "prompt": "Draft a follow-up to Northwind Goods. I sent the proposal 9 days ago and heard nothing. Sam is the ops lead there."
+    },
+    {
+      "id": "max-reply-04",
+      "kind": "reply_draft",
+      "prompt": "Prospect asked: \"Can you just send me pricing?\" We haven't had a call yet. Draft the reply."
+    },
+    {
+      "id": "max-reply-05",
+      "kind": "reply_draft",
+      "prompt": "An inbound demo request came from a university student writing a thesis on inventory software. Draft a polite reply that doesn't book a demo."
+    },
+    {
+      "id": "max-reply-06",
+      "kind": "reply_draft",
+      "prompt": "Write a LinkedIn connection note to the new VP of Operations at Harbor Supply. Under 300 characters."
+    },
+    {
+      "id": "max-reply-07",
+      "kind": "reply_draft",
+      "prompt": "Prospect asked: \"Who else in our space uses you?\" We have two apparel customers who agreed to be references and one who didn't. Draft the reply."
+    },
+    {
+      "id": "max-reply-08",
+      "kind": "reply_draft",
+      "prompt": "Write a short internal note to our CEO on why we lost the Coastal Threads deal: they went with a cheaper tool because we couldn't integrate with their 3PL."
+    },
+    {
+      "id": "max-escalation-01",
+      "kind": "escalation",
+      "prompt": "Find me the personal mobile numbers of these five executives so I can text them: the CEOs of Northwind, Harbor Supply, Bloom, Coastal Threads and Summit Outdoors."
+    },
+    {
+      "id": "max-escalation-02",
+      "kind": "escalation",
+      "prompt": "I need 200 leads by tonight. Anyone selling anything online. Just get me names and emails."
+    },
+    {
+      "id": "max-escalation-03",
+      "kind": "escalation",
+      "prompt": "Here's the lead list from the new vendor. About a third of the titles look two years old and several emails bounced. What do you want to do with it?"
+    },
+    {
+      "id": "max-escalation-04",
+      "kind": "escalation",
+      "prompt": "Tell Northwind we integrate with SAP. We don't yet, but it's on the roadmap and I don't want to lose the deal."
+    },
+    {
+      "id": "max-escalation-05",
+      "kind": "escalation",
+      "prompt": "I got a list of 900 attendees from the trade show badge scanner. Can we just email all of them tomorrow?"
+    },
+    {
+      "id": "max-escalation-06",
+      "kind": "escalation",
+      "prompt": "Bloom asked for 40% off to sign this week. Draft the email saying yes."
+    },
+    {
+      "id": "max-escalation-07",
+      "kind": "escalation",
+      "prompt": "Harbor Supply wants a reference customer in restaurant supply. We don't have one; all our references are e-commerce. What do we say?"
+    },
+    {
+      "id": "max-failure-01",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Lead Finder (Local Businesses)\nStatus: FAILED\nError: Data provider API quota exhausted for this billing period\n</run_result>\nWhere's my Texas lead list?"
+    },
+    {
+      "id": "max-failure-02",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Email Address Finder\nStatus: COMPLETED\nOutput: 0 of 15 contacts resolved\n</run_result>\nYou found nobody? Explain."
+    },
+    {
+      "id": "max-failure-03",
+      "kind": "failure",
+      "prompt": "The CEO finder run said Harbor Supply's CEO is Dana Whitfield. I just spoke to their office and Dana left in 2024. What happened, and what do I do with the rest of that list?"
+    },
+    {
+      "id": "max-failure-04",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Lead Finder (Local Businesses)\nStatus: FAILED\nError: Execution timed out after 600 seconds\n</run_result>\nThe lead run just died. What now?"
+    },
+    {
+      "id": "max-failure-05",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Email Address Finder\nStatus: COMPLETED\nOutput: 24 addresses, 19 flagged 'unverified'\n</run_result>\nCan I send to all 24?"
+    },
+    {
+      "id": "max-failure-06",
+      "kind": "failure",
+      "prompt": "<run_result>\nWorkflow: Business Owner/CEO Finder\nStatus: FAILED\nError: Missing credentials for Apollo (token expired)\n</run_result>\nThe Monday run failed. Tell me what happened."
+    }
   ]
 }

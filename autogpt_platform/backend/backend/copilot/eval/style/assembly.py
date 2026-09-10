@@ -8,7 +8,6 @@ changed fingerprint component.
 import hashlib
 import json
 from collections.abc import Iterable
-from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -19,8 +18,6 @@ from backend.api.features.experts.models import (
     ExpertWorkflowRef,
 )
 from backend.api.features.experts.seed import ROSTER, RosterEntry
-from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
-from backend.copilot.briefing.narrative import _facts_block, _system_prompt
 from backend.copilot.config import ChatConfig
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
@@ -37,7 +34,7 @@ from backend.copilot.prompting import (
 )
 from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT
 
-from .models import Baseline, ExpertFixture, LedeFacts, Rubric
+from .models import Baseline, ExpertFixture, Rubric
 
 STYLE_DIR = Path(__file__).resolve().parent
 FIXTURES_DIR = STYLE_DIR / "fixtures"
@@ -133,36 +130,6 @@ def chat_system_prompt(expert: Expert | None) -> str:
     )
 
 
-def lede_prompt(expert: Expert, facts: LedeFacts) -> tuple[str, str]:
-    """``narrative.py``'s own (system, user) pair for a briefing in this voice."""
-    content = BriefingContent(
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        timezone="UTC",
-        zero_expert_fallback=False,
-        run_items=[
-            BriefingRunItem(
-                expert_id=expert.id,
-                expert_name=expert.name,
-                expert_avatar_url=None,
-                agent_name=run.agent_name,
-                graph_id="",
-                execution_id="",
-                library_agent_id=None,
-                status=run.status,
-                summary=None,
-                link=None,
-                title=run.title,
-            )
-            for run in facts.runs
-        ],
-        decision_items=[],
-        decision_total=facts.decision_total,
-        completed_total=facts.completed_total,
-        failed_total=facts.failed_total,
-    )
-    return _system_prompt(expert), _facts_block(content)
-
-
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
     """The model an expert turn runs on: the engine decision, then the
     router's ``(mode, standard)`` cell. No user id, so LaunchDarkly is
@@ -196,7 +163,6 @@ def fingerprint_parts(
     rubric: Rubric,
     *,
     chat_model: str,
-    lede_model: str,
     judge_model: str,
 ) -> dict[str, str]:
     """Everything a score depends on, hashed component by component so a
@@ -205,12 +171,11 @@ def fingerprint_parts(
     changed with the transport would report a change nobody made."""
     by_name = {f"prompt:{e.name}": chat_system_prompt(e) for e in experts}
     by_name |= {f"context:{e.name}": user_prefix(e, experts) for e in experts}
-    by_name |= {f"lede:{e.name}": _system_prompt(e) for e in experts}
     by_name |= {f"fixture:{f.expert}": f.model_dump_json() for f in fixtures}
     return {
         "autopilot": _sha(chat_system_prompt(None) + user_prefix(None, experts)),
         "rubric": _sha(rubric.model_dump_json()),
-        "models": _sha(f"{chat_model}|{lede_model}|{judge_model}"),
+        "models": _sha(f"{chat_model}|{judge_model}"),
         "harness": harness_fingerprint(STYLE_DIR / m for m in HARNESS_MODULES),
         **{key: _sha(value) for key, value in sorted(by_name.items())},
     }
