@@ -40,6 +40,7 @@ interface Props {
     templatesCount: number;
     triggersCount: number;
     loading?: boolean;
+    hasError?: boolean;
   }) => void;
 }
 
