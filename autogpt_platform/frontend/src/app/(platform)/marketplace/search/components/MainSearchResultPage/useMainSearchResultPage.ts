@@ -1,11 +1,14 @@
 import {
+  useGetV2ListMarketplaceSkills,
   useGetV2ListStoreAgents,
   useGetV2ListStoreCreators,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 import { GetV2ListStoreCreatorsParams } from "@/app/api/__generated__/models/getV2ListStoreCreatorsParams";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
+import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useState, useMemo } from "react";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
@@ -22,6 +25,8 @@ export const useMainSearchResultPage = ({
 }: useMainSearchResultPageType) => {
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
+  const [showSkills, setShowSkills] = useState(true);
+  const skillsHub = useFlagStatus(Flag.SKILLS_HUB);
   const [clientSortBy, setClientSortBy] = useState<string>(
     sort ?? "updated_at",
   );
@@ -72,6 +77,17 @@ export const useMainSearchResultPage = ({
     },
   );
 
+  const { data: skillsData, isLoading: isSkillsLoading } =
+    useGetV2ListMarketplaceSkills(
+      { search_query: searchTerm },
+      {
+        query: {
+          enabled: skillsHub.ready && skillsHub.enabled,
+          select: (response) => okData(response)?.skills ?? [],
+        },
+      },
+    );
+
   // This is the strategy, we are using for sorting the agents and creators.
   // currently we are doing it client side but maybe we will shift it to the server side.
   // we will store the sortBy state in the url params, and then refetch the data with the new sortBy.
@@ -104,21 +120,16 @@ export const useMainSearchResultPage = ({
     }
   }, [creatorsData, clientSortBy]);
 
+  const skills = skillsData ?? [];
   const agentsCount = agents?.length ?? 0;
   const creatorsCount = creators?.length ?? 0;
-  const totalCount = agentsCount + creatorsCount;
+  const skillsCount = skills.length;
+  const totalCount = agentsCount + creatorsCount + skillsCount;
 
   const handleFilterChange = (value: string) => {
-    if (value === "agents") {
-      setShowAgents(true);
-      setShowCreators(false);
-    } else if (value === "creators") {
-      setShowAgents(false);
-      setShowCreators(true);
-    } else {
-      setShowAgents(true);
-      setShowCreators(true);
-    }
+    setShowAgents(value === "all" || value === "agents");
+    setShowCreators(value === "all" || value === "creators");
+    setShowSkills(value === "all" || value === "skills");
   };
 
   const handleSortChange = (sortValue: string) => {
@@ -128,15 +139,20 @@ export const useMainSearchResultPage = ({
   return {
     agents,
     creators,
+    skills,
     handleFilterChange,
     handleSortChange,
     agentsCount,
     creatorsCount,
+    skillsCount,
     totalCount,
     showAgents,
     showCreators,
+    showSkills,
+    isSkillsHubEnabled: skillsHub.ready && skillsHub.enabled,
     isAgentsLoading,
     isCreatorsLoading,
+    isSkillsLoading,
     isAgentsError,
     isCreatorsError,
   };

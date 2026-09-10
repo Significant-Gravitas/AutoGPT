@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cas
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import scheduling as experts_scheduling
+from backend.api.features.experts import spend_approval as experts_spend_approval
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -531,6 +532,12 @@ class DatabaseManager(AppService):
     list_experts = _(experts_db.list_experts)
     resolve_private_expert_tenancy = _(experts_db.resolve_private_expert_tenancy)
     enforce_expert_run_budget = _(experts_scheduling.enforce_expert_run_budget)
+    spend_approval_required = _(experts_spend_approval.spend_approval_required)
+    park_execution_for_spend_approval = _(
+        experts_spend_approval.park_execution_for_spend_approval
+    )
+    parked_spend_decision = _(experts_spend_approval.parked_spend_decision)
+    open_chat_spend_review = _(experts_spend_approval.open_chat_spend_review)
     expert_allowed_credential_ids = _(expert_credentials.expert_allowed_credential_ids)
     update_soul = _(experts_db.update_soul)
     update_soul_if_current = _(experts_db.update_soul_if_current)
@@ -916,6 +923,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_experts = d.list_experts
     resolve_private_expert_tenancy = d.resolve_private_expert_tenancy
     enforce_expert_run_budget = d.enforce_expert_run_budget
+    spend_approval_required = d.spend_approval_required
+    park_execution_for_spend_approval = d.park_execution_for_spend_approval
+    parked_spend_decision = d.parked_spend_decision
+    open_chat_spend_review = d.open_chat_spend_review
     expert_allowed_credential_ids = d.expert_allowed_credential_ids
     update_soul = d.update_soul
     update_soul_if_current = d.update_soul_if_current
