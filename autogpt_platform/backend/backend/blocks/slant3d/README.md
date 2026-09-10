@@ -16,7 +16,7 @@ Existing block IDs and output names are retained. Order IDs are now Slant3D publ
 
 The Filament block retains `filament`, `hexColor`, and `colorTag`, and adds the v2 public ID, material, color, and availability fields. Slicer additionally returns the uploaded file ID. It rejects estimates priced for a different quantity instead of presenting a single-unit price as a bulk total. Order listing follows pagination; tracking reads the order's fulfillment information.
 
-New webhook subscriptions require an explicit platform ID and verify Slant3D's timestamped HMAC-SHA256 signature. Each platform has one webhook URL, so use a dedicated platform if another application already has a subscription. Existing v1 subscriptions retain their legacy payload and unsigned-delivery behavior. Reconnect the trigger with a v2 key and platform ID to migrate it. Carrier codes are empty when the provider does not supply them; dummy deliveries do not trigger workflows.
+New webhook subscriptions require an explicit platform ID and verify Slant3D's HMAC-SHA256 signature with a millisecond timestamp. Registration is serialized per platform to prevent competing callback URLs. Each platform has one webhook URL, so use a dedicated platform if another application already has a subscription. Existing v1 subscriptions retain their legacy payload and unsigned-delivery behavior, using the unguessable callback URL as a bearer credential. Keep that URL private. Reconnect the trigger with a v2 key and platform ID to migrate it. Carrier codes are empty when the provider does not supply them; dummy deliveries do not trigger workflows.
 
 ## API contracts and validation
 

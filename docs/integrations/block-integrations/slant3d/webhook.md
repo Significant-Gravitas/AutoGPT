@@ -10,16 +10,16 @@ This block triggers on Slant3D order status updates and outputs the event detail
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block subscribes to order status events on a Slant3D platform. New subscriptions require an explicit platform_id and verify the timestamped HMAC-SHA256 signature before accepting deliveries. Each platform supports one webhook URL; use a dedicated platform if another application already owns it.
+This block subscribes to order events on a Slant3D platform. New v2 subscriptions require `platform_id="your-platform-id"`; only retained v1 subscriptions may omit it. Registration is serialized per platform to prevent competing callbacks. Each platform has one webhook URL, so an existing callback belonging to another application requires a dedicated platform. V2 deliveries must include `X-Webhook-Signature-256: sha256=<digest>` and a fresh millisecond `X-Webhook-Timestamp`; invalid signatures, platform mismatches, and invalid event types are rejected.
 
-The block outputs order details and available tracking information. Carrier codes are empty when Slant3D does not provide them, and dummy deliveries do not trigger workflows. Existing v1 subscriptions retain their legacy behavior; reconnect with a v2 key and platform ID to migrate.
+The block outputs order details and available tracking information. Missing carrier codes become empty strings, and dummy deliveries do not trigger workflows. Retained v1 callbacks have no signature scheme and rely on their unguessable callback URL as a bearer credential: keep that URL private. Reconnect with a v2 key and platform ID to migrate to signed delivery.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| platform_id | Slant3D platform ID for this subscription; use a platform without another webhook | str | No |
+| platform_id | Required for new v2 subscriptions; retained v1 subscriptions may omit this platform ID. Use a platform without another webhook. | str | No |
 | events | Order status events to subscribe to | Events | No |
 
 ### Outputs

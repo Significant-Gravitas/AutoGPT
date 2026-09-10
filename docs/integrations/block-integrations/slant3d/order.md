@@ -10,9 +10,9 @@ Order physical 3D-printed parts from Slant3D for manufacturing and delivery. Acc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block loads STL URLs, workspace attachments, or data URIs through the shared media loader and confirms their upload, creates a draft, then processes it to charge the Slant3D account payment method and start production. Each item can reuse a file_id instead of uploading again. Provide customer shipping details, a positive quantity, and a filament public ID. Legacy color/profile values are accepted only when they identify one available filament.
+This block prepares each print item, creates a draft, then processes it to charge the Slant3D account payment method and start production. An item can reuse `file_id` or upload an STL URL, workspace attachment, or data URI. Supply customer shipping details, a positive `quantity`, and a `filament_id`; legacy color/profile values work only when they identify one available filament.
 
-Set platform_id, or omit it when the account has exactly one enabled platform. The block returns the public order ID for tracking. Use Estimate Order first when the customer needs to approve a quote.
+Set `platform_id`, or omit it only when the account has exactly one enabled platform. Invalid items, inaccessible files, ambiguous materials, and provider errors stop the workflow. If processing cannot be confirmed, the error identifies the draft: check its status before retrying to avoid a duplicate charge. Use Estimate Order first when the customer needs to approve a quote.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -49,9 +49,9 @@ Quote a 3D-printed parts order including shipping by creating an uncharged Slant
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an uncharged draft order and returns its public order ID together with printing, shipping, and total costs. Provide the same customer and item details as Create Order. Slant3D requires an account payment method to create a draft, but estimating does not charge it or start production.
+This block creates an uncharged draft and returns its `order_id`, printing cost, shipping cost, and total cost. Provide the same customer and item details as Create Order. Slant3D requires an account payment method for drafts, but estimating does not charge it or start production.
 
-After the customer approves the quote, pass the returned order_id to Process Order.
+Empty item lists and nonpositive quantities are rejected. File-upload, platform-selection, filament-resolution, shipping-detail, and provider failures surface as errors instead of a completed quote. After customer approval, pass the returned ID, such as `order_id="SLANT_1234567890"`, to Process Order.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -91,9 +91,9 @@ Estimate delivery costs for physical 3D-printed parts by creating an uncharged S
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block creates an uncharged draft using the destination and items, then returns its shipping cost, currency, and public order ID. Slant3D requires an account payment method for drafts, but estimating does not charge it or start production.
+This block creates an uncharged draft from the destination and print items, then returns its shipping cost, `currency_code`, and `order_id`. Slant3D requires an account payment method for drafts, but estimating does not charge it or start production.
 
-Use this to display shipping costs at checkout. Process the returned draft only after the customer approves the order.
+Invalid quantities, inaccessible files, ambiguous platform/material selections, invalid addresses, and provider failures stop the estimate. Use real destination details, such as `country_iso="US"`, and process the returned draft only after the customer approves the order.
 <!-- END MANUAL -->
 
 ### Inputs

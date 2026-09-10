@@ -10,9 +10,9 @@ Cancel an order before production starts
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block cancels an existing order in the Slant3D system using the order ID. The cancellation request is sent to the Slant3D API and returns a status message confirming the cancellation.
+This block requests cancellation of an existing order using its public ID, such as `order_id="SLANT_1234567890"`. It returns the provider's status message, or `Order cancelled` when a successful response omits that optional message.
 
-Orders can only be cancelled before they enter production. Check order status before attempting cancellation.
+An invalid ID, an order that cannot be cancelled at its current production stage, or a provider failure produces an error. Check the order status before cancelling; failed cancellation requests are not automatically retried.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -46,9 +46,9 @@ Get all orders for the account
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves all orders associated with your Slant3D account. It returns a list of orders with their current status and details.
+This block collects the public IDs of all orders associated with the Slant3D account. It requests pages of 100 orders and stops at the reported final page, an empty page, or a short page when pagination metadata is absent. An empty account returns `orders=[]`.
 
-Use this for order management dashboards or to sync order data with your systems.
+Provider failures stop pagination and surface as an error instead of returning a partial list. The output contains IDs such as `SLANT_1234567890`; use Tracking to retrieve an order's status and tracking numbers.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -76,9 +76,9 @@ Submit an approved Slant3D draft to order physical 3D-printed parts for manufact
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block processes an existing draft identified by its public order ID. Processing charges the Slant3D account payment method and submits the order to production.
+This block processes an approved, uncharged draft identified by its public `order_id`, for example `order_id="SLANT_1234567890"` from Estimate Order or Estimate Shipping. Processing charges the connected Slant3D payment method and submits the order to production. The output is the processed order ID.
 
-Use the order_id returned by Estimate Order or Estimate Shipping after the customer approves the quote. The block returns the processed order ID and status.
+The provider rejects invalid IDs and drafts that cannot be processed, including already-processed orders. If a provider or connection failure prevents confirmation, the block reports an error with the draft ID. Check that order's status before retrying because payment may have completed; processing requests are not automatically retried.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -97,6 +97,10 @@ Use the order_id returned by Estimate Order or Estimate Shipping after the custo
 ### Possible use case
 <!-- MANUAL: use_case -->
 **Approved Quote Fulfillment**: Process the draft returned by a pricing block after a customer confirms the cost and shipping details.
+
+**Scheduled Production**: Submit an approved draft when its planned manufacturing date arrives.
+
+**Purchase Approval Workflow**: Process a prepared draft after an internal purchaser approves its cost.
 <!-- END MANUAL -->
 
 ---
@@ -108,9 +112,9 @@ Track order status and shipping
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block retrieves the current status and shipping tracking information for a specific order. It returns the order status and any available tracking numbers.
+This block retrieves the current status and available tracking numbers for one public order ID, such as `order_id="SLANT_1234567890"`. Before fulfillment, missing shipment information returns `tracking_numbers=[]`.
 
-Use this to provide customers with real-time order status updates.
+Invalid or inaccessible order IDs and provider failures surface as errors. Use the returned status and tracking-number list for order-status pages and shipment notifications.
 <!-- END MANUAL -->
 
 ### Inputs

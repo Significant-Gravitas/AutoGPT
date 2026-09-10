@@ -50,7 +50,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
     class Input(Slant3DTriggerBase.Input):
         platform_id: str = SchemaField(
             default="",
-            description="Slant3D platform ID for this subscription; use a platform without another webhook",
+            description="Required for new v2 subscriptions; retained v1 subscriptions may omit this platform ID. Use a platform without another webhook.",
         )
 
         class EventsFilter(BaseModel):

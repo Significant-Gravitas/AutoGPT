@@ -10,9 +10,9 @@ Get a live 3D printing quote for physical parts from STL URLs or attached worksp
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block loads an STL URL, workspace attachment, or data URI through the shared media loader, then uploads it using Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply file_id to reuse an existing upload. Set platform_id, or omit it when the account has exactly one enabled platform.
+This block loads an STL URL, workspace attachment, or data URI through the shared media loader, streams it through Slant3D's signed upload flow, confirms the upload, and requests a printing estimate. Supply `file_id` to reuse an upload. Set `platform_id`, or omit it only when the account has exactly one enabled platform.
 
-The price is in USD for the requested quantity and excludes shipping. filament_id selects a public filament ID; omitting it uses Slant3D's default black PLA. The returned file_id can be reused in order items. If Slant3D returns pricing for a different quantity, the block reports an error instead of presenting it as the requested total.
+The USD price includes the requested positive `quantity` and excludes shipping. A `filament_id` selects a material; omitting it uses default black PLA. Missing file inputs, inaccessible files, invalid quantities, ambiguous platforms, and provider failures surface as errors. A missing total or a response priced for a different quantity is rejected before any output. Reuse the returned `file_id` when preparing an order.
 <!-- END MANUAL -->
 
 ### Inputs
