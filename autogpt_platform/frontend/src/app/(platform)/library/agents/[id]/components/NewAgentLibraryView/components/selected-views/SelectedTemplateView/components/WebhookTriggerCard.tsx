@@ -4,8 +4,9 @@ import { GraphTriggerInfo } from "@/app/api/__generated__/models/graphTriggerInf
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CopyIcon } from "@phosphor-icons/react";
 import { RunDetailCard } from "../../RunDetailCard/RunDetailCard";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   template: LibraryAgentPreset;
@@ -73,7 +74,7 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
                   onClick={handleCopyWebhookUrl}
                   title="Copy webhook URL"
                 >
-                  <CopyIcon className="size-4" />
+                  <Icon icon={Copy01Icon} className="size-4" />
                 </Button>
               </div>
             </div>

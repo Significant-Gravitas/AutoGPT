@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+import type { User } from "@/lib/auth/types";
 
 export type LDUserContext =
   | {
@@ -21,7 +21,7 @@ export type LDUserContext =
 // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
 // rules evaluate identically on both sides.
 //
-// Supabase JS emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
+// The auth session emits `Z`-suffixed ISO; backend emits `+00:00` — LD date matchers accept both.
 export function buildLDContext(user: User | null): LDUserContext {
   if (!user) {
     return { kind: "user", key: "anonymous", anonymous: true };

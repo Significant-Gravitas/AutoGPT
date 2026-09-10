@@ -7,8 +7,9 @@ at the scheduled time.
 The ``session_id`` argument decides WHERE the follow-up lands:
 
 * Omitted / ``null`` — sentinel meaning "fire into a **fresh chat**".
-  At fire time the scheduler creates a new copilot session for the
-  user and routes the turn into it (no prior conversation context).
+  At fire time the scheduler creates a new copilot session in the same
+  Autopilot or expert scope and routes the turn into it (no prior
+  conversation context).
   Use this for recurring "morning brief" / "daily digest" patterns
   where a clean slate is preferred over polluting the current chat.
 
@@ -16,8 +17,9 @@ The ``session_id`` argument decides WHERE the follow-up lands:
   full history.  This is the right value for "remind me here in 20
   minutes": the model reads the current ``session_id`` from the
   trusted ``<session_context>`` block injected on every turn and
-  passes it back verbatim.  Ownership is validated — UUIDs belonging
-  to other users are rejected as ``session_not_found``.
+  passes it back verbatim. Ownership and persona scope are validated —
+  UUIDs belonging to other users or another expert are rejected as
+  ``session_not_found``.
 
 The tool ends the current turn; the model should send its final
 user-facing message *before* calling this. The deferred work happens
@@ -33,6 +35,7 @@ from apscheduler.triggers.cron import CronTrigger
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_followup_scheduled
+from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -55,10 +58,10 @@ class ScheduleCreatedResponse(ToolResponseBase):
 class ScheduleFollowupTool(BaseTool):
     """Schedule a follow-up turn on a copilot session.
 
-    Defaults to the current session ("check on this in 20 min"). Pass
-    ``session_id`` to target a different conversation owned by the
-    same user. Exactly one of ``delay_seconds`` or ``cron`` must be
-    provided.
+    Omit ``session_id`` to create a fresh conversation in the current
+    Autopilot or expert scope. Pass ``session_id`` to target a conversation
+    owned by the same user in that same scope. Exactly one of
+    ``delay_seconds`` or ``cron`` must be provided.
     """
 
     @property
@@ -71,11 +74,13 @@ class ScheduleFollowupTool(BaseTool):
             "Schedule a copilot follow-up turn. The 'message' is sent "
             "at the scheduled time. The 'session_id' arg picks the "
             "destination: OMIT IT (or pass null) to fire into a brand-"
-            "new chat created at fire-time — best for daily briefs / "
-            "recurring digests / anything that should start fresh. "
+            "new chat created at fire-time in this chat's same Autopilot "
+            "or expert memory scope — best for daily briefs / recurring "
+            "digests / anything that should start fresh. "
             "Pass an existing 'session_id' (you can read the current "
             "one from the trusted <session_context> block) to resume "
-            "that conversation with its full history — best for "
+            "that conversation with its full history (the target must use "
+            "the same Autopilot or expert scope) — best for "
             "'remind me here in 20 minutes'. Use 'delay_seconds' for "
             "one-shot followups ('in 20 minutes', 'at 7am tomorrow' — "
             "convert absolute times to a delay) or 'cron' for "
@@ -122,11 +127,13 @@ class ScheduleFollowupTool(BaseTool):
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "description": (
                         "Target session UUID. OMIT or null = create a "
-                        "brand-new chat at fire-time (no prior context). "
+                        "brand-new chat at fire-time in the current "
+                        "Autopilot or expert memory scope (no prior context). "
                         "Pass the current session's id from <session_"
                         "context> to fire into THIS chat with full "
-                        "history. Sessions owned by other users are "
-                        "rejected as 'session_not_found'."
+                        "history. Sessions owned by other users or in a "
+                        "different expert scope are rejected as "
+                        "'session_not_found'."
                     ),
                 },
                 "name": {
@@ -136,6 +143,27 @@ class ScheduleFollowupTool(BaseTool):
             },
             "required": ["message"],
         }
+
+    def activity_event(
+        self,
+        session: ChatSession,
+        result: ToolResponseBase,
+        **kwargs,
+    ) -> ActivityEventDraft | None:
+        if not isinstance(result, ScheduleCreatedResponse):
+            return None
+        message: str = kwargs.get("message") or ""
+        return ActivityEventDraft(
+            category="SCHEDULE",
+            event_type="schedule.created",
+            title=kwargs.get("name") or message[:80] or "Follow-up",
+            schedule_id=result.schedule_id,
+            data={
+                "cron": kwargs.get("cron"),
+                "next_run_time": result.next_run_time,
+                "is_recurring": result.is_recurring,
+            },
+        )
 
     async def _execute(
         self,
@@ -172,17 +200,17 @@ class ScheduleFollowupTool(BaseTool):
         # Target session: ``None`` (omitted / explicit null) = sentinel for
         # "create a fresh chat at fire time" — the scheduler handles it.
         # A non-null value pins the followup to an existing session; we
-        # validate ownership here (``get_chat_session`` returns None for
-        # both "not found" and "not yours", which collapse into the same
-        # error from the model's perspective).
+        # validate ownership and persona scope here. ``get_chat_session``
+        # returns None for both "not found" and "not yours", and all three
+        # cases collapse into the same error from the model's perspective.
         target_session_id: str | None = kwargs.get("session_id")
         if target_session_id and target_session_id != current_session_id:
             target = await get_chat_session(target_session_id, user_id)
-            if target is None:
+            if target is None or target.expert_id != session.expert_id:
                 return ErrorResponse(
                     message=(
-                        f"Session {target_session_id} not found or not "
-                        f"owned by the calling user."
+                        f"Session {target_session_id} not found, not owned by "
+                        "the calling user, or outside the current memory scope."
                     ),
                     error="session_not_found",
                     session_id=current_session_id,
@@ -247,6 +275,12 @@ class ScheduleFollowupTool(BaseTool):
                 run_at=run_at,
                 name=name,
                 user_timezone=user_timezone,
+                # Capture the scheduling chat's tenant so a fresh session
+                # minted at fire time lands in the same org/team, and its
+                # expert so those follow-up runs stay attributed to her.
+                organization_id=session.organization_id if session else None,
+                team_id=session.team_id if session else None,
+                expert_id=session.expert_id if session else None,
             )
         except ValueError as e:
             return ErrorResponse(

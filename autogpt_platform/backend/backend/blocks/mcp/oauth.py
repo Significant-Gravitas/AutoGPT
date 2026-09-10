@@ -14,7 +14,7 @@ from typing import ClassVar, Optional
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
 
@@ -126,7 +126,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
             ),
             access_token_expires_at=now + expires_in if expires_in else None,
             refresh_token_expires_at=None,
-            scopes=scopes,
+            scopes=parse_granted_scopes(tokens.get("scope"), fallback=scopes),
             metadata={
                 "mcp_token_url": self.token_url,
                 "mcp_resource_url": self.resource_url,

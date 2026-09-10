@@ -19,6 +19,7 @@ from langfuse.openai import (
 )
 from openai.types.chat import ChatCompletion
 
+from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.data.db_accessors import chat_db, understanding_db
 from backend.data.understanding import (
     BusinessUnderstanding,
@@ -29,7 +30,8 @@ from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
-from .config import ChatConfig, CopilotLlmModel
+from .config import ChatConfig, CopilotLLMModel
+from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -48,9 +50,12 @@ _TITLE_MAX_WORDS = 6
 _TITLE_MAX_CHARS = 50
 _TITLE_ELLIPSIS = "..."
 _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
+# A 20-token title must not inherit the block-sized LLM default; it runs in a
+# background task holding a slot in the shared aux-client pool.
+_TITLE_TIMEOUT_SECONDS = 30
 
 
-def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
+def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
     """Return the configured SDK model for the given tier.
 
     The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
@@ -283,6 +288,17 @@ _ENV_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+# Prepended per-turn on voice turns; the user typed none of it, so it must
+# not appear in their own message when the history is read back.
+_VOICE_TURN_PREFIX_RE = re.compile(
+    rf"^<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\n\n", re.DOTALL
+)
+
+_VOICE_TURN_ANYWHERE_RE = re.compile(
+    rf"<{VOICE_TURN_TAG}>.*?</{VOICE_TURN_TAG}>\s*", re.DOTALL
+)
+_VOICE_TURN_LONE_TAG_RE = re.compile(rf"</?{VOICE_TURN_TAG}>", re.IGNORECASE)
+
 _BUDGET_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{BUDGET_CONTEXT_TAG}>.*</{BUDGET_CONTEXT_TAG}>\s*", re.DOTALL
 )
@@ -316,6 +332,31 @@ _SKILLS_CONTEXT_PREFIX_RE = re.compile(
     rf"^<{SKILLS_CONTEXT_TAG}>.*?</{SKILLS_CONTEXT_TAG}>\n\n", re.DOTALL
 )
 
+# Expert-session blocks injected by expert_context.py. <expert_workflows> /
+# <team_context> are prepended in front of every other block, so the display
+# strip loop must know them or it stops before reaching the standard tags.
+# The anywhere/lone-tag pairs get the same sanitizer treatment as the other
+# server-only tags so a user-typed block cannot spoof the expert persona.
+_EXPERT_IDENTITY_ANYWHERE_RE = re.compile(
+    r"<expert_identity>.*</expert_identity>\s*", re.DOTALL
+)
+_EXPERT_IDENTITY_LONE_TAG_RE = re.compile(r"</?expert_identity>", re.IGNORECASE)
+_EXPERT_IDENTITY_PREFIX_RE = re.compile(
+    r"^<expert_identity>.*?</expert_identity>\n\n", re.DOTALL
+)
+_EXPERT_WORKFLOWS_ANYWHERE_RE = re.compile(
+    r"<expert_workflows>.*</expert_workflows>\s*", re.DOTALL
+)
+_EXPERT_WORKFLOWS_LONE_TAG_RE = re.compile(r"</?expert_workflows>", re.IGNORECASE)
+_EXPERT_WORKFLOWS_PREFIX_RE = re.compile(
+    r"^<expert_workflows>.*?</expert_workflows>\n\n", re.DOTALL
+)
+_TEAM_CONTEXT_ANYWHERE_RE = re.compile(r"<team_context>.*</team_context>\s*", re.DOTALL)
+_TEAM_CONTEXT_LONE_TAG_RE = re.compile(r"</?team_context>", re.IGNORECASE)
+_TEAM_CONTEXT_PREFIX_RE = re.compile(
+    r"^<team_context>.*?</team_context>\n\n", re.DOTALL
+)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -329,7 +370,7 @@ def _sanitize_user_context_field(value: str) -> str:
     reads the original characters but the parser-visible XML structure stays
     intact.
     """
-    return value.replace("<", "&lt;").replace(">", "&gt;")
+    return escape_prompt_xml_tags(value)
 
 
 def format_user_context_prefix(formatted_understanding: str) -> str:
@@ -357,8 +398,9 @@ def strip_server_injected_tags(text: str) -> str:
     """Strip all server-only XML context tags + blocks from ``text``.
 
     Removes ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
-    blocks (and their lone tags).  Used both by
+    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
+    ``<expert_identity>``, ``<expert_workflows>``, ``<team_context>`` and
+    ``<voice_turn>`` blocks (and their lone tags).  Used both by
     :func:`sanitize_user_supplied_context` on inbound user messages and by
     stores (e.g. :tool:`store_skill`) that persist LLM-authored text which
     will later land alongside server-injected versions of the same tags in
@@ -387,19 +429,33 @@ def strip_server_injected_tags(text: str) -> str:
     # Strip <available_skills> blocks and lone tags — prevents spoofing of
     # the server-injected per-user skill index.
     without_skills_ctx = _SKILLS_CONTEXT_ANYWHERE_RE.sub("", without_session_ctx)
-    return _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
+    without_skills_ctx = _SKILLS_CONTEXT_LONE_TAG_RE.sub("", without_skills_ctx)
+    # Strip the expert-session blocks and lone tags — prevents spoofing of
+    # the server-injected expert persona / workflows / team-awareness blocks.
+    without_expert = _EXPERT_IDENTITY_ANYWHERE_RE.sub("", without_skills_ctx)
+    without_expert = _EXPERT_IDENTITY_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _EXPERT_WORKFLOWS_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _EXPERT_WORKFLOWS_LONE_TAG_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_ANYWHERE_RE.sub("", without_expert)
+    without_expert = _TEAM_CONTEXT_LONE_TAG_RE.sub("", without_expert)
+    # Strip <voice_turn> blocks and lone tags — a forged closing tag would
+    # otherwise end the server's block and put the user's own text where the
+    # per-turn instruction goes.
+    without_voice = _VOICE_TURN_ANYWHERE_RE.sub("", without_expert)
+    return _VOICE_TURN_LONE_TAG_RE.sub("", without_voice)
 
 
 def sanitize_user_supplied_context(message: str) -> str:
     """Strip server-only XML tags from user-supplied input.
 
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
+    ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the
     trusted personalisation, memory prefix, working-directory context, USD
-    budget hint, per-session follow-up awareness, or per-user skill index
-    the LLM relies on.
+    budget hint, per-session follow-up awareness, per-user skill index, or
+    expert persona/workflow blocks the LLM relies on.
 
     The inject path must call this **unconditionally** — including when
     ``understanding`` is ``None`` — otherwise new users can smuggle a tag
@@ -417,7 +473,8 @@ def strip_injected_context_for_display(message: str) -> str:
     Used by the chat-history GET endpoint to hide server-side prefixes that
     were stored in the DB alongside the user's message.  Strips
     ``<user_context>``, ``<memory_context>``, ``<env_context>``,
-    ``<budget_context>``, ``<session_context>``, and ``<available_skills>``
+    ``<budget_context>``, ``<session_context>``, ``<voice_turn>``, and
+    ``<available_skills>``
     blocks from the **start** of the message, iterating until no more leading
     injected blocks remain.
 
@@ -436,9 +493,13 @@ def strip_injected_context_for_display(message: str) -> str:
         result = _USER_CONTEXT_PREFIX_RE.sub("", result)
         result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
         result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
+        result = _VOICE_TURN_PREFIX_RE.sub("", result)
         result = _BUDGET_CONTEXT_PREFIX_RE.sub("", result)
         result = _SESSION_CONTEXT_PREFIX_RE.sub("", result)
         result = _SKILLS_CONTEXT_PREFIX_RE.sub("", result)
+        result = _EXPERT_IDENTITY_PREFIX_RE.sub("", result)
+        result = _EXPERT_WORKFLOWS_PREFIX_RE.sub("", result)
+        result = _TEAM_CONTEXT_PREFIX_RE.sub("", result)
     return result
 
 
@@ -534,6 +595,7 @@ async def inject_user_context(
     session_ctx: str = "",
     skills_ctx: str = "",
     user_id: str | None = None,
+    expert_id: str | None = None,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -577,6 +639,13 @@ async def inject_user_context(
             ``<available_skills>`` block.  Same trust contract as ``env_ctx``
             — prepended AFTER sanitisation, never user-supplied.  Empty
             string → block is omitted.
+        expert_id: Hired expert this session is scoped to, or ``None`` for a
+            plain Autopilot session.  Used to build the ``<expert_workflows>``
+            (expert session) or ``<team_context>`` (plain session) prefix via
+            ``build_expert_context``.  The expert's persona is NOT injected
+            here — ``build_expert_identity_suffix`` puts ``<expert_identity>``
+            in the system prompt instead, where it outranks message context.
+            Lookup failures degrade silently to no block.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
@@ -658,6 +727,14 @@ async def inject_user_context(
             f"<{SESSION_CONTEXT_TAG}>\n{session_ctx}\n</{SESSION_CONTEXT_TAG}>\n\n"
             + final_message
         )
+    # Prepend the expert identity/workflows block (expert session) or team
+    # awareness block (plain session).  Server-injected after sanitisation
+    # like the other trusted blocks; degrades to "" on any lookup failure so
+    # the turn proceeds as plain Autopilot.  Per-session dynamic, so it sits
+    # below the cached <available_skills> prefix.
+    expert_ctx = await build_expert_context(user_id, expert_id)
+    if expert_ctx:
+        final_message = expert_ctx + final_message
     # Prepend Graphiti warm context as a <memory_context> block AFTER
     # sanitization so the trusted server-injected block is never stripped by
     # ``sanitize_user_supplied_context``.  Memory must land BELOW
@@ -809,6 +886,7 @@ async def _generate_session_title(
                 },
             ],
             max_tokens=20,
+            timeout_seconds=_TITLE_TIMEOUT_SECONDS,
             extra_body=extra_body or None,
         )
     except Exception as e:

@@ -2,13 +2,15 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import {
-  CheckCircleIcon,
-  CircleNotchIcon,
-  HourglassIcon,
-} from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { ChatOriginIcon } from "../ChatOriginIcon/ChatOriginIcon";
+import {
+  CheckmarkCircle02Icon,
+  HourglassIcon,
+  Loading03Icon,
+  PinIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   title?: string | null;
@@ -19,6 +21,7 @@ interface Props {
   chatStatus?: string | null;
   showProcessing?: boolean;
   showCompleted?: boolean;
+  showPinned?: boolean;
   className?: string;
 }
 
@@ -56,6 +59,7 @@ export function ChatSessionBlock({
   chatStatus,
   showProcessing = false,
   showCompleted = false,
+  showPinned = false,
   className,
 }: Props) {
   const displayTitle = title || "Untitled chat";
@@ -77,6 +81,14 @@ export function ChatSessionBlock({
           </Text>
         </div>
         <div className="flex items-center gap-1.5">
+          {showPinned ? (
+            <Icon
+              icon={PinIcon}
+              aria-label="Pinned"
+              data-testid="session-pinned-indicator"
+              className="h-3 w-3 shrink-0 text-neutral-400"
+            />
+          ) : null}
           <Text variant="small" className="text-neutral-400">
             {formatDate(updatedAt)}
           </Text>
@@ -100,19 +112,19 @@ export function ChatSessionBlock({
           data-testid="session-status-queued"
           className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-purple-600"
         >
-          <HourglassIcon className="h-3.5 w-3.5" weight="bold" />
+          <Icon icon={HourglassIcon} className="h-3.5 w-3.5" />
         </span>
       ) : null}
       {chatStatus !== "running" && showProcessing ? (
-        <CircleNotchIcon
+        <Icon
+          icon={Loading03Icon}
           className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
-          weight="bold"
         />
       ) : null}
       {showCompleted ? (
-        <CheckCircleIcon
+        <Icon
+          icon={CheckmarkCircle02Icon}
           className="h-4 w-4 shrink-0 text-green-500"
-          weight="fill"
         />
       ) : null}
     </div>

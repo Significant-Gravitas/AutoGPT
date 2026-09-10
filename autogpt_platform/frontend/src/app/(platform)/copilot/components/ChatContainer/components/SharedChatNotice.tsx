@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { useGetV2GetChatShareState } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { chatShareUrl } from "@/lib/share/routes";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   sessionId: string;
@@ -47,9 +48,9 @@ export function SharedChatNotice({ sessionId }: Props) {
         onClick={copyShareUrl}
         leftIcon={
           copied ? (
-            <CheckIcon size={14} weight="bold" />
+            <Icon icon={Tick02Icon} size={14} />
           ) : (
-            <CopyIcon size={14} />
+            <Icon icon={Copy01Icon} size={14} />
           )
         }
       >

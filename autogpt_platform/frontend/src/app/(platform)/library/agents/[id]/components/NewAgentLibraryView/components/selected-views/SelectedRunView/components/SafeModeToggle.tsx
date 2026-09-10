@@ -3,13 +3,14 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Graph } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
-import { ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { SecurityCheckIcon, Shield01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   graph: GraphModel | LibraryAgent | Graph;
@@ -45,9 +46,9 @@ function SafeModeIconButton({
           className={cn(isPending ? "opacity-0" : "opacity-100")}
         >
           {isEnabled ? (
-            <ShieldCheckIcon weight="bold" size={16} />
+            <Icon icon={SecurityCheckIcon} size={16} />
           ) : (
-            <ShieldIcon weight="bold" size={16} />
+            <Icon icon={Shield01Icon} size={16} />
           )}
         </Button>
       </TooltipTrigger>

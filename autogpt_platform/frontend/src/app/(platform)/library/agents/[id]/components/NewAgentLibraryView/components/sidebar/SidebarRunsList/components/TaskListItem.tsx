@@ -3,55 +3,56 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  FlaskIcon,
-  PauseCircleIcon,
-  StopCircleIcon,
-  WarningCircleIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import React from "react";
 import { IconWrapper } from "./IconWrapper";
 import { SidebarItemCard } from "./SidebarItemCard";
 import { TaskActionsDropdown } from "./TaskActionsDropdown";
+import {
+  AlertCircleIcon,
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  FlaskConicalIcon,
+  PauseCircleIcon,
+  StopCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
     <IconWrapper className="border-red-50 bg-red-50">
-      <WarningCircleIcon size={16} className="text-red-700" weight="bold" />
+      <Icon icon={AlertCircleIcon} size={16} className="text-red-700" />
     </IconWrapper>
   ),
   QUEUED: (
     <IconWrapper className="border-yellow-50 bg-yellow-50">
-      <ClockIcon size={16} className="text-yellow-700" weight="bold" />
+      <Icon icon={Clock01Icon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   RUNNING: (
     <IconWrapper className="border-yellow-50 bg-yellow-50">
-      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
+      <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   REVIEW: (
     <IconWrapper className="border-yellow-50 bg-yellow-50">
-      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
+      <Icon icon={PauseCircleIcon} size={16} className="text-yellow-700" />
     </IconWrapper>
   ),
   COMPLETED: (
     <IconWrapper className="border-green-50 bg-green-50">
-      <CheckCircleIcon size={16} className="text-green-700" weight="bold" />
+      <Icon icon={CheckmarkCircle02Icon} size={16} className="text-green-700" />
     </IconWrapper>
   ),
   TERMINATED: (
     <IconWrapper className="border-slate-50 bg-slate-50">
-      <StopCircleIcon size={16} className="text-slate-700" weight="bold" />
+      <Icon icon={StopCircleIcon} size={16} className="text-slate-700" />
     </IconWrapper>
   ),
   FAILED: (
     <IconWrapper className="border-red-50 bg-red-50">
-      <XCircleIcon size={16} className="text-red-700" weight="bold" />
+      <Icon icon={CancelCircleIcon} size={16} className="text-red-700" />
     </IconWrapper>
   ),
 };
@@ -75,7 +76,7 @@ export function TaskListItem({
 }: Props) {
   const icon = run.is_dry_run ? (
     <IconWrapper className="border-amber-50 bg-amber-50">
-      <FlaskIcon size={16} className="text-amber-700" weight="fill" />
+      <Icon icon={FlaskConicalIcon} size={16} className="text-amber-700" />
     </IconWrapper>
   ) : (
     statusIconMap[run.status]

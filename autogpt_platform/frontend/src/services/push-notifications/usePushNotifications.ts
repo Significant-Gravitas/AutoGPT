@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useEffect, useRef, useState } from "react";
 import { setupPushSubscription, teardownPushSubscription } from "./helpers";
 import type { PushSWMessage } from "./types";
@@ -18,7 +18,7 @@ import type { PushSWMessage } from "./types";
  * user doesn't keep receiving OS notifications.
  */
 export function usePushNotifications() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const registeredRef = useRef(false);
   const wasAuthedRef = useRef(false);
   const [renewCount, setRenewCount] = useState(0);

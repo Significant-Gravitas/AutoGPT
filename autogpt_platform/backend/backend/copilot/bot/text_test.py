@@ -2,7 +2,113 @@
 
 from backend.data.sharing.workspace_refs import extract_artifact_links
 
-from .text import _balance_code_fences, format_batch, split_at_boundary
+from .text import (
+    _balance_code_fences,
+    format_batch,
+    iter_chunks,
+    resolve_mentions,
+    split_at_boundary,
+)
+
+
+def _token(_name: str, uid: str) -> str:
+    return f"<@{uid}>"
+
+
+class TestResolveMentions:
+    def test_allowlisted_name_is_rendered_and_pinged(self):
+        rendered, pinged = resolve_mentions(
+            "hey @Bently look", (("Bently", "U1"),), _token
+        )
+        assert rendered == "hey <@U1> look"
+        assert pinged == ["U1"]
+
+    def test_non_allowlisted_name_stays_plain_and_unpinged(self):
+        # @everyone / a name the LLM invented must never become a real ping.
+        rendered, pinged = resolve_mentions(
+            "@everyone and @Ghost", (("Bently", "U1"),), _token
+        )
+        assert rendered == "@everyone and @Ghost"
+        assert pinged == []
+
+    def test_longest_name_wins(self):
+        rendered, pinged = resolve_mentions(
+            "ping @John Smith now",
+            (("John", "U1"), ("John Smith", "U2")),
+            _token,
+        )
+        assert rendered == "ping <@U2> now"
+        assert pinged == ["U2"]
+
+    def test_name_inside_email_is_not_matched(self):
+        rendered, pinged = resolve_mentions(
+            "mail me@Bently.dev", (("Bently", "U1"),), _token
+        )
+        assert rendered == "mail me@Bently.dev"
+        assert pinged == []
+
+    def test_partial_name_before_hyphen_is_not_matched(self):
+        # "@John" must not ping inside "@John-Smith" when only John is allowlisted.
+        rendered, pinged = resolve_mentions(
+            "ping @John-Smith please", (("John", "U1"),), _token
+        )
+        assert rendered == "ping @John-Smith please"
+        assert pinged == []
+
+    def test_hyphenated_name_still_matches_fully(self):
+        rendered, pinged = resolve_mentions(
+            "ping @John-Smith please", (("John-Smith", "U2"),), _token
+        )
+        assert rendered == "ping <@U2> please"
+        assert pinged == ["U2"]
+
+    def test_ambiguous_duplicate_names_stay_plain(self):
+        # Two different users share a case-insensitive display name → ping neither.
+        rendered, pinged = resolve_mentions(
+            "hey @john", (("John", "U1"), ("john", "U2")), _token
+        )
+        assert rendered == "hey @john"
+        assert pinged == []
+
+    def test_rendered_token_is_never_resubstituted(self):
+        # A display name equal to another user's ID must not re-match inside an
+        # already-rendered token: "@Bently" → "<@U1>", and the second user named
+        # "U1" must not turn that into "<@<@U9>>". Single-pass sub guarantees it.
+        rendered, pinged = resolve_mentions(
+            "hey @Bently", (("Bently", "U1"), ("U1", "U9")), _token
+        )
+        assert rendered == "hey <@U1>"
+        assert pinged == ["U1"]
+
+    def test_repeated_mentions_render_all_but_ping_once(self):
+        rendered, pinged = resolve_mentions(
+            "@Bently and again @Bently", (("Bently", "U1"),), _token
+        )
+        assert rendered == "<@U1> and again <@U1>"
+        assert pinged == ["U1"]
+
+    def test_empty_allowlist_returns_text_unchanged(self):
+        rendered, pinged = resolve_mentions("hi @Bently", (), _token)
+        assert rendered == "hi @Bently"
+        assert pinged == []
+
+
+class TestIterChunks:
+    def test_short_text_is_one_chunk(self):
+        assert list(iter_chunks("hello", 100)) == ["hello"]
+
+    def test_long_text_splits_into_multiple_chunks_all_under_limit(self):
+        text = "\n\n".join(f"paragraph {i} " + "x" * 40 for i in range(10))
+        chunks = list(iter_chunks(text, 100))
+        assert len(chunks) > 1
+        assert all(len(c) <= 100 for c in chunks)
+        # Reassembling recovers the content (whitespace at cut points aside).
+        assert "".join(chunks).replace("\n", "").replace(" ", "") == text.replace(
+            "\n", ""
+        ).replace(" ", "")
+
+    def test_blank_text_yields_nothing(self):
+        assert list(iter_chunks("   ", 100)) == []
 
 
 class TestFormatBatch:

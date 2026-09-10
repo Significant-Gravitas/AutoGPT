@@ -14,8 +14,9 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
-import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "./TextInputExpanderModal";
+import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
@@ -147,7 +148,7 @@ export default function TextWidget(props: WidgetProps) {
                 type="button"
                 className="p-1"
               >
-                <ArrowsOutIcon className="size-4" />
+                <Icon icon={ArrowExpandIcon} className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Expand input</TooltipContent>

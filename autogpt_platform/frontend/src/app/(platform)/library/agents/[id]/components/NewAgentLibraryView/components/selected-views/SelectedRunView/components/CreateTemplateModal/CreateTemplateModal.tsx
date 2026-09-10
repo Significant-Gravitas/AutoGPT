@@ -41,15 +41,13 @@ export function CreateTemplateModal({ isOpen, onClose, onCreate }: Props) {
 
   return (
     <Dialog
+      title="Create Template"
       controlled={{ isOpen, set: () => onClose() }}
       styling={{ maxWidth: "500px" }}
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <Text variant="lead" as="h2" className="!font-medium !text-black">
-              Create Template
-            </Text>
             <Text variant="body" className="text-zinc-600">
               Save this task as a template to reuse later with the same inputs
               and credentials.

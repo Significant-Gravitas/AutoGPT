@@ -8,9 +8,11 @@ import pytest
 
 from backend.copilot.bot.adapters.base import FileAttachment
 from backend.copilot.bot.adapters.discord.adapter import (
+    MAX_INBOUND_ATTACHMENTS,
     THREAD_HISTORY_CHAR_BUDGET,
     THREAD_HISTORY_LIMIT,
     DiscordAdapter,
+    _mention_queries,
     _resolve_mentions,
 )
 
@@ -37,11 +39,38 @@ def _mention(user_id: int, display_name: str) -> MagicMock:
     return user
 
 
-def _message(content: str, mentions: list[MagicMock]) -> MagicMock:
+def _message(
+    content: str,
+    mentions: list[MagicMock],
+    guild: MagicMock | None = None,
+    author: MagicMock | None = None,
+) -> MagicMock:
     msg = MagicMock()
     msg.content = content
     msg.mentions = mentions
+    msg.role_mentions = []
+    msg.guild = guild
+    msg.author = author or _mention(5000, "Asker")
     return msg
+
+
+def _role(role_id: int, name: str) -> MagicMock:
+    role = MagicMock()
+    role.id = role_id
+    role.name = name
+    return role
+
+
+def _guild_with(members: list[MagicMock], roles: list[MagicMock]) -> MagicMock:
+    guild = MagicMock(spec=discord.Guild)
+    guild.id = 777
+    guild.members = members
+    everyone = _role(777, "@everyone")
+    everyone.is_default.return_value = True
+    for role in roles:
+        role.is_default.return_value = False
+    guild.roles = [everyone, *roles]
+    return guild
 
 
 class _AsyncHistory:
@@ -65,7 +94,7 @@ class _AsyncHistory:
 class TestStripMentions:
     def test_strips_only_bot_mention(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        bot = _mention(1000, "AutoPilot")
+        bot = _mention(1000, "AutoGPT")
         alice = _mention(2000, "Alice")
         msg = _message(
             "<@1000> please summarise what <@2000> said",
@@ -76,7 +105,7 @@ class TestStripMentions:
 
     def test_handles_nickname_style_tokens(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        bot = _mention(1000, "AutoPilot")
+        bot = _mention(1000, "AutoGPT")
         alice = _mention(2000, "Alice")
         msg = _message("<@!1000> ping <@!2000>", mentions=[bot, alice])
 
@@ -106,7 +135,7 @@ class TestStripMentions:
     )
     def test_bot_only_variants(self, content: str, expected: str):
         adapter, _ = _bare_adapter(bot_id=1000)
-        bot = _mention(1000, "AutoPilot")
+        bot = _mention(1000, "AutoGPT")
         msg = _message(content, mentions=[bot])
 
         assert adapter._strip_mentions(msg) == expected
@@ -202,7 +231,7 @@ class TestShouldIgnoreMessage:
     def test_allows_mentioned_bot_message(self):
         # Another bot can still reach us by explicitly @mentioning us.
         adapter, _ = _bare_adapter(bot_id=1000)
-        msg = _message("hi", [_mention(1000, "AutoPilot")])
+        msg = _message("hi", [_mention(1000, "AutoGPT")])
         msg.author = MagicMock(id=2000, bot=True)
         msg.guild = MagicMock()
 
@@ -231,13 +260,13 @@ class TestIsMentioned:
 
     def test_guild_with_mention_passes(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        msg = _message("hi", [_mention(1000, "AutoPilot")])
+        msg = _message("hi", [_mention(1000, "AutoGPT")])
         msg.guild = MagicMock()
         assert adapter._is_mentioned(msg) is True
 
     def test_no_bot_user_treats_guild_mention_as_false(self):
         adapter, _ = _bare_adapter(bot_id=None)
-        msg = _message("hi", [_mention(1000, "AutoPilot")])
+        msg = _message("hi", [_mention(1000, "AutoGPT")])
         msg.guild = MagicMock()
         assert adapter._is_mentioned(msg) is False
 
@@ -255,7 +284,7 @@ class TestIsMentioned:
         # If they ping the bot AND @everyone, the bot is still in
         # `message.mentions` and we should reply normally.
         adapter, _ = _bare_adapter(bot_id=1000)
-        msg = _message("@everyone and @AutoPilot", [_mention(1000, "AutoPilot")])
+        msg = _message("@everyone and @AutoGPT", [_mention(1000, "AutoGPT")])
         msg.guild = MagicMock()
         msg.mention_everyone = True
         assert adapter._is_mentioned(msg) is True
@@ -414,6 +443,42 @@ class TestSendMethods:
         assert kwargs["tts"] is False
         assert isinstance(kwargs["allowed_mentions"], discord.AllowedMentions)
 
+    @pytest.mark.asyncio
+    async def test_send_reply_falls_back_to_send_without_read_history(self):
+        # fetch_message needs Read Message History; gateway delivery doesn't.
+        # Forbidden must fall back to a plain send, not swallow the reply.
+        adapter, client = _bare_adapter()
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        channel.fetch_message = AsyncMock(
+            side_effect=discord.Forbidden(MagicMock(status=403), "no read history")
+        )
+        client.get_channel.return_value = channel
+
+        await adapter.send_reply("123", "hello", "999")
+
+        channel.send.assert_awaited_once()
+        assert channel.send.await_args.args == ("hello",)
+
+    @pytest.mark.asyncio
+    async def test_send_reply_does_not_retry_a_failed_reply_as_plain_send(self):
+        # Only FETCH failures fall back — a failed reply() may have been
+        # accepted by Discord, so retrying it as a send could double-post.
+        adapter, client = _bare_adapter()
+        msg = MagicMock()
+        msg.reply = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(status=500), "boom")
+        )
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        channel.fetch_message = AsyncMock(return_value=msg)
+        client.get_channel.return_value = channel
+
+        with pytest.raises(discord.HTTPException):
+            await adapter.send_reply("123", "hello", "999")
+
+        channel.send.assert_not_awaited()
+
 
 class TestRenameThread:
     @pytest.mark.asyncio
@@ -444,18 +509,81 @@ class TestRenameThread:
 
 class TestThreadHistory:
     @pytest.mark.asyncio
+    async def test_thread_started_from_a_post_includes_that_post_first(self):
+        # Toran turns Nick's channel post into a thread and @mentions the bot.
+        # Nick's post is the thread's starter message: it lives in the parent
+        # channel, not in thread.history(), so it must be fetched separately.
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+
+        starter = MagicMock(spec=discord.Message)
+        starter.content = "docs should link to platform sign up"
+        starter.mentions = []
+        starter.role_mentions = []
+        starter.author = MagicMock(bot=False, id=2000, display_name="Nick")
+
+        channel = MagicMock(spec=discord.Thread)
+        channel.id = 555
+        channel.starter_message = None
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock(return_value=starter)
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> make this happen please", [bot])
+        message.channel = channel
+
+        history = await adapter._thread_history(message)
+
+        channel.parent.fetch_message.assert_awaited_once_with(555)
+        assert [entry.username for entry in history] == ["Nick"]
+        assert history[0].text == "docs should link to platform sign up"
+
+    async def test_thread_without_origin_message_has_no_starter_entry(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+        channel = MagicMock(spec=discord.Thread)
+        channel.id = 555
+        channel.starter_message = None
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(status=404), "gone")
+        )
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> hi", [bot])
+        message.channel = channel
+
+        assert await adapter._thread_history(message) == ()
+
+    async def test_cached_starter_is_used_and_bot_authored_starter_is_skipped(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bot = _mention(1000, "AutoGPT")
+        starter = MagicMock(spec=discord.Message)
+        starter.content = "old bot output"
+        starter.mentions = []
+        starter.role_mentions = []
+        starter.author = MagicMock(bot=True, id=1000, display_name="AutoGPT")
+        channel = MagicMock(spec=discord.Thread)
+        channel.starter_message = starter
+        channel.parent = MagicMock(spec=discord.TextChannel)
+        channel.parent.fetch_message = AsyncMock()
+        channel.history.return_value = _AsyncHistory([])
+        message = _message("<@1000> hi", [bot])
+        message.channel = channel
+
+        assert await adapter._thread_history(message) == ()
+        channel.parent.fetch_message.assert_not_awaited()
+
     async def test_fetches_user_thread_history_chronological(self):
         # Discord returns history newest-first; the adapter reverses it back to
         # chronological order, dropping its own outputs.
         adapter, _ = _bare_adapter(bot_id=1000)
-        bot = _mention(1000, "AutoPilot")
+        bot = _mention(1000, "AutoGPT")
 
         prior_1 = _message("first idea", [])
         prior_1.author = MagicMock(bot=False, id=2000, display_name="Alice")
         prior_2 = _message("<@1000> can ignore old bot ping", [bot])
         prior_2.author = MagicMock(bot=False, id=3000, display_name="Bob")
         bot_msg = _message("old bot output", [])
-        bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoPilot")
+        bot_msg.author = MagicMock(bot=True, id=1000, display_name="AutoGPT")
 
         channel = MagicMock(spec=discord.Thread)
         # newest-first as the Discord API delivers it: Bob, (bot), Alice
@@ -620,6 +748,26 @@ class TestResolveMentions:
         )
         assert allowed.everyone is False
 
+    def test_resolves_role_to_role_markup_and_pings_the_role(self):
+        rendered, allowed = _resolve_mentions(
+            "Paging @Platform and @Sue",
+            (("Platform", "role:42"), ("Sue", "12345")),
+        )
+        assert rendered == "Paging <@&42> and <@12345>"
+        assert isinstance(allowed.roles, list)
+        assert [getattr(r, "id", None) for r in allowed.roles] == [42]
+        assert isinstance(allowed.users, list)
+        assert [getattr(u, "id", None) for u in allowed.users] == [12345]
+        assert allowed.everyone is False
+
+    def test_everyone_stays_plain_when_not_allowlisted(self):
+        rendered, allowed = _resolve_mentions(
+            "Heads up @everyone", (("Platform", "role:42"),)
+        )
+        assert rendered == "Heads up @everyone"
+        assert allowed.everyone is False
+        assert allowed.roles is False
+
     def test_resolves_standalone_mention_alongside_email_in_same_message(self):
         rendered, _ = _resolve_mentions(
             "@Sue, can you check sue@Sue.com?",
@@ -635,17 +783,80 @@ class TestCollectMentionableUsers:
         msg = _message(
             "<@1000> please tell <@2000> something",
             mentions=[
-                _mention(1000, "AutoPilot"),
+                _mention(1000, "AutoGPT"),
                 _mention(2000, "Sue"),
             ],
         )
         result = adapter._collect_mentionable_users(msg)
-        assert result == (("Sue", "2000"),)
+        assert result == (("Asker", "5000"), ("Sue", "2000"))
 
-    def test_returns_empty_when_only_bot_mentioned(self):
+    def test_dm_lists_only_author_when_only_bot_mentioned(self):
         adapter, _ = _bare_adapter(bot_id=1000)
-        msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoPilot")])
-        assert adapter._collect_mentionable_users(msg) == ()
+        msg = _message("<@1000> hi", mentions=[_mention(1000, "AutoGPT")])
+        assert adapter._collect_mentionable_users(msg) == (("Asker", "5000"),)
+
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_finds_members_and_roles_but_never_everyone(
+        self,
+    ):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        bently = _mention(3000, "Bently")
+        bently.name = "bentlybro"
+        bently.bot = False
+        bot_member = _mention(1000, "AutoGPT")
+        bot_member.bot = True
+        guild = _guild_with([], [_role(42, "Platform")])
+        guild.query_members = AsyncMock(return_value=[bently, bot_member])
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        result = await adapter._mentionables_for(
+            channel, "Paging @Bently and @Platform, not @everyone", (("Nick", "2"),)
+        )
+
+        guild.query_members.assert_awaited_once_with(
+            query="Bently", limit=20, cache=False
+        )
+        assert ("Nick", "2") in result
+        assert ("Bently", "3000") in result
+        assert ("bentlybro", "3000") in result
+        assert ("Platform", "role:42") in result
+        assert not any(name == "@everyone" for name, _ in result)
+        assert not any(token == "1000" for _, token in result)
+
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_in_a_dm_keeps_only_known_users(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        channel = MagicMock(spec=discord.DMChannel)
+        result = await adapter._mentionables_for(
+            channel, "Hey @Bently", (("Nick", "2"),)
+        )
+        assert result == (("Nick", "2"),)
+
+    @pytest.mark.asyncio
+    async def test_send_time_lookup_survives_a_failed_member_query(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        guild = _guild_with([], [_role(42, "Platform")])
+        guild.query_members = AsyncMock(side_effect=TimeoutError())
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.guild = guild
+
+        result = await adapter._mentionables_for(channel, "Hey @Ghost", ())
+
+        assert result == (("Platform", "role:42"),)
+
+    def test_mention_queries_strip_punctuation_and_skip_everyone(self):
+        assert _mention_queries(
+            "cc @Bently, @Platform. and @everyone plus x@mail.com <@123>"
+        ) == ["Bently", "Platform"]
+
+    def test_role_mentions_in_the_inbound_message_become_readable(self):
+        adapter, _ = _bare_adapter(bot_id=1000)
+        msg = _message(
+            "<@1000> ask <@&42> please", mentions=[_mention(1000, "AutoGPT")]
+        )
+        msg.role_mentions = [_role(42, "Platform")]
+        assert adapter._strip_mentions(msg) == "ask @Platform please"
 
 
 def _bare_adapter_with_api() -> tuple[DiscordAdapter, MagicMock, MagicMock]:
@@ -812,7 +1023,7 @@ class TestLockedThread:
         msg.guild = guild
         msg.channel = MagicMock(id=555)  # a normal channel, not a Thread
         msg.content = "<@1000> read https://discord.com/channels/111/222/333"
-        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.mentions = [_mention(1000, "AutoGPT")]
         msg.message_snapshots = []
 
         await handlers["on_message"](msg)
@@ -908,7 +1119,7 @@ class TestReplyContext:
         msg.guild = guild
         msg.channel = MagicMock(id=555)  # a normal channel, not a Thread
         msg.content = "<@1000> can you tell me?"
-        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.mentions = [_mention(1000, "AutoGPT")]
         msg.message_snapshots = []
         msg.reference = MagicMock(resolved=replied)
 
@@ -940,7 +1151,7 @@ class TestReplyContext:
         msg.guild = guild
         msg.channel = MagicMock(id=555)
         msg.content = "<@1000> thanks!"  # no link of its own
-        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.mentions = [_mention(1000, "AutoGPT")]
         msg.message_snapshots = []
         msg.reference = MagicMock(resolved=replied)
 
@@ -970,7 +1181,7 @@ class TestReplyContext:
         msg.guild = guild
         msg.channel = MagicMock(id=555)
         msg.content = "<@1000> look at this"  # no link of its own
-        msg.mentions = [_mention(1000, "AutoPilot")]
+        msg.mentions = [_mention(1000, "AutoGPT")]
         msg.message_snapshots = [
             _snapshot("see https://discord.com/channels/111/222/333")
         ]
@@ -1406,3 +1617,85 @@ class TestFetchReferencedConversations:
             _incoming(111, 555), "https://discord.com/channels/111/222/333"
         )
         assert result == ()
+
+
+# ── Attachment extraction ──────────────────────────────────────────────
+
+
+def _discord_attachment(
+    filename: str, content_type: str | None, size: int, data: bytes = b"x"
+) -> MagicMock:
+    att = MagicMock()
+    att.filename = filename
+    att.content_type = content_type
+    att.size = size
+    att.read = AsyncMock(return_value=data)
+    return att
+
+
+class TestExtractAttachments:
+    @pytest.mark.asyncio
+    async def test_downloads_attachments_with_mime(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("a.png", "image/png", 10, b"png")]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert skipped == ()
+        assert len(downloaded) == 1
+        assert downloaded[0].filename == "a.png"
+        assert downloaded[0].mime_type == "image/png"
+        assert downloaded[0].content == b"png"
+
+    @pytest.mark.asyncio
+    async def test_skips_oversized_attachment(self):
+        adapter, _ = _bare_adapter()
+        big = adapter.max_attachment_bytes + 1
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("huge.bin", None, big)]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert downloaded == ()
+        assert skipped == (("huge.bin", "too large"),)
+
+    @pytest.mark.asyncio
+    async def test_defaults_missing_mime_to_octet_stream(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [_discord_attachment("data", None, 5)]
+
+        downloaded, _ = await adapter._extract_attachments(msg)
+
+        assert downloaded[0].mime_type == "application/octet-stream"
+
+    @pytest.mark.asyncio
+    async def test_caps_attachment_count_and_reports_extras(self):
+        adapter, _ = _bare_adapter()
+        msg = MagicMock()
+        msg.attachments = [
+            _discord_attachment(f"f{i}.txt", "text/plain", 5)
+            for i in range(MAX_INBOUND_ATTACHMENTS + 3)
+        ]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert len(downloaded) == MAX_INBOUND_ATTACHMENTS
+        assert downloaded[0].filename == "f0.txt"
+        # The 3 over the cap are reported as skipped.
+        assert len(skipped) == 3
+        assert all(reason == "too many files attached" for _, reason in skipped)
+
+    @pytest.mark.asyncio
+    async def test_skips_attachment_that_fails_to_download(self):
+        adapter, _ = _bare_adapter()
+        att = _discord_attachment("a.png", "image/png", 10)
+        att.read = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "boom"))
+        msg = MagicMock()
+        msg.attachments = [att]
+
+        downloaded, skipped = await adapter._extract_attachments(msg)
+
+        assert downloaded == ()
+        assert skipped == (("a.png", "couldn't be downloaded"),)

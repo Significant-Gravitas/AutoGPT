@@ -12,6 +12,7 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
@@ -23,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 class ContinueRunBlockTool(BaseTool):
     """Tool for continuing a block execution after human review approval."""
+
+    # Returns execute_block's result, same as run_block.
+    digest_large_output = True
 
     @property
     def name(self) -> str:
@@ -113,6 +117,8 @@ class ContinueRunBlockTool(BaseTool):
                 message=f"Block '{block_id}' not found", session_id=session_id
             )
 
+        emit_tool_display_name(block.name)
+
         input_data: dict[str, Any] = (
             review.payload if isinstance(review.payload, dict) else {}
         )
@@ -146,6 +152,9 @@ class ContinueRunBlockTool(BaseTool):
             node_exec_id=review_id,
             matched_credentials=matched_creds,
             dry_run=False,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+            expert_id=session.expert_id,
         )
 
         # Delete review record after successful execution (one-time use)

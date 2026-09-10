@@ -16,7 +16,7 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createContext,
@@ -94,7 +94,7 @@ export default function OnboardingProvider({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   useOnboardingTimezoneDetection();
 
@@ -115,6 +115,15 @@ export default function OnboardingProvider({
   }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
+  // The public `/tour` demo is for unauthenticated prospects and must never
+  // trigger onboarding init/redirects (which would bounce a logged-in user with
+  // incomplete onboarding out of the tour).
+  const isOnPublicTour = pathname.startsWith("/tour");
+  // A Supabase recovery link signs the user in and lands them on
+  // /reset-password. They must stay there until the new password is set;
+  // bouncing an un-onboarded account to /onboarding would skip the password
+  // change and turn the reset link into a one-time sign-in link.
+  const isOnPasswordResetRoute = pathname.startsWith("/reset-password");
   // Logged-in users sitting on the auth pages need to be routed onward by us;
   // otherwise the signup/login pages show their `isLoggedIn` loader forever.
   // Handling them here (instead of in useSignupPage/useLoginPage) avoids the
@@ -150,8 +159,14 @@ export default function OnboardingProvider({
   }, [isLoggedIn, isOnAuthRoute]);
 
   useEffect(() => {
-    // Prevent multiple initializations
-    if (hasInitialized.current || !isLoggedIn) {
+    // Prevent multiple initializations. Skipped routes don't mark
+    // hasInitialized, so init re-runs on the next pathname change.
+    if (
+      hasInitialized.current ||
+      !isLoggedIn ||
+      isOnPublicTour ||
+      isOnPasswordResetRoute
+    ) {
       return;
     }
 
@@ -216,6 +231,8 @@ export default function OnboardingProvider({
     router,
     isLoggedIn,
     pathname,
+    isOnPublicTour,
+    isOnPasswordResetRoute,
   ]);
 
   const handleOnboardingNotification = useCallback(

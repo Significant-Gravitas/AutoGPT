@@ -10,12 +10,13 @@ import {
   getCopilotAuthHeaders,
   getSendSuppressionReason,
   parseSessionIDs,
+  isEngineSwitchPart,
   resolveSessionDryRun,
   shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
 } from "../helpers";
 
-vi.mock("@/lib/supabase/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(),
 }));
 
@@ -23,7 +24,7 @@ vi.mock("@/lib/impersonation", () => ({
   getSystemHeaders: vi.fn(),
 }));
 
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
@@ -679,5 +680,41 @@ describe("getCopilotAuthHeaders", () => {
     await expect(getCopilotAuthHeaders()).rejects.toThrow(
       "Authentication failed — please sign in again.",
     );
+  });
+});
+
+describe("isEngineSwitchPart", () => {
+  it("reports a switch for a data-mode-changed part naming either engine", () => {
+    expect(
+      isEngineSwitchPart({
+        type: "data-mode-changed",
+        data: { mode: "extended_thinking" },
+      }),
+    ).toBe(true);
+    expect(
+      isEngineSwitchPart({
+        type: "data-mode-changed",
+        data: { mode: "fast" },
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores other data part types", () => {
+    expect(
+      isEngineSwitchPart({ type: "data-status", data: { mode: "fast" } }),
+    ).toBe(false);
+  });
+
+  it("ignores unknown or missing engines", () => {
+    expect(
+      isEngineSwitchPart({
+        type: "data-mode-changed",
+        data: { mode: "turbo" },
+      }),
+    ).toBe(false);
+    expect(isEngineSwitchPart({ type: "data-mode-changed" })).toBe(false);
+    expect(
+      isEngineSwitchPart({ type: "data-mode-changed", data: "fast" }),
+    ).toBe(false);
   });
 });

@@ -90,7 +90,15 @@ CONSOLIDATE_SYSTEM = (
     "that merge near-duplicates into a canonical form.\n\n"
     "RULES:\n"
     " * Do not invent new information that isn't present in the inputs.\n"
+    " * Emit ONE statement per distinct fact. If two recent episodes "
+    "express the same fact with different words, MERGE them into a single "
+    "canonical statement — never emit both phrasings. Paraphrases, "
+    "restatements, and partial fragments of the same fact are duplicates.\n"
     " * Prefer the longer, more specific phrasing when merging duplicates.\n"
+    " * Do NOT restate a fact that already appears in the active-facts "
+    "list unchanged — consolidation is for merging RECENT episodes into "
+    "canonical form, not for re-emitting memory that already exists. Emit "
+    "a fact only if it is new or meaningfully refines an existing one.\n"
     " * Group by scope — never merge a fact in 'project:foo' with one in "
     "'real:global'.\n"
     " * Carry forward the source episode uuids exactly. Never make uuids up.\n"
@@ -193,7 +201,8 @@ SANITIZE_SYSTEM = (
     "code fences. Do NOT use markdown formatting anywhere. Do NOT "
     "explain reasoning before or after the JSON. An empty result is "
     'still JSON: `{"writes": [], "proposals": [], "demotions": [], '
-    '"entity_invalidations": [], "summary_for_user": ""}`.\n\n'
+    '"entity_invalidations": [], "summary_for_user": "Nothing new to '
+    'consolidate tonight — no memory changes made."}`.\n\n'
     "ROLE:\n"
     "You are the sanitizer step of a sleep-time memory pass. You receive "
     "the consolidated facts and the recombination proposals; you decide "
@@ -222,8 +231,22 @@ SANITIZE_SYSTEM = (
     " * Reject any proposal whose content starts with first-person "
     '("I think", "I believe", "In my opinion") — those are not user '
     "memories.\n"
+    " * Reject any write OR proposal that records a TRANSIENT INTENT "
+    "rather than a durable fact: content describing what the user is "
+    "asking, wants to know, is curious/wondering about, or is trying to "
+    "understand is a question, not a memory. Drop it. (A user GOAL — "
+    "'wants to build X', 'is migrating to Y' — IS durable; keep those.)\n"
+    " * Reject GENERIC WORLD KNOWLEDGE that isn't about the user: "
+    "definitions or tutorial facts the assistant explained in passing "
+    "(e.g. 'Kubernetes uses pods as the smallest unit', 'X works by …') "
+    "are not memories ABOUT THE USER. Keep a fact only when its subject "
+    "is the user, their projects, the people/orgs they work with, or "
+    "their stated preferences.\n"
     " * Write a short ``summary_for_user`` (1-3 sentences) describing "
-    "what the pass found.\n\n"
+    "what the pass found.\n"
+    " * ``summary_for_user`` MUST ALWAYS be non-empty — even when there "
+    "are no writes, proposals, demotions, or entity invalidations, say "
+    "in one sentence that nothing changed.\n\n"
     "JSON SCHEMA (your response MUST match this DreamOperations shape):\n"
     '{ "writes": [ConsolidatedFact...], "proposals": [ProposedFinding...], '
     '"demotions": [{"edge_uuid": str, "reason": str, '

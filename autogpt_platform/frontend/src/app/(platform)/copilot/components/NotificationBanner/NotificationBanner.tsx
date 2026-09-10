@@ -3,9 +3,13 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Key, storage } from "@/services/storage/local-storage";
-import { BellRingingIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import { BellRingIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { createIconComponent, Icon } from "@/components/atoms/Icon/Icon";
+
+// Alert's `icon` prop takes a component (its defaults come from lucide).
+const BellRing = createIconComponent(BellRingIcon);
 
 export function NotificationBanner() {
   const { setNotificationsEnabled, isNotificationsEnabled } =
@@ -53,7 +57,7 @@ export function NotificationBanner() {
   }
 
   return (
-    <Alert variant="warning" icon={BellRingingIcon} aria-live="polite">
+    <Alert variant="warning" icon={BellRing} aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
           Enable browser notifications to know when AutoPilot finishes working,
@@ -70,7 +74,7 @@ export function NotificationBanner() {
           title="Dismiss"
           className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
         >
-          <XIcon className="h-4 w-4" />
+          <Icon icon={Cancel01Icon} className="h-4 w-4" />
         </Button>
       </div>
     </Alert>

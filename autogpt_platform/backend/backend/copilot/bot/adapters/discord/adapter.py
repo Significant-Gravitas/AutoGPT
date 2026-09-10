@@ -5,6 +5,7 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import asyncio
 import io
 import logging
 import re
@@ -14,19 +15,27 @@ import discord
 from discord import app_commands
 
 from backend.copilot.bot import threads
+from backend.copilot.bot.adapters.shared import (
+    InboundFile,
+    budget_history,
+    collect_attachments,
+    should_ignore,
+)
 from backend.copilot.bot.bot_backend import BotBackend
-from backend.copilot.bot.text import split_at_boundary
+from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
+from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
 from ..base import (
     ChannelInfo,
     ChannelType,
     FileAttachment,
+    InboundAttachment,
     MessageCallback,
     MessageContext,
     MessageHistoryEntry,
-    PlatformAdapter,
     PostedRef,
     ReferencedConversation,
+    SocketAdapter,
 )
 from . import commands, config, intro
 from .references import (
@@ -45,7 +54,6 @@ logger = logging.getLogger(__name__)
 # messages when a thread is very long.
 THREAD_HISTORY_LIMIT = 1000
 THREAD_HISTORY_CHAR_BUDGET = 24000
-_HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 
 # When a message links or @-mentions other threads/channels, the bot fetches
 # their recent content up-front (same guild only) so the model can read it
@@ -54,12 +62,29 @@ _HISTORY_TRUNCATION_MARKER = "\n… [message truncated]"
 MAX_REFERENCED_CONVERSATIONS = 3
 REFERENCED_HISTORY_LIMIT = 200
 REFERENCED_CHAR_BUDGET = 8000
+
 # When a link names a specific message, fetch that message plus a little of the
 # conversation leading up to it (rather than the channel's latest activity).
 REFERENCED_MESSAGE_CONTEXT = 15
 
+# Discord IDs are numeric snowflakes — used to tell a raw channel ID from a
+# channel name in the proactive-post resolver (see ``looks_like_channel_id``).
+_SNOWFLAKE = re.compile(r"^\d{15,21}$")
 
-class DiscordAdapter(PlatformAdapter):
+# Marks a role in the shared ``(name, id)`` mention allowlist; users carry a
+# bare snowflake. Kept on the id so the platform-neutral resolver needs no
+# knowledge of Discord's two mention markups.
+ROLE_ID_PREFIX = "role:"
+
+# Send-time member lookup: at most this many distinct @names are queried per
+# message, each returning up to this many prefix matches.
+MENTION_QUERY_CAP = 8
+MENTION_QUERY_LIMIT = 20
+# First word after an @ that is not inside an email, URL or existing token.
+_MENTION_CANDIDATE = re.compile(r"(?<![\w@<])@([A-Za-z0-9_][\w'\-]{0,31})")
+
+
+class DiscordAdapter(SocketAdapter):
     def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
@@ -93,6 +118,17 @@ class DiscordAdapter(PlatformAdapter):
     @property
     def max_attachment_bytes(self) -> int:
         return config.MAX_ATTACHMENT_BYTES
+
+    @property
+    def max_thread_name_length(self) -> int:
+        return config.MAX_THREAD_NAME_LENGTH
+
+    @property
+    def typing_refresh_interval(self) -> float:
+        return config.TYPING_REFRESH_SECONDS
+
+    def looks_like_channel_id(self, ref: str) -> bool:
+        return bool(_SNOWFLAKE.match(ref))
 
     def on_message(self, callback: MessageCallback) -> None:
         self._on_message_callback = callback
@@ -128,7 +164,9 @@ class DiscordAdapter(PlatformAdapter):
     ) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
-            rendered, allowed = _resolve_mentions(text, mentionable_users)
+            rendered, allowed = _resolve_mentions(
+                text, await self._mentionables_for(channel, text, mentionable_users)
+            )
             # tts=False is the default but we pin it explicitly — AutoPilot
             # output is untrusted and should never blast through voice.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
@@ -173,12 +211,19 @@ class DiscordAdapter(PlatformAdapter):
         channel = await self._resolve_channel(channel_id)
         if not channel or not isinstance(channel, discord.abc.Messageable):
             return
-        rendered, allowed = _resolve_mentions(text, mentionable_users)
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, mentionable_users)
+        )
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(rendered, tts=False, allowed_mentions=allowed)
-        except discord.NotFound:
+        except discord.HTTPException:  # any fetch failure: NotFound, Forbidden, 5xx
+            # fetch_message needs Read Message History, which gateway delivery
+            # doesn't — a plain send needs neither, so don't lose the reply.
+            # Only fetch failures fall back: a failed reply() must not retry as
+            # a plain send, which could double-post if Discord accepted it.
             await channel.send(rendered, tts=False, allowed_mentions=allowed)
+            return
+        await msg.reply(rendered, tts=False, allowed_mentions=allowed)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.
@@ -257,6 +302,17 @@ class DiscordAdapter(PlatformAdapter):
             return str(channel.guild.id)
         return None
 
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+        try:
+            user = self._client.get_user(
+                int(platform_user_id)
+            ) or await self._client.fetch_user(int(platform_user_id))
+            dm = user.dm_channel or await user.create_dm()
+        except (ValueError, discord.NotFound, discord.HTTPException):
+            logger.warning(f"Cannot open DM with user {platform_user_id}")
+            return None
+        return str(dm.id)
+
     async def post_channel_message(
         self, channel_id: str, text: str
     ) -> Optional[PostedRef]:
@@ -310,14 +366,13 @@ class DiscordAdapter(PlatformAdapter):
         later-chunk failure stops the send and keeps the partial result rather
         than discarding what already posted (a retry would duplicate it).
         """
-        remaining = text.strip()
+        rendered, allowed = _resolve_mentions(
+            text, await self._mentionables_for(channel, text, ())
+        )
         first: Optional[discord.Message] = None
-        while remaining:
-            chunk, remaining = split_at_boundary(remaining, config.CHUNK_FLUSH_AT)
-            if not chunk:
-                break
+        for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
-                msg = await channel.send(chunk, tts=False)
+                msg = await channel.send(chunk, tts=False, allowed_mentions=allowed)
             except discord.HTTPException:
                 if first is None:
                     raise
@@ -444,6 +499,7 @@ class DiscordAdapter(PlatformAdapter):
             # context — both verbatim, with their links left untouched.
             message_text = self._compose_with_forward(message, own_text)
             message_text = await self._with_reply_context(message, message_text)
+            attachments, skipped = await self._extract_attachments(message)
             ctx = MessageContext(
                 platform="discord",
                 channel_type=channel_type,
@@ -457,8 +513,35 @@ class DiscordAdapter(PlatformAdapter):
                 thread_history=thread_history,
                 mentionable_users=self._collect_mentionable_users(message),
                 referenced_conversations=referenced,
+                attachments=attachments,
+                skipped_attachments=skipped,
             )
             await self._on_message_callback(ctx, self)
+
+    async def _extract_attachments(
+        self, message: discord.Message
+    ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
+        """Download the user's file attachments so the handler can upload them.
+
+        Returns ``(downloaded, skipped)`` where ``skipped`` is ``(filename,
+        reason)`` for files we couldn't ingest (over the per-file cap, beyond
+        the per-message count, or a failed download) so the handler can tell
+        the user and the model rather than silently dropping them.
+        """
+        files = [
+            InboundFile(
+                filename=a.filename,
+                size=a.size,
+                mime_type=a.content_type,
+                fetch=a.read,
+            )
+            for a in message.attachments
+        ]
+        return await collect_attachments(
+            files,
+            max_count=MAX_INBOUND_ATTACHMENTS,
+            max_bytes=self.max_attachment_bytes,
+        )
 
     async def _refresh_known_server_names(self) -> None:
         """Push current display names for every guild the bot is in."""
@@ -478,13 +561,12 @@ class DiscordAdapter(PlatformAdapter):
             logger.exception("Failed to refresh display name for guild %s", guild.id)
 
     def _should_ignore_message(self, message: discord.Message) -> bool:
-        if self._client.user is not None and message.author.id == self._client.user.id:
-            return True
-        # Other bots reach us only by @mentioning us; without this gate two
-        # bots in a shared thread (our own dev + prod included) loop forever.
-        if message.author.bot:
-            return not self._is_mentioned(message)
-        return False
+        me = self._client.user
+        return should_ignore(
+            is_self=me is not None and message.author.id == me.id,
+            author_is_bot=message.author.bot,
+            bot_mentioned=self._is_mentioned(message),
+        )
 
     def _is_mentioned(self, message: discord.Message) -> bool:
         if message.guild is None:
@@ -597,18 +679,80 @@ class DiscordAdapter(PlatformAdapter):
             replacement = "" if user.id == bot_id else f"@{user.display_name}"
             for token in raw_tokens:
                 text = text.replace(token, replacement)
+        for role in getattr(message, "role_mentions", None) or ():
+            text = text.replace(f"<@&{role.id}>", f"@{role.name}")
         return text.strip()
 
     def _collect_mentionable_users(
         self, message: discord.Message
     ) -> tuple[tuple[str, str], ...]:
-        """Users from the inbound message the bot may ping back this turn."""
+        """The author and anyone mentioned in the inbound message. Server
+        members and roles are looked up at send time from the names the bot
+        actually uses (see ``_mentionables_for``)."""
         bot_id = self._client.user.id if self._client.user else None
-        return tuple(
-            (user.display_name, str(user.id))
-            for user in message.mentions
-            if user.id != bot_id
-        )
+        pairs: list[tuple[str, str]] = []
+        for user in (message.author, *message.mentions):
+            if user.id == bot_id:
+                continue
+            pair = (user.display_name, str(user.id))
+            if pair not in pairs:
+                pairs.append(pair)
+        return tuple(pairs)
+
+    async def _mentionables_for(
+        self,
+        channel: discord.abc.Messageable,
+        text: str,
+        known: tuple[tuple[str, str], ...],
+    ) -> tuple[tuple[str, str], ...]:
+        """Everyone ``text`` may ping in ``channel``: ``known`` (author and
+        inbound mentions) plus, for a server channel, any member whose display
+        name or username matches an ``@Name`` in the text and any role by name.
+
+        Members are found with a gateway member query per name, which needs no
+        privileged intent and works on any server. ``@everyone`` and ``@here``
+        are never listed, so they stay plain text and the ping object keeps
+        them off regardless. A DM has no server, so only ``known`` applies.
+        """
+        guild = getattr(channel, "guild", None)
+        if not isinstance(guild, discord.Guild):
+            return known
+        bot_id = self._client.user.id if self._client.user else None
+        pairs: list[tuple[str, str]] = list(known)
+        seen: set[tuple[str, str]] = set(pairs)
+
+        def add(name: Optional[str], token_id: str) -> None:
+            if name and (name, token_id) not in seen:
+                seen.add((name, token_id))
+                pairs.append((name, token_id))
+
+        role_names: set[str] = set()
+        for role in guild.roles:
+            if role.id == guild.id or role.is_default():
+                continue
+            add(role.name, f"{ROLE_ID_PREFIX}{role.id}")
+            role_names.add(role.name.casefold())
+        for query in _mention_queries(text):
+            if query.casefold() in role_names:
+                continue
+            try:
+                members = await guild.query_members(
+                    query=query, limit=MENTION_QUERY_LIMIT, cache=False
+                )
+            except (
+                asyncio.TimeoutError,
+                ValueError,
+                discord.ClientException,
+                discord.HTTPException,
+            ):
+                logger.warning("Member lookup for @%s failed", query, exc_info=True)
+                continue
+            for member in members:
+                if member.id == bot_id or member.bot:
+                    continue
+                add(member.display_name, str(member.id))
+                add(member.name, str(member.id))
+        return tuple(pairs)
 
     async def _thread_history(
         self, message: discord.Message
@@ -616,7 +760,7 @@ class DiscordAdapter(PlatformAdapter):
         if not isinstance(message.channel, discord.Thread):
             return ()
         try:
-            return await self._budgeted_history(
+            history = await self._budgeted_history(
                 message.channel.history(
                     limit=THREAD_HISTORY_LIMIT,
                     before=message,
@@ -626,48 +770,69 @@ class DiscordAdapter(PlatformAdapter):
             )
         except (discord.Forbidden, discord.HTTPException):
             logger.warning("Could not fetch Discord thread history", exc_info=True)
-            return ()
+            history = ()
+        starter = await self._thread_starter_entry(message.channel)
+        return (starter, *history) if starter else history
+
+    async def _thread_starter_entry(
+        self, thread: discord.Thread
+    ) -> Optional[MessageHistoryEntry]:
+        """The message a thread was opened from, as its oldest history entry.
+
+        A thread created from a channel post shares that post's id, but the
+        post itself lives in the parent channel and never appears in
+        ``thread.history()``. Without it the bot sees a thread whose first
+        line is "make this happen" and has no idea what "this" is. Threads
+        opened without an origin message have no starter and return None.
+        Kept outside the character budget so it is never truncated away.
+        """
+        starter = thread.starter_message
+        if not isinstance(starter, discord.Message):
+            parent = thread.parent
+            if not isinstance(parent, discord.abc.Messageable):
+                return None
+            try:
+                starter = await parent.fetch_message(thread.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return None
+        bot_user_id = self._client.user.id if self._client.user else None
+        if bot_user_id is not None and starter.author.id == bot_user_id:
+            return None
+        text = self._strip_mentions(starter)
+        if not text:
+            return None
+        return MessageHistoryEntry(
+            username=starter.author.display_name,
+            user_id=str(starter.author.id),
+            text=text,
+        )
 
     async def _budgeted_history(
         self, history, char_budget: int
     ) -> tuple[MessageHistoryEntry, ...]:
-        """Drain a newest-first message iterator into chronological entries,
-        capped at ``char_budget`` chars (most-recent kept when over budget).
+        """Normalize Discord history into entries, then char-budget them.
 
-        Skips the bot's own messages (copilot has its own transcript for those)
-        but keeps other bots' messages as context.
+        The Discord-specific part is the mapping — skip the bot's own messages
+        (copilot has its own transcript for those) but keep other bots' as
+        context, and strip Discord mention syntax. The budgeting/truncation is
+        shared (``budget_history``).
         """
-        entries: list[MessageHistoryEntry] = []
-        used_chars = 0
         bot_user_id = self._client.user.id if self._client.user else None
-        async for prior in history:
-            if bot_user_id is not None and prior.author.id == bot_user_id:
-                continue
-            text = self._strip_mentions(prior)
-            if not text:
-                continue
-            remaining = char_budget - used_chars
-            if remaining <= 0:
-                break
-            oversized = len(text) > remaining
-            if oversized and entries:
-                # No room for another whole message — keep what we have.
-                break
-            if oversized:
-                # Lone most-recent message is itself over budget: keep a head.
-                text = _truncate_to_budget(text, remaining)
-            used_chars += len(text)
-            entries.append(
-                MessageHistoryEntry(
+
+        async def _entries():
+            async for prior in history:
+                if bot_user_id is not None and prior.author.id == bot_user_id:
+                    continue
+                text = self._strip_mentions(prior)
+                if not text:
+                    continue
+                yield MessageHistoryEntry(
                     username=prior.author.display_name,
                     user_id=str(prior.author.id),
                     text=text,
                 )
-            )
-            if oversized:
-                break
-        entries.reverse()  # chronological order for the prompt
-        return tuple(entries)
+
+        return await budget_history(_entries(), char_budget=char_budget)
 
     async def _fetch_referenced_conversations(
         self, message: discord.Message, text: str
@@ -768,60 +933,52 @@ class DiscordAdapter(PlatformAdapter):
         return True
 
 
-def _truncate_to_budget(text: str, limit: int) -> str:
-    """Trim ``text`` to at most ``limit`` characters, leaving a visible marker.
-
-    Used only when a single thread message is itself larger than the history
-    budget — keep a head of it (with context that it was cut) rather than emit
-    an oversized payload or drop the message entirely.
-    """
-    if len(text) <= limit:
-        return text
-    keep = max(0, limit - len(_HISTORY_TRUNCATION_MARKER))
-    return text[:keep].rstrip() + _HISTORY_TRUNCATION_MARKER
-
-
 def _resolve_mentions(
     text: str,
     mentionable_users: tuple[tuple[str, str], ...],
 ) -> tuple[str, discord.AllowedMentions]:
-    """Substitute `@DisplayName` in `text` with `<@id>` markup for users on
-    the allowlist, and return an AllowedMentions that pings exactly those
-    users (and nobody else).
+    """Render allowlisted ``@DisplayName`` as Discord ``<@id>`` markup and
+    return an ``AllowedMentions`` that pings exactly those users.
 
-    Anyone not on the allowlist stays as plain text — even if the LLM produces
-    `@everyone`, `@here`, or `@SomeRandomUser`. This keeps the bot from
-    pinging users it learned about elsewhere or hallucinated entirely.
+    The allowlist policy (which names match, longest-first, word-bounded) is
+    shared in ``text.resolve_mentions``; here we only supply Discord's mention
+    token and turn the pinged IDs into Discord's ping-safety object.
     """
-    if not mentionable_users:
-        return text, discord.AllowedMentions.none()
-
-    rendered = text
-    pinged_ids: list[int] = []
-    # Longest names first so e.g. "@John Smith" matches before "@John".
-    for display_name, user_id in sorted(
-        mentionable_users, key=lambda pair: -len(pair[0])
-    ):
-        # Word-bounded so "@Name" inside emails/URLs is left alone.
-        pattern = re.compile(
-            rf"(?<![\w@]){re.escape(f'@{display_name}')}(?!\w)",
-            re.IGNORECASE,
-        )
-        if not pattern.search(rendered):
-            continue
-        # Callable replacement avoids backref interpretation of user_id.
-        rendered = pattern.sub(lambda _m, uid=user_id: f"<@{uid}>", rendered)
+    rendered, pinged = resolve_mentions(text, mentionable_users, _mention_token)
+    user_ids: list[int] = []
+    role_ids: list[int] = []
+    for token_id in pinged:
+        is_role = token_id.startswith(ROLE_ID_PREFIX)
         try:
-            pinged_ids.append(int(user_id))
+            numeric = int(token_id.removeprefix(ROLE_ID_PREFIX))
         except ValueError:
             continue
-
-    if not pinged_ids:
+        (role_ids if is_role else user_ids).append(numeric)
+    if not user_ids and not role_ids:
         return rendered, discord.AllowedMentions.none()
-
     return rendered, discord.AllowedMentions(
         everyone=False,
-        users=[discord.Object(id=uid) for uid in pinged_ids],
-        roles=False,
+        users=[discord.Object(id=uid) for uid in user_ids] or False,
+        roles=[discord.Object(id=rid) for rid in role_ids] or False,
         replied_user=False,
     )
+
+
+def _mention_token(_name: str, token_id: str) -> str:
+    if token_id.startswith(ROLE_ID_PREFIX):
+        return f"<@&{token_id.removeprefix(ROLE_ID_PREFIX)}>"
+    return f"<@{token_id}>"
+
+
+def _mention_queries(text: str) -> list[str]:
+    """The distinct first words following an ``@`` in ``text``, capped, used as
+    member-query prefixes. ``everyone`` and ``here`` are skipped outright."""
+    queries: list[str] = []
+    for match in _MENTION_CANDIDATE.finditer(text):
+        word = match.group(1).rstrip("'-")
+        if word.casefold() in ("everyone", "here") or word in queries:
+            continue
+        queries.append(word)
+        if len(queries) >= MENTION_QUERY_CAP:
+            break
+    return queries

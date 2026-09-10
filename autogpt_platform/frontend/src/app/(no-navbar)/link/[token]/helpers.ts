@@ -27,3 +27,25 @@ export function getLoginRedirect(token: string | null): string {
 export function isUserLink(linkType: LinkType | undefined): boolean {
   return linkType === LinkType.USER;
 }
+
+const TELEGRAM_AUTH_KEYS = [
+  "id",
+  "first_name",
+  "last_name",
+  "username",
+  "photo_url",
+  "auth_date",
+  "hash",
+] as const;
+
+export function getTelegramAuth(
+  searchParams: URLSearchParams,
+): Record<string, string> | null {
+  if (!searchParams.get("id") || !searchParams.get("hash")) return null;
+  const auth: Record<string, string> = {};
+  for (const key of TELEGRAM_AUTH_KEYS) {
+    const value = searchParams.get(key);
+    if (value !== null) auth[key] = value;
+  }
+  return auth;
+}

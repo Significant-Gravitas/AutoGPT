@@ -55,3 +55,38 @@ def test_clone_repository_error(
 
     with pytest.raises(CommandExecutionError):
         git_ops_component.clone_repository(url, clone_path)
+
+
+def test_clone_github_host_injects_credentials(
+    git_ops_component: GitOperationsComponent,
+    storage: FileStorage,
+    mock_clone_from,
+):
+    mock_clone_from.return_value = None
+
+    url = "https://github.com/owner/repo.git"
+    clone_path = storage.get_path("github-repo")
+
+    git_ops_component.clone_repository(url, clone_path)
+
+    mock_clone_from.assert_called_once()
+    called_url = mock_clone_from.call_args.kwargs["url"]
+    assert "github.com/owner/repo.git" in called_url
+    assert called_url.startswith(
+        f"https://{git_ops_component.config.github_username}:"
+        f"{git_ops_component.config.github_api_key}@github.com"
+    )
+
+
+def test_clone_non_github_host_is_refused(
+    git_ops_component: GitOperationsComponent,
+    storage: FileStorage,
+    mock_clone_from,
+):
+    url = "https://evil.example.com/repo.git"
+    clone_path = storage.get_path("evil-repo")
+
+    with pytest.raises(CommandExecutionError):
+        git_ops_component.clone_repository(url, clone_path)
+
+    mock_clone_from.assert_not_called()

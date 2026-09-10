@@ -1,0 +1,23 @@
+FalkorDB server 4.20.1
+
+Upstream source:
+https://github.com/FalkorDB/FalkorDB/tree/efea8d99f8492f3eeaadcafeae29967c66d825a0
+
+Upstream tag:
+https://github.com/FalkorDB/FalkorDB/releases/tag/v4.20.1
+
+License source:
+https://github.com/FalkorDB/FalkorDB/blob/efea8d99f8492f3eeaadcafeae29967c66d825a0/LICENSE.txt
+
+License SHA-256:
+34e94c5087ba6e9fb34f35ae71df5e6533c5fc7cbbf6c44186a71e82806b69e1
+
+Container source:
+falkordb/falkordb-server:v4.20.1@sha256:8b676c2e72271f5d06541136eb214b0db50180636cc86f7ee38d63287e9b8d13
+
+This AutoGPT image copies the Redis server inherited by the pinned FalkorDB
+container to /opt/falkordb/redis-server and copies the unmodified FalkorDB
+module to /opt/falkordb/falkordb.so. Redis provenance and notices are stored
+in /usr/share/licenses/redis. FalkorDB is licensed under the Server Side
+Public License version 1. The complete license text is provided in
+SSPL-1.0.txt in this directory.

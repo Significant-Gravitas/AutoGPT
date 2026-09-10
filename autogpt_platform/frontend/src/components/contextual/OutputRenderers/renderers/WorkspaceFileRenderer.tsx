@@ -1,4 +1,3 @@
-import { DownloadSimple, FileText } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import {
   OutputRenderer,
@@ -8,6 +7,8 @@ import {
 } from "../types";
 import { parseWorkspaceURI, isWorkspaceURI } from "@/lib/workspace-uri";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const imageMimeTypes = [
   "image/jpeg",
@@ -148,7 +149,11 @@ function renderWorkspaceFile(
   const label = getFileTypeLabel(mimeType);
   return (
     <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-      <FileText size={28} className="flex-shrink-0 text-gray-500" />
+      <Icon
+        icon={File02Icon}
+        size={28}
+        className="flex-shrink-0 text-gray-500"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
           {metadata?.filename || label}
@@ -164,7 +169,7 @@ function renderWorkspaceFile(
         download
         className="flex-shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-300"
       >
-        <DownloadSimple size={18} />
+        <Icon icon={Download04Icon} size={18} />
       </a>
     </div>
   );

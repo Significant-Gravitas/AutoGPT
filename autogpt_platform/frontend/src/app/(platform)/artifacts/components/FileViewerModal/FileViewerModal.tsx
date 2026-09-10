@@ -7,9 +7,10 @@ import type { ArtifactRef } from "@/app/(platform)/copilot/store";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { CodeIcon, DownloadSimpleIcon, EyeIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { downloadFileBlob, getFileDownloadUrl } from "../ArtifactsList/helpers";
+import { CodeIcon, Download04Icon, EyeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   file: WorkspaceFileItem | null;
@@ -124,7 +125,11 @@ function Header({
             size="small"
             onClick={onToggleSource}
             leftIcon={
-              isSourceView ? <EyeIcon size={14} /> : <CodeIcon size={14} />
+              isSourceView ? (
+                <Icon icon={EyeIcon} size={14} />
+              ) : (
+                <Icon icon={CodeIcon} size={14} />
+              )
             }
           >
             {isSourceView ? "Preview" : "Source"}
@@ -135,7 +140,7 @@ function Header({
           size="small"
           onClick={handleDownload}
           loading={isDownloading}
-          leftIcon={<DownloadSimpleIcon size={14} />}
+          leftIcon={<Icon icon={Download04Icon} size={14} />}
           data-testid="file-viewer-download"
         >
           {isDownloading ? "Downloading…" : "Download"}
@@ -162,7 +167,7 @@ function DownloadOnly({
         download={name}
         className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
       >
-        <DownloadSimpleIcon size={16} />
+        <Icon icon={Download04Icon} size={16} />
         Download
       </a>
     </div>

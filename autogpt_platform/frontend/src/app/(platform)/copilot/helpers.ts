@@ -1,5 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getWebSocketToken } from "@/lib/auth/actions";
 import type { UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -121,29 +121,6 @@ export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
     if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
     return false;
   });
-}
-
-/**
- * Surface the latest backend-emitted status message for the trailing assistant
- * message, if that status has not already been invalidated by newer visible
- * parts. Used to show progress during restore/replay before answer text lands.
- */
-export function getLatestAssistantStatusMessage(
-  messages: UIMessage[],
-): string | null {
-  const last = messages[messages.length - 1];
-  if (last?.role !== "assistant") return null;
-  for (let i = last.parts.length - 1; i >= 0; i--) {
-    const part = last.parts[i];
-    if (part.type === "data-cursor") continue;
-    if (part.type === "data-dream-operations") continue;
-    if (part.type === "data-status") {
-      const data = (part as { data?: { message?: unknown } }).data;
-      return typeof data?.message === "string" ? data.message : null;
-    }
-    return null;
-  }
-  return null;
 }
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
@@ -398,4 +375,19 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
 
     return true;
   });
+}
+
+/**
+ * True when the server reports it moved a turn to a different execution
+ * engine. Nothing displays the engine and nothing can request one — the only
+ * consumer widens its post-finish refetch window, because a switch takes
+ * longer to settle. The named engine is deliberately not returned.
+ */
+export function isEngineSwitchPart(dataPart: {
+  type: string;
+  data?: unknown;
+}): boolean {
+  if (dataPart.type !== "data-mode-changed") return false;
+  const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
+  return mode === "extended_thinking" || mode === "fast";
 }

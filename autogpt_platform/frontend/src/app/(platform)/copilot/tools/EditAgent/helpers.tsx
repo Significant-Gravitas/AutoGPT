@@ -2,13 +2,14 @@ import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentP
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import {
-  NotePencilIcon,
-  PencilLineIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import {
+  AlertDiamondIcon,
+  NoteEditIcon,
+  PencilEdit01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export type EditAgentToolOutput =
   | AgentPreviewResponse
@@ -106,20 +107,18 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} className="text-red-500" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
   return (
-    <PencilLineIcon size={14} weight="regular" className="text-neutral-400" />
+    <Icon icon={PencilEdit01Icon} size={14} className="text-neutral-400" />
   );
 }
 
 export function AccordionIcon() {
-  return <NotePencilIcon size={32} weight="light" />;
+  return <Icon icon={NoteEditIcon} size={32} />;
 }
 
 export function formatMaybeJson(value: unknown): string {

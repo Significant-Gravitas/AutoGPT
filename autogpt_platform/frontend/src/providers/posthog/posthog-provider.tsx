@@ -1,6 +1,6 @@
 "use client";
 
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -29,7 +29,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
 }
 
 export function PostHogUserTracker() {
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
   const previousUserIdRef = useRef<string | null>(null);
   const isPostHogEnabled = environment.isPostHogEnabled();
 

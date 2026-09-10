@@ -4,9 +4,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Key, storage } from "@/services/storage/local-storage";
-import { BellRinging } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import { BellRingIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function NotificationDialog() {
   const {
@@ -74,7 +75,7 @@ export function NotificationDialog() {
       <Dialog.Content>
         <div className="flex flex-col items-center gap-4 py-2">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">
-            <BellRinging className="h-6 w-6 text-violet-600" weight="fill" />
+            <Icon icon={BellRingIcon} className="h-6 w-6 text-violet-600" />
           </div>
           <Text variant="body" className="text-center text-neutral-600">
             AutoPilot can notify you when a response is ready, even if you

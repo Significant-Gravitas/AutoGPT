@@ -85,9 +85,15 @@ export function useAgentInfoStep({
     }
   }, [selectedAgentId, agentId]);
 
-  const handleImagesChange = useCallback((newImages: string[]) => {
-    setImages(newImages);
-  }, []);
+  const handleImagesChange = useCallback(
+    (newImages: string[]) => {
+      setImages(newImages);
+      if (newImages.length > 0) {
+        form.clearErrors("root");
+      }
+    },
+    [form],
+  );
 
   async function handleFormSubmit(data: PublishAgentFormData) {
     // Validate that at least one image is present
@@ -109,8 +115,7 @@ export function useAgentInfoStep({
       return;
     }
 
-    const categories = data.category ? [data.category] : [];
-    const filteredCategories = categories.filter(Boolean);
+    const filteredCategories = [data.category].filter(Boolean);
 
     setIsSubmitting(true);
 

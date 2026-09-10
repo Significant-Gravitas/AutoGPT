@@ -193,7 +193,11 @@ Before outputting, the block validates JSON-serializability. If an unsupported t
 ## Persist Information
 
 ### What it is
-Persist key-value information for the current user
+Persists a key-value pair for use across multiple runs of an agent. Use this when
+you need memory that persists between executions, e.g. last-seen state, counters,
+accumulated data.
+
+Beware of read->write race conditions for parallel use of the same key.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -208,7 +212,7 @@ The stored data remains available until explicitly overwritten, enabling state m
 |-------|-------------|------|----------|
 | key | Key to store the information under | str | Yes |
 | value | Value to store | Value | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
+| scope | Scope of persistence: 'within_agent' — shared across all runs of this agent; 'across_agents' — shared across all agents for this user | "within_agent" \| "across_agents" | No |
 
 ### Outputs
 
@@ -277,7 +281,7 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 ## Retrieve Information
 
 ### What it is
-Retrieve key-value information for the current user
+Reads back a key-value pair previously saved by PersistInformationBlock.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -291,7 +295,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | key | Key to retrieve the information for | str | Yes |
-| scope | Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user) | "within_agent" \| "across_agents" | No |
+| scope | Scope of persistence: 'within_agent' — shared across all runs of this agent; 'across_agents' — shared across all agents for this user | "within_agent" \| "across_agents" | No |
 | default_value | Default value to return if key is not found | Default Value | No |
 
 ### Outputs

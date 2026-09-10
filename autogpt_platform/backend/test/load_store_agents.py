@@ -17,7 +17,7 @@ import asyncio
 import csv
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import prisma.enums
@@ -408,9 +408,11 @@ async def main():
             agent_name = metadata["agent_name"]
             print(f"\nProcessing: {agent_name}")
 
-            # Use a transaction per agent to prevent dangling resources
+            # Use a transaction per agent to prevent dangling resources.
+            # Generous timeout: large multi-graph agents exceed the 5s default
+            # when the DB is remote (e.g. seeding a preview env on Cloud SQL).
             try:
-                async with db.tx() as tx:
+                async with db.tx(timeout=timedelta(minutes=5)) as tx:
                     # Load and create the agent graph
                     agent_data = await load_agent_json(json_file)
                     graph_id, graph_version = await create_agent_graph(

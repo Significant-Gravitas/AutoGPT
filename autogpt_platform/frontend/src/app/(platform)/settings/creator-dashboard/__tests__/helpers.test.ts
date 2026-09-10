@@ -5,6 +5,7 @@ import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmis
 
 import {
   applyFiltersAndSort,
+  buildEditPayload,
   EMPTY_DASHBOARD_STATS,
   filterSubmissions,
   formatRuns,
@@ -346,6 +347,41 @@ describe("creator-dashboard helpers", () => {
       const unknown = "ARCHIVED" as unknown as SubmissionStatus;
       expect(getStatusVisual(unknown)).toBe(
         STATUS_VISUAL[SubmissionStatus.DRAFT],
+      );
+    });
+  });
+
+  describe("buildEditPayload", () => {
+    test("maps a submission to an edit request payload", () => {
+      const submission = makeSubmission({
+        name: "My Agent",
+        sub_heading: "Does things",
+        description: "A description",
+        image_urls: ["a.png", "b.png"],
+        video_url: "https://youtu.be/x",
+        categories: ["Productivity"],
+        changes_summary: "Fixed a bug",
+        listing_version_id: "lv-42",
+        graph_id: "graph-42",
+      });
+
+      expect(buildEditPayload(submission)).toEqual({
+        name: "My Agent",
+        sub_heading: "Does things",
+        description: "A description",
+        image_urls: ["a.png", "b.png"],
+        video_url: "https://youtu.be/x",
+        categories: ["Productivity"],
+        changes_summary: "Fixed a bug",
+        store_listing_version_id: "lv-42",
+        graph_id: "graph-42",
+      });
+    });
+
+    test("defaults an empty changes summary to 'Update Submission'", () => {
+      const submission = makeSubmission({ changes_summary: null });
+      expect(buildEditPayload(submission).changes_summary).toBe(
+        "Update Submission",
       );
     });
   });

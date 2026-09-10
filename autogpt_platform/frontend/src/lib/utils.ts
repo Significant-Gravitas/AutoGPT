@@ -166,6 +166,7 @@ const exceptionMap: Record<string, string> = {
   Json: "JSON",
   Ai: "AI",
   "You Tube": "YouTube",
+  "All Quiet": "AllQuiet",
 };
 
 const applyExceptions = (str: string): string => {
@@ -192,6 +193,24 @@ export function exportAsJSONFile(obj: object, filename: string): void {
 
   // Clean up
   URL.revokeObjectURL(url);
+}
+
+export function agentGraphExportFilename(
+  graph: unknown,
+  fallbackName = "agent",
+): string {
+  const { name, version } = (
+    typeof graph === "object" && graph !== null ? graph : {}
+  ) as { name?: unknown; version?: unknown };
+  const rawName = typeof name === "string" && name.trim() ? name : fallbackName;
+  const safeName =
+    rawName
+      .trim()
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+      .replace(/[_ ]+$/, "") || "agent";
+  return typeof version === "number"
+    ? `${safeName}_v${version}.json`
+    : `${safeName}.json`;
 }
 
 export function setNestedProperty(obj: any, path: string, value: any) {
@@ -425,4 +444,27 @@ export function isValidUUID(value: string): boolean {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
+}
+
+export function getApprovedMarketplaceUrl(args: {
+  creatorUsername: string | null | undefined;
+  slug: string | null | undefined;
+  isApproved: boolean;
+}): string | undefined {
+  if (!args.isApproved || !args.creatorUsername || !args.slug) {
+    return undefined;
+  }
+  return `/marketplace/agent/${encodeURIComponent(args.creatorUsername)}/${encodeURIComponent(args.slug)}`;
+}
+
+/**
+ * True when `pathname` is `base` itself or one of its sub-routes. Tolerates the
+ * `null` that `usePathname()` is typed to return.
+ */
+export function matchesRoute(
+  pathname: string | null | undefined,
+  base: string,
+): boolean {
+  if (!pathname) return false;
+  return pathname === base || pathname.startsWith(`${base}/`);
 }

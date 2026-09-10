@@ -23,7 +23,7 @@ import { SortColumnFilter } from "./columns/SortColumnFilter";
 import { StatusColumnFilter } from "./columns/StatusColumnFilter";
 
 interface EditPayload extends StoreSubmissionEditRequest {
-  store_listing_version_id: string | undefined;
+  store_listing_version_id: string;
   graph_id: string;
 }
 

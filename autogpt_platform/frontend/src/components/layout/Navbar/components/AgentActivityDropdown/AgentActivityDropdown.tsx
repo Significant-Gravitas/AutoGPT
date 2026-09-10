@@ -6,10 +6,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { Pulse } from "@phosphor-icons/react";
 import { ActivityDropdown } from "./components/ActivityDropdown/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
 import { useAgentActivityDropdown } from "./useAgentActivityDropdown";
+import { Pulse01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AgentActivityDropdown() {
   const {
@@ -30,7 +31,7 @@ export function AgentActivityDropdown() {
           data-testid="agent-activity-button"
           aria-label="View Agent Activity"
         >
-          <Pulse size={22} className="text-black" />
+          <Icon icon={Pulse01Icon} size={22} className="text-black" />
 
           {activeCount > 0 && (
             <>

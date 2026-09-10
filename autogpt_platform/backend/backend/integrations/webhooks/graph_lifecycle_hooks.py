@@ -69,9 +69,14 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+        for creds_field_name in block_input_schema.get_credentials_fields():
             creds_meta = new_node.input_default.get(creds_field_name)
-            if not creds_meta:
+            # A meta without `id` means no credential was selected. The form
+            # can emit provider/type on their own, so this shape is reachable
+            # without any user action; treat it as unset instead of indexing
+            # it. Required-but-unset is caught by execution-time validation,
+            # which can name the block and field.
+            if not creds_meta or not creds_meta.get("id"):
                 continue
             refs.append((new_node, creds_field_name, creds_meta, block_input_schema))
 
@@ -198,15 +203,28 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
 
+        # First resolved credential wins. Assigning unconditionally per field
+        # meant a block with several credential fields passed only the last
+        # one, and a failed lookup on that last field discarded a credential
+        # an earlier field had resolved successfully.
         node_credentials = None
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
-            if (creds_meta := node.input_default.get(creds_field_name)) and not (
-                node_credentials := await get_credentials(creds_meta["id"])
-            ):
+        for creds_field_name in block_input_schema.get_credentials_fields():
+            # Same shape guard as activation: a meta without `id` means no
+            # credential was selected, and indexing it would raise KeyError.
+            # Persisted graphs can carry this id-less shape, so deactivation
+            # has to tolerate it.
+            creds_meta = node.input_default.get(creds_field_name)
+            if not creds_meta or not (creds_id := creds_meta.get("id")):
+                continue
+            resolved = await get_credentials(creds_id)
+            if not resolved:
                 logger.warning(
                     f"Node #{node.id} input '{creds_field_name}' referenced "
-                    f"non-existent credentials #{creds_meta['id']}"
+                    f"non-existent credentials #{creds_id}"
                 )
+                continue
+            if node_credentials is None:
+                node_credentials = resolved
 
         updated_node = await on_node_deactivate(
             user_id, node, credentials=node_credentials

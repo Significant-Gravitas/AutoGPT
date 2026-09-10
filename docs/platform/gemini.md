@@ -6,7 +6,7 @@ This guide covers integrating Google Gemini models with AutoGPT using OpenRouter
 
 ## Prerequisites
 
-1. Make sure you have completed the [AutoGPT Setup Guide](https://docs.agpt.co/platform/getting-started/) and have AutoGPT running locally at `http://localhost:3000`.
+1. Make sure you have completed the [AutoGPT Setup Guide](https://agpt.co/docs/platform/getting-started) and have AutoGPT running locally at `http://localhost:3000`.
 2. You have an **OpenRouter API key** from [OpenRouter](https://openrouter.ai/keys).
 
 ---
@@ -27,7 +27,7 @@ AutoGPT routes all Gemini models through OpenRouter. You need an OpenRouter API 
 ### 1. Start AutoGPT Locally
 
 Follow the official guide:
-[AutoGPT Getting Started Guide](https://docs.agpt.co/platform/getting-started/)
+[AutoGPT Getting Started Guide](https://agpt.co/docs/platform/getting-started)
 
 Ensure AutoGPT is running and accessible at:
 [http://localhost:3000](http://localhost:3000)
@@ -158,7 +158,7 @@ Pricing varies by model tier and usage volume.
 - [Gemini API Quickstart](https://ai.google.dev/gemini-api/docs/quickstart)
 - [Model Capabilities](https://ai.google.dev/gemini-api/docs/models)
 - [OpenRouter Documentation](https://openrouter.ai/docs)
-- [AutoGPT Platform Docs](https://docs.agpt.co/platform/)
+- [AutoGPT Platform Docs](https://agpt.co/docs/platform)
 
 ---
 

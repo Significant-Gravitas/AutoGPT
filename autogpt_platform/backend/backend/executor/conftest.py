@@ -27,3 +27,23 @@ def _bypass_paywall(mocker):
         "backend.executor.utils.is_user_paywalled",
         new=mocker.AsyncMock(return_value=False),
     )
+
+
+@pytest.fixture(autouse=True)
+def _default_team_untenanted(mocker):
+    """Default the born-tenanted fallback to a no-op for executor tests.
+
+    ``add_graph_execution`` now resolves the user's default org/team via
+    ``get_user_default_team`` when no organization_id is passed on the create
+    path. Executor tests use synthetic user_ids with no personal org, so let
+    the resolver return ``(None, None)`` by default — the row stays untenanted,
+    matching the pre-fallback behavior every existing test asserts. Tests that
+    exercise the fallback override this patch with an explicit org/team.
+
+    Patched at the source module because ``add_graph_execution`` does a
+    call-time ``from backend.api.features.orgs.db import get_user_default_team``.
+    """
+    mocker.patch(
+        "backend.api.features.orgs.db.get_user_default_team",
+        new=mocker.AsyncMock(return_value=(None, None)),
+    )

@@ -1,8 +1,9 @@
 "use client";
 import { cn } from "@/lib/utils";
-import React, { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useRef } from "react";
 import { createNoise3D } from "simplex-noise";
 import { motion } from "motion/react";
+import { useMountEffect } from "@/hooks/useMountEffect";
 
 interface VortexProps {
   children?: ReactNode;
@@ -20,7 +21,7 @@ interface VortexProps {
 
 export function Vortex(props: VortexProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameId = useRef<number>();
   const particleCount = props.particleCount || 700;
   const particlePropCount = 9;
@@ -42,6 +43,7 @@ export function Vortex(props: VortexProps) {
   let tick = 0;
   let lastTime = 0;
   let dtFrames = 1;
+  let isRunning = false;
   const noise3D = createNoise3D();
   let particleProps = new Float32Array(particlePropsLength);
   const center: [number, number] = [0, 0];
@@ -63,21 +65,6 @@ export function Vortex(props: VortexProps) {
 
   function lerp(n1: number, n2: number, speed: number): number {
     return (1 - speed) * n1 + speed * n2;
-  }
-
-  function setup() {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (canvas && container) {
-      const ctx = canvas.getContext("2d");
-
-      if (ctx) {
-        resize(canvas);
-        initParticles();
-        lastTime = performance.now();
-        draw(canvas, ctx);
-      }
-    }
   }
 
   function initParticles() {
@@ -106,34 +93,75 @@ export function Vortex(props: VortexProps) {
     particleProps.set([x, y, vx, vy, life, ttl, speed, radius, hue], i);
   }
 
-  function draw(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+  function startLoop() {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || isRunning) return;
+
+    isRunning = true;
+    lastTime = performance.now();
+    animationFrameId.current = window.requestAnimationFrame(() =>
+      loop(canvas, ctx),
+    );
+  }
+
+  function stopLoop() {
+    isRunning = false;
+    if (animationFrameId.current) {
+      window.cancelAnimationFrame(animationFrameId.current);
+    }
+  }
+
+  function loop(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1000, 1 / 30);
     lastTime = now;
     dtFrames = dt * 60;
     tick += dtFrames;
 
+    renderFrame(canvas, ctx);
+
+    if (isRunning) {
+      animationFrameId.current = window.requestAnimationFrame(() =>
+        loop(canvas, ctx),
+      );
+    }
+  }
+
+  function renderFrame(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+  ) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    drawParticles(ctx);
-    renderGlow(canvas, ctx);
-    renderToScreen(canvas, ctx);
-
-    animationFrameId.current = window.requestAnimationFrame(() =>
-      draw(canvas, ctx),
-    );
+    ctx.lineCap = "round";
+    ctx.globalCompositeOperation = "lighter";
+    stepParticles(ctx);
+    ctx.globalCompositeOperation = "source-over";
   }
 
-  function drawParticles(ctx: CanvasRenderingContext2D) {
+  function drawStaticFrame(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+  ) {
+    dtFrames = 1;
+    for (let i = 0; i < 90; i++) {
+      tick += 1;
+      stepParticles(null);
+    }
+    renderFrame(canvas, ctx);
+  }
+
+  function stepParticles(ctx: CanvasRenderingContext2D | null) {
     for (let i = 0; i < particlePropsLength; i += particlePropCount) {
       updateParticle(i, ctx);
     }
   }
 
-  function updateParticle(i: number, ctx: CanvasRenderingContext2D) {
+  function updateParticle(i: number, ctx: CanvasRenderingContext2D | null) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -160,7 +188,9 @@ export function Vortex(props: VortexProps) {
     const radius = particleProps[i8];
     const hue = particleProps[i9];
 
-    drawParticle(x, y, x2, y2, life, ttl, radius, hue, ctx);
+    if (ctx) {
+      drawParticle(x, y, x2, y2, life, ttl, radius, hue, ctx);
+    }
 
     life += dtFrames;
 
@@ -186,77 +216,86 @@ export function Vortex(props: VortexProps) {
     hue: number,
     ctx: CanvasRenderingContext2D,
   ) {
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineWidth = radius;
-    ctx.strokeStyle = `hsla(${hue},100%,60%,${fadeInOut(life, ttl)})`;
+    const alpha = fadeInOut(life, ttl);
+
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x2, y2);
+    ctx.lineWidth = radius * 3;
+    ctx.strokeStyle = `hsla(${hue},100%,60%,${0.3 * alpha})`;
     ctx.stroke();
-    ctx.closePath();
-    ctx.restore();
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x2, y2);
+    ctx.lineWidth = radius;
+    ctx.strokeStyle = `hsla(${hue},100%,70%,${alpha})`;
+    ctx.stroke();
   }
 
   function checkBounds(x: number, y: number, canvas: HTMLCanvasElement) {
     return x > canvas.width || x < 0 || y > canvas.height || y < 0;
   }
 
-  function resize(canvas: HTMLCanvasElement) {
-    const { innerWidth, innerHeight } = window;
-
-    canvas.width = innerWidth;
-    canvas.height = innerHeight;
+  function resize(canvas: HTMLCanvasElement, container: HTMLElement) {
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
 
     center[0] = 0.5 * canvas.width;
     center[1] = 0.5 * canvas.height;
   }
 
-  function renderGlow(
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D,
-  ) {
-    ctx.save();
-    ctx.filter = "blur(8px) brightness(200%)";
-    ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(canvas, 0, 0);
-    ctx.restore();
-
-    ctx.save();
-    ctx.filter = "blur(4px) brightness(200%)";
-    ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(canvas, 0, 0);
-    ctx.restore();
-  }
-
-  function renderToScreen(
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D,
-  ) {
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.drawImage(canvas, 0, 0);
-    ctx.restore();
-  }
-
-  function handleResize() {
+  useMountEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      resize(canvas);
-    }
-  }
+    const container = containerRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !container || !ctx) return;
 
-  useEffect(() => {
-    setup();
-    window.addEventListener("resize", handleResize);
+    resize(canvas, container);
+    initParticles();
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      let staticRedrawFrame: number | undefined;
+      const staticResizeObserver = new ResizeObserver(() => {
+        if (staticRedrawFrame) window.cancelAnimationFrame(staticRedrawFrame);
+        staticRedrawFrame = window.requestAnimationFrame(() => {
+          resize(canvas, container);
+          initParticles();
+          drawStaticFrame(canvas, ctx);
+        });
+      });
+      staticResizeObserver.observe(container);
+      return () => {
+        if (staticRedrawFrame) window.cancelAnimationFrame(staticRedrawFrame);
+        staticResizeObserver.disconnect();
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      const wasEmpty = canvas.width === 0 || canvas.height === 0;
+      resize(canvas, container);
+      if (wasEmpty && canvas.width > 0 && canvas.height > 0) {
+        initParticles();
+      }
+    });
+    resizeObserver.observe(container);
+
+    const intersectionObserver = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry.isIntersecting) {
+        startLoop();
+      } else {
+        stopLoop();
+      }
+    });
+    intersectionObserver.observe(container);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-      }
+      resizeObserver.disconnect();
+      intersectionObserver.disconnect();
+      stopLoop();
     };
-  }, []);
+  });
 
   return (
     <div className={cn("relative h-full w-full", props.containerClassName)}>

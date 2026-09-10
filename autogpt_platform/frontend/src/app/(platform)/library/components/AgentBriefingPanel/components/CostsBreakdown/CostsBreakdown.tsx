@@ -5,11 +5,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { SpendByAgentList } from "./components/SpendByAgentList";
 import { TopRunsList } from "./components/TopRunsList";
 import { useCostsBreakdown } from "./useCostsBreakdown";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agents: LibraryAgent[];
@@ -30,7 +31,8 @@ export function CostsBreakdown({ agents }: Props) {
         className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
-        <CaretDownIcon
+        <Icon
+          icon={ArrowDown01Icon}
           size={14}
           className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
         />

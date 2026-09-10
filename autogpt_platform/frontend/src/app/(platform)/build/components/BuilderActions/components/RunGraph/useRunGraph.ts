@@ -26,6 +26,10 @@ export const useRunGraph = () => {
     useShallow((state) => state.setIsGraphRunning),
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+  const [runTarget, setRunTarget] = useState<{
+    graphID: string;
+    graphVersion: number | null;
+  } | null>(null);
 
   const setNodeErrorsForBackendId = useNodeStore(
     useShallow((state) => state.setNodeErrorsForBackendId),
@@ -138,9 +142,18 @@ export const useRunGraph = () => {
   const handleRunGraph = async ({
     dryRun = false,
   }: { dryRun?: boolean } = {}) => {
-    await saveGraph(undefined);
+    // Use the version returned by the save, not the one captured in this
+    // closure — saving creates a new graph version and the stale closure value
+    // would run the previous (pre-edit) version. See the delete-node-then-run bug.
+    const savedGraph = await saveGraph(undefined);
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
+      // Hand the freshly-saved version to the dialog so it runs THIS version,
+      // not the stale one still in the URL (setQueryStates updates it async).
+      setRunTarget({
+        graphID: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
+      });
       setOpenRunInputDialog(true);
     } else {
       // Clear stale results so the UI shows fresh output from this execution
@@ -149,8 +162,8 @@ export const useRunGraph = () => {
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
       await executeGraph({
-        graphId: flowID ?? "",
-        graphVersion: flowVersion || null,
+        graphId: savedGraph?.id ?? flowID ?? "",
+        graphVersion: savedGraph?.version ?? flowVersion ?? null,
         data: {
           inputs: {},
           credentials_inputs: {},
@@ -179,5 +192,6 @@ export const useRunGraph = () => {
     isTerminatingGraph,
     openRunInputDialog,
     setOpenRunInputDialog: handleSetOpenRunInputDialog,
+    runTarget,
   };
 };

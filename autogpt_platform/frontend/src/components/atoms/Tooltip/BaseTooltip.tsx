@@ -23,6 +23,10 @@ const Tooltip = ({
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
+// Opt-in: content renders inline by default, so a trigger inside an
+// `overflow-hidden` ancestor clips its own tooltip. Wrap in this to escape.
+const TooltipPortal = TooltipPrimitive.Portal;
+
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
@@ -39,4 +43,10 @@ const TooltipContent = React.forwardRef<
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipPortal,
+  TooltipProvider,
+};
