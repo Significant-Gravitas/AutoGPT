@@ -78,6 +78,7 @@ class TestApplyBuildingModeRestart:
         thinking_reprompted: bool = False,
         delegation_supplement: str = "",
         oversight_supplement: str = "",
+        team_building_supplement: str = "",
         auto_mode_supplement: str = "",
     ):
         from backend.copilot.sdk.service import (
@@ -101,6 +102,7 @@ class TestApplyBuildingModeRestart:
             base_system_prompt="BASE",
             delegation_supplement=delegation_supplement,
             oversight_supplement=oversight_supplement,
+            team_building_supplement=team_building_supplement,
             graphiti_supplement="",
             auto_mode_supplement=auto_mode_supplement,
             use_e2b=False,
@@ -205,8 +207,9 @@ class TestApplyBuildingModeRestart:
                 base_system_prompt="BASE",
                 delegation_supplement="",
                 oversight_supplement="",
-                auto_mode_supplement="",
+                team_building_supplement="",
                 graphiti_supplement="",
+                auto_mode_supplement="",
                 use_e2b=False,
                 session_id="sess-1",
                 message_id="msg-1",

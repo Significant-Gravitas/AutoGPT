@@ -87,6 +87,10 @@ class Flag(str, Enum):
     # retrieval-relevance benefit is measured.
     GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled"
 
+    # Parks expert work for the user's approval once her credit spend in the
+    # window reaches the approval threshold (SECRT-2599). Off by default.
+    EXPERT_SPEND_APPROVAL = "expert-spend-approval"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — LD's per-flag targeting natively
@@ -110,6 +114,13 @@ class Flag(str, Enum):
     # independent briefing kill switch — briefings ship to exactly the
     # experts cohort.
     HIRE_EXPERTS = "hire-experts"
+
+    # Child of ``HIRE_EXPERTS``: onboarding ends with a team. The brain
+    # dump also produces expert recommendations, the copilot greeting
+    # grows a team section, and AutoPilot's empty-roster context tells
+    # it that it is the Head of AI. Effective only when both are on;
+    # fail-closed (default False).
+    ONBOARDING_EXPERT_TEAM = "onboarding-expert-team"
 
     # Mirror of the frontend `skills-hub` flag. Gates marketplace skill
     # browse and install end-to-end: the routes 404 when off, so the dark
