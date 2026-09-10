@@ -103,9 +103,8 @@ def _expert_attention(expert: Expert) -> HomeAttentionItem:
         ),
         why_it_matters="Those workflows cannot run until their connections are ready.",
         expert=summary,
-        primary_action=HomeAction(
-            label="Finish setup", href=f"/team/{quote(expert.id)}"
-        ),
+        # The Team page carries the setup card that names and fixes the gap.
+        primary_action=HomeAction(label="Finish setup", href="/team"),
     )
 
 

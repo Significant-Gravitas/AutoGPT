@@ -28,6 +28,7 @@ from backend.api.features.experts.models import (
     ExpertIdentity,
     ExpertPod,
     ExpertRun,
+    ExpertSetupItem,
     ExpertSoulUpdate,
     ExpertWorkflowRef,
     HireResult,
@@ -1684,3 +1685,33 @@ def test_assign_pod_unknown_pod_returns_404(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Expert or pod not found"
+
+
+# ─── Setup items ───────────────────────────────────────────────────────
+
+
+def test_list_expert_setup_items_is_not_swallowed_by_the_expert_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    item = ExpertSetupItem(
+        expert_id="expert-1",
+        expert_name="Maria",
+        expert_avatar_url=None,
+        workflow_id="wf-1",
+        workflow_name="SEO Audit",
+        library_agent_id="library-agent-1",
+        providers=["notion"],
+        resolution="connect",
+    )
+    mock_list = mocker.patch(
+        "backend.api.features.experts.routes.expert_setup.list_setup_items",
+        new_callable=AsyncMock,
+        return_value=[item],
+    )
+
+    response = client.get("/experts/setup")
+
+    assert response.status_code == 200
+    assert response.json()[0]["resolution"] == "connect"
+    assert response.json()[0]["providers"] == ["notion"]
+    mock_list.assert_awaited_once()

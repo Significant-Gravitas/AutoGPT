@@ -105,7 +105,7 @@ describe("getExpertRosterStatus", () => {
     expert.last_run_status = "RUNNING";
     expert.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(expert, 1)).toBe("working");
+    expect(getExpertRosterStatus(expert)).toBe("working");
   });
 
   test.each(["FAILED", "TERMINATED", "REVIEW"])(
@@ -114,7 +114,7 @@ describe("getExpertRosterStatus", () => {
       const expert = makeExpert("attention");
       expert.last_run_status = lastRunStatus;
 
-      expect(getExpertRosterStatus(expert, 0)).toBe("needs-you");
+      expect(getExpertRosterStatus(expert)).toBe("needs-you");
     },
   );
 
@@ -122,15 +122,15 @@ describe("getExpertRosterStatus", () => {
     const paused = makeExpert("paused");
     paused.schedules_paused_at = new Date("2026-09-03T10:00:00Z");
 
-    expect(getExpertRosterStatus(paused, 0)).toBe("needs-you");
-    expect(getExpertRosterStatus(makeExpert("setup"), 1)).toBe("needs-you");
+    expect(getExpertRosterStatus(paused)).toBe("needs-you");
+    expect(getExpertRosterStatus(makeExpert("setup"))).toBe("idle");
   });
 
   test("reports an expert with no active issue as idle", () => {
     const expert = makeExpert("idle");
     expert.last_run_status = "COMPLETED";
 
-    expect(getExpertRosterStatus(expert, 0)).toBe("idle");
+    expect(getExpertRosterStatus(expert)).toBe("idle");
   });
 });
 
